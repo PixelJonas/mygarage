@@ -28,6 +28,7 @@ const useMountTireSetMock = vi.fn()
 const useUpdateTireMock = vi.fn()
 const useMountTireMock = vi.fn()
 const useDismountTireMock = vi.fn()
+const useRestoreTireMock = vi.fn()
 const noop = () => ({ mutate: vi.fn(), isPending: false })
 
 // Every mutation gets its OWN mock here, unlike TireList.test.tsx which aliases
@@ -40,6 +41,7 @@ vi.mock('../../hooks/queries/useTires', () => ({
   useUpdateTire: () => useUpdateTireMock(),
   useMountTire: () => useMountTireMock(),
   useDismountTire: () => useDismountTireMock(),
+  useRestoreTire: () => useRestoreTireMock(),
   useRetireTire: () => useRetireTireMock(),
   useRotateTires: () => useRotateTiresMock(),
   useAddTireReading: () => noop(),
@@ -92,7 +94,7 @@ const VIN = '1HGCM82633A004352'
 const CORNERS = ['FL', 'FR', 'RL', 'RR'] as const
 
 /** A mounted tire whose id encodes its corner, so a move is readable. */
-const tireAt = (id: number, position: string) => ({
+const tireAt = (id: number, position: string | null) => ({
   id,
   vin: VIN,
   position,
@@ -168,6 +170,7 @@ describe('TireList rotation', () => {
     useUpdateTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
     useMountTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
     useDismountTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    useRestoreTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
     setSets([])
     setTires(FOUR_MOUNTED)
   })
@@ -250,6 +253,7 @@ describe('TireList retire', () => {
     useUpdateTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
     useMountTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
     useDismountTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    useRestoreTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
     setSets([])
     setTires(FOUR_MOUNTED)
   })
@@ -303,6 +307,7 @@ describe('TireList create into storage', () => {
     useUpdateTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
     useMountTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
     useDismountTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    useRestoreTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
     setSets([])
     setTires(FOUR_MOUNTED)
   })
@@ -398,6 +403,7 @@ describe('TireList sets', () => {
     useUpdateTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
     useMountTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
     useDismountTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    useRestoreTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
     setSets([])
     setTires(FOUR_MOUNTED)
   })
@@ -514,6 +520,7 @@ describe('TireList dates and storage location', () => {
     useUpdateTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
     useMountTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
     useDismountTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    useRestoreTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
     setSets([])
     setTires(FOUR_MOUNTED)
   })
@@ -604,5 +611,45 @@ describe('TireList dates and storage location', () => {
     fireEvent.click(drawer().getByText('tireList.setFit'))
     fireEvent.click(drawer().getAllByText('tireList.setFit')[1])
     expect(fit.mock.calls[0][0].mounted_on).toMatch(DATE)
+  })
+})
+
+describe('TireList retired tires', () => {
+  afterEach(() => vi.restoreAllMocks())
+  const RETIRED = { ...tireAt(6, null), position: null, retired_on: '2026-05-01' }
+
+  beforeEach(() => {
+    useCreateTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    useCreateAndMountTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    useRetireTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    useRotateTiresMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    useDeleteTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    useCreateTireSetMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    useMountTireSetMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    useUpdateTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    useMountTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    useDismountTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    useRestoreTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    setSets([])
+    setTires([...FOUR_MOUNTED, RETIRED])
+  })
+
+  it('hides retired tires until asked, then shows them with Restore only', () => {
+    const restore = vi.fn()
+    useRestoreTireMock.mockReturnValue({ mutate: restore, isPending: false })
+    render(<TireList vin={VIN} />)
+    expect(screen.queryByText('tireList.retiredHeading')).toBeNull()
+    expect(screen.queryByText('tireList.restore')).toBeNull()
+
+    fireEvent.click(screen.getByLabelText('tireList.showRetired'))
+    expect(screen.getByText('tireList.retiredHeading')).toBeInTheDocument()
+    const card = screen.getByText('tireList.restore').closest('.rounded-card') as HTMLElement
+    expect(within(card).getByText('tireList.retiredOn')).toBeInTheDocument()
+    expect(within(card).queryByText('tireList.mount')).toBeNull()
+    expect(within(card).queryByText('tireList.retire')).toBeNull()
+    expect(within(card).queryByLabelText('tireList.edit')).toBeNull()
+
+    fireEvent.click(within(card).getByText('tireList.restore'))
+    expect(restore).toHaveBeenCalledWith(6, expect.anything())
   })
 })

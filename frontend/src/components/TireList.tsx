@@ -10,6 +10,7 @@ import {
   useCreateAndMountTire,
   useDismountTire,
   useMountTire,
+  useRestoreTire,
   useRetireTire,
   useRotateTires,
   useTireSets,
@@ -28,7 +29,18 @@ import {
   type UnitFieldOrigin,
 } from '../utils/unitFormat'
 import { getActionErrorMessage } from '../utils/httpErrorHandler'
-import { Button, IconButton, Card, Chip, Drawer, EmptyState, Input, Field, ListRow } from './ui'
+import {
+  Button,
+  IconButton,
+  Card,
+  Chip,
+  Drawer,
+  EmptyState,
+  Input,
+  Field,
+  ListRow,
+  Toggle,
+} from './ui'
 import MountEventFields from './tires/MountEventFields'
 import MountPeriodEditor from './tires/MountPeriodEditor'
 import TireHistoryDrawer from './tires/TireHistoryDrawer'
@@ -174,13 +186,20 @@ interface TireListProps {
 
 export default function TireList({ vin }: TireListProps) {
   const { t } = useTranslation('vehicles')
-  const { data, isLoading, error } = useTires(vin)
+  /* Retired tires are history, not inventory: hidden by default, and the list
+     query only asks the server for them when the toggle is on. Declared here
+     rather than beside the rest of the drawer/dialog state below, since the
+     query on the next line reads it -- a `const` used before its own
+     declaration is a ReferenceError, not just a style nit. */
+  const [showRetired, setShowRetired] = useState(false)
+  const { data, isLoading, error } = useTires(vin, showRetired)
   const createTire = useCreateTire(vin)
   const createAndMount = useCreateAndMountTire(vin)
   const updateTire = useUpdateTire(vin)
   const mount = useMountTire(vin)
   const dismount = useDismountTire(vin)
   const retire = useRetireTire(vin)
+  const restore = useRestoreTire(vin)
   const rotate = useRotateTires(vin)
   const [retireTireId, setRetireTireId] = useState<number | null>(null)
   const [rotateOpen, setRotateOpen] = useState(false)
@@ -285,8 +304,9 @@ export default function TireList({ vin }: TireListProps) {
     tires.map((tire: Tire) => tire.position).filter((p): p is MountedPosition => p != null)
   )
   const freePositions = POSITIONS.filter((p) => !takenPositions.has(p))
-  const mountedTires = tires.filter((tire: Tire) => tire.position != null)
-  const storedTires = tires.filter((tire: Tire) => tire.position == null)
+  const mountedTires = tires.filter((tire: Tire) => tire.position != null && tire.retired_on == null)
+  const storedTires = tires.filter((tire: Tire) => tire.position == null && tire.retired_on == null)
+  const retiredTires = tires.filter((tire: Tire) => tire.retired_on != null)
 
   /* Rotation is all-or-nothing server-side, so the button is only offered when
      every corner it would move is actually occupied. Sending a move for an
@@ -866,6 +886,12 @@ export default function TireList({ vin }: TireListProps) {
           {t('tireList.title')}
         </h2>
         <div className="flex items-center gap-2">
+          <Toggle
+            id="show-retired"
+            label={t('tireList.showRetired')}
+            checked={showRetired}
+            onChange={setShowRetired}
+          />
           {/* Vehicle-level, so it sits in the header rather than on a card:
               a rotation is one action on four tires, and putting it on each
               card would ask which of four identical buttons to press. */}
@@ -1127,6 +1153,57 @@ export default function TireList({ vin }: TireListProps) {
           </div>
         </div>
           ))}
+        </>
+      )}
+
+      {showRetired && retiredTires.length > 0 && (
+        <>
+          <h3 className="text-sm font-semibold text-text-mute">{t('tireList.retiredHeading')}</h3>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {retiredTires.map((tire: Tire) => (
+              <Card key={tire.id} padding="sm" className="space-y-2">
+                <div>
+                  <div className="font-semibold">
+                    {[tire.brand, tire.model_name, tire.size].filter(Boolean).join(' · ') || '—'}
+                  </div>
+                  <div className="text-sm text-text-mute">
+                    {t('tireList.retiredOn', {
+                      date: tire.retired_on ? formatDateForDisplay(tire.retired_on) : '',
+                    })}
+                  </div>
+                </div>
+                <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
+                  <dt className="text-text-mute">{t('tireList.tread')}</dt>
+                  <dd className="font-mono">
+                    {tire.tread_depth_mm != null ? u.tread.format(num(tire.tread_depth_mm)) : '—'}
+                  </dd>
+                  <dt className="text-text-mute">{t('tireList.distanceOnTire')}</dt>
+                  <dd className="font-mono">{distanceSummary(tire)}</dd>
+                </dl>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="ghost" onClick={() => setHistoryTireId(tire.id)}>
+                    {t('tireList.history')}
+                  </Button>
+                  {/* The way back from a mistaken Retire. Back to storage,
+                      history intact; a corner is a Mount like any other. */}
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={restore.isPending}
+                    onClick={() =>
+                      restore.mutate(tire.id, {
+                        onSuccess: () => toast.success(t('tireList.restored')),
+                        onError: (err: unknown) =>
+                          toast.error(getActionErrorMessage(err, t('tireList.restoreAction'))),
+                      })
+                    }
+                  >
+                    {t('tireList.restore')}
+                  </Button>
+                </div>
+              </Card>
+            ))}
+          </div>
         </>
       )}
 

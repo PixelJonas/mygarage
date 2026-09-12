@@ -18,6 +18,7 @@ vi.mock('../../hooks/queries/useTires', () => ({
   useUpdateTire: () => useUpsertTireMock(),
   useMountTire: () => useUpsertTireMock(),
   useDismountTire: () => useUpsertTireMock(),
+  useRestoreTire: () => useUpsertTireMock(),
   useRetireTire: () => useUpsertTireMock(),
   useRotateTires: () => useUpsertTireMock(),
   useAddTireReading: () => useAddTireReadingMock(),
