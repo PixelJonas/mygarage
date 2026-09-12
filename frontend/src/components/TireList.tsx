@@ -463,6 +463,35 @@ export default function TireList({ vin }: TireListProps) {
     }
   }
 
+  /* The current mount, from the open period. `installed_date` on the
+     response is the FIRST mount and lives in the history drawer; a seasonal
+     tire's card would go stale after its first swap if it showed that. Four
+     keys rather than one with placeholders, so the unknown variants are
+     distinguishable in tests, where t() returns its key. */
+  const openPeriod = (tire: Tire): TireMountPeriod | null =>
+    (tire.mount_periods ?? []).find((p) => p.dismounted_on == null) ?? null
+  const lastClosedPeriod = (tire: Tire): TireMountPeriod | null =>
+    [...(tire.mount_periods ?? [])].reverse().find((p) => p.dismounted_on != null) ?? null
+
+  const mountedLine = (tire: Tire): string => {
+    const p = openPeriod(tire)
+    if (!p) return '—'
+    const date = p.mounted_on ? formatDateForDisplay(p.mounted_on) : null
+    const odometer = p.mounted_odometer_km != null ? u.distance.format(num(p.mounted_odometer_km)) : null
+    if (date && odometer) return t('tireList.mountedLine', { date, odometer })
+    if (date) return t('tireList.mountedDateOnly', { date })
+    if (odometer) return t('tireList.mountedOdometerOnly', { odometer })
+    return t('tireList.mountedUnknown')
+  }
+
+  const storedLine = (tire: Tire): string => {
+    const p = lastClosedPeriod(tire)
+    const since = p?.dismounted_on
+      ? t('tireList.inStorageSince', { date: formatDateForDisplay(p.dismounted_on) })
+      : t('tireList.inStorage')
+    return tire.storage_location ? `${since} · ${tire.storage_location}` : since
+  }
+
   /* One key per field, interpolated with the resolved unit, replacing the pairs
    * of unit-specific keys a ternary used to choose between. `odometerMi` and
    * `odometerKm` could only ever name two of the vocabulary's units. */
@@ -971,6 +1000,8 @@ export default function TireList({ vin }: TireListProps) {
                   </Button>
                 )}
               </dd>
+              <dt className="text-text-mute">{t('tireList.mountedOn')}</dt>
+              <dd className="font-mono text-xs">{mountedLine(tire)}</dd>
             </dl>
             <div className="flex flex-wrap gap-2">
               <Button
@@ -1038,6 +1069,7 @@ export default function TireList({ vin }: TireListProps) {
                     <div className="text-sm text-text-mute">
                       {[tire.brand, tire.model_name, tire.size].filter(Boolean).join(' · ') || '—'}
                     </div>
+                    <div className="text-sm text-text-mute">{storedLine(tire)}</div>
                   </div>
                   <IconButton
                     icon={Pencil}
