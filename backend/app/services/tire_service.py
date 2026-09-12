@@ -987,24 +987,6 @@ class TireService:
         )
         self.db.add(tire)
         await self.db.flush()
-        # Re-queried, not just flushed, with `populate_existing` forcing the
-        # overwrite: the constructor above already left `readings`/
-        # `mount_periods` "loaded" (as empty lists), so without this a plain
-        # selectinload would see them as already-loaded and skip re-fetching
-        # -- and a collection that was never actually pulled from the
-        # database this way does not survive a later same-session
-        # `db.refresh()` (as `update_tire` does): SQLAlchemy expires it
-        # without knowing how to refill it, and the next synchronous touch
-        # raises MissingGreenlet one request later. Doing a real, if trivial,
-        # SELECT here instead gives both collections that tracking.
-        tire = (
-            await self.db.execute(
-                select(Tire)
-                .where(Tire.id == tire.id)
-                .options(selectinload(Tire.readings), selectinload(Tire.mount_periods))
-                .execution_options(populate_existing=True)
-            )
-        ).scalar_one()
         mounted_on = data.mounted_on or utc_now().date()
         period = TireMountPeriod(
             tire_id=tire.id,
@@ -1201,7 +1183,15 @@ class TireService:
                     value = value.strip() or None
                 setattr(tire, key, value)
             await self.db.commit()
-            await self.db.refresh(tire)
+            # Named, not a bare refresh: the only thing this call needs is
+            # `updated_at`, the server-side onupdate the commit just produced
+            # (expire_on_commit=False leaves everything else already
+            # current). A bare `db.refresh(tire)` expires every attribute,
+            # `readings`/`mount_periods` included, and this request still
+            # needs both below -- under an async session an expired
+            # relationship cannot lazy-load on a synchronous touch, it raises
+            # MissingGreenlet instead.
+            await self.db.refresh(tire, attribute_names=["updated_at"])
             await self._sync_low_tread_reminder(tire)
             # WITH the odometer. Without it every edit answered as though the
             # vehicle had never had a reading, so a PUT that only changed a
