@@ -1144,7 +1144,8 @@ class TireService:
             raise HTTPException(status_code=404, detail="Tire not found")
         return tire
 
-    def _refuse_contradictions(self, tire: Tire, before: FaultMap, touched: set[int]) -> None:
+    @staticmethod
+    def _refuse_contradictions(tire: Tire, before: FaultMap, touched: set[int]) -> None:
         """Second half of the writer sequence: capture, mutate, flush, VALIDATE, commit.
 
         Incremental, not whole-history: `before` is the fault map captured
