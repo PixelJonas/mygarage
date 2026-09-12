@@ -595,6 +595,18 @@ describe('TireList', () => {
     expect(screen.getByText('tireList.mountedOdometerOnly')).toBeInTheDocument()
   })
 
+  it('says which half of the mount is unknown, the other way round', () => {
+    useTiresMock.mockReturnValue({ data: { tires: [{ ...STORED_FL_TIRE, mount_periods: [{ ...OPEN_PERIOD, mounted_odometer_km: null }] }], total: 1 }, isLoading: false, error: null })
+    render(<TireList vin="1HGCM82633A004352" />)
+    expect(screen.getByText('tireList.mountedDateOnly')).toBeInTheDocument()
+  })
+
+  it('says both halves of the mount are unknown', () => {
+    useTiresMock.mockReturnValue({ data: { tires: [{ ...STORED_FL_TIRE, mount_periods: [{ ...OPEN_PERIOD, mounted_on: null, mounted_odometer_km: null }] }], total: 1 }, isLoading: false, error: null })
+    render(<TireList vin="1HGCM82633A004352" />)
+    expect(screen.getByText('tireList.mountedUnknown')).toBeInTheDocument()
+  })
+
   it('the stored card says since when, and where', () => {
     const stored = { ...STORED_FL_TIRE, position: null, storage_location: 'Garage shelf B', mount_periods: [{ ...OPEN_PERIOD, dismounted_on: '2026-09-01', dismounted_odometer_km: '160000.00' }] }
     useTiresMock.mockReturnValue({ data: { tires: [stored], total: 1 }, isLoading: false, error: null })
