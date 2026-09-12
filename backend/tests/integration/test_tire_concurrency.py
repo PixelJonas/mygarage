@@ -199,6 +199,19 @@ class TestEveryWriterTakesTheLock:
         # 4. dismount
         r = await client.post(f"{base}/{stored}/dismount", headers=h, json={})
         assert r.status_code == 200, r.text
+        # 4b. edit a period (needs the id of fl's open period)
+        listed = await client.get(base, headers=h)
+        fl_open = next(
+            p
+            for t in listed.json()["tires"]
+            if t["id"] == fl
+            for p in t["mount_periods"]
+            if p["dismounted_on"] is None
+        )
+        r = await client.put(
+            f"{base}/{fl}/mount-periods/{fl_open['id']}", headers=h, json={"notes": "edited"}
+        )
+        assert r.status_code == 200, r.text
         # 5. set fit: file the stored tire into a set, then fit the set
         r = await client.post(f"/api/vehicles/{vin}/tire-sets", headers=h, json={"name": "Set"})
         assert r.status_code == 201, r.text
@@ -214,4 +227,4 @@ class TestEveryWriterTakesTheLock:
         r = await client.delete(f"{base}/{stored}", headers=h)
         assert r.status_code == 204, r.text
 
-        assert lock_calls == [vin] * 7, lock_calls
+        assert lock_calls == [vin] * 8, lock_calls

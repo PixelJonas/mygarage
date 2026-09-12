@@ -20,6 +20,7 @@ from app.models.tire import Tire, TireMountPeriod, TireReading, TireSet
 from app.models.user import User
 from app.schemas.tire import (
     MountPeriodResponse,
+    MountPeriodUpdate,
     TireCreate,
     TireCreateAndMountRequest,
     TireDismountRequest,
@@ -1327,6 +1328,131 @@ class TireService:
             )
         await self.db.commit()
         return await self._reload_response(tire.id, vin)
+
+    async def update_mount_period(
+        self,
+        vin: str,
+        tire_id: int,
+        period_id: int,
+        data: MountPeriodUpdate,
+        current_user: User,
+    ) -> TireResponse:
+        """Correct one period's bounds or notes, under the vehicle write lock.
+
+        This is the only repair path for a period born without an odometer,
+        which since v3.3.0 is every tire added at a corner through the Add
+        Tire form and every tire migrated by 097. Refusals are 409s with a
+        sentence: an open period is closed by Dismount, not here; a closed
+        period is never reopened, because the open period is the one whose
+        corner `tires.position` holds and that pairing is written only by
+        mount, dismount and rotate.
+        """
+        from app.services.auth import get_vehicle_or_403
+
+        vin = vin.upper().strip()
+        await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
+        await lock_vehicle_for_write(self.db, vin)
+        tire = await self._get_tire_for_update(vin, tire_id)
+        period = next((p for p in tire.mount_periods or [] if p.id == period_id), None)
+        if period is None:
+            raise HTTPException(status_code=404, detail="Mount period not found")
+
+        before = fault_map(tire.mount_periods or [], tire.readings or [])
+        fields = data.model_dump(exclude_unset=True)
+        is_open = period.dismounted_on is None
+        touches_dismount = "dismounted_on" in fields or "dismounted_odometer_km" in fields
+        if is_open and touches_dismount:
+            raise HTTPException(
+                status_code=409, detail="This period is still open. Close it with Dismount."
+            )
+        if not is_open and "dismounted_on" in fields and fields["dismounted_on"] is None:
+            raise HTTPException(
+                status_code=409,
+                detail="A closed period cannot be reopened. Mount the tire again instead.",
+            )
+
+        # The pairs as persisted, so the published records move only when a
+        # VALUE changed. The editor sends every rendered field, so "the key
+        # was in the body" says nothing, and a notes-only save that republished
+        # an unchanged mount odometer would overwrite a same-day reading's
+        # newer value under the synchroniser's same-day rule.
+        old_mount = (period.mounted_on, period.mounted_odometer_km)
+        old_dismount = (period.dismounted_on, period.dismounted_odometer_km)
+        for key, value in fields.items():
+            setattr(period, key, value)
+        # A user who supplies the mount date is asserting it. The observed
+        # date stays as the record of what the migration knew.
+        if fields.get("mounted_on") is not None and period.is_assumed:
+            period.is_assumed = False
+
+        await self.db.flush()
+        self._refuse_contradictions(tire, before, {period.id})
+
+        if (period.mounted_on, period.mounted_odometer_km) != old_mount:
+            await self._follow_period_event(
+                vin,
+                ODOMETER_SOURCE_TIRE_MOUNT,
+                period.id,
+                period.mounted_on,
+                period.mounted_odometer_km,
+            )
+        if (period.dismounted_on, period.dismounted_odometer_km) != old_dismount:
+            await self._follow_period_event(
+                vin,
+                ODOMETER_SOURCE_TIRE_DISMOUNT,
+                period.id,
+                period.dismounted_on,
+                period.dismounted_odometer_km,
+            )
+        await self.db.commit()
+        # `_reload_response`, not `_reload_and_sync`: a period edit changes no tread.
+        return await self._reload_response(tire.id, vin)
+
+    async def _follow_period_event(
+        self,
+        vin: str,
+        source_type: str,
+        period_id: int,
+        when: dt.date | None,
+        odometer_km: Decimal | None,
+    ) -> None:
+        """Keep the vehicle odometer record a period event published in step.
+
+        By OWNERSHIP: only a record carrying this period's own marker is ever
+        moved or deleted. A record the reading path took over on the same day,
+        a legacy tire-marked record, a rotation's or a set fit's record: none
+        of those is this event's to move. A record is published only when both
+        the date and the odometer are known, because `odometer_records.date`
+        is not nullable and "I know the odometer but not the day" is the
+        common migrated-tire case. Publishing goes through the synchroniser,
+        so a manual record on the target day is never overwritten and an
+        automatic one is replaced under the standing same-day rule, exactly as
+        a new mount does.
+
+        Why: a stale synced record becomes the vehicle's latest reading and
+        poisons every mileage reminder, which is the reason `delete_tire`
+        cleans these up marker-exact.
+        """
+        marker = auto_sync_marker(source_type, period_id)
+        owned = (
+            (
+                await self.db.execute(
+                    select(OdometerRecord)
+                    .where(OdometerRecord.vin == vin, OdometerRecord.notes == marker)
+                    .order_by(OdometerRecord.id.desc())
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if when is not None and odometer_km is not None:
+            if owned is not None:
+                owned.date = when
+                owned.odometer_km = odometer_km
+            else:
+                await self._publish_odometer(vin, when, odometer_km, source_type, period_id)
+        elif owned is not None:
+            await self.db.delete(owned)
 
     async def delete_tire(self, vin: str, tire_id: int, current_user: User) -> None:
         """Permanently delete a tire and everything measured about it.

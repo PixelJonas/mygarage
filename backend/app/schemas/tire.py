@@ -236,6 +236,24 @@ class MountPeriodResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class MountPeriodUpdate(BaseModel):
+    """Correct one mount period's bounds or notes.
+
+    Every field optional, `exclude_unset` semantics: a key absent from the
+    body is untouched, a key sent as null is cleared to unknown. `position`
+    is deliberately not here (D14: only mount, dismount and rotate write it),
+    and forbid-extra makes sending it a 422 rather than a silent ignore.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    mounted_on: date_type | None = None
+    mounted_odometer_km: Decimal | None = Field(None, ge=0)
+    dismounted_on: date_type | None = None
+    dismounted_odometer_km: Decimal | None = Field(None, ge=0)
+    notes: str | None = None
+
+
 class TireResponse(TireBase):
     """A tire, with where it is now and what is known about its wear.
 

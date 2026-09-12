@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.user import User
 from app.schemas.tire import (
+    MountPeriodUpdate,
     TireCreate,
     TireCreateAndMountRequest,
     TireDismountRequest,
@@ -125,6 +126,26 @@ async def retire_tire(
     entered by mistake, and it destroys every reading and mount period.
     """
     return await TireService(db).retire_tire(vin, tire_id, data, current_user)
+
+
+@router.put("/{vin}/tires/{tire_id}/mount-periods/{period_id}", response_model=TireResponse)
+async def update_mount_period(
+    vin: str,
+    tire_id: int,
+    period_id: int,
+    data: MountPeriodUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_auth),
+) -> TireResponse:
+    """Correct one mount period's dates, odometers or notes.
+
+    Absent keys are untouched; null clears a value to unknown. 409 when the
+    edit contradicts the tire's other periods or its readings, when a dismount
+    field is set on the open period, or when a closed period would be
+    reopened. Returns the whole tire, so the card and the history refresh
+    from one payload.
+    """
+    return await TireService(db).update_mount_period(vin, tire_id, period_id, data, current_user)
 
 
 @router.post("/{vin}/tires/{tire_id}/dismount", response_model=TireResponse)
