@@ -91,6 +91,28 @@ describe('TireHistoryDrawer', () => {
     expect(needsOdometer(ASSUMED as never)).toBe(true)
   })
 
+  it('an open, blocking period with a known mount odometer needs no odometer', () => {
+    // Pins the guard's actual job: a currently-mounted tire has no dismount
+    // odometer yet by definition (it hasn't come off), and must never be
+    // told to supply one just because some other property makes it a
+    // blocker. `dismounted_on == null` short-circuits the guard before
+    // `dismounted_odometer_km` is ever inspected.
+    const openBlocking = { ...OPEN, id: 4 }
+    expect(needsOdometer(openBlocking as never)).toBe(false)
+  })
+
+  it('a closed period missing its closing odometer needs one', () => {
+    // Pins the branch's true outcome directly: a period that closed but
+    // never recorded the odometer at that moment genuinely needs one.
+    const closedMissingDismountOdometer = {
+      ...OPEN,
+      id: 5,
+      dismounted_on: '2026-02-01',
+      dismounted_odometer_km: null,
+    }
+    expect(needsOdometer(closedMissingDismountOdometer as never)).toBe(true)
+  })
+
   it('names the first installation when it is known', () => {
     render(<TireHistoryDrawer tire={tire({ installed_date: '2024-11-02', mount_periods: [{ ...OPEN, mounted_on: '2024-11-02' }] }) as never} open onClose={vi.fn()} onEditPeriod={vi.fn()} labelFor={labelFor} />)
     expect(drawer().getByText('tireList.firstInstalled')).toBeInTheDocument()
