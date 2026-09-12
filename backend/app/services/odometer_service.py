@@ -33,3 +33,36 @@ async def latest_odometer_km_and_date(
     if row is None:
         return None, None
     return row[0], row[1]
+
+
+async def nearest_odometer(db: AsyncSession, vin: str, on: date) -> OdometerRecord | None:
+    """The odometer record closest to `on` by day distance, or None.
+
+    Two indexed queries, the latest on-or-before and the earliest after, then
+    the smaller distance. A tie goes to the earlier one: an installation at
+    date D happened at or after the last reading before D. Same-day
+    duplicates resolve to the newest row, the rule
+    `latest_odometer_km_and_date` documents, so repeated calls pick the same
+    record on both dialects.
+    """
+    before = (
+        await db.execute(
+            select(OdometerRecord)
+            .where(OdometerRecord.vin == vin, OdometerRecord.date <= on)
+            .order_by(OdometerRecord.date.desc(), OdometerRecord.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    after = (
+        await db.execute(
+            select(OdometerRecord)
+            .where(OdometerRecord.vin == vin, OdometerRecord.date > on)
+            .order_by(OdometerRecord.date.asc(), OdometerRecord.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if before is None:
+        return after
+    if after is None:
+        return before
+    return before if (on - before.date) <= (after.date - on) else after
