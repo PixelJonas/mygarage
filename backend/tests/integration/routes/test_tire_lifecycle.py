@@ -431,3 +431,54 @@ class TestRotation:
         placed = {t["id"]: t["position"] for t in listed.json()["tires"]}
         assert placed[fl["id"]] == "FL", "a refused rotation must move nothing"
         assert placed[rl["id"]] == "RL"
+
+
+@pytest.mark.asyncio
+class TestStorageLocation:
+    async def test_storage_location_round_trips_and_survives_a_mount(
+        self, client: AsyncClient, auth_headers, vehicle
+    ):
+        base = f"/api/vehicles/{vehicle}/tires"
+        made = await client.post(
+            base,
+            headers=auth_headers,
+            json={"vin": vehicle, "brand": "Nokian", "storage_location": "Garage shelf B"},
+        )
+        assert made.status_code == 201, made.text
+        tire = made.json()
+        assert tire["storage_location"] == "Garage shelf B"
+
+        edited = await client.put(
+            f"{base}/{tire['id']}", headers=auth_headers, json={"storage_location": "Basement"}
+        )
+        assert edited.status_code == 200, edited.text
+        assert edited.json()["storage_location"] == "Basement"
+
+        mounted = await client.post(
+            f"{base}/{tire['id']}/mount", headers=auth_headers, json={"position": "FL"}
+        )
+        assert mounted.status_code == 200, mounted.text
+        assert mounted.json()["storage_location"] == "Basement", (
+            "a mount never clears where the tire goes back to"
+        )
+
+        off = await client.post(
+            f"{base}/{tire['id']}/dismount", headers=auth_headers, json={"storage_location": "Shed"}
+        )
+        assert off.status_code == 200, off.text
+        assert off.json()["storage_location"] == "Shed"
+
+        # An empty string clears; an absent key would have left "Shed" alone.
+        cleared = await client.put(
+            f"{base}/{tire['id']}", headers=auth_headers, json={"storage_location": ""}
+        )
+        assert cleared.status_code == 200, cleared.text
+        assert cleared.json()["storage_location"] is None
+
+    async def test_storage_location_is_capped(self, client: AsyncClient, auth_headers, vehicle):
+        made = await client.post(
+            f"/api/vehicles/{vehicle}/tires",
+            headers=auth_headers,
+            json={"vin": vehicle, "storage_location": "x" * 121},
+        )
+        assert made.status_code == 422, made.text

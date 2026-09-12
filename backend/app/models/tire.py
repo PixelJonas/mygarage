@@ -152,6 +152,10 @@ class Tire(Base):
     # Wear-out threshold used for reminder hooks (default 2.0 mm / ~2/32").
     min_tread_mm: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), default=Decimal("2.0"))
     notes: Mapped[str | None] = mapped_column(Text)
+    # Where the tire is kept while it is off the vehicle (#153, IanVinkHub).
+    # Free text; never cleared by a mount, because it is where the tire goes
+    # back to. Migration 100.
+    storage_location: Mapped[str | None] = mapped_column(String(120))
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()

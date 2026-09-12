@@ -905,6 +905,11 @@ class TireService:
 
         dismounted_on = data.dismounted_on or utc_now().date()
         tire.position = None
+        # Three intents, two shapes: a key absent from the body leaves the
+        # location alone, an empty string clears it, text sets it. The
+        # Dismount dialog seeds the field from the tire and always sends it.
+        if data.storage_location is not None:
+            tire.storage_location = data.storage_location.strip() or None
         if open_period is not None:
             open_period.dismounted_on = dismounted_on
             open_period.dismounted_odometer_km = data.dismounted_odometer_km
@@ -1136,6 +1141,8 @@ class TireService:
                 if owner is None:
                     raise HTTPException(status_code=404, detail="Tire set not found")
             for key, value in fields.items():
+                if key == "storage_location" and isinstance(value, str):
+                    value = value.strip() or None
                 setattr(tire, key, value)
             await self.db.commit()
             await self.db.refresh(tire)

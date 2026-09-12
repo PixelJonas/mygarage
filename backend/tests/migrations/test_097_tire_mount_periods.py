@@ -33,6 +33,19 @@ def _load_migration():
     return module
 
 
+def _load_migration_100():
+    migration_100_path = (
+        Path(__file__).parent.parent.parent
+        / "app"
+        / "migrations"
+        / "100_add_tire_storage_location.py"
+    )
+    spec = importlib.util.spec_from_file_location("m100", migration_100_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def _legacy_schema(path: Path) -> None:
     """The v3.2.0 shape of every table 097 touches."""
     conn = sqlite3.connect(path)
@@ -374,6 +387,8 @@ class TestSchemaParity:
         _seed_tire(legacy_db, tire_id=1, vin="VINAAA00000000001", position="FL")
         upgraded = create_engine(f"sqlite:///{legacy_db}")
         _load_migration().upgrade(upgraded)
+        # Also run migration 100 to match the current model (which includes storage_location)
+        _load_migration_100().upgrade(upgraded)
 
         fresh_path = tmp_path / "fresh_parity.db"
         fresh = create_engine(f"sqlite:///{fresh_path}")

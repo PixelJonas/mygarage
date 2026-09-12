@@ -50,6 +50,9 @@ class TireBase(BaseModel):
         description="Wear-out threshold in mm; drives reminder hooks",
     )
     notes: str | None = None
+    storage_location: str | None = Field(
+        None, max_length=120
+    )  #: Where the tire is kept while it is off the vehicle. Free text (migration 100).
 
 
 class TireCreate(TireBase):
@@ -82,6 +85,9 @@ class TireUpdate(BaseModel):
     #: membership alone and sending null clears it -- two different intents that
     #: a plain optional field would collapse into one.
     set_id: int | None = None
+    storage_location: str | None = Field(
+        None, max_length=120
+    )  #: Where the tire is kept while it is off the vehicle. Free text (migration 100).
 
 
 class TireMountRequest(BaseModel):
@@ -103,6 +109,9 @@ class TireDismountRequest(BaseModel):
     dismounted_on: date_type | None = None
     dismounted_odometer_km: Decimal | None = Field(None, ge=0)
     notes: str | None = None
+    storage_location: str | None = Field(
+        None, max_length=120
+    )  #: Where the tire is kept while it is off the vehicle. Free text (migration 100).
 
 
 class TireCreateAndMountRequest(TireCreate):
