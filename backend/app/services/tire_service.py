@@ -31,6 +31,7 @@ from app.schemas.tire import (
     TireRotationRequest,
     TireUpdate,
 )
+from app.services.tire_history import FaultMap, fault_map, new_or_touched_faults
 from app.services.tire_results import (
     DistanceResult,
     DistanceStatus,
@@ -95,6 +96,10 @@ async def apply_mount_moves(
     of the vacate/flush/assign dance -- the subtlest thing in the tire service,
     and the one whose absence does not fail loudly but corrupts an arrangement.
 
+    Appends to each tire's `mount_periods` rather than `db.add`, so the
+    caller can validate the resulting history on the collection it already
+    holds.
+
     Args:
         vacate: Tires to take off, closing each one's open period at
             `when`/`odometer_km`.
@@ -134,7 +139,7 @@ async def apply_mount_moves(
     # ---- Phase 2: assign. -----------------------------------------------
     for tire, position in assign:
         tire.position = position
-        db.add(
+        tire.mount_periods.append(
             TireMountPeriod(
                 tire_id=tire.id,
                 position=position,
@@ -144,6 +149,9 @@ async def apply_mount_moves(
                 notes=notes,
             )
         )
+    # Ids for the new periods, and the resulting set in every tire's
+    # collection, for the validation each caller runs next.
+    await db.flush()
 
 
 def distance_on_tire(tire: Tire, current_odometer: Decimal | None) -> DistanceResult:
@@ -843,6 +851,10 @@ class TireService:
         await lock_vehicle_for_write(self.db, vin)
         tire = await self._get_tire_for_update(vin, tire_id)
 
+        if tire.retired_on is not None:
+            raise HTTPException(status_code=409, detail="This tire is retired.")
+        before = fault_map(tire.mount_periods or [], tire.readings or [])
+
         if tire.position is not None:
             raise HTTPException(
                 status_code=409,
@@ -881,6 +893,7 @@ class TireService:
         )
         tire.mount_periods.append(period)
         await self.db.flush()
+        self._refuse_contradictions(tire, before, {period.id})
         # Refreshed so the in-memory object carries the column's quantized
         # precision (`Numeric(10, 2)`) instead of whatever scale the
         # request's JSON happened to use. The append above means no later
@@ -903,6 +916,7 @@ class TireService:
         await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
         await lock_vehicle_for_write(self.db, vin)
         tire = await self._get_tire_for_update(vin, tire_id)
+        before = fault_map(tire.mount_periods or [], tire.readings or [])
 
         if tire.position is None:
             raise HTTPException(status_code=409, detail="This tire is not mounted.")
@@ -931,6 +945,8 @@ class TireService:
             open_period.dismounted_odometer_km = data.dismounted_odometer_km
             if data.notes:
                 open_period.notes = data.notes
+        await self.db.flush()
+        self._refuse_contradictions(tire, before, {open_period.id} if open_period else set())
         # Published even when there is no open period to close: the user still
         # read that number off the dashboard. Owned by the period when there is
         # one, so the editor can move it later; by the tire otherwise.
@@ -997,6 +1013,7 @@ class TireService:
         )
         tire.mount_periods.append(period)
         await self.db.flush()
+        self._refuse_contradictions(tire, {}, {period.id})
         # Refreshed so the in-memory object carries the column's quantized
         # precision (`Numeric(10, 2)`) instead of whatever scale the
         # request's JSON happened to use ("1000" vs "1000.00"). The append
@@ -1039,7 +1056,11 @@ class TireService:
         tires = {
             tire.id: tire
             for tire in (
-                await self.db.execute(select(Tire).where(Tire.id.in_(moving_ids), Tire.vin == vin))
+                await self.db.execute(
+                    select(Tire)
+                    .where(Tire.id.in_(moving_ids), Tire.vin == vin)
+                    .options(selectinload(Tire.readings), selectinload(Tire.mount_periods))
+                )
             )
             .scalars()
             .all()
@@ -1047,6 +1068,14 @@ class TireService:
         missing = [tid for tid in moving_ids if tid not in tires]
         if missing:
             raise HTTPException(status_code=404, detail=f"Tire(s) not found: {missing}")
+
+        retired = sorted(tire_id for tire_id, tire in tires.items() if tire.retired_on is not None)
+        if retired:
+            raise HTTPException(status_code=409, detail=f"Tire(s) {retired} are retired.")
+        befores = {
+            tid: fault_map(t.mount_periods or [], t.readings or []) for tid, t in tires.items()
+        }
+        open_before = {tid: self._open_period_ids(t) for tid, t in tires.items()}
 
         # A destination held by a tire that is NOT part of this rotation is a
         # conflict, not a swap. Checked before any write.
@@ -1080,6 +1109,10 @@ class TireService:
             odometer_km=data.odometer_km,
             notes=data.notes,
         )
+        for tid, tire in tires.items():
+            self._refuse_contradictions(
+                tire, befores[tid], open_before[tid] | self._open_period_ids(tire)
+            )
 
         # ONE reading however many tires moved: the odometer is a fact about
         # the vehicle, not about each corner. `min(moving_ids)` is only the
@@ -1110,6 +1143,27 @@ class TireService:
         if tire is None:
             raise HTTPException(status_code=404, detail="Tire not found")
         return tire
+
+    def _refuse_contradictions(self, tire: Tire, before: FaultMap, touched: set[int]) -> None:
+        """Second half of the writer sequence: capture, mutate, flush, VALIDATE, commit.
+
+        Incremental, not whole-history: `before` is the fault map captured
+        before this write mutated anything, and only a fault that is new, or
+        one still sitting on a period this write touched, refuses it. A
+        legacy fault on some other period survives and stays flagged. Runs
+        over the tire's resulting period list, which is why every writer
+        appends new periods to `tire.mount_periods` rather than `db.add`ing
+        them, and flushes first so they have ids. A refusal raises before the
+        commit; the request's rollback discards what the flush wrote.
+        """
+        after = fault_map(tire.mount_periods or [], tire.readings or [])
+        faults = new_or_touched_faults(before, after, touched)
+        if faults:
+            raise HTTPException(status_code=409, detail=faults[0].message)
+
+    @staticmethod
+    def _open_period_ids(tire: Tire) -> set[int]:
+        return {p.id for p in tire.mount_periods or [] if p.dismounted_on is None}
 
     async def _reload_and_sync(self, tire_id: int, vin: str) -> TireResponse:
         """Reload, run the low-tread reminder sync, and serialise.
@@ -1225,6 +1279,7 @@ class TireService:
         await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
         await lock_vehicle_for_write(self.db, vin)
         tire = await self._get_tire_for_update(vin, tire_id)
+        before = fault_map(tire.mount_periods or [], tire.readings or [])
 
         if tire.retired_on is not None:
             raise HTTPException(status_code=409, detail="This tire is already retired.")
@@ -1255,6 +1310,8 @@ class TireService:
             tire.position = None
 
         tire.retired_on = retired_on
+        await self.db.flush()
+        self._refuse_contradictions(tire, before, {closed_period.id} if closed_period else set())
         if closed_period is not None:
             await self._publish_odometer(
                 vin,

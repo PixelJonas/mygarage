@@ -346,7 +346,14 @@ class TestWriteAuthEnforcement:
     async def _setup_read_only_share(self, db_session):
         """Create a vehicle owner, a non-admin requester, and a read-only share.
 
-        Returns (vehicle_owner, vehicle, share, nonadmin_requester, nonadmin_headers).
+        Returns primary-key VALUES rather than the live ORM objects --
+        (vehicle_vin, share_id, owner_id, requester_id, nonadmin_headers) --
+        because every caller's enforcement call is expected to 403, which
+        rolls the shared test session back (conftest mirrors production
+        `get_db`) and expires the whole identity map. Touching an expired
+        object's attribute afterward (in `_cleanup`) would need a synchronous
+        lazy-refresh and raise MissingGreenlet under an async session; plain
+        values captured here, before any request, do not.
         """
         from app.services.auth import create_access_token
 
@@ -396,22 +403,31 @@ class TestWriteAuthEnforcement:
         )
         nonadmin_headers = {"Authorization": f"Bearer {token}"}
 
-        return vehicle_owner, vehicle, share, nonadmin_requester, nonadmin_headers
+        return vehicle.vin, share.id, vehicle_owner.id, nonadmin_requester.id, nonadmin_headers
 
-    async def _cleanup(self, db_session, share, vehicle, *users):
-        """Remove test data created by _setup_read_only_share."""
-        result = await db_session.execute(select(VehicleShare).where(VehicleShare.id == share.id))
+    async def _cleanup(self, db_session, share_id: int, vehicle_vin: str, *user_ids: int):
+        """Remove test data created by _setup_read_only_share.
+
+        Takes primary-key VALUES rather than the live ORM objects. The
+        enforcement call under test is expected to 403, and since v3.4.0 the
+        test `get_db` override mirrors production and rolls the shared
+        session back on any raised HTTPException -- which expires every
+        object in the identity map. Touching `share.id` etc. here afterward
+        would need a synchronous lazy-refresh and raise MissingGreenlet under
+        an async session; plain values captured before the call do not.
+        """
+        result = await db_session.execute(select(VehicleShare).where(VehicleShare.id == share_id))
         s = result.scalar_one_or_none()
         if s:
             await db_session.delete(s)
 
-        result = await db_session.execute(select(Vehicle).where(Vehicle.vin == vehicle.vin))
+        result = await db_session.execute(select(Vehicle).where(Vehicle.vin == vehicle_vin))
         v = result.scalar_one_or_none()
         if v:
             await db_session.delete(v)
 
-        for user in users:
-            result = await db_session.execute(select(User).where(User.id == user.id))
+        for user_id in user_ids:
+            result = await db_session.execute(select(User).where(User.id == user_id))
             u = result.scalar_one_or_none()
             if u:
                 await db_session.delete(u)
@@ -419,56 +435,44 @@ class TestWriteAuthEnforcement:
 
     async def test_odometer_create_forbidden_for_read_share(self, client: AsyncClient, db_session):
         """Test that creating an odometer record on a read-only shared vehicle returns 403."""
-        (
-            vehicle_owner,
-            vehicle,
-            share,
-            nonadmin_requester,
-            nonadmin_headers,
-        ) = await self._setup_read_only_share(db_session)
+        vin, share_id, owner_id, requester_id, nonadmin_headers = await self._setup_read_only_share(
+            db_session
+        )
         try:
             response = await client.post(
-                f"/api/vehicles/{vehicle.vin}/odometer",
-                json={"vin": vehicle.vin, "date": "2024-01-01", "odometer_km": 16093.40},
+                f"/api/vehicles/{vin}/odometer",
+                json={"vin": vin, "date": "2024-01-01", "odometer_km": 16093.40},
                 headers=nonadmin_headers,
             )
             assert response.status_code == 403
         finally:
-            await self._cleanup(db_session, share, vehicle, vehicle_owner, nonadmin_requester)
+            await self._cleanup(db_session, share_id, vin, owner_id, requester_id)
 
     async def test_odometer_update_forbidden_for_read_share(self, client: AsyncClient, db_session):
         """Test that updating an odometer record on a read-only shared vehicle returns 403."""
-        (
-            vehicle_owner,
-            vehicle,
-            share,
-            nonadmin_requester,
-            nonadmin_headers,
-        ) = await self._setup_read_only_share(db_session)
+        vin, share_id, owner_id, requester_id, nonadmin_headers = await self._setup_read_only_share(
+            db_session
+        )
         try:
             response = await client.put(
-                f"/api/vehicles/{vehicle.vin}/odometer/9999",
+                f"/api/vehicles/{vin}/odometer/9999",
                 json={"date": "2024-01-01", "odometer_km": 16095.01},
                 headers=nonadmin_headers,
             )
             assert response.status_code == 403
         finally:
-            await self._cleanup(db_session, share, vehicle, vehicle_owner, nonadmin_requester)
+            await self._cleanup(db_session, share_id, vin, owner_id, requester_id)
 
     async def test_odometer_delete_forbidden_for_read_share(self, client: AsyncClient, db_session):
         """Test that deleting an odometer record on a read-only shared vehicle returns 403."""
-        (
-            vehicle_owner,
-            vehicle,
-            share,
-            nonadmin_requester,
-            nonadmin_headers,
-        ) = await self._setup_read_only_share(db_session)
+        vin, share_id, owner_id, requester_id, nonadmin_headers = await self._setup_read_only_share(
+            db_session
+        )
         try:
             response = await client.delete(
-                f"/api/vehicles/{vehicle.vin}/odometer/9999",
+                f"/api/vehicles/{vin}/odometer/9999",
                 headers=nonadmin_headers,
             )
             assert response.status_code == 403
         finally:
-            await self._cleanup(db_session, share, vehicle, vehicle_owner, nonadmin_requester)
+            await self._cleanup(db_session, share_id, vin, owner_id, requester_id)

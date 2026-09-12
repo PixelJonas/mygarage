@@ -121,7 +121,15 @@ async def client(db_session, test_data_dir: Path) -> AsyncGenerator[AsyncClient]
 
     # Override the get_db dependency to use our test session
     async def override_get_db():
-        yield db_session
+        # Mirror production `get_db`: a route's exception, HTTPException
+        # included, is raised here after the yield, and the request's
+        # flushed-but-uncommitted writes must not survive into the next
+        # request or the test's own assertions.
+        try:
+            yield db_session
+        except Exception:
+            await db_session.rollback()
+            raise
 
     app.dependency_overrides[get_db] = override_get_db
 

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
+from decimal import Decimal
 
 import pytest
 import pytest_asyncio
@@ -25,7 +26,7 @@ from httpx import AsyncClient
 from sqlalchemy import delete, select
 
 from app.models.odometer import OdometerRecord
-from app.models.tire import Tire
+from app.models.tire import Tire, TireMountPeriod
 from app.models.vehicle import Vehicle
 
 TODAY = date(2026, 4, 1)
@@ -426,15 +427,26 @@ class TestFittingASet:
         assert periods[0]["dismounted_on"] is None
 
     async def test_the_most_recently_recorded_corner_wins(
-        self, client: AsyncClient, auth_headers, vehicle
+        self, client: AsyncClient, auth_headers, vehicle, db_session
     ):
         """A tire that has been on two corners goes back to the later one.
 
         And "later" means most recently RECORDED, not the largest
-        `mounted_on`: the period entered second below is BACKDATED to 2024,
+        `mounted_on`: the period seeded second below is BACKDATED to 2024,
         before the first one, so a rule that read dates would send this tire to
         FL. Someone filling in last winter's history must not have that
         backfill outrank the corner the tire actually came off.
+
+        Seeded directly rather than via `/mount` + `/dismount`, both fully
+        bounded in one insert: since Task 5 (v3.4.0), the write API refuses to
+        CREATE this shape through two separate calls, because the intermediate
+        state -- an open 2024 period while an already-closed 2026 period
+        exists -- is itself a contradiction (`OVERLAPPING_DATES`, "period 1
+        (FL) starts while period 2 (RR) is still open"). The final, fully
+        closed history below has no such moment and is not contradictory: the
+        two periods are disjoint in time, just recorded out of order. This is
+        exactly the shape a pre-3.4.0 writer, or a future backfill import,
+        could still leave behind.
         """
         winter = await _set(client, auth_headers, vehicle, "Winter")
         tire = await _mount(
@@ -451,17 +463,18 @@ class TestFittingASet:
             headers=auth_headers,
             json={"dismounted_on": "2026-02-01", "dismounted_odometer_km": "2000"},
         )
-        remount = await client.post(
-            f"/api/vehicles/{vehicle}/tires/{tire['id']}/mount",
-            headers=auth_headers,
-            json={"position": "RR", "mounted_on": "2024-01-01", "mounted_odometer_km": "500"},
+        db_session.add(
+            TireMountPeriod(
+                tire_id=tire["id"],
+                position="RR",
+                mounted_on=date(2024, 1, 1),
+                dismounted_on=date(2024, 6, 1),
+                mounted_odometer_km=Decimal("500"),
+                dismounted_odometer_km=Decimal("800"),
+                is_assumed=False,
+            )
         )
-        assert remount.status_code == 200, remount.text
-        await client.post(
-            f"/api/vehicles/{vehicle}/tires/{tire['id']}/dismount",
-            headers=auth_headers,
-            json={"dismounted_on": "2024-06-01", "dismounted_odometer_km": "800"},
-        )
+        await db_session.commit()
         await _assign(client, auth_headers, vehicle, tire["id"], winter["id"])
 
         fitted = await client.post(

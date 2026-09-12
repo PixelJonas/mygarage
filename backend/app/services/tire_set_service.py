@@ -30,6 +30,7 @@ from app.schemas.tire import (
     TireSetResponse,
     TireSetUpdate,
 )
+from app.services.tire_history import fault_map, new_or_touched_faults
 from app.services.tire_service import (
     ODOMETER_SOURCE_SET,
     TireService,
@@ -112,7 +113,10 @@ class TireSetService:
             await self.db.execute(
                 select(TireSet)
                 .where(TireSet.id == set_id, TireSet.vin == vin)
-                .options(selectinload(TireSet.tires).selectinload(Tire.mount_periods))
+                .options(
+                    selectinload(TireSet.tires).selectinload(Tire.mount_periods),
+                    selectinload(TireSet.tires).selectinload(Tire.readings),
+                )
             )
         ).scalar_one_or_none()
         if tire_set is None:
@@ -264,11 +268,13 @@ class TireSetService:
         displaced = (
             (
                 await self.db.execute(
-                    select(Tire).where(
+                    select(Tire)
+                    .where(
                         Tire.vin == vin,
                         Tire.position.in_(wanted),
                         Tire.id.notin_(member_ids),
                     )
+                    .options(selectinload(Tire.readings), selectinload(Tire.mount_periods))
                 )
             )
             .scalars()
@@ -282,6 +288,18 @@ class TireSetService:
         moving = [tire for tire in members if tire.position != destinations[tire.id]]
         when = data.mounted_on or utc_now().date()
 
+        # Every tire the fit touches, coming off as well as going on. A
+        # backdated fit closes each displaced tire's period at the same `when`,
+        # so a displaced tire can end up dismounted before it was mounted.
+        touched = {tire.id: tire for tire in [*displaced, *moving]}
+        befores = {
+            tid: fault_map(t.mount_periods or [], t.readings or []) for tid, t in touched.items()
+        }
+        open_before = {
+            tid: {p.id for p in t.mount_periods or [] if p.dismounted_on is None}
+            for tid, t in touched.items()
+        }
+
         await apply_mount_moves(
             self.db,
             vacate=[*displaced, *[tire for tire in moving if tire.position is not None]],
@@ -290,6 +308,15 @@ class TireSetService:
             odometer_km=data.odometer_km,
             notes=data.notes,
         )
+        for tid, tire in touched.items():
+            open_now = {p.id for p in tire.mount_periods or [] if p.dismounted_on is None}
+            faults = new_or_touched_faults(
+                befores[tid],
+                fault_map(tire.mount_periods or [], tire.readings or []),
+                open_before[tid] | open_now,
+            )
+            if faults:
+                raise HTTPException(status_code=409, detail=faults[0].message)
         # ONE reading for the whole swap. Marked as a set fit rather than as a
         # per-tire operation, so deleting any one tire in the set does not take
         # the vehicle's odometer reading with it.
