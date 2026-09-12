@@ -468,6 +468,17 @@ class TestStorageLocation:
         assert off.status_code == 200, off.text
         assert off.json()["storage_location"] == "Shed"
 
+        # A PUT that omits storage_location must leave it unchanged. Without
+        # exclude_unset, an unrelated edit would silently clear it to the field's
+        # Pydantic default (None).
+        unrelated_edit = await client.put(
+            f"{base}/{tire['id']}", headers=auth_headers, json={"notes": "unrelated edit"}
+        )
+        assert unrelated_edit.status_code == 200, unrelated_edit.text
+        assert unrelated_edit.json()["storage_location"] == "Shed", (
+            "a PUT omitting storage_location must leave the stored location unchanged"
+        )
+
         # An empty string clears; an absent key would have left "Shed" alone.
         cleared = await client.put(
             f"{base}/{tire['id']}", headers=auth_headers, json={"storage_location": ""}
