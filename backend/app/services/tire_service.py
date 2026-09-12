@@ -1454,6 +1454,26 @@ class TireService:
         elif owned is not None:
             await self.db.delete(owned)
 
+    async def restore_tire(self, vin: str, tire_id: int, current_user: User) -> TireResponse:
+        """Un-retire a tire. It goes back to storage with its whole history.
+
+        The way back from a mistaken Retire, and the reason `mount_tire` can
+        refuse a retired tire without stranding one. Putting it back on a
+        corner is a Mount like any other. Returns through the reminder sync:
+        a restored tire below its minimum tread should get its warning back.
+        """
+        from app.services.auth import get_vehicle_or_403
+
+        vin = vin.upper().strip()
+        await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
+        await lock_vehicle_for_write(self.db, vin)
+        tire = await self._get_tire_for_update(vin, tire_id)
+        if tire.retired_on is None:
+            raise HTTPException(status_code=409, detail="This tire is not retired.")
+        tire.retired_on = None
+        await self.db.commit()
+        return await self._reload_and_sync(tire.id, vin)
+
     async def delete_tire(self, vin: str, tire_id: int, current_user: User) -> None:
         """Permanently delete a tire and everything measured about it.
 

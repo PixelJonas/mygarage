@@ -5091,6 +5091,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/vehicles/{vin}/odometer/nearest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Nearest Odometer Record
+         * @description The odometer record closest to a date, for prefilling a tire dialog.
+         *
+         *     404 when the vehicle has no odometer records at all: that is an answer
+         *     the suggestion renders as "no readings yet", not an error.
+         */
+        get: operations["nearest_odometer_record_api_vehicles__vin__odometer_nearest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/vehicles/{vin}/odometer/{record_id}": {
         parameters: {
             query?: never;
@@ -6169,6 +6192,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/vehicles/{vin}/tires/{tire_id}/mount-periods/{period_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Mount Period
+         * @description Correct one mount period's dates, odometers or notes.
+         *
+         *     Absent keys are untouched; null clears a value to unknown. 409 when the
+         *     edit contradicts the tire's other periods or its readings, when a dismount
+         *     field is set on the open period, or when a closed period would be
+         *     reopened. Returns the whole tire, so the card and the history refresh
+         *     from one payload.
+         */
+        put: operations["update_mount_period_api_vehicles__vin__tires__tire_id__mount_periods__period_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/vehicles/{vin}/tires/{tire_id}/readings": {
         parameters: {
             query?: never;
@@ -6183,6 +6232,26 @@ export interface paths {
          * @description Append a tread/pressure reading and refresh wear projection + reminders.
          */
         post: operations["add_tire_reading_api_vehicles__vin__tires__tire_id__readings_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vehicles/{vin}/tires/{tire_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Tire
+         * @description Un-retire a tire: back to storage, history intact. 409 if it is not retired.
+         */
+        post: operations["restore_tire_api_vehicles__vin__tires__tire_id__restore_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11046,6 +11115,44 @@ export interface components {
             position: string;
         };
         /**
+         * MountPeriodUpdate
+         * @description Correct one mount period's bounds or notes.
+         *
+         *     Every field optional, `exclude_unset` semantics: a key absent from the
+         *     body is untouched, a key sent as null is cleared to unknown. `position`
+         *     is deliberately not here (D14: only mount, dismount and rotate write it),
+         *     and forbid-extra makes sending it a 422 rather than a silent ignore.
+         */
+        MountPeriodUpdate: {
+            /** Dismounted Odometer Km */
+            dismounted_odometer_km?: number | string | null;
+            /** Dismounted On */
+            dismounted_on?: string | null;
+            /** Mounted Odometer Km */
+            mounted_odometer_km?: number | string | null;
+            /** Mounted On */
+            mounted_on?: string | null;
+            /** Notes */
+            notes?: string | null;
+        };
+        /**
+         * NearestOdometerResponse
+         * @description The reading closest to a requested day, for the tire dialogs' suggestion.
+         */
+        NearestOdometerResponse: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Days Away */
+            days_away: number;
+            /** Odometer Km */
+            odometer_km: string;
+            /** Source */
+            source: string;
+        };
+        /**
          * NoteCreate
          * @description Schema for creating a note.
          */
@@ -13681,6 +13788,8 @@ export interface components {
             pressure_kpa?: number | string | null;
             /** Size */
             size?: string | null;
+            /** Storage Location */
+            storage_location?: string | null;
             /** Tread Depth Mm */
             tread_depth_mm?: number | string | null;
             /** Vin */
@@ -13724,6 +13833,8 @@ export interface components {
             pressure_kpa?: number | string | null;
             /** Size */
             size?: string | null;
+            /** Storage Location */
+            storage_location?: string | null;
             /** Tread Depth Mm */
             tread_depth_mm?: number | string | null;
             /** Vin */
@@ -13740,6 +13851,8 @@ export interface components {
             dismounted_on?: string | null;
             /** Notes */
             notes?: string | null;
+            /** Storage Location */
+            storage_location?: string | null;
         };
         /**
          * TireListResponse
@@ -13957,6 +14070,8 @@ export interface components {
             set_id?: number | null;
             /** Size */
             size?: string | null;
+            /** Storage Location */
+            storage_location?: string | null;
             /** Tread Depth Mm */
             tread_depth_mm?: string | null;
             /** Updated At */
@@ -14098,6 +14213,8 @@ export interface components {
             set_id?: number | null;
             /** Size */
             size?: string | null;
+            /** Storage Location */
+            storage_location?: string | null;
             /** Tread Depth Mm */
             tread_depth_mm?: number | string | null;
         };
@@ -25101,6 +25218,39 @@ export interface operations {
             };
         };
     };
+    nearest_odometer_record_api_vehicles__vin__odometer_nearest_get: {
+        parameters: {
+            query: {
+                date: string;
+            };
+            header?: never;
+            path: {
+                vin: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NearestOdometerResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_odometer_record_api_vehicles__vin__odometer__record_id__get: {
         parameters: {
             query?: never;
@@ -27251,6 +27401,43 @@ export interface operations {
             };
         };
     };
+    update_mount_period_api_vehicles__vin__tires__tire_id__mount_periods__period_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+                tire_id: number;
+                period_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MountPeriodUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TireResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     add_tire_reading_api_vehicles__vin__tires__tire_id__readings_post: {
         parameters: {
             query?: never;
@@ -27269,6 +27456,38 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TireResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_tire_api_vehicles__vin__tires__tire_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+                tire_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

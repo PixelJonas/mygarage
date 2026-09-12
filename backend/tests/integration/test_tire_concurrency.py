@@ -223,8 +223,11 @@ class TestEveryWriterTakesTheLock:
         # 6. retire
         r = await client.post(f"{base}/{fl}/retire", headers=h, json={})
         assert r.status_code == 200, r.text
+        # 6b. restore
+        r = await client.post(f"{base}/{fl}/restore", headers=h)
+        assert r.status_code == 200, r.text
         # 7. delete
         r = await client.delete(f"{base}/{stored}", headers=h)
         assert r.status_code == 204, r.text
 
-        assert lock_calls == [vin] * 8, lock_calls
+        assert lock_calls == [vin] * 9, lock_calls

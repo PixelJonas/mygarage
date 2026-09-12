@@ -9753,6 +9753,112 @@
         "title": "MountPeriodResponse",
         "type": "object"
       },
+      "MountPeriodUpdate": {
+        "additionalProperties": false,
+        "description": "Correct one mount period's bounds or notes.\n\nEvery field optional, `exclude_unset` semantics: a key absent from the\nbody is untouched, a key sent as null is cleared to unknown. `position`\nis deliberately not here (D14: only mount, dismount and rotate write it),\nand forbid-extra makes sending it a 422 rather than a silent ignore.",
+        "properties": {
+          "dismounted_odometer_km": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dismounted Odometer Km"
+          },
+          "dismounted_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dismounted On"
+          },
+          "mounted_odometer_km": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mounted Odometer Km"
+          },
+          "mounted_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mounted On"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "title": "MountPeriodUpdate",
+        "type": "object"
+      },
+      "NearestOdometerResponse": {
+        "description": "The reading closest to a requested day, for the tire dialogs' suggestion.",
+        "properties": {
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "days_away": {
+            "title": "Days Away",
+            "type": "integer"
+          },
+          "odometer_km": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Odometer Km",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "odometer_km",
+          "source",
+          "days_away"
+        ],
+        "title": "NearestOdometerResponse",
+        "type": "object"
+      },
       "NoteCreate": {
         "description": "Schema for creating a note.",
         "properties": {
@@ -16382,6 +16488,18 @@
             ],
             "title": "Size"
           },
+          "storage_location": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Storage Location"
+          },
           "tread_depth_mm": {
             "anyOf": [
               {
@@ -16549,6 +16667,18 @@
             ],
             "title": "Size"
           },
+          "storage_location": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Storage Location"
+          },
           "tread_depth_mm": {
             "anyOf": [
               {
@@ -16621,6 +16751,18 @@
               }
             ],
             "title": "Notes"
+          },
+          "storage_location": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Storage Location"
           }
         },
         "title": "TireDismountRequest",
@@ -17194,6 +17336,18 @@
             ],
             "title": "Size"
           },
+          "storage_location": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Storage Location"
+          },
           "tread_depth_mm": {
             "anyOf": [
               {
@@ -17616,6 +17770,18 @@
               }
             ],
             "title": "Size"
+          },
+          "storage_location": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Storage Location"
           },
           "tread_depth_mm": {
             "anyOf": [
@@ -38536,6 +38702,64 @@
         ]
       }
     },
+    "/api/vehicles/{vin}/odometer/nearest": {
+      "get": {
+        "description": "The odometer record closest to a date, for prefilling a tire dialog.\n\n404 when the vehicle has no odometer records at all: that is an answer\nthe suggestion renders as \"no readings yet\", not an error.",
+        "operationId": "nearest_odometer_record_api_vehicles__vin__odometer_nearest_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vin",
+            "required": true,
+            "schema": {
+              "title": "Vin",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NearestOdometerResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Nearest Odometer Record",
+        "tags": [
+          "Odometer Records"
+        ]
+      }
+    },
     "/api/vehicles/{vin}/odometer/{record_id}": {
       "delete": {
         "description": "Delete an odometer record.\n\n**Path Parameters:**\n- **vin**: Vehicle VIN\n- **record_id**: Odometer record ID\n\n**Raises:**\n- **404**: Record not found\n- **500**: Database error",
@@ -42336,6 +42560,82 @@
         ]
       }
     },
+    "/api/vehicles/{vin}/tires/{tire_id}/mount-periods/{period_id}": {
+      "put": {
+        "description": "Correct one mount period's dates, odometers or notes.\n\nAbsent keys are untouched; null clears a value to unknown. 409 when the\nedit contradicts the tire's other periods or its readings, when a dismount\nfield is set on the open period, or when a closed period would be\nreopened. Returns the whole tire, so the card and the history refresh\nfrom one payload.",
+        "operationId": "update_mount_period_api_vehicles__vin__tires__tire_id__mount_periods__period_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vin",
+            "required": true,
+            "schema": {
+              "title": "Vin",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tire_id",
+            "required": true,
+            "schema": {
+              "title": "Tire Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "period_id",
+            "required": true,
+            "schema": {
+              "title": "Period Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MountPeriodUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TireResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Mount Period",
+        "tags": [
+          "tires"
+        ]
+      }
+    },
     "/api/vehicles/{vin}/tires/{tire_id}/readings": {
       "post": {
         "description": "Append a tread/pressure reading and refresh wear projection + reminders.",
@@ -42398,6 +42698,63 @@
           }
         ],
         "summary": "Add Tire Reading",
+        "tags": [
+          "tires"
+        ]
+      }
+    },
+    "/api/vehicles/{vin}/tires/{tire_id}/restore": {
+      "post": {
+        "description": "Un-retire a tire: back to storage, history intact. 409 if it is not retired.",
+        "operationId": "restore_tire_api_vehicles__vin__tires__tire_id__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vin",
+            "required": true,
+            "schema": {
+              "title": "Vin",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tire_id",
+            "required": true,
+            "schema": {
+              "title": "Tire Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TireResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Restore Tire",
         "tags": [
           "tires"
         ]

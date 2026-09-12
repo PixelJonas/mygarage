@@ -493,3 +493,92 @@ class TestStorageLocation:
             json={"vin": vehicle, "storage_location": "x" * 121},
         )
         assert made.status_code == 422, made.text
+
+
+@pytest.mark.asyncio
+class TestRestore:
+    async def test_restore_puts_a_retired_tire_back_in_storage_with_its_history(
+        self, client: AsyncClient, auth_headers, vehicle, db_session
+    ):
+        base = f"/api/vehicles/{vehicle}/tires"
+        # mounted_on pinned before the reading's date: the brief's verbatim
+        # values default mounted_on to today (utc_now().date()), which in
+        # this run postdates "2026-02-01" and makes the reading look like it
+        # precedes the mount with a HIGHER odometer -- a genuine contradiction
+        # (_refuse_contradictions correctly 409s "run backwards"), not the
+        # restore behaviour this test exists to check. Deviation recorded in
+        # the task report.
+        tire = await _mount(
+            client, auth_headers, vehicle, "FL", mounted_on="2026-01-01", mounted_odometer_km="1000"
+        )
+        r = await client.post(
+            f"{base}/{tire['id']}/readings",
+            headers=auth_headers,
+            json={"recorded_at": "2026-02-01", "tread_depth_mm": "7.0", "odometer_km": "1500"},
+        )
+        assert r.status_code == 201, r.text
+        assert (
+            await client.post(
+                f"{base}/{tire['id']}/retire",
+                headers=auth_headers,
+                json={"dismounted_odometer_km": "2000"},
+            )
+        ).status_code == 200
+
+        restored = await client.post(f"{base}/{tire['id']}/restore", headers=auth_headers)
+        assert restored.status_code == 200, restored.text
+        body = restored.json()
+        assert body["retired_on"] is None and body["position"] is None
+        assert len(body["readings"]) == 1 and len(body["mount_periods"]) == 1
+        # Back in inventory, so the default list has it again.
+        listed = await client.get(base, headers=auth_headers)
+        assert tire["id"] in [t["id"] for t in listed.json()["tires"]]
+        # And mountable again.
+        assert (
+            await client.post(
+                f"{base}/{tire['id']}/mount", headers=auth_headers, json={"position": "FR"}
+            )
+        ).status_code == 200
+
+    async def test_restoring_a_tire_that_is_not_retired_is_refused(
+        self, client: AsyncClient, auth_headers, vehicle
+    ):
+        tire = await _mount(client, auth_headers, vehicle, "RL")
+        r = await client.post(
+            f"/api/vehicles/{vehicle}/tires/{tire['id']}/restore", headers=auth_headers
+        )
+        assert r.status_code == 409, r.text
+
+    async def test_restore_re_raises_the_low_tread_reminder(
+        self, client: AsyncClient, auth_headers, vehicle, db_session
+    ):
+        """Pins `_reload_and_sync` over `_reload_response` on the restore path."""
+        base = f"/api/vehicles/{vehicle}/tires"
+        made = await client.post(
+            f"{base}/create-and-mount",
+            headers=auth_headers,
+            json={"vin": vehicle, "position": "RR", "tread_depth_mm": "1.0", "min_tread_mm": "2.0"},
+        )
+        assert made.status_code == 201, made.text
+        tire_id = made.json()["id"]
+        assert (
+            await client.post(f"{base}/{tire_id}/retire", headers=auth_headers, json={})
+        ).status_code == 200
+        await db_session.execute(delete(Reminder).where(Reminder.tire_id == tire_id))
+        await db_session.commit()
+
+        assert (
+            await client.post(f"{base}/{tire_id}/restore", headers=auth_headers)
+        ).status_code == 200
+        pending = (
+            (
+                await db_session.execute(
+                    select(Reminder).where(
+                        Reminder.tire_id == tire_id, Reminder.status == "pending"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(pending) == 1

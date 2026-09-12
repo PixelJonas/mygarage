@@ -128,6 +128,17 @@ async def retire_tire(
     return await TireService(db).retire_tire(vin, tire_id, data, current_user)
 
 
+@router.post("/{vin}/tires/{tire_id}/restore", response_model=TireResponse)
+async def restore_tire(
+    vin: str,
+    tire_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_auth),
+) -> TireResponse:
+    """Un-retire a tire: back to storage, history intact. 409 if it is not retired."""
+    return await TireService(db).restore_tire(vin, tire_id, current_user)
+
+
 @router.put("/{vin}/tires/{tire_id}/mount-periods/{period_id}", response_model=TireResponse)
 async def update_mount_period(
     vin: str,
