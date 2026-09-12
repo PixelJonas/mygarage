@@ -1,0 +1,210 @@
+import { Gauge } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+
+import { useUnitFormat } from '../../hooks/useUnitFormat'
+import type { MountedPosition, Tire, TireMountPeriod, TirePosition, TireReading } from '../../types/tire'
+import { formatDateForDisplay } from '../../utils/dateUtils'
+import { Badge, Button, Drawer, EmptyState, ListRow } from '../ui'
+
+interface TireHistoryDrawerProps {
+  tire: Tire | null
+  open: boolean
+  onClose: () => void
+  onEditPeriod: (period: TireMountPeriod) => void
+  /** The card's position label, passed in so the five t() calls stay in one place. */
+  labelFor: (position: TirePosition) => string
+}
+
+/**
+ * Whether a blocking period is blocked by a MISSING bound.
+ *
+ * The wire says which periods block a figure, not why. But a period that is
+ * fully bounded and still blocks can only be a fault (reversed, overlapping,
+ * contradicting a reading), so the kind is derivable from the period's own
+ * fields, and the two badges below are worded for the two repairs: supply a
+ * number, or correct one.
+ */
+export function needsOdometer(period: TireMountPeriod): boolean {
+  if (period.mounted_odometer_km == null) return true
+  return period.dismounted_on != null && period.dismounted_odometer_km == null
+}
+
+/**
+ * A tire's history: its mount periods first, then its readings.
+ *
+ * Rebuilt out of `TireList.tsx` for v3.4.0, when the mount-period section and
+ * the editor arrived. The response already carried `mount_periods`,
+ * `installed_date` and `blocking_period_ids` since v3.3.0 and nothing read
+ * them; this is the first surface that does.
+ */
+export default function TireHistoryDrawer({
+  tire,
+  open,
+  onClose,
+  onEditPeriod,
+  labelFor,
+}: TireHistoryDrawerProps) {
+  const { t } = useTranslation('vehicles')
+  const u = useUnitFormat()
+  const num = (v: number | string | null | undefined): number | null =>
+    v === null || v === undefined || v === '' ? null : Number(v)
+
+  /* `mount_periods` arrives oldest first: TireService sorts by (mounted_on,
+     id) before building the response, and `installed_date` is derived from
+     [0]. Re-sorting here would be a second, drifting source of truth. */
+  const periods: TireMountPeriod[] = tire?.mount_periods ?? []
+  /* `readings` arrives newest-first, likewise. */
+  const readings: TireReading[] = tire?.readings ?? []
+  const blocking = new Set(tire?.blocking_period_ids ?? [])
+  const first = periods[0]
+
+  const odometer = (v: number | string | null | undefined): string =>
+    v != null ? u.distance.format(num(v)) : t('tireList.odometerUnknown')
+  const day = (v: string | null | undefined): string =>
+    v ? formatDateForDisplay(v) : t('tireList.dateUnknown')
+  const bound = (d: string | null | undefined, o: number | string | null | undefined): string =>
+    `${day(d)} @ ${odometer(o)}`
+
+  return (
+    <Drawer
+      open={open}
+      onClose={onClose}
+      title={t('tireList.historyTitle', { position: tire ? labelFor(tire.position) : '' })}
+      icon={Gauge}
+      width="sm"
+      closeLabel={t('common:close')}
+    >
+      {periods.length === 0 && readings.length === 0 ? (
+        <EmptyState
+          icon={Gauge}
+          size="sm"
+          title={t('tireList.historyEmpty')}
+          description={t('tireList.historyEmptyHint')}
+        />
+      ) : (
+        <div className="space-y-6">
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-text-mute">{t('tireList.mountHistory')}</h3>
+            <p className="text-sm">
+              {tire?.installed_date && first
+                ? t('tireList.firstInstalled', {
+                    date: formatDateForDisplay(tire.installed_date),
+                    odometer: odometer(first.mounted_odometer_km),
+                  })
+                : t('tireList.firstInstalledUnknown')}
+            </p>
+            {periods.length === 0 ? (
+              <p className="text-sm text-text-mute">{t('tireList.historyNoPeriods')}</p>
+            ) : (
+              <ul className="space-y-2">
+                {periods.map((period) => (
+                  <li
+                    key={period.id}
+                    data-testid={`period-${period.id}`}
+                    className="space-y-1 rounded-card border border-border p-3"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      {/* `MountPeriodResponse.position` is generated as plain `string`
+                          (the backend schema has no Literal there), but a period is
+                          always mounted at one of the five corners. */}
+                      <div className="font-semibold">{labelFor(period.position as MountedPosition)}</div>
+                      <Button size="sm" variant="ghost" onClick={() => onEditPeriod(period)}>
+                        {t('tireList.periodEdit')}
+                      </Button>
+                    </div>
+                    <div className="font-mono text-xs">
+                      {period.dismounted_on == null
+                        ? t('tireList.periodSince', {
+                            from: bound(period.mounted_on, period.mounted_odometer_km),
+                          })
+                        : t('tireList.periodRange', {
+                            from: bound(period.mounted_on, period.mounted_odometer_km),
+                            to: bound(period.dismounted_on, period.dismounted_odometer_km),
+                          })}
+                    </div>
+                    {(period.is_assumed || blocking.has(period.id)) && (
+                      <div className="flex flex-wrap gap-2">
+                        {period.is_assumed && <Badge tone="info">{t('tireList.periodAssumed')}</Badge>}
+                        {blocking.has(period.id) &&
+                          (needsOdometer(period) ? (
+                            <Badge tone="warning">{t('tireList.periodNeedsOdometer')}</Badge>
+                          ) : (
+                            <Badge tone="danger">{t('tireList.periodCheck')}</Badge>
+                          ))}
+                      </div>
+                    )}
+                    {period.is_assumed && period.observed_active_on ? (
+                      <p className="text-sm text-text-mute">
+                        {t('tireList.periodAssumedHint', {
+                          date: formatDateForDisplay(period.observed_active_on),
+                        })}
+                      </p>
+                    ) : null}
+                    {period.notes ? <p className="text-sm text-text-mute">{period.notes}</p> : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-text-mute">{t('tireList.readingsHeading')}</h3>
+            {/* `readings` arrives newest-first: TireService sorts descending by
+                recorded_at before building the response, and the projection reads
+                [0] and [1] as the two most recent. Re-sorting here would be a
+                second, drifting source of truth for the same order. */}
+            {readings.length > 0 ? (
+              <ul className="space-y-2">
+                {readings.map((reading: TireReading) => (
+                  <li key={reading.id} className="space-y-1 rounded-card border border-border p-3">
+                    <div className="font-semibold">{formatDateForDisplay(reading.recorded_at)}</div>
+                    {/* Every value through the same adapters the card uses, so a
+                        history row can never disagree with the card above it. The
+                        ternaries stay spelled out per row rather than folding into
+                        a shared cell() helper: validate-units.ts matches lexical
+                        expression shapes, and a helper that converts INTERNALLY is
+                        exactly the form its manifest notes it cannot see. */}
+                    <ListRow
+                      label={t('tireList.tread')}
+                      value={
+                        reading.tread_depth_mm != null
+                          ? u.tread.format(num(reading.tread_depth_mm))
+                          : '—'
+                      }
+                    />
+                    <ListRow
+                      label={t('tireList.pressure')}
+                      value={
+                        reading.pressure_kpa != null
+                          ? u.pressure.format(num(reading.pressure_kpa))
+                          : '—'
+                      }
+                    />
+                    <ListRow
+                      label={t('tireList.odometer')}
+                      value={
+                        reading.odometer_km != null
+                          ? u.distance.format(num(reading.odometer_km))
+                          : '—'
+                      }
+                    />
+                    {reading.notes ? (
+                      <p className="text-sm text-text-mute">{reading.notes}</p>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyState
+                icon={Gauge}
+                size="sm"
+                title={t('tireList.historyEmpty')}
+                description={t('tireList.historyEmptyHint')}
+              />
+            )}
+          </section>
+        </div>
+      )}
+    </Drawer>
+  )
+}

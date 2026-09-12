@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, Gauge, AlertTriangle, Pencil, RotateCw, Layers } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatDateForDisplay, formatDateForInput } from '../utils/dateUtils'
-import type { MountedPosition, Tire, TirePosition, TireReading, TireSet } from '../types/tire'
+import type { MountedPosition, Tire, TirePosition, TireSet } from '../types/tire'
 import {
   useTires,
   useCreateTire,
@@ -30,6 +30,7 @@ import {
 import { getActionErrorMessage } from '../utils/httpErrorHandler'
 import { Button, IconButton, Card, Chip, Drawer, EmptyState, Input, Field, ListRow } from './ui'
 import MountEventFields from './tires/MountEventFields'
+import TireHistoryDrawer from './tires/TireHistoryDrawer'
 
 const POSITIONS: MountedPosition[] = ['FL', 'FR', 'RL', 'RR', 'SPARE']
 
@@ -328,10 +329,6 @@ export default function TireList({ vin }: TireListProps) {
    * a reading is saved. */
   const readingTire = tires.find((tire: Tire) => tire.id === readingTireId) ?? null
   const historyTire = tires.find((tire: Tire) => tire.id === historyTireId) ?? null
-  /* `readings` is optional on the generated response type (it carries a
-   * server-side default), so it is normalised once here rather than
-   * defended at each of the three places the drawer reads it. */
-  const historyReadings: TireReading[] = historyTire?.readings ?? []
 
   /* Spelled out as five literal t() calls rather than t(`…positions.${p}`):
    * validate-i18n-usage scans for string literals, so a computed key is
@@ -1796,70 +1793,14 @@ export default function TireList({ vin }: TireListProps) {
         </div>
       </Drawer>
 
-      <Drawer
+      <TireHistoryDrawer
+        tire={historyTire}
         open={historyTire !== null}
         onClose={() => setHistoryTireId(null)}
-        title={t('tireList.historyTitle', {
-          position: historyTire ? labelFor(historyTire.position) : '',
-        })}
-        icon={Gauge}
-        width="sm"
-        closeLabel={t('common:close')}
-      >
-        {/* `readings` arrives newest-first: TireService sorts descending by
-            recorded_at before building the response, and the projection reads
-            [0] and [1] as the two most recent. Re-sorting here would be a
-            second, drifting source of truth for the same order. */}
-        {historyReadings.length > 0 ? (
-          <ul className="space-y-2">
-            {historyReadings.map((reading: TireReading) => (
-              <li key={reading.id} className="space-y-1 rounded-card border border-border p-3">
-                <div className="font-semibold">{formatDateForDisplay(reading.recorded_at)}</div>
-                {/* Every value through the same adapters the card uses, so a
-                    history row can never disagree with the card above it. The
-                    ternaries stay spelled out per row rather than folding into
-                    a shared cell() helper: validate-units.ts matches lexical
-                    expression shapes, and a helper that converts INTERNALLY is
-                    exactly the form its manifest notes it cannot see. */}
-                <ListRow
-                  label={t('tireList.tread')}
-                  value={
-                    reading.tread_depth_mm != null
-                      ? u.tread.format(num(reading.tread_depth_mm))
-                      : '—'
-                  }
-                />
-                <ListRow
-                  label={t('tireList.pressure')}
-                  value={
-                    reading.pressure_kpa != null
-                      ? u.pressure.format(num(reading.pressure_kpa))
-                      : '—'
-                  }
-                />
-                <ListRow
-                  label={t('tireList.odometer')}
-                  value={
-                    reading.odometer_km != null
-                      ? u.distance.format(num(reading.odometer_km))
-                      : '—'
-                  }
-                />
-                {reading.notes ? (
-                  <p className="text-sm text-text-mute">{reading.notes}</p>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <EmptyState
-            icon={Gauge}
-            size="sm"
-            title={t('tireList.historyEmpty')}
-            description={t('tireList.historyEmptyHint')}
-          />
-        )}
-      </Drawer>
+        /* Task 13 replaces this with the period editor. */
+        onEditPeriod={() => undefined}
+        labelFor={labelFor}
+      />
     </div>
   )
 }
