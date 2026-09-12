@@ -30,6 +30,10 @@ vi.mock('../../hooks/queries/useTires', () => ({
   useMountTireSet: () => useUpsertTireMock(),
 }))
 
+vi.mock('../../hooks/queries/useOdometerRecords', () => ({
+  useNearestOdometer: () => ({ data: undefined, isSuccess: false }),
+}))
+
 vi.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({ invalidateQueries: vi.fn() }),
 }))

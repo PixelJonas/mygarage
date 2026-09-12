@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, Gauge, AlertTriangle, Pencil, RotateCw, Layers } from 'lucide-react'
 import { toast } from 'sonner'
-import { formatDateForDisplay } from '../utils/dateUtils'
+import { formatDateForDisplay, formatDateForInput } from '../utils/dateUtils'
 import type { MountedPosition, Tire, TirePosition, TireReading, TireSet } from '../types/tire'
 import {
   useTires,
@@ -29,6 +29,7 @@ import {
 } from '../utils/unitFormat'
 import { getActionErrorMessage } from '../utils/httpErrorHandler'
 import { Button, IconButton, Card, Chip, Drawer, EmptyState, Input, Field, ListRow } from './ui'
+import MountEventFields from './tires/MountEventFields'
 
 const POSITIONS: MountedPosition[] = ['FL', 'FR', 'RL', 'RR', 'SPARE']
 
@@ -104,6 +105,13 @@ interface TireFormState {
   pressure_kpa: string
   min_tread_mm: string
   notes: string
+  /** YYYY-MM-DD. Only meaningful on the corner branch of Add; ignored on Edit
+   *  and on the storage branch, both of which hide the field that sets it. */
+  mounted_on: string
+  /** The odometer as typed, in the user's distance unit. Same scope as
+   *  `mounted_on`. */
+  mounted_odometer_km: string
+  storage_location: string
   origins: TireFormOrigins
 }
 
@@ -202,6 +210,14 @@ export default function TireList({ vin }: TireListProps) {
   const [dismountOdometer, setDismountOdometer] = useState('')
   const [retireOdometer, setRetireOdometer] = useState('')
   const [rotateOdometer, setRotateOdometer] = useState('')
+  // One date per dialog, defaulting to the LOCAL calendar date. Reset to
+  // today on success like the odometer is reset to empty.
+  const [mountDate, setMountDate] = useState(() => formatDateForInput())
+  const [dismountDate, setDismountDate] = useState(() => formatDateForInput())
+  const [dismountLocation, setDismountLocation] = useState('')
+  const [retireDate, setRetireDate] = useState(() => formatDateForInput())
+  const [rotateDate, setRotateDate] = useState(() => formatDateForInput())
+  const [fitDate, setFitDate] = useState(() => formatDateForInput())
   const addReading = useAddTireReading(vin)
   const remove = useDeleteTire(vin)
   /* Every unit on this card and in both drawers resolves through `u`, per
@@ -244,6 +260,9 @@ export default function TireList({ vin }: TireListProps) {
       pressure_kpa: pressure.display,
       min_tread_mm: minTread.display,
       notes: tire?.notes ?? '',
+      mounted_on: formatDateForInput(),
+      mounted_odometer_km: '',
+      storage_location: tire?.storage_location ?? '',
       origins: { tread_depth_mm: tread, min_tread_mm: minTread, pressure_kpa: pressure },
     }
   }
@@ -496,7 +515,9 @@ export default function TireList({ vin }: TireListProps) {
     const tread = seedUnitField(num(tire.tread_depth_mm), u.tread)
     const pressure = seedUnitField(num(tire.pressure_kpa), u.pressure)
     setReadingForm({
-      recorded_at: new Date().toISOString().slice(0, 10),
+      // Local calendar date. The UTC slice this replaced was tomorrow after
+      // early evening in the Americas.
+      recorded_at: formatDateForInput(),
       odometer_km: '',
       tread_depth_mm: tread.display,
       pressure_kpa: pressure.display,
@@ -537,6 +558,7 @@ export default function TireList({ vin }: TireListProps) {
         canonicalFromUnitField(form.min_tread_mm, form.origins.min_tread_mm, u.tread) ??
         DEFAULT_MIN_TREAD_MM,
       notes: form.notes || null,
+      storage_location: form.storage_location.trim() || null,
     }
 
     const handlers = {
@@ -563,7 +585,20 @@ export default function TireList({ vin }: TireListProps) {
       createTire.mutate({ vin, ...shared }, handlers)
       return
     }
-    createAndMount.mutate({ vin, position: form.position, ...shared }, handlers)
+    createAndMount.mutate(
+      {
+        vin,
+        position: form.position,
+        ...shared,
+        mounted_on: form.mounted_on,
+        mounted_odometer_km: canonicalFromUnitField(
+          form.mounted_odometer_km,
+          { canonical: null, display: '' },
+          u.distance
+        ),
+      },
+      handlers
+    )
   }
 
   /**
@@ -584,12 +619,14 @@ export default function TireList({ vin }: TireListProps) {
           { canonical: null, display: '' },
           u.distance
         ),
+        dismounted_on: retireDate,
       },
       {
         onSuccess: () => {
           toast.success(t('tireList.retired'))
           setRetireTireId(null)
           setRetireOdometer('')
+          setRetireDate(formatDateForInput())
         },
         onError: (err: unknown) =>
           toast.error(getActionErrorMessage(err, t('tireList.retireAction'))),
@@ -654,12 +691,14 @@ export default function TireList({ vin }: TireListProps) {
           { canonical: null, display: '' },
           u.distance
         ),
+        mounted_on: fitDate,
       },
       {
         onSuccess: () => {
           toast.success(t('tireList.setFitted'))
           setFittingSetId(null)
           setFitOdometer('')
+          setFitDate(formatDateForInput())
           setSetsOpen(false)
         },
         onError: (err: unknown) =>
@@ -694,12 +733,14 @@ export default function TireList({ vin }: TireListProps) {
           { canonical: null, display: '' },
           u.distance
         ),
+        rotated_on: rotateDate,
       },
       {
         onSuccess: () => {
           toast.success(t('tireList.rotated'))
           setRotateOpen(false)
           setRotateOdometer('')
+          setRotateDate(formatDateForInput())
         },
         onError: (err: unknown) =>
           toast.error(getActionErrorMessage(err, t('tireList.rotateAction'))),
@@ -935,7 +976,10 @@ export default function TireList({ vin }: TireListProps) {
                 variant="ghost"
                 className="relative z-10"
                 disabled={dismount.isPending}
-                onClick={() => setDismountTireId(tire.id)}
+                onClick={() => {
+                  setDismountLocation(tire.storage_location ?? '')
+                  setDismountTireId(tire.id)
+                }}
               >
                 {t('tireList.dismount')}
               </Button>
@@ -1056,6 +1100,7 @@ export default function TireList({ vin }: TireListProps) {
                   {
                     tireId: mountTireId,
                     position: mountPosition,
+                    mounted_on: mountDate,
                     mounted_odometer_km: canonicalFromUnitField(
                       mountOdometer,
                       { canonical: null, display: '' },
@@ -1067,6 +1112,7 @@ export default function TireList({ vin }: TireListProps) {
                       toast.success(t('tireList.mounted'))
                       setMountTireId(null)
                       setMountOdometer('')
+                      setMountDate(formatDateForInput())
                     },
                     onError: (err: unknown) =>
                       toast.error(getActionErrorMessage(err, t('tireList.mountAction'))),
@@ -1093,19 +1139,17 @@ export default function TireList({ vin }: TireListProps) {
               ))}
             </div>
           </Field>
-          <Field
-            id="mount-odometer"
-            label={odometerLabel}
-            hint={t('tireList.mountOdometerHint')}
-          >
-            <Input
-              id="mount-odometer"
-              type="number"
-              step={u.distance.step}
-              value={mountOdometer}
-              onChange={(e) => setMountOdometer(e.target.value)}
-            />
-          </Field>
+          <MountEventFields
+            vin={vin}
+            idPrefix="mount"
+            dateLabel={t('tireList.mountedOn')}
+            date={mountDate}
+            onDateChange={setMountDate}
+            odometerLabel={odometerLabel}
+            odometerHint={t('tireList.mountOdometerHint')}
+            odometer={mountOdometer}
+            onOdometerChange={setMountOdometer}
+          />
         </div>
       </Drawer>
 
@@ -1134,12 +1178,19 @@ export default function TireList({ vin }: TireListProps) {
                       { canonical: null, display: '' },
                       u.distance
                     ),
+                    dismounted_on: dismountDate,
+                    // Always sent while this drawer is rendered: an empty
+                    // string clears the stored location, an absent key would
+                    // leave it alone. A user who blanks the field means clear.
+                    storage_location: dismountLocation.trim(),
                   },
                   {
                     onSuccess: () => {
                       toast.success(t('tireList.dismounted'))
                       setDismountTireId(null)
                       setDismountOdometer('')
+                      setDismountDate(formatDateForInput())
+                      setDismountLocation('')
                     },
                     onError: (err: unknown) =>
                       toast.error(getActionErrorMessage(err, t('tireList.dismountAction'))),
@@ -1154,17 +1205,26 @@ export default function TireList({ vin }: TireListProps) {
       >
         <div className="space-y-4">
           <p className="text-sm text-text-mute">{t('tireList.dismountHint')}</p>
+          <MountEventFields
+            vin={vin}
+            idPrefix="dismount"
+            dateLabel={t('tireList.eventDate')}
+            date={dismountDate}
+            onDateChange={setDismountDate}
+            odometerLabel={odometerLabel}
+            odometerHint={t('tireList.mountOdometerHint')}
+            odometer={dismountOdometer}
+            onOdometerChange={setDismountOdometer}
+          />
           <Field
-            id="dismount-odometer"
-            label={odometerLabel}
-            hint={t('tireList.mountOdometerHint')}
+            id="dismount-storage"
+            label={t('tireList.storageLocation')}
+            hint={t('tireList.storageLocationHint')}
           >
             <Input
-              id="dismount-odometer"
-              type="number"
-              step={u.distance.step}
-              value={dismountOdometer}
-              onChange={(e) => setDismountOdometer(e.target.value)}
+              id="dismount-storage"
+              value={dismountLocation}
+              onChange={(e) => setDismountLocation(e.target.value)}
             />
           </Field>
         </div>
@@ -1195,15 +1255,17 @@ export default function TireList({ vin }: TireListProps) {
       >
         <div className="space-y-4">
           <p className="text-sm text-text-mute">{t('tireList.retireHint')}</p>
-          <Field id="retire-odometer" label={odometerLabel} hint={t('tireList.mountOdometerHint')}>
-            <Input
-              id="retire-odometer"
-              type="number"
-              step={u.distance.step}
-              value={retireOdometer}
-              onChange={(e) => setRetireOdometer(e.target.value)}
-            />
-          </Field>
+          <MountEventFields
+            vin={vin}
+            idPrefix="retire"
+            dateLabel={t('tireList.eventDate')}
+            date={retireDate}
+            onDateChange={setRetireDate}
+            odometerLabel={odometerLabel}
+            odometerHint={t('tireList.mountOdometerHint')}
+            odometer={retireOdometer}
+            onOdometerChange={setRetireOdometer}
+          />
         </div>
       </Drawer>
 
@@ -1271,19 +1333,17 @@ export default function TireList({ vin }: TireListProps) {
               ))}
             </ul>
           </div>
-          <Field
-            id="rotate-odometer"
-            label={odometerLabel}
-            hint={t('tireList.rotateOdometerHint')}
-          >
-            <Input
-              id="rotate-odometer"
-              type="number"
-              step={u.distance.step}
-              value={rotateOdometer}
-              onChange={(e) => setRotateOdometer(e.target.value)}
-            />
-          </Field>
+          <MountEventFields
+            vin={vin}
+            idPrefix="rotate"
+            dateLabel={t('tireList.eventDate')}
+            date={rotateDate}
+            onDateChange={setRotateDate}
+            odometerLabel={odometerLabel}
+            odometerHint={t('tireList.rotateOdometerHint')}
+            odometer={rotateOdometer}
+            onOdometerChange={setRotateOdometer}
+          />
         </div>
       </Drawer>
 
@@ -1373,6 +1433,7 @@ export default function TireList({ vin }: TireListProps) {
                           onClick={() => {
                             setFittingSetId(tireSet.id)
                             setFitOdometer('')
+                            setFitDate(formatDateForInput())
                           }}
                         >
                           {t('tireList.setFit')}
@@ -1394,15 +1455,16 @@ export default function TireList({ vin }: TireListProps) {
                   {fittingSetId === tireSet.id && (
                     <div className="space-y-2 border-t border-border pt-2">
                       <p className="text-sm text-text-mute">{t('tireList.setFitHint')}</p>
-                      <Field id={`set-fit-odometer-${tireSet.id}`} label={odometerLabel}>
-                        <Input
-                          id={`set-fit-odometer-${tireSet.id}`}
-                          type="number"
-                          step={u.distance.step}
-                          value={fitOdometer}
-                          onChange={(e) => setFitOdometer(e.target.value)}
-                        />
-                      </Field>
+                      <MountEventFields
+                        vin={vin}
+                        idPrefix={`set-fit-${tireSet.id}`}
+                        dateLabel={t('tireList.eventDate')}
+                        date={fitDate}
+                        onDateChange={setFitDate}
+                        odometerLabel={odometerLabel}
+                        odometer={fitOdometer}
+                        onOdometerChange={setFitOdometer}
+                      />
                       <div className="flex gap-2">
                         <Button
                           size="sm"
@@ -1546,6 +1608,43 @@ export default function TireList({ vin }: TireListProps) {
               <p className="mt-1 text-sm text-text-mute">{t('tireList.storedHint')}</p>
             )}
           </div>
+          {/* A tire added at a corner is born with a mount period, and a
+              period without an odometer is one whose distance can never be
+              worked out. Before v3.4.0 this form sent neither field, which is
+              why every tire added here read "add an odometer to this tire's
+              mount" with no control that could. Hidden on the storage branch
+              and on Edit: a stored tire has no mount to date, and an existing
+              tire's history is edited in its history drawer. */}
+          {editingTireId === null && form.position != null && (
+            <div className="mb-4">
+              <MountEventFields
+                vin={vin}
+                idPrefix="tire-mount"
+                dateLabel={t('tireList.mountedOn')}
+                date={form.mounted_on}
+                onDateChange={(next) => setForm({ ...form, mounted_on: next })}
+                odometerLabel={odometerLabel}
+                odometerHint={t('tireList.mountOdometerHint')}
+                odometer={form.mounted_odometer_km}
+                onOdometerChange={(next) => setForm({ ...form, mounted_odometer_km: next })}
+              />
+            </div>
+          )}
+          {(editingTireId !== null || form.position == null) && (
+            <div className="mb-4">
+              <Field
+                id="tire-storage"
+                label={t('tireList.storageLocation')}
+                hint={t('tireList.storageLocationHint')}
+              >
+                <Input
+                  id="tire-storage"
+                  value={form.storage_location}
+                  onChange={(e) => setForm({ ...form, storage_location: e.target.value })}
+                />
+              </Field>
+            </div>
+          )}
           {/* Membership is editable on an EXISTING tire only, because
               `POST /tires` forbids a `set_id`. Hidden rather than disabled
               when adding: a control that cannot be used yet reads as broken,

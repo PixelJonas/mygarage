@@ -26,6 +26,8 @@ const useTireSetsMock = vi.fn()
 const useCreateTireSetMock = vi.fn()
 const useMountTireSetMock = vi.fn()
 const useUpdateTireMock = vi.fn()
+const useMountTireMock = vi.fn()
+const useDismountTireMock = vi.fn()
 const noop = () => ({ mutate: vi.fn(), isPending: false })
 
 // Every mutation gets its OWN mock here, unlike TireList.test.tsx which aliases
@@ -36,8 +38,8 @@ vi.mock('../../hooks/queries/useTires', () => ({
   useCreateTire: () => useCreateTireMock(),
   useCreateAndMountTire: () => useCreateAndMountTireMock(),
   useUpdateTire: () => useUpdateTireMock(),
-  useMountTire: () => noop(),
-  useDismountTire: () => noop(),
+  useMountTire: () => useMountTireMock(),
+  useDismountTire: () => useDismountTireMock(),
   useRetireTire: () => useRetireTireMock(),
   useRotateTires: () => useRotateTiresMock(),
   useAddTireReading: () => noop(),
@@ -47,6 +49,10 @@ vi.mock('../../hooks/queries/useTires', () => ({
   useUpdateTireSet: () => noop(),
   useDeleteTireSet: () => noop(),
   useMountTireSet: () => useMountTireSetMock(),
+}))
+
+vi.mock('../../hooks/queries/useOdometerRecords', () => ({
+  useNearestOdometer: () => ({ data: undefined, isSuccess: false }),
 }))
 
 vi.mock('@tanstack/react-query', () => ({
@@ -120,8 +126,19 @@ const PATTERN_KEYS = [
   'tireList.rotatePatterns.frontToBack',
 ] as const
 
-/** The open drawer. Both Rotate buttons render the same label, so scope. */
-const drawer = () => within(screen.getByRole('dialog'))
+/** The open drawer. Both Rotate buttons render the same label, so scope.
+ *
+ * The LAST dialog in the DOM, not the only one: `Drawer` keeps a closing
+ * panel mounted for the tail of its exit transition (so the slide-out
+ * actually plays), so a test that moves from one drawer straight into a
+ * DIFFERENT one -- as the dates-and-storage-location suite does, retire then
+ * rotate then sets -- briefly has the outgoing panel and the incoming one
+ * both in the DOM. The most recently opened one is always the one still
+ * being interacted with. */
+const drawer = () => {
+  const dialogs = screen.getAllByRole('dialog')
+  return within(dialogs[dialogs.length - 1])
+}
 
 const setSets = (sets: unknown[]) =>
   useTireSetsMock.mockReturnValue({
@@ -149,6 +166,8 @@ describe('TireList rotation', () => {
     useCreateTireSetMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
     useMountTireSetMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
     useUpdateTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    useMountTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    useDismountTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
     setSets([])
     setTires(FOUR_MOUNTED)
   })
@@ -229,6 +248,8 @@ describe('TireList retire', () => {
     useCreateTireSetMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
     useMountTireSetMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
     useUpdateTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    useMountTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    useDismountTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
     setSets([])
     setTires(FOUR_MOUNTED)
   })
@@ -246,10 +267,9 @@ describe('TireList retire', () => {
     })
     fireEvent.click(drawer().getByText('tireList.retire'))
 
-    expect(retire).toHaveBeenCalledWith(
-      { tireId: 1, dismounted_odometer_km: 61000 },
-      expect.anything()
-    )
+    // toMatchObject, not toHaveBeenCalledWith: the payload also carries
+    // dismounted_on now (v3.4.0), asserted by its own test below.
+    expect(retire.mock.calls[0][0]).toMatchObject({ tireId: 1, dismounted_odometer_km: 61000 })
     // The distinction the whole endpoint exists for: delete cascades through
     // every reading and every mount period.
     expect(remove).not.toHaveBeenCalled()
@@ -281,6 +301,8 @@ describe('TireList create into storage', () => {
     useCreateTireSetMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
     useMountTireSetMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
     useUpdateTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    useMountTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    useDismountTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
     setSets([])
     setTires(FOUR_MOUNTED)
   })
@@ -315,6 +337,8 @@ describe('TireList create into storage', () => {
     const payload = create.mock.calls[0][0]
     expect(payload).toMatchObject({ vin: VIN, brand: 'Nokian' })
     expect(payload).not.toHaveProperty('position')
+    expect(payload).not.toHaveProperty('mounted_on')
+    expect(payload).not.toHaveProperty('mounted_odometer_km')
   })
 
   it('opens on storage when there is nowhere left to mount', () => {
@@ -349,6 +373,11 @@ describe('TireList create into storage', () => {
 
     expect(create).not.toHaveBeenCalled()
     expect(createAndMount.mock.calls[0][0].position).toBe('RR')
+    const payload = createAndMount.mock.calls[0][0]
+    // The v3.3.0 defect: the corner branch sent no mount fields at all, so
+    // every tire added here had an unbounded period.
+    expect(payload.mounted_on).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(payload).toHaveProperty('mounted_odometer_km')
   })
 })
 
@@ -367,6 +396,8 @@ describe('TireList sets', () => {
     useCreateTireSetMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
     useMountTireSetMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
     useUpdateTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    useMountTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    useDismountTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
     setSets([])
     setTires(FOUR_MOUNTED)
   })
@@ -403,11 +434,11 @@ describe('TireList sets', () => {
 
     // No `moves`, no positions: the server reads each tire's own history for
     // the corner it was last on. A client that guessed would have to reproduce
-    // that lookup and could disagree with it.
-    expect(mutate).toHaveBeenCalledWith(
-      { setId: 7, odometer_km: 52000 },
-      expect.anything()
-    )
+    // that lookup and could disagree with it. toMatchObject, not
+    // toHaveBeenCalledWith: the payload also carries mounted_on now (v3.4.0),
+    // asserted by its own test below.
+    expect(mutate.mock.calls[0][0]).toMatchObject({ setId: 7, odometer_km: 52000 })
+    expect(mutate.mock.calls[0][0]).not.toHaveProperty('moves')
   })
 
   it('does not offer to fit an empty set', () => {
@@ -466,5 +497,112 @@ describe('TireList sets', () => {
     render(<TireList vin={VIN} />)
 
     expect(screen.queryByText('Winter studded')).toBeNull()
+  })
+})
+
+describe('TireList dates and storage location', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  beforeEach(() => {
+    useCreateTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    useCreateAndMountTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    useRetireTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    useRotateTiresMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    useDeleteTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    useCreateTireSetMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    useMountTireSetMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    useUpdateTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    useMountTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    useDismountTireMock.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    setSets([])
+    setTires(FOUR_MOUNTED)
+  })
+
+  const DATE = /^\d{4}-\d{2}-\d{2}$/
+
+  it('the corner branch of Add Tire sends the typed odometer and a backdated date', () => {
+    const createAndMount = vi.fn()
+    useCreateAndMountTireMock.mockReturnValue({ mutate: createAndMount, isPending: false })
+    setTires(FOUR_MOUNTED.slice(0, 3))
+    render(<TireList vin={VIN} />)
+    fireEvent.click(screen.getByText('tireList.add'))
+    fireEvent.change(drawer().getByLabelText('tireList.mountedOn'), { target: { value: '2026-04-10' } })
+    fireEvent.change(document.getElementById('tire-mount-odometer') as HTMLInputElement, { target: { value: '152159' } })
+    fireEvent.click(drawer().getByText('common:save'))
+    expect(createAndMount.mock.calls[0][0]).toMatchObject({ mounted_on: '2026-04-10', mounted_odometer_km: 152159 })
+  })
+
+  it('the storage branch sends a storage location and hides the mount fields', () => {
+    const create = vi.fn()
+    useCreateTireMock.mockReturnValue({ mutate: create, isPending: false })
+    render(<TireList vin={VIN} />)
+    fireEvent.click(screen.getByText('tireList.add'))
+    fireEvent.click(drawer().getByText('tireList.inStorage'))
+    expect(document.getElementById('tire-mount-odometer')).toBeNull()
+    fireEvent.change(drawer().getByLabelText('tireList.storageLocation'), { target: { value: 'Garage shelf B' } })
+    fireEvent.click(drawer().getByText('common:save'))
+    expect(create.mock.calls[0][0]).toMatchObject({ storage_location: 'Garage shelf B' })
+  })
+
+  it('mount sends its date', () => {
+    const mutate = vi.fn()
+    useMountTireMock.mockReturnValue({ mutate, isPending: false })
+    setTires([{ ...tireAt(9, 'FL'), position: null }])
+    render(<TireList vin={VIN} />)
+    fireEvent.click(screen.getByText('tireList.mount'))
+    fireEvent.click(drawer().getByText('FR'))
+    fireEvent.click(within(screen.getByRole('dialog')).getByText('tireList.mount'))
+    expect(mutate.mock.calls[0][0].mounted_on).toMatch(DATE)
+  })
+
+  it('dismount sends its date and the storage location', () => {
+    const mutate = vi.fn()
+    useDismountTireMock.mockReturnValue({ mutate, isPending: false })
+    render(<TireList vin={VIN} />)
+    fireEvent.click(screen.getAllByText('tireList.dismount')[0])
+    fireEvent.change(drawer().getByLabelText('tireList.storageLocation'), { target: { value: 'Shed' } })
+    fireEvent.click(drawer().getByText('tireList.dismount'))
+    expect(mutate.mock.calls[0][0]).toMatchObject({ storage_location: 'Shed' })
+    expect(mutate.mock.calls[0][0].dismounted_on).toMatch(DATE)
+  })
+
+  it('dismount seeds the storage location from the tire, and a blank clears it', () => {
+    const mutate = vi.fn()
+    useDismountTireMock.mockReturnValue({ mutate, isPending: false })
+    setTires([{ ...tireAt(1, 'FL'), storage_location: 'Shed' }])
+    render(<TireList vin={VIN} />)
+    fireEvent.click(screen.getByText('tireList.dismount'))
+    expect(drawer().getByLabelText('tireList.storageLocation')).toHaveValue('Shed')
+    fireEvent.change(drawer().getByLabelText('tireList.storageLocation'), { target: { value: '' } })
+    fireEvent.click(drawer().getByText('tireList.dismount'))
+    expect(mutate.mock.calls[0][0].storage_location).toBe('')
+  })
+
+  it('retire, rotate and set fit send their dates', () => {
+    // Each mock resolves onSuccess, same as a real successful mutation: three
+    // SEPARATE Drawer instances are opened in sequence here, and each one
+    // only closes its own state on success, so the next one would otherwise
+    // open on top of a still-mounted predecessor.
+    const retire = vi.fn((_payload, handlers) => handlers.onSuccess())
+    const rotate = vi.fn((_payload, handlers) => handlers.onSuccess())
+    const fit = vi.fn((_payload, handlers) => handlers.onSuccess())
+    useRetireTireMock.mockReturnValue({ mutate: retire, isPending: false })
+    useRotateTiresMock.mockReturnValue({ mutate: rotate, isPending: false })
+    useMountTireSetMock.mockReturnValue({ mutate: fit, isPending: false })
+    setSets([{ id: 7, vin: VIN, name: 'Winter', notes: null, created_at: '2026-01-01T00:00:00', tire_ids: [1], mounted_count: 0 }])
+    render(<TireList vin={VIN} />)
+
+    fireEvent.click(screen.getAllByText('tireList.retire')[0])
+    fireEvent.click(drawer().getByText('tireList.retire'))
+    expect(retire.mock.calls[0][0].dismounted_on).toMatch(DATE)
+
+    fireEvent.click(screen.getByText('tireList.rotate'))
+    fireEvent.click(drawer().getByText('tireList.rotate'))
+    expect(rotate.mock.calls[0][0].rotated_on).toMatch(DATE)
+
+    fireEvent.click(screen.getByText('tireList.sets'))
+    fireEvent.click(drawer().getByText('tireList.setFit'))
+    fireEvent.click(drawer().getAllByText('tireList.setFit')[1])
+    expect(fit.mock.calls[0][0].mounted_on).toMatch(DATE)
   })
 })
