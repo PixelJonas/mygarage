@@ -58,6 +58,14 @@ ODOMETER_SOURCE_TIRE = "tire"
 ODOMETER_SOURCE_ROTATION = "tire_rotation"
 ODOMETER_SOURCE_SET = "tire_set"
 
+#: Per-period markers, so an odometer record can say WHICH event published it.
+#: `ODOMETER_SOURCE_TIRE` is what a tread reading publishes with, keyed by the
+#: tire; these two are keyed by the period, which is what lets the period
+#: editor move the right record and only that one. Rotation and set fit keep
+#: their vehicle-level markers: one reading covers several tires.
+ODOMETER_SOURCE_TIRE_MOUNT = "tire_mount"
+ODOMETER_SOURCE_TIRE_DISMOUNT = "tire_dismount"
+
 
 async def apply_mount_moves(
     db: AsyncSession,
@@ -860,18 +868,26 @@ class TireService:
         # different dates when this runs across midnight.
         mounted_on = data.mounted_on or utc_now().date()
         tire.position = data.position
-        self.db.add(
-            TireMountPeriod(
-                tire_id=tire.id,
-                position=data.position,
-                mounted_on=mounted_on,
-                mounted_odometer_km=data.mounted_odometer_km,
-                is_assumed=False,
-                notes=data.notes,
-            )
+        # Appended to the relationship rather than `db.add`ed, so the
+        # collection the validator reads (Task 5) is the resulting set; then
+        # flushed so the period has the id its odometer marker needs.
+        period = TireMountPeriod(
+            tire_id=tire.id,
+            position=data.position,
+            mounted_on=mounted_on,
+            mounted_odometer_km=data.mounted_odometer_km,
+            is_assumed=False,
+            notes=data.notes,
         )
+        tire.mount_periods.append(period)
+        await self.db.flush()
+        # Refreshed so the in-memory object carries the column's quantized
+        # precision (`Numeric(10, 2)`) instead of whatever scale the
+        # request's JSON happened to use. The append above means no later
+        # eager reload in this request re-reads this row.
+        await self.db.refresh(period)
         await self._publish_odometer(
-            vin, mounted_on, data.mounted_odometer_km, ODOMETER_SOURCE_TIRE, tire.id
+            vin, mounted_on, data.mounted_odometer_km, ODOMETER_SOURCE_TIRE_MOUNT, period.id
         )
         await self.db.commit()
         # The reminder title names the position, so mounting changes it.
@@ -916,10 +932,20 @@ class TireService:
             if data.notes:
                 open_period.notes = data.notes
         # Published even when there is no open period to close: the user still
-        # read that number off the dashboard.
-        await self._publish_odometer(
-            vin, dismounted_on, data.dismounted_odometer_km, ODOMETER_SOURCE_TIRE, tire.id
-        )
+        # read that number off the dashboard. Owned by the period when there is
+        # one, so the editor can move it later; by the tire otherwise.
+        if open_period is not None:
+            await self._publish_odometer(
+                vin,
+                dismounted_on,
+                data.dismounted_odometer_km,
+                ODOMETER_SOURCE_TIRE_DISMOUNT,
+                open_period.id,
+            )
+        else:
+            await self._publish_odometer(
+                vin, dismounted_on, data.dismounted_odometer_km, ODOMETER_SOURCE_TIRE, tire.id
+            )
         await self.db.commit()
         return await self._reload_response(tire.id, vin)
 
@@ -952,22 +978,52 @@ class TireService:
         tire = Tire(
             vin=vin,
             position=data.position,
+            # Loaded-and-empty from birth. After the flush below this is a
+            # persistent object, and an unloaded lazy collection would try to
+            # load on first touch, which an async session cannot do.
+            mount_periods=[],
+            readings=[],
             **data.model_dump(exclude={"vin", "position", "mounted_on", "mounted_odometer_km"}),
         )
         self.db.add(tire)
         await self.db.flush()
-        mounted_on = data.mounted_on or utc_now().date()
-        self.db.add(
-            TireMountPeriod(
-                tire_id=tire.id,
-                position=data.position,
-                mounted_on=mounted_on,
-                mounted_odometer_km=data.mounted_odometer_km,
-                is_assumed=False,
+        # Re-queried, not just flushed, with `populate_existing` forcing the
+        # overwrite: the constructor above already left `readings`/
+        # `mount_periods` "loaded" (as empty lists), so without this a plain
+        # selectinload would see them as already-loaded and skip re-fetching
+        # -- and a collection that was never actually pulled from the
+        # database this way does not survive a later same-session
+        # `db.refresh()` (as `update_tire` does): SQLAlchemy expires it
+        # without knowing how to refill it, and the next synchronous touch
+        # raises MissingGreenlet one request later. Doing a real, if trivial,
+        # SELECT here instead gives both collections that tracking.
+        tire = (
+            await self.db.execute(
+                select(Tire)
+                .where(Tire.id == tire.id)
+                .options(selectinload(Tire.readings), selectinload(Tire.mount_periods))
+                .execution_options(populate_existing=True)
             )
+        ).scalar_one()
+        mounted_on = data.mounted_on or utc_now().date()
+        period = TireMountPeriod(
+            tire_id=tire.id,
+            position=data.position,
+            mounted_on=mounted_on,
+            mounted_odometer_km=data.mounted_odometer_km,
+            is_assumed=False,
         )
+        tire.mount_periods.append(period)
+        await self.db.flush()
+        # Refreshed so the in-memory object carries the column's quantized
+        # precision (`Numeric(10, 2)`) instead of whatever scale the
+        # request's JSON happened to use ("1000" vs "1000.00"). The append
+        # above means no later eager reload in this request re-reads this
+        # row, so an unrefreshed value would ride along into any distance
+        # figure computed from this same object later in the same session.
+        await self.db.refresh(period)
         await self._publish_odometer(
-            vin, mounted_on, data.mounted_odometer_km, ODOMETER_SOURCE_TIRE, tire.id
+            vin, mounted_on, data.mounted_odometer_km, ODOMETER_SOURCE_TIRE_MOUNT, period.id
         )
         await self.db.commit()
         return await self._reload_and_sync(tire.id, vin)
@@ -1187,6 +1243,7 @@ class TireService:
         # that runs across midnight cannot record two.
         retired_on = data.dismounted_on or utc_now().date()
 
+        closed_period: TireMountPeriod | None = None
         if tire.position is not None:
             # Close the open period and free the corner, so the replacement can
             # go where the old one was.
@@ -1204,12 +1261,22 @@ class TireService:
             if open_period is not None:
                 open_period.dismounted_on = retired_on
                 open_period.dismounted_odometer_km = data.dismounted_odometer_km
+            closed_period = open_period
             tire.position = None
 
         tire.retired_on = retired_on
-        await self._publish_odometer(
-            vin, retired_on, data.dismounted_odometer_km, ODOMETER_SOURCE_TIRE, tire.id
-        )
+        if closed_period is not None:
+            await self._publish_odometer(
+                vin,
+                retired_on,
+                data.dismounted_odometer_km,
+                ODOMETER_SOURCE_TIRE_DISMOUNT,
+                closed_period.id,
+            )
+        else:
+            await self._publish_odometer(
+                vin, retired_on, data.dismounted_odometer_km, ODOMETER_SOURCE_TIRE, tire.id
+            )
         await self.db.commit()
         return await self._reload_response(tire.id, vin)
 
@@ -1224,7 +1291,11 @@ class TireService:
         vin = vin.upper().strip()
         await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
         await lock_vehicle_for_write(self.db, vin)
-        result = await self.db.execute(select(Tire).where(Tire.id == tire_id, Tire.vin == vin))
+        result = await self.db.execute(
+            select(Tire)
+            .where(Tire.id == tire_id, Tire.vin == vin)
+            .options(selectinload(Tire.mount_periods))
+        )
         tire = result.scalar_one_or_none()
         if not tire:
             raise HTTPException(status_code=404, detail="Tire not found")
@@ -1247,12 +1318,17 @@ class TireService:
         # entered with a typo'd odometer and then deleted would otherwise leave
         # the typo behind as the vehicle's latest reading, where it poisons
         # every mileage reminder the vehicle has. Marker-exact, so a manual row
-        # is never touched -- and a row some LATER sync took ownership of
-        # carries that source's marker now, not this tire's.
+        # is never touched: the tire-level marker its readings carry, and the
+        # per-period markers its mounts and dismounts carry. Collected before
+        # the cascade removes the periods.
+        markers = [auto_sync_marker(ODOMETER_SOURCE_TIRE, tire_id)]
+        for period in tire.mount_periods or []:
+            markers.append(auto_sync_marker(ODOMETER_SOURCE_TIRE_MOUNT, period.id))
+            markers.append(auto_sync_marker(ODOMETER_SOURCE_TIRE_DISMOUNT, period.id))
         await self.db.execute(
             delete(OdometerRecord)
             .where(OdometerRecord.vin == vin)
-            .where(OdometerRecord.notes == auto_sync_marker(ODOMETER_SOURCE_TIRE, tire_id))
+            .where(OdometerRecord.notes.in_(markers))
         )
         await self.db.delete(tire)
         await self.db.commit()

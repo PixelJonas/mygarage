@@ -27,6 +27,7 @@ from sqlalchemy import delete, select
 
 from app.models.odometer import OdometerRecord
 from app.models.vehicle import Vehicle
+from app.services.tire_service import ODOMETER_SOURCE_TIRE_MOUNT
 
 TODAY = date(2026, 3, 14)
 
@@ -98,7 +99,11 @@ class TestTheOdometerIsRecorded:
 
         rows = await _odometer_rows(db_session, vehicle)
         assert [(r.date, r.odometer_km) for r in rows] == [(TODAY, 20000)]
-        assert rows[0].source == "tire"
+        # Was "tire" before this file: mount, dismount and retire each now
+        # publish with their own per-period marker so a later editor (Task 6)
+        # can move the one record a specific period owns. Readings still
+        # publish with the tire-level marker.
+        assert rows[0].source == ODOMETER_SOURCE_TIRE_MOUNT
 
     async def test_mounting_an_existing_tire_records_the_odometer(
         self, client: AsyncClient, auth_headers, vehicle, db_session
