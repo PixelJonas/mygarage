@@ -563,6 +563,22 @@ describe('TireList', () => {
       expect(screen.getByText('tireList.editTitleNamed')).toBeInTheDocument()
     })
   })
+
+  it('offers Fix only when a period blocks a figure, and Fix opens the history', () => {
+    useTiresMock.mockReturnValue({
+      data: { tires: [{ ...STORED_FL_TIRE, blocking_period_ids: [3], mount_periods: [] }], total: 1 },
+      isLoading: false,
+      error: null,
+    })
+    render(<TireList vin="1HGCM82633A004352" />)
+    fireEvent.click(screen.getByText('tireList.fix'))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('has no Fix control when nothing blocks', () => {
+    render(<TireList vin="1HGCM82633A004352" />)
+    expect(screen.queryByText('tireList.fix')).toBeNull()
+  })
 })
 
 describe('TireList – mount and dismount', () => {

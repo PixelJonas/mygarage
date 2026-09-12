@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, Gauge, AlertTriangle, Pencil, RotateCw, Layers } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatDateForDisplay, formatDateForInput } from '../utils/dateUtils'
-import type { MountedPosition, Tire, TirePosition, TireSet } from '../types/tire'
+import type { MountedPosition, Tire, TireMountPeriod, TirePosition, TireSet } from '../types/tire'
 import {
   useTires,
   useCreateTire,
@@ -30,6 +30,7 @@ import {
 import { getActionErrorMessage } from '../utils/httpErrorHandler'
 import { Button, IconButton, Card, Chip, Drawer, EmptyState, Input, Field, ListRow } from './ui'
 import MountEventFields from './tires/MountEventFields'
+import MountPeriodEditor from './tires/MountPeriodEditor'
 import TireHistoryDrawer from './tires/TireHistoryDrawer'
 
 const POSITIONS: MountedPosition[] = ['FL', 'FR', 'RL', 'RR', 'SPARE']
@@ -272,6 +273,7 @@ export default function TireList({ vin }: TireListProps) {
   const [editingTireId, setEditingTireId] = useState<number | null>(null)
   const [readingTireId, setReadingTireId] = useState<number | null>(null)
   const [historyTireId, setHistoryTireId] = useState<number | null>(null)
+  const [editingPeriod, setEditingPeriod] = useState<TireMountPeriod | null>(null)
   const [form, setForm] = useState<TireFormState>(() => seedTireForm(null, 'FL'))
   const [readingForm, setReadingForm] = useState<ReadingFormState>(emptyReadingForm)
 
@@ -954,7 +956,21 @@ export default function TireList({ vin }: TireListProps) {
                   make correct, and leaving it off the card people actually
                   look at made the feature invisible on real data. */}
               <dt className="text-text-mute">{t('tireList.distanceOnTire')}</dt>
-              <dd className="font-mono text-xs">{distanceSummary(tire)}</dd>
+              <dd className="flex items-center gap-2 font-mono text-xs">
+                <span>{distanceSummary(tire)}</span>
+                {/* "Add an odometer to this tire's mount" was an instruction
+                    with no control behind it until v3.4.0. This is the control. */}
+                {(tire.blocking_period_ids?.length ?? 0) > 0 && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="relative z-10"
+                    onClick={() => setHistoryTireId(tire.id)}
+                  >
+                    {t('tireList.fix')}
+                  </Button>
+                )}
+              </dd>
             </dl>
             <div className="flex flex-wrap gap-2">
               <Button
@@ -1037,7 +1053,18 @@ export default function TireList({ vin }: TireListProps) {
                     {tire.tread_depth_mm != null ? u.tread.format(num(tire.tread_depth_mm)) : '—'}
                   </dd>
                   <dt className="text-text-mute">{t('tireList.distanceOnTire')}</dt>
-                  <dd className="font-mono">{distanceSummary(tire)}</dd>
+                  <dd className="flex items-center gap-2 font-mono">
+                    <span>{distanceSummary(tire)}</span>
+                    {(tire.blocking_period_ids?.length ?? 0) > 0 && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setHistoryTireId(tire.id)}
+                      >
+                        {t('tireList.fix')}
+                      </Button>
+                    )}
+                  </dd>
                 </dl>
                 <div className="flex flex-wrap gap-2">
                   <Button
@@ -1796,11 +1823,25 @@ export default function TireList({ vin }: TireListProps) {
       <TireHistoryDrawer
         tire={historyTire}
         open={historyTire !== null}
-        onClose={() => setHistoryTireId(null)}
-        /* Task 13 replaces this with the period editor. */
-        onEditPeriod={() => undefined}
+        onClose={() => {
+          setEditingPeriod(null)
+          setHistoryTireId(null)
+        }}
+        onEditPeriod={setEditingPeriod}
         labelFor={labelFor}
       />
+
+      {historyTire && editingPeriod && (
+        <MountPeriodEditor
+          key={editingPeriod.id}
+          vin={vin}
+          tire={historyTire}
+          period={editingPeriod}
+          open
+          onClose={() => setEditingPeriod(null)}
+          labelFor={labelFor}
+        />
+      )}
     </div>
   )
 }
