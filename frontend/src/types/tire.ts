@@ -35,6 +35,7 @@ export type TirePosition = Tire['position']
 export type MountedPosition = NonNullable<TirePosition>
 
 export type TireMountPeriod = components['schemas']['MountPeriodResponse']
+export type MountPeriodUpdate = components['schemas']['MountPeriodUpdate']
 export type TireMountRequest = components['schemas']['TireMountRequest']
 export type TireDismountRequest = components['schemas']['TireDismountRequest']
 export type TireCreateAndMountRequest = components['schemas']['TireCreateAndMountRequest']
