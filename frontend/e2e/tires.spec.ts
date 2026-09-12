@@ -179,9 +179,14 @@ test.describe('Tires', () => {
     // dismounted; a reordering would have made it assert against someone
     // else's card. Order-dependent assertions are the same defect as the
     // `.first()` one below, just not yet triggered.
+    //
+    // `exact: true`: v3.4.0 added a second "In storage since <date>" line to
+    // the same card (the in-storage-since summary), and a loose substring
+    // match now resolves to both, a strict-mode violation this task's first
+    // real Playwright run against the full suite is what caught.
     const card = page.locator('.rounded-card', { hasText: 'E2E Michelin' }).first()
     await expect(card).toBeVisible({ timeout: 10000 })
-    await expect(card.getByText('In storage')).toBeVisible()
+    await expect(card.getByText('In storage', { exact: true })).toBeVisible()
     // And it can be put back on, which is the seasonal-swap case the whole
     // mount-period model exists for.
     await expect(card.getByRole('button', { name: 'Mount' })).toBeVisible()
@@ -249,6 +254,83 @@ test.describe('Tires', () => {
     expect(response.status()).toBe(422)
     const detail = await response.text()
     expect(detail).toContain('position')
+  })
+
+  test('a tire added at a corner takes a backdated date and the suggested odometer', async ({
+    page,
+    request,
+  }) => {
+    const vin = await tireVehicle(request, 'add-dated')
+    const admin = await adminSession()
+    const seeded = await request.post(`${API_BASE}/vehicles/${vin}/odometer`, {
+      headers: admin.headers,
+      data: { vin, date: '2026-04-01', odometer_km: 100000 },
+    })
+    expect(seeded.status(), await seeded.text()).toBe(201)
+
+    await openTires(page, vin)
+    await page.getByRole('button', { name: 'Add Tire' }).click()
+    const drawer = page.getByRole('dialog')
+    await drawer.getByRole('button', { name: 'FL', exact: true }).click()
+    await drawer.getByLabel('Brand').fill('E2E Dated')
+    await drawer.locator('#tire-mount-date').fill('2026-04-10')
+    // The suggestion names the reading's own date, so the user can judge it.
+    await expect(drawer.getByText(/Nearest reading/)).toBeVisible({ timeout: 5000 })
+    await drawer.getByRole('button', { name: 'Use' }).click()
+    await expect(drawer.locator('#tire-mount-odometer')).toHaveValue(/100000|62137/)
+    await drawer.getByRole('button', { name: 'Save' }).click()
+    await expect(drawer).toBeHidden({ timeout: 10000 })
+
+    const card = page.locator('.rounded-card', { hasText: 'E2E Dated' }).first()
+    await expect(card).toBeVisible({ timeout: 10000 })
+    await expect(card.getByText('Mounted', { exact: true })).toBeVisible()
+    await expect(card.getByText(/Not yet known/)).toHaveCount(0)
+
+    // The contract, from the API: the period is bounded and dated as typed.
+    const listed = await request.get(`${API_BASE}/vehicles/${vin}/tires`, { headers: admin.headers })
+    const tire = (await listed.json()).tires.find((t: { brand: string }) => t.brand === 'E2E Dated')
+    expect(tire.mount_periods[0].mounted_on).toBe('2026-04-10')
+    expect(Number(tire.mount_periods[0].mounted_odometer_km)).toBe(100000)
+  })
+
+  test('Fix opens the history, and supplying the mount odometer fills the distance in', async ({
+    page,
+    request,
+  }) => {
+    const vin = await tireVehicle(request, 'fix-ui')
+    const admin = await adminSession()
+    // The upgrade-day shape: mounted with no odometer on the mount.
+    const created = await request.post(`${API_BASE}/vehicles/${vin}/tires/create-and-mount`, {
+      headers: admin.headers,
+      data: { vin, position: 'RL', brand: 'E2E Fixable', tread_depth_mm: 7, mounted_on: '2026-04-01' },
+    })
+    expect(created.status(), await created.text()).toBe(201)
+    // A later vehicle reading, so a bounded period has a distance to show.
+    const later = await request.post(`${API_BASE}/vehicles/${vin}/odometer`, {
+      headers: admin.headers,
+      data: { vin, date: '2026-05-01', odometer_km: 101000 },
+    })
+    expect(later.status(), await later.text()).toBe(201)
+
+    await openTires(page, vin)
+    const card = page.locator('.rounded-card', { hasText: 'E2E Fixable' }).first()
+    await expect(card.getByText(/Not yet known/)).toBeVisible({ timeout: 10000 })
+    await card.getByRole('button', { name: 'Fix' }).click()
+
+    const history = page.getByRole('dialog').first()
+    await expect(history.getByText('Needs an odometer')).toBeVisible({ timeout: 5000 })
+    await history.getByRole('button', { name: 'Edit' }).first().click()
+    // Named, not `.last()`: the history drawer stays open behind the nested
+    // editor, so once the editor closes on save, `.last()` re-resolves to the
+    // still-open history dialog and `toBeHidden` never observes it -- a
+    // locator that silently retargets rather than a save that fails to close.
+    const editor = page.getByRole('dialog', { name: /Edit mount period/ })
+    await editor.locator('#period-mount-odometer').fill('100500')
+    await editor.getByRole('button', { name: 'Save', exact: true }).click()
+    await expect(editor).toBeHidden({ timeout: 10000 })
+
+    await expect(card.getByText(/Not yet known/)).toHaveCount(0, { timeout: 10000 })
+    await expect(card.getByRole('button', { name: 'Fix' })).toHaveCount(0)
   })
 })
 
@@ -346,6 +428,13 @@ test.describe('Tire rotation and retirement', () => {
           position: 'SPARE',
           brand: 'E2E Retire',
           tread_depth_mm: 8,
+          // Explicit and before the reading below. Omitting this defaults
+          // `mounted_on` to today (TireService.create_and_mount), which put
+          // the mount AFTER a reading dated in the past and tripped this
+          // release's own period-contradiction validation (142c42f, 4a66146)
+          // -- correctly, since a tire cannot have a tread reading before it
+          // was mounted. First caught by this task's full Playwright run.
+          mounted_on: '2026-01-01',
           mounted_odometer_km: 1000,
         },
       }
@@ -507,6 +596,16 @@ test.describe('Tire rotation and retirement, through the UI', () => {
     expect(retired).toHaveLength(1)
     expect(retired[0].retired_on).not.toBeNull()
     expect(retired[0].mount_periods.length).toBeGreaterThanOrEqual(1)
+
+    // The way back. Retired tires are hidden until asked for, then restorable.
+    await page.getByLabel('Show retired').click()
+    const retiredCard = page.locator('.rounded-card', { hasText: 'E2E RetireUI' }).first()
+    await expect(retiredCard).toBeVisible({ timeout: 10000 })
+    await expect(retiredCard.getByText(/^Retired /)).toBeVisible()
+    await retiredCard.getByRole('button', { name: 'Restore' }).click()
+    // Back in storage: a Mount button, no Restore.
+    await expect(retiredCard.getByRole('button', { name: 'Mount' })).toBeVisible({ timeout: 10000 })
+    await expect(retiredCard.getByRole('button', { name: 'Restore' })).toHaveCount(0)
   })
 
   test('a tire can be entered straight into storage', async ({ page, request }) => {
@@ -595,7 +694,7 @@ test.describe('Tire sets', () => {
     drawer = page.getByRole('dialog')
     await expect(drawer.getByText('Tires: 2 · Fitted: 0')).toBeVisible({ timeout: 10000 })
     await drawer.getByRole('button', { name: 'Fit', exact: true }).click()
-    await drawer.locator('input[id^="set-fit-odometer-"]').fill('30000')
+    await drawer.locator('input[id^="set-fit-"][id$="-odometer"]').fill('30000')
     await drawer.getByRole('button', { name: 'Fit', exact: true }).last().click()
     await expect(drawer).toBeHidden({ timeout: 10000 })
 
@@ -635,7 +734,7 @@ test.describe('Tire sets', () => {
     await page.getByRole('button', { name: 'Sets' }).click()
     const drawer = page.getByRole('dialog')
     await drawer.getByRole('button', { name: 'Fit', exact: true }).click()
-    await drawer.locator('input[id^="set-fit-odometer-"]').fill('30000')
+    await drawer.locator('input[id^="set-fit-"][id$="-odometer"]').fill('30000')
     await drawer.getByRole('button', { name: 'Fit', exact: true }).last().click()
 
     // Named, and nothing moves. Guessing a corner would put a tire somewhere
