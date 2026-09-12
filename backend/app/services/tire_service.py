@@ -39,6 +39,7 @@ from app.services.tire_results import (
     WearResult,
     WearStatus,
 )
+from app.services.vehicle_lock import lock_vehicle_for_write
 from app.utils.datetime_utils import utc_now
 from app.utils.logging_utils import sanitize_for_log
 from app.utils.odometer_sync import auto_sync_marker, sync_odometer_from_record
@@ -824,13 +825,14 @@ class TireService:
         Nothing at the database level prevents two tires on one vehicle from
         each holding an open period at FL: `tire_mount_periods` has no `vin`,
         so the constraint cannot be written there. It is enforced here, under
-        the parent-tire row lock, and it has its own test because no index
-        will catch it.
+        the VEHICLE write lock (`lock_vehicle_for_write`), and it has its own
+        race test because no index will catch it.
         """
         from app.services.auth import get_vehicle_or_403
 
         vin = vin.upper().strip()
         await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
+        await lock_vehicle_for_write(self.db, vin)
         tire = await self._get_tire_for_update(vin, tire_id)
 
         if tire.position is not None:
@@ -883,6 +885,7 @@ class TireService:
 
         vin = vin.upper().strip()
         await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
+        await lock_vehicle_for_write(self.db, vin)
         tire = await self._get_tire_for_update(vin, tire_id)
 
         if tire.position is None:
@@ -928,6 +931,7 @@ class TireService:
 
         vin = vin.upper().strip()
         await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
+        await lock_vehicle_for_write(self.db, vin)
 
         occupant = (
             await self.db.execute(
@@ -986,6 +990,7 @@ class TireService:
 
         vin = vin.upper().strip()
         await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
+        await lock_vehicle_for_write(self.db, vin)
 
         moving_ids = [move.tire_id for move in data.moves]
         tires = {
@@ -1044,7 +1049,14 @@ class TireService:
         return await self.list_tires(vin, current_user)
 
     async def _get_tire_for_update(self, vin: str, tire_id: int) -> Tire:
-        """Load a tire, scoped to its vehicle, or 404."""
+        """Load a tire, scoped to its vehicle, or 404.
+
+        Must run UNDER the vehicle write lock. It loads `readings` and
+        `mount_periods` eagerly, and a tire loaded before the lock keeps its
+        stale state in the identity map after the lock is acquired, which is
+        the bug the LiveLink lock needed a re-read to fix. Every caller takes
+        the lock first; `test_tire_concurrency.py` spies on that.
+        """
         tire = (
             await self.db.execute(
                 select(Tire)
@@ -1158,6 +1170,7 @@ class TireService:
 
         vin = vin.upper().strip()
         await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
+        await lock_vehicle_for_write(self.db, vin)
         tire = await self._get_tire_for_update(vin, tire_id)
 
         if tire.retired_on is not None:
@@ -1203,6 +1216,7 @@ class TireService:
 
         vin = vin.upper().strip()
         await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
+        await lock_vehicle_for_write(self.db, vin)
         result = await self.db.execute(select(Tire).where(Tire.id == tire_id, Tire.vin == vin))
         tire = result.scalar_one_or_none()
         if not tire:

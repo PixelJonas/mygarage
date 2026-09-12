@@ -60,8 +60,8 @@ class TireMountPeriod(Base):
     in the design (D4): the "one open period per corner per vehicle" rule
     cannot be written as a database constraint here, because the constraint
     would need a `vin` this table does not have. It is enforced in the service
-    under the parent-tire row lock, and it has its own test, because no index
-    will catch it.
+    under the vehicle write lock (`app.services.vehicle_lock`), and it has its
+    own race test, because no index will catch it.
     """
 
     __tablename__ = "tire_mount_periods"

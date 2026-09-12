@@ -35,6 +35,7 @@ from app.services.tire_service import (
     TireService,
     apply_mount_moves,
 )
+from app.services.vehicle_lock import lock_vehicle_for_write
 from app.utils.datetime_utils import utc_now
 from app.utils.logging_utils import sanitize_for_log
 from app.utils.odometer_sync import sync_odometer_from_record
@@ -210,6 +211,7 @@ class TireSetService:
 
         vin = vin.upper().strip()
         await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
+        await lock_vehicle_for_write(self.db, vin)
         tire_set = await self._get_set(vin, set_id)
 
         members = [tire for tire in (tire_set.tires or []) if tire.retired_on is None]
