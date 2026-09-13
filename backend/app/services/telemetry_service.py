@@ -939,10 +939,18 @@ class TelemetryService:
                         select(DriveSession)
                         .where(DriveSession.device_id == device_id)
                         .where(DriveSession.external_session_id.is_(None))
-                        .where(DriveSession.started_at <= drive.movement_ended_at)
+                        # Strict, not `<=`: `group_drives` gives a shared boundary
+                        # instant to the EARLIER drive as its own `movement_ended_at`,
+                        # so a later drive's clamped `started_at` there is not this
+                        # session's evidence and must not count as overlap.
+                        .where(DriveSession.started_at < drive.movement_ended_at)
                         .where(
+                            # Strict, not `>=`, for the same reason from the other
+                            # side: an earlier session's `ended_at` sitting exactly at
+                            # a later drive's clamped `started_at` is the shared
+                            # instant the earlier drive owns, not this drive's.
                             func.coalesce(DriveSession.ended_at, DriveSession.started_at)
-                            >= drive.started_at
+                            > drive.started_at
                         )
                     )
                 )

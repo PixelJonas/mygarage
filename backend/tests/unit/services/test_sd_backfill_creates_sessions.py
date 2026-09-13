@@ -438,6 +438,22 @@ def _boundary_samples() -> list[tuple[datetime, str, float]]:
     return [(T0 + timedelta(minutes=m), key, value) for m, key, value in _BOUNDARY_SPECS]
 
 
+# A later pull that widens both drives without crossing the shared instant:
+# minute -10 joins drive 1's burst (drive 1's own end stays at minute 5), and
+# minute 35 joins drive 2's (drive 2's own start stays at minute 5).
+_EXTENSION_SPECS: tuple[tuple[int, str, float], ...] = (
+    (-10, "SPEED", 55.0),
+    (35, "SPEED", 60.0),
+)
+
+
+def _boundary_and_extension_samples() -> list[tuple[datetime, str, float]]:
+    return [
+        (T0 + timedelta(minutes=m), key, value)
+        for m, key, value in (*_BOUNDARY_SPECS, *_EXTENSION_SPECS)
+    ]
+
+
 async def _seed_device(
     maker: async_sessionmaker[AsyncSession], prefix: str, suffix: str
 ) -> tuple[str, str]:
@@ -583,3 +599,50 @@ class TestReconstructionAtATouchingBoundary:
         assert [r[3:] for r in second_run] == [r[3:] for r in first_run], (
             "the same replay must not change distance or max speed"
         )
+
+    async def test_a_rerun_that_extends_a_touching_drive_updates_its_own_session(
+        self, test_engine, init_test_db
+    ):
+        """A later pull can legitimately widen one drive's window without
+        crossing into its neighbour's. That widened drive must still find
+        and extend its own session -- not get treated as spanning both
+        sessions at the touching boundary, which is what the false
+        "ambiguous" match there otherwise causes, silently dropping the
+        extension.
+
+        Extends both directions at once: drive 2's real evidence grows
+        past its old end, and drive 1's grows before its old start, short
+        of the shared instant -- so both of the query's two comparisons
+        are exercised, not just the one the second drive's own overlap
+        check uses.
+        """
+        maker = self._maker(test_engine)
+        vin, device_id = await _seed_device(maker, "sdbound", "3")
+
+        async with maker() as db:
+            await TelemetryService(db).bulk_backfill(vin, device_id, _rows(*_BOUNDARY_SPECS))
+        first_run = await _session_rows(maker, device_id)
+        assert len(first_run) == 2, f"expected 2 sessions after the first run, got {len(first_run)}"
+
+        async with maker() as db:
+            await TelemetryService(db).bulk_backfill(
+                vin, device_id, _rows(*_BOUNDARY_SPECS, *_EXTENSION_SPECS)
+            )
+        second_run = await _session_rows(maker, device_id)
+
+        expected = group_drives(_boundary_and_extension_samples(), GAP)
+        assert len(second_run) == 2, f"expected 2 sessions, no third one, got {len(second_run)}"
+        assert [r[0] for r in second_run] == [r[0] for r in first_run], (
+            "the extension must update the drives' own sessions, not create new ones"
+        )
+        (_, start1, end1, _, speed1), (_, start2, end2, _, speed2) = second_run
+        assert start1 == expected[0].started_at, "drive 1's backward extension must move its start"
+        assert end1 == expected[0].movement_ended_at, (
+            "drive 1's end must stay at the shared instant"
+        )
+        assert start2 == expected[1].started_at, "drive 2's start must stay at the shared instant"
+        assert end2 == expected[1].movement_ended_at, (
+            "drive 2's forward extension must move its end"
+        )
+        assert speed1 == pytest.approx(55.0), "session 1's aggregates must reflect the new sample"
+        assert speed2 == pytest.approx(60.0), "session 2's aggregates must reflect the new sample"
