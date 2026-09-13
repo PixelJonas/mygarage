@@ -162,7 +162,7 @@ describe('FuelRecordForm — the gallon comes from the user, not the instance', 
     await waitFor(() => expect(mockedApiPost).toHaveBeenCalled())
     const payload = postedPayload()
     expect(payload.liters).toBe(37.854)
-    expect(payload.price_per_unit).toBe(1.58503306115)
+    expect(payload.price_per_unit).toBe(1.58503231415)
     expect(UnitConverter.getGallonStandard()).toBe('uk')
   })
 
@@ -482,9 +482,9 @@ describe('FuelRecordForm — the gallon comes from the user, not the instance', 
     fireEvent.submit(drawerForm())
     await waitFor(() => expect(mockedApiPut).toHaveBeenCalled())
     const payload = mockedApiPut.mock.calls[0][1] as Record<string, unknown>
-    // 6.001 / 0.453592 = 13.2299511455 $/kg at 12 significant digits.
+    // 6.001 / 0.45359237 = 13.2299403537 $/kg at 12 significant digits.
     expect(payload.price_basis).toBe('per_weight')
-    expect(payload.price_per_unit).toBe(13.2299511455)
+    expect(payload.price_per_unit).toBe(13.2299403537)
     expect(payload.price_per_unit).not.toBe(1.32)
     // The volume beside it did NOT move: only the field whose denominator
     // changed is treated as edited.

@@ -392,8 +392,8 @@ describe('FuelRecordForm — odometer and temperature follow their own tokens', 
   })
 
   it('CREATE: a typed mileage and a typed Fahrenheit temperature reach the API canonical', async () => {
-    //   45000 mi x 1.60934 = 72420.3 km
-    //   (68 - 32) x 5/9    = 20 C
+    //   45000 mi x 1.609344 = 72420.48 km
+    //   (68 - 32) x 5/9     = 20 C
     //   47.318 L and $1.234/L pass through: the client's volume IS the canonical
     units = LITRES_MILES_FAHRENHEIT
 
@@ -410,7 +410,7 @@ describe('FuelRecordForm — odometer and temperature follow their own tokens', 
 
     await waitFor(() => expect(mockedApiPost).toHaveBeenCalled())
     const payload = postedPayload()
-    expect(payload.odometer_km).toBe(72420.3)
+    expect(payload.odometer_km).toBe(72420.48)
     expect(payload.outside_temp_c).toBe(20)
     expect(payload.liters).toBe(47.318)
     expect(payload.price_per_unit).toBe(1.234)
@@ -614,12 +614,12 @@ describe('FuelRecordForm — the OBC pair follows the speed and consumption toke
    * Expected values are hand-written and derived in comments, never computed
    * through the code under test:
    *
-   *   100 km/h / 1.60934   = 62.137273665 mph, shown as 62 (mph has no decimals)
-   *   62 mph x 1.60934     = 99.77908 km/h, which is NOT what was stored
-   *   235.214 / 10         = 23.5214 MPG, shown as 23.5 (MPG carries one)
-   *   235.214 / 23.5       = 10.009106383 L/100km, which is NOT what was stored
-   *   60 mph x 1.60934     = 96.5604 km/h
-   *   235.214 / 30         = 7.84046666667 L/100km
+   *   100 km/h / 1.609344   = 62.1371192237 mph, shown as 62 (mph has no decimals)
+   *   62 mph x 1.609344     = 99.779328 km/h, which is NOT what was stored
+   *   235.2145833333 / 10   = 23.5214583333 MPG, shown as 23.5 (MPG carries one)
+   *   235.2145833333 / 23.5 = 10.0091312057 L/100km, which is NOT what was stored
+   *   60 mph x 1.609344     = 96.56064 km/h
+   *   235.2145833333 / 30   = 7.84048611111 L/100km
    */
 
   it('★ EDIT: an MPG/MPH client reads both OBC values, and their labels, in its own units', async () => {
@@ -675,7 +675,7 @@ describe('FuelRecordForm — the OBC pair follows the speed and consumption toke
     expect(payload.obc_l_per_100km).not.toBe(10.009106383)
   })
 
-  it('★ CREATE: the 60 mph an MPH client types is stored as 96.5604 km/h, not as 60', async () => {
+  it('★ CREATE: the 60 mph an MPH client types is stored as 96.56064 km/h, not as 60', async () => {
     // The headline defect, driven end to end.
     units = LITRES_MPH_MPG
 
@@ -689,9 +689,9 @@ describe('FuelRecordForm — the OBC pair follows the speed and consumption toke
 
     await waitFor(() => expect(mockedApiPost).toHaveBeenCalled())
     const payload = postedPayload()
-    expect(payload.obc_avg_speed_kmh).toBe(96.5604)
+    expect(payload.obc_avg_speed_kmh).toBe(96.56064)
     expect(payload.obc_avg_speed_kmh).not.toBe(60)
-    expect(payload.obc_l_per_100km).toBe(7.84046666667)
+    expect(payload.obc_l_per_100km).toBe(7.84048611111)
     expect(payload.obc_l_per_100km).not.toBe(30)
   })
 

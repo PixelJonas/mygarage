@@ -106,18 +106,25 @@ export class UnitConverter {
   // can borrow. The eleventh (a `c * 9 / 5 + 32` idiom) and the twelfth (a
   // fourteenth copy of `1.60934`) were not in this table at all, and both are
   // now gone rather than exempt.
+  // Mirrors backend/app/utils/units.py: base factors are the legal
+  // definitions, the rest are derived from them in the same order, and
+  // __tests__/unitFactorCrossLayer.test.ts fails when the layers disagree.
   /* eslint-disable no-restricted-syntax -- this IS the factor table */
-  static readonly US_GALLONS_TO_LITERS = 3.78541;
+  static readonly MILES_TO_KM = 1.609344;
+  static readonly FEET_TO_METERS = 0.3048;
+  static readonly INCH_TO_METERS = 0.0254;
+  static readonly US_GALLONS_TO_LITERS = 3.785411784;
   static readonly UK_GALLONS_TO_LITERS = 4.54609;
   private static gallonsToLitersFactor = UnitConverter.US_GALLONS_TO_LITERS;
-  static readonly MILES_TO_KM = 1.60934;
-  static readonly FEET_TO_METERS = 0.3048;
-  private static readonly PSI_TO_BAR = 0.0689476;
-  static readonly PSI_TO_KPA = 6.89476;
-  static readonly LBS_TO_KG = 0.453592;
-  static readonly LBFT_TO_NM = 1.35582;
-  static readonly US_MPG_TO_L100KM = 235.214;
-  static readonly UK_MPG_TO_L100KM = 282.481;
+  static readonly LBS_TO_KG = 0.45359237;
+  static readonly STANDARD_GRAVITY = 9.80665;
+  static readonly LBF_TO_N = UnitConverter.LBS_TO_KG * UnitConverter.STANDARD_GRAVITY;
+  static readonly PSI_TO_KPA =
+    UnitConverter.LBF_TO_N / (UnitConverter.INCH_TO_METERS * UnitConverter.INCH_TO_METERS) / 1000;
+  private static readonly PSI_TO_BAR = UnitConverter.PSI_TO_KPA / 100;
+  static readonly LBFT_TO_NM = UnitConverter.LBF_TO_N * UnitConverter.FEET_TO_METERS;
+  static readonly US_MPG_TO_L100KM = (100 * UnitConverter.US_GALLONS_TO_LITERS) / UnitConverter.MILES_TO_KM;
+  static readonly UK_MPG_TO_L100KM = (100 * UnitConverter.UK_GALLONS_TO_LITERS) / UnitConverter.MILES_TO_KM;
   private static mpgToL100kmFactor = UnitConverter.US_MPG_TO_L100KM;
   /* eslint-enable no-restricted-syntax */
 

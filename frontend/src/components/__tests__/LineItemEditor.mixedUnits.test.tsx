@@ -6,13 +6,13 @@
  * `reminderDraft.due_mileage_km`, and `ServiceVisitForm` posts that field as
  * canonical kilometres. The conversion ran on `useUnitPreference().system`,
  * which spec D8 collapses from VOLUME, so a `{volume: 'L', distance: 'mi'}`
- * account entering a 500-mile reminder stored 500 km instead of 804.67.
+ * account entering a 500-mile reminder stored 500 km instead of 804.672.
  *
  * Every case DRIVES the component and asserts RENDERED TEXT as well as the
  * value handed to `onChange`.
  *
  * Expected values are hand-written and derived in comments, never computed
- * through the code under test. `MILES_TO_KM` is 1.60934 (`utils/units.ts`).
+ * through the code under test. `MILES_TO_KM` is 1.609344 (`utils/units.ts`).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -116,10 +116,10 @@ beforeEach(() => {
 })
 
 describe('LineItemEditor — the reminder mileage is written on units.distance', () => {
-  it('★ a 500-mile reminder stores 804.67 km, not 500', () => {
-    // 500 mi x 1.60934 = 804.67 km. This is the defect the plan named: before
-    // this slice the same entry stored 500, because `system` reads 'metric'
-    // off the litres and the km branch passes the typed number through.
+  it('★ a 500-mile reminder stores 804.672 km, not 500', () => {
+    // 500 mi x 1.609344 = 804.672 km. Before this slice the same entry stored
+    // 500, because `system` reads 'metric' off the litres and the km branch
+    // passes the typed number through.
     unitPrefMock.units = LITRES_MILES
     renderEditor(itemWith())
 
@@ -129,7 +129,7 @@ describe('LineItemEditor — the reminder mileage is written on units.distance',
     const [index, fieldName, draft] = onChange.mock.calls[0]
     expect(index).toBe(0)
     expect(fieldName).toBe('reminderDraft')
-    expect((draft as { due_mileage_km: number }).due_mileage_km).toBe(804.67)
+    expect((draft as { due_mileage_km: number }).due_mileage_km).toBe(804.672)
     expect((draft as { due_mileage_km: number }).due_mileage_km).not.toBe(500)
     expect(binarySystemFor(unitPrefMock.units.volume)).toBe('metric')
   })

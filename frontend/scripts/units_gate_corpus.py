@@ -578,9 +578,7 @@ SCRIPT_POSITIVE = [
     ),
     Case(
         "S-P31-formatter-label-selector",
-        FIXTURE_FORMATTER
-        + HOOK_IMPORT
-        + "export function unit(): string {\n"
+        FIXTURE_FORMATTER + HOOK_IMPORT + "export function unit(): string {\n"
         "  const { system } = useUnitPreference()\n"
         "  return UnitFormatter.unitLabel(system)\n"
         "}\n",
@@ -651,9 +649,7 @@ SCRIPT_POSITIVE = [
     ),
     Case(
         "S-P35-aliased-formatter-receiver",
-        FIXTURE_FORMATTER
-        + HOOK_IMPORT
-        + "const UF = UnitFormatter\n"
+        FIXTURE_FORMATTER + HOOK_IMPORT + "const UF = UnitFormatter\n"
         "export function unit(): string {\n"
         "  const { system } = useUnitPreference()\n"
         "  return UF.unitLabel(system)\n"
@@ -866,7 +862,7 @@ SCRIPT_POSITIVE = [
         1,
         "binary-conversion",
         "★ `calleeName`'s docstring has said \"an import alias must not be an "
-        "escape hatch\" since task 5, and the formatter leg defends against "
+        'escape hatch" since task 5, and the formatter leg defends against '
         "`import { UnitFormatter as UF }`, but that closed it on the RECEIVER "
         "only: a renaming import of the CALLEE was invisible in both the call "
         "form and the value form, while the namespace form was caught all along, "
@@ -944,7 +940,7 @@ SCRIPT_POSITIVE = [
         "token-branch",
         "★ THE WHOLE VALUE OF THE KIND LIST, and the objection it answers is on "
         "the record: `units.manifest.json` said a reason-bearing pragma "
-        "\"silences anything\". This one names the comparison leg and the line "
+        '"silences anything". This one names the comparison leg and the line '
         "carries a token branch, so the finding stands. Without the scope check "
         "the same pragma silences a defect class its author never considered, "
         "which matters most after the clean-room flip because the pragma is then "
@@ -1081,8 +1077,7 @@ SCRIPT_NEGATIVE = [
     ),
     Case(
         "S-N8-local-format-distance",
-        FIXTURE_FORMATTER
-        + "import type { UnitSet } from '@/types/units'\n"
+        FIXTURE_FORMATTER + "import type { UnitSet } from '@/types/units'\n"
         "function formatRate(perKm: number, units: UnitSet): string {\n"
         "  return `${perKm} ${units.distance}`\n"
         "}\n"
@@ -1289,7 +1284,7 @@ SCRIPT_NEGATIVE = [
         why="the other side of S-P42: a scoped pragma has to silence the kind it "
         "names, or the form is decoration. Five of the sixteen line-suppressed "
         "findings under `src/` are this exact shape, resolved-set dispatch inside "
-        "the unit layer. ★ THE CONSEQUENT USED TO SAY \"nine findings\", derived "
+        'the unit layer. ★ THE CONSEQUENT USED TO SAY "nine findings", derived '
         "from the wrong count beside it and left behind when that count was "
         "corrected, which is the A3 defect reproduced inside the A3 fix. MEASURED "
         "by applying M73 to the real gate: 45 findings under 32 keys across 11 "
@@ -1404,6 +1399,14 @@ ESLINT_POSITIVE = [
         "Raw unit-conversion constant",
         "the one named factor round 1's corpus never exercised",
         "M33-drop-uk-mpg-from-named-list",
+    ),
+    Case(
+        "E-P11-miles-exact",
+        "export const KM_PER_MILE = 1609.344\n",
+        1,
+        "Raw unit-conversion constant",
+        "the exact spelling: three fractional digits, so only the named list can see it",
+        "M12-drop-named-list",
     ),
     Case(
         "E-P10-i18n-guard-survives-scoping",

@@ -444,8 +444,8 @@ describe('canonicalFromUnitField', () => {
     expect(canonicalFromUnitField('20', origin, um.mass)).toBe(9.07)
     // The number the string comparison alone would have stored.
     expect(canonicalFromUnitField('20', origin, um.mass)).not.toBe(9.07184)
-    // A real edit still converts: 21 lb x 0.453592 = 9.525432 kg.
-    expect(canonicalFromUnitField('21', origin, um.mass)).toBe(9.525432)
+    // A real edit still converts: 21 lb x 0.45359237 = 9.52543977 kg.
+    expect(canonicalFromUnitField('21', origin, um.mass)).toBe(9.52543977)
     // ★ Folded here rather than standing alone, because on its own it holds at
     // t=0 and would assert nothing. `Number('')` is 0, so a numeric untouched
     // test that skipped the empty-origin guard would read a typed 0 as

@@ -188,9 +188,9 @@ describe('TireList under a metric set', () => {
     expect(mutate.mock.calls[0][0].tread_depth_mm).toBe(8)
   })
 
-  it('stores the typed kilometres unconverted, where the imperial path scales by 1.60934', () => {
-    // The pair of the imperial `odometer_km === 160.934` test. Together they are
-    // the two-sided control the deleted label test could not be.
+  it('stores the typed kilometres unconverted, where the imperial path scales by 1.609344', () => {
+    // The pair of the imperial `odometer_km === 160.9344` test. Together they
+    // are the two-sided control the deleted label test could not be.
     const mutate = vi.fn()
     useAddTireReadingMock.mockReturnValue({ mutate, isPending: false })
 
@@ -216,7 +216,7 @@ describe('TireList under a metric set', () => {
     // distance is miles: a projection left on
     // `UnitFormatter.formatDistance(..., system, ...)` renders "~1,000 km"
     // directly above an odometer field that is in miles and posts
-    // `typed x 1.60934`. Two distances, one card, two units.
+    // `typed x 1.609344`. Two distances, one card, two units.
     h.units = { ...METRIC, distance: 'mi' }
     const mutate = vi.fn()
     useAddTireReadingMock.mockReturnValue({ mutate, isPending: false })
@@ -231,7 +231,8 @@ describe('TireList under a metric set', () => {
 
     render(<TireList vin="1HGCM82633A004352" />)
 
-    // Surface one, the card: 1,609.34 km / 1.60934 = 1000 mi, at mi's zero decimals.
+    // Surface one, the card: 1,609.34 km / 1.609344 = 999.997514515 mi,
+    // ~1,000 mi at the projection's approximate precision.
     expect(screen.getByText('~1,000 mi')).toBeInTheDocument()
     expect(screen.queryByText('~1,000 km')).not.toBeInTheDocument()
 
@@ -243,8 +244,8 @@ describe('TireList under a metric set', () => {
     })
     fireEvent.click(screen.getByText('common:save'))
 
-    // 100 mi x 1.60934 = 160.934 km, the same unit the projection just read in.
-    expect(mutate.mock.calls[0][0].odometer_km).toBe(160.934)
+    // 100 mi x 1.609344 = 160.9344 km, the same unit the projection just read in.
+    expect(mutate.mock.calls[0][0].odometer_km).toBe(160.9344)
   })
 
   it('offers the canonical 2.0 mm default unconverted on an untouched Add form', () => {

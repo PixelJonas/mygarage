@@ -10,7 +10,7 @@
  * posted body.
  *
  * Expected values are hand-written and derived in comments, never computed
- * through the code under test. `MILES_TO_KM` is 1.60934 (`utils/units.ts`).
+ * through the code under test. `MILES_TO_KM` is 1.609344 (`utils/units.ts`).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -83,13 +83,13 @@ beforeEach(() => {
   unitPrefMock.units = METRIC_UNITS
 })
 
-/** 80467 km is exactly 50000 mi (50000 x 1.60934). */
+/** 80467 km displays as 50000 mi (80467 / 1.609344 = 49999.8757258). */
 const CURRENT_KM = 80467
 
 describe('ReminderForm — mileage follows units.distance', () => {
   it('★ CREATE: a litres-and-miles client stores an interval typed in miles as kilometres', async () => {
-    // 5000 mi x 1.60934 = 8046.7 km, added to the 80467 km baseline:
-    // 80467 + 8046.7 = 88513.7 km. Before this slice the same entry added
+    // 5000 mi x 1.609344 = 8046.72 km, added to the 80467 km baseline:
+    // 80467 + 8046.72 = 88513.72 km. Before this slice the same entry added
     // 5000 km, because `system` reads 'metric' off the litres.
     unitPrefMock.units = LITRES_MILES
     render(<ReminderForm {...BASE_PROPS} currentMileage={CURRENT_KM} />)
@@ -108,14 +108,14 @@ describe('ReminderForm — mileage follows units.distance', () => {
     fireEvent.submit(reminderForm())
     await waitFor(() => expect(createMutateAsync).toHaveBeenCalledTimes(1))
     const payload = createMutateAsync.mock.calls[0][0] as Record<string, unknown>
-    expect(payload.due_mileage_km).toBe(88513.7)
+    expect(payload.due_mileage_km).toBe(88513.72)
     expect(payload.due_mileage_km).not.toBe(85467)
     expect(binarySystemFor(unitPrefMock.units.volume)).toBe('metric')
   })
 
   it('★ CREATE from last service: both the baseline and the interval convert', async () => {
-    // 40000 mi x 1.60934 = 64373.6 km, 5000 mi x 1.60934 = 8046.7 km,
-    // 64373.6 + 8046.7 = 72420.3 km. Before this slice: 40000 + 5000 = 45000.
+    // 40000 mi x 1.609344 = 64373.76 km, 5000 mi x 1.609344 = 8046.72 km,
+    // 64373.76 + 8046.72 = 72420.48 km. Before this slice: 40000 + 5000 = 45000.
     unitPrefMock.units = LITRES_MILES
     render(<ReminderForm {...BASE_PROPS} currentMileage={CURRENT_KM} />)
 
@@ -134,15 +134,15 @@ describe('ReminderForm — mileage follows units.distance', () => {
     fireEvent.submit(reminderForm())
     await waitFor(() => expect(createMutateAsync).toHaveBeenCalledTimes(1))
     const payload = createMutateAsync.mock.calls[0][0] as Record<string, unknown>
-    expect(payload.due_mileage_km).toBe(72420.3)
+    expect(payload.due_mileage_km).toBe(72420.48)
     expect(payload.due_mileage_km).not.toBe(45000)
   })
 
   it('★ EDIT: the remaining interval is shown in miles and an untouched save restores the exact target', async () => {
     // due 160935 km, current 80467 km -> 80468 km remaining, shown as
-    // 80468 / 1.60934 = 50000.62... mi, i.e. 50001 at the mi adapter's zero
-    // decimals. Re-converting 50001 mi gives 80468.6 km and a target of
-    // 160935.6, so the origin is what keeps an untouched save exact.
+    // 80468 / 1.609344 = 50000.497097 mi, i.e. 50000 at the mi adapter's zero
+    // decimals. Re-converting 50000 mi gives 80467.2 km and a target of
+    // 160934.2, so the origin is what keeps an untouched save exact.
     unitPrefMock.units = LITRES_MILES
     const reminder = {
       id: 3,
@@ -154,14 +154,14 @@ describe('ReminderForm — mileage follows units.distance', () => {
     render(<ReminderForm {...BASE_PROPS} reminder={reminder} currentMileage={CURRENT_KM} />)
 
     await waitFor(() => expect(field('reminder-mileage')).not.toBeNull())
-    expect(field('reminder-mileage').value).toBe('50001')
+    expect(field('reminder-mileage').value).toBe('50000')
     expect(labelText('reminder-mileage')).toBe('reminder.distanceUntilDue * (mi)')
 
     fireEvent.submit(reminderForm())
     await waitFor(() => expect(updateMutateAsync).toHaveBeenCalledTimes(1))
     const payload = updateMutateAsync.mock.calls[0][0] as Record<string, unknown>
     expect(payload.due_mileage_km).toBe(160935)
-    expect(payload.due_mileage_km).not.toBe(160935.6)
+    expect(payload.due_mileage_km).not.toBe(160934.2)
   })
 
   it('★ EDIT (mirror): a gallons-and-kilometres client reads kilometres, and its untouched save is exact too', async () => {

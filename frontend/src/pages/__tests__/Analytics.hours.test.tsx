@@ -222,11 +222,11 @@ describe('Analytics — hours efficiency chart (Task 17)', () => {
     const data = findChartData('lPerHr') as { lPerHr: number | null; displayFuelRate: number | null }[]
     expect(data[0].lPerHr).toBe(3.8) // canonical, unconverted
     // Through `u.volume`, so the series matches the axis label `fuelRateLabel`
-    // puts on it. 3.8 / 3.78541 = 1.003854272060358, normalised to the adapter
+    // puts on it. 3.8 / 3.785411784 = 1.0038537989..., normalised to the adapter
     // layer's twelve significant digits. It is deliberately NOT rounded to the
     // volume adapter's two decimals: rounding is a formatting decision, and a
     // plotted point that had already lost its precision cannot be un-rounded.
-    expect(data[0].displayFuelRate).toBe(1.00385427206)
+    expect(data[0].displayFuelRate).toBe(1.00385379896)
     expect(data[1].displayFuelRate).toBeNull() // null point stays null, not 0
   })
 })
@@ -317,9 +317,9 @@ describe('Analytics — the plotted series follow the resolved tokens, like thei
     renderAnalytics()
     await waitFor(() => expect(screen.getByText('vehicle.fuelEconomyTrendTitle')).toBeInTheDocument())
 
-    // 235.214 / 8 = 29.40175 exactly.
+    // 235.2145833333... / 8 = 29.4018229167.
     expect(findChartData('lPer100km')).toStrictEqual([
-      { date: 'Jul 1', lPer100km: 8, displayFuelEconomy: 29.40175, odometer_km: 1000 },
+      { date: 'Jul 1', lPer100km: 8, displayFuelEconomy: 29.4018229167, odometer_km: 1000 },
     ])
   })
 
@@ -340,6 +340,6 @@ describe('Analytics — the plotted series follow the resolved tokens, like thei
 
     const data = findChartData('lPerHr') as { lPerHr: number | null; displayFuelRate: number | null }[]
     expect(data[0].lPerHr).toBe(3.8)
-    expect(data[0].displayFuelRate).toBe(1.00385427206)
+    expect(data[0].displayFuelRate).toBe(1.00385379896)
   })
 })

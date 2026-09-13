@@ -165,12 +165,12 @@ describe('TireList', () => {
     })
     fireEvent.click(screen.getByText('common:save'))
 
-    // 100 mi x 1.60934 = 160.934 km. The adapter does not round a canonical
+    // 100 mi x 1.609344 = 160.9344 km. The adapter does not round a canonical
     // write to two decimals the way `UnitConverter.milesToKm` did; it keeps the
     // exact conversion, as `UnitConverter.toCanonicalMetricString` already does
     // for every other form. The column is Numeric(10,2), so the server stores
     // 160.93 either way.
-    expect(mutate.mock.calls[0][0].odometer_km).toBe(160.934)
+    expect(mutate.mock.calls[0][0].odometer_km).toBe(160.9344)
   })
 
   it('sends null, not undefined, when pressure is cleared', () => {
@@ -393,8 +393,8 @@ describe('TireList', () => {
       // user never touched. This is the reading path's own seed and submit,
       // separate from Add and Edit, which is how it was missed.
       expect(payload.tread_depth_mm).toBe(7.5)
-      // 36 PSI x 6.89476 = 248.21136 kPa, the field that WAS edited.
-      expect(payload.pressure_kpa).toBe(248.21136)
+      // 36 PSI x 6.894757293168361 = 248.211262554 kPa, the field that WAS edited.
+      expect(payload.pressure_kpa).toBe(248.211262554)
     })
 
     it('reads the card tread in the same unit the form accepts', () => {
@@ -484,10 +484,10 @@ describe('TireList', () => {
       // missing key would leave the reader unable to tell "not measured" from
       // "the client forgot the field".
       expect(payload).toHaveProperty('tread_depth_mm', null)
-      // 36 PSI x 6.89476 = 248.21136 kPa
-      expect(payload.pressure_kpa).toBe(248.21136)
-      // 100 mi x 1.60934 = 160.934 km, carried through as context.
-      expect(payload.odometer_km).toBe(160.934)
+      // 36 PSI x 6.894757293168361 = 248.211262554 kPa
+      expect(payload.pressure_kpa).toBe(248.211262554)
+      // 100 mi x 1.609344 = 160.9344 km, carried through as context.
+      expect(payload.odometer_km).toBe(160.9344)
     })
 
     it('steps the tread inputs by whole thirty-seconds', () => {

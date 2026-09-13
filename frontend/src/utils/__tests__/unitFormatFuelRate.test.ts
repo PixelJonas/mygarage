@@ -183,8 +183,9 @@ describe('consumption, through the resolved token', () => {
     expect(makeUnitFormat(METRIC, true).consumption.format(0)).toBe('0.00 L/100km (N/A)')
     // And one ulp away it is a normal pair, so the line above is the boundary
     // case rather than a broken counterpart.
+    // 235.2145833333... / 0.001 = 235214.583333, rounded to 235,214.6 MPG.
     expect(makeUnitFormat(METRIC, true).consumption.format(0.001)).toBe(
-      '0.00 L/100km (235,214.0 MPG)',
+      '0.00 L/100km (235,214.6 MPG)',
     )
   })
 

@@ -77,9 +77,9 @@ describe('UNIT_ADAPTERS', () => {
 
 describe('linear conversion', () => {
   it('converts miles to kilometres and back', () => {
-    // 100 mi x 1.60934 = 160.934 km
-    expect(UNIT_ADAPTERS.mi.toCanonical(100)).toBe(160.934)
-    expect(UNIT_ADAPTERS.mi.toDisplay(160.934)).toBe(100)
+    // 100 mi x 1.609344 = 160.9344 km
+    expect(UNIT_ADAPTERS.mi.toCanonical(100)).toBe(160.9344)
+    expect(UNIT_ADAPTERS.mi.toDisplay(160.9344)).toBe(100)
   })
 
   it('converts thirty-seconds of an inch to millimetres and back', () => {
@@ -108,7 +108,7 @@ describe('linear conversion', () => {
   })
 
   it('converts both gallon flavours with their own factor', () => {
-    expect(UNIT_ADAPTERS.gal_us.toCanonical(10)).toBe(37.8541)
+    expect(UNIT_ADAPTERS.gal_us.toCanonical(10)).toBe(37.85411784)
     expect(UNIT_ADAPTERS.gal_uk.toCanonical(10)).toBe(45.4609)
   })
 
@@ -119,9 +119,9 @@ describe('linear conversion', () => {
   })
 
   it('converts pressure, mass, torque and length by their declared factors', () => {
-    expect(UNIT_ADAPTERS.psi.toCanonical(35)).toBe(241.3166)
-    expect(UNIT_ADAPTERS.lb.toCanonical(10)).toBe(4.53592)
-    expect(UNIT_ADAPTERS.lbft.toCanonical(100)).toBe(135.582)
+    expect(UNIT_ADAPTERS.psi.toCanonical(35)).toBe(241.316505261)
+    expect(UNIT_ADAPTERS.lb.toCanonical(10)).toBe(4.5359237)
+    expect(UNIT_ADAPTERS.lbft.toCanonical(100)).toBe(135.581794833)
     expect(UNIT_ADAPTERS.ft.toCanonical(10)).toBe(3.048)
   })
 
@@ -132,11 +132,11 @@ describe('linear conversion', () => {
   })
 
   it('trims binary float noise to twelve significant digits', () => {
-    // 34.8 x 6.89476 evaluates to 239.93764799999997 in IEEE 754. Sending that
-    // through the API is how a stored value ends up one ulp off its own
-    // conversion, so the boundary normalises it the way
+    // 34.8 x 6.894757293168361 evaluates to 239.93755380225895 in IEEE 754.
+    // Sending that through the API is how a stored value ends up one ulp off
+    // its own conversion, so the boundary normalises it the way
     // `UnitConverter.toCanonicalMetricString` already does.
-    expect(UNIT_ADAPTERS.psi.toCanonical(34.8)).toBe(239.937648)
+    expect(UNIT_ADAPTERS.psi.toCanonical(34.8)).toBe(239.937553802)
   })
 
   it('passes null and undefined straight through', () => {
@@ -156,15 +156,15 @@ describe('linear conversion', () => {
 
 describe('inverse conversion', () => {
   it('is its own inverse for MPG', () => {
-    // 235.214 / 30 MPG = 7.84046666666... L/100km, to 12 significant digits.
-    expect(UNIT_ADAPTERS.mpg_us.toCanonical(30)).toBe(7.84046666667)
-    // 235.214 / 23.5214 = 10 MPG
-    expect(UNIT_ADAPTERS.mpg_us.toDisplay(23.5214)).toBe(10)
+    // 235.2145833333... / 30 MPG = 7.84048611111... L/100km, to 12 significant digits.
+    expect(UNIT_ADAPTERS.mpg_us.toCanonical(30)).toBe(7.84048611111)
+    // 235.2145833333... / 23.5214583333 = 10 MPG
+    expect(UNIT_ADAPTERS.mpg_us.toDisplay(23.5214583333)).toBe(10)
   })
 
   it('uses the UK numerator for UK MPG', () => {
-    // 282.481 / 40 = 7.062025
-    expect(UNIT_ADAPTERS.mpg_uk.toCanonical(40)).toBe(7.062025)
+    // 282.4809363318... / 40 = 7.0620234083
+    expect(UNIT_ADAPTERS.mpg_uk.toCanonical(40)).toBe(7.0620234083)
   })
 
   it('converts km/L through the hundred that names L/100km', () => {

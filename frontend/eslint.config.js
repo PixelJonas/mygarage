@@ -66,7 +66,7 @@ const UNIT_CONSTANT_RESTRICTED = [
     //
     // 1.8 and 9/5 are deliberately absent: they are indistinguishable from an
     // ordinary ratio, so the Celsius idiom is matched structurally below.
-    selector: 'Literal[raw=/^(?:1609\\.34|25\\.4|235\\.214|282\\.481)$/]',
+    selector: 'Literal[raw=/^(?:1609\\.34|1609\\.344|25\\.4|235\\.214|282\\.481)$/]',
     message:
       'Raw unit-conversion constant. Convert through useUnitFormat() (or makeUnitFormat() outside a component); UnitConverter in utils/units.ts owns every factor.',
   },
