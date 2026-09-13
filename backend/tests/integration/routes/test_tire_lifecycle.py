@@ -532,6 +532,27 @@ class TestStorageLocation:
         assert off.status_code == 200, off.text
         assert off.json()["storage_location"] == "Shed"
 
+    async def test_retire_applies_a_location_it_is_sent_and_keeps_one_it_is_not(
+        self, client: AsyncClient, auth_headers, vehicle
+    ):
+        """Retire takes the dismount body, which carries `storage_location`, and
+        used to drop it. The Retire dialog renders no location field, so an
+        absent key must leave the tire's location as it was."""
+        base = f"/api/vehicles/{vehicle}/tires"
+        sent = await _mount(client, auth_headers, vehicle, "FL", storage_location="Shelf A")
+        retired = await client.post(
+            f"{base}/{sent['id']}/retire",
+            headers=auth_headers,
+            json={"storage_location": "  Scrap pile "},
+        )
+        assert retired.status_code == 200, retired.text
+        assert retired.json()["storage_location"] == "Scrap pile"
+
+        absent = await _mount(client, auth_headers, vehicle, "FR", storage_location="Shelf B")
+        kept = await client.post(f"{base}/{absent['id']}/retire", headers=auth_headers, json={})
+        assert kept.status_code == 200, kept.text
+        assert kept.json()["storage_location"] == "Shelf B"
+
     async def test_storage_location_is_capped(self, client: AsyncClient, auth_headers, vehicle):
         made = await client.post(
             f"/api/vehicles/{vehicle}/tires",

@@ -78,9 +78,9 @@ def normalise_storage_location(value: str | None) -> str | None:
     """A storage location as stored: stripped, and blank is no location.
 
     One rule for every writer that takes one (create, create and mount, edit,
-    dismount). The creates used to store the text as sent while the other two
-    stripped it, so the same padded input read back differently depending on
-    which form had saved it.
+    dismount, retire). The creates used to store the text as sent while edit
+    and dismount stripped it, so the same padded input read back differently
+    depending on which form had saved it.
     """
     if value is None:
         return None
@@ -1279,6 +1279,11 @@ class TireService:
             tire.position = None
 
         tire.retired_on = retired_on
+        # The same three intents as a dismount: an absent key leaves the
+        # location alone, an empty string clears it, text sets it. The Retire
+        # dialog renders no location field, so only the API sends one.
+        if data.storage_location is not None:
+            tire.storage_location = normalise_storage_location(data.storage_location)
         await self.db.flush()
         self.refuse_contradictions(tire, before, {closed_period.id} if closed_period else set())
         if closed_period is not None:
