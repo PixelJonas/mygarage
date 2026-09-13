@@ -211,3 +211,74 @@ class TestIncrementalPolicy:
     def test_fault_map_keys_by_period_code_and_counterpart(self):
         p = _period(1, start=D(2026, 4, 1), end=D(2026, 3, 1), start_odo="5000", end_odo="4000")
         assert set(fault_map([p], [])) == {(1, REVERSED_DATES, None), (1, REVERSED_ODOMETER, None)}
+
+
+class TestRepairingAShadowedCounterpart:
+    """Counterparts are running maxima, so a repair can re-label an untouched fault.
+
+    A legacy FL history with two odometer typos. Truth: A 0 to 4,000, B 4,000
+    to 8,000, C 8,000 to 12,000. Stored: A's dismount typed as 9,000 and C's
+    mount typed as 7,000. Both B and C are reported against A, the period
+    holding the highest dismount. Fixing A hands that maximum to B, so C's
+    untouched fault is now reported against B. Keyed by counterpart, that
+    read as a NEW fault and refused the honest repair; C first is refused
+    too, since C still participates in its fault against A. Neither order
+    was accepted.
+    """
+
+    @staticmethod
+    def _history(a_end: str, c_start: str) -> list[TireMountPeriod]:
+        return [
+            _period(1, start=D(2024, 1, 1), end=D(2024, 3, 1), start_odo="0", end_odo=a_end),
+            _period(2, start=D(2024, 3, 1), end=D(2024, 6, 1), start_odo="4000", end_odo="8000"),
+            _period(3, start=D(2024, 6, 1), end=D(2024, 9, 1), start_odo=c_start, end_odo="12000"),
+        ]
+
+    def test_the_legacy_history_reports_each_intruder_once(self):
+        """Rules 4a and 4b both name (B, A) and (C, A): one fault each."""
+        faults = validate_period_history(self._history("9000", "7000"), [])
+        assert [(f.period_id, f.code, f.counterpart_id) for f in faults] == [
+            (2, OVERLAPPING_ODOMETER, 1),
+            (3, OVERLAPPING_ODOMETER, 1),
+        ]
+
+    def test_fixing_the_period_holding_the_maximum_first_then_the_other(self):
+        legacy = fault_map(self._history("9000", "7000"), [])
+        a_fixed = fault_map(self._history("4000", "7000"), [])
+        # C's fault survives the repair, re-labelled against B.
+        assert (3, OVERLAPPING_ODOMETER, 2) in a_fixed
+        assert new_or_touched_faults(legacy, a_fixed, touched={1}) == []
+
+        both_fixed = self._history("4000", "8000")
+        assert new_or_touched_faults(a_fixed, fault_map(both_fixed, []), touched={3}) == []
+        assert validate_period_history(both_fixed, []) == []
+
+    def test_fixing_the_other_period_first_is_still_refused(self):
+        """C still sits below A's 9,000, and C is the period being edited."""
+        legacy = fault_map(self._history("9000", "7000"), [])
+        c_fixed = fault_map(self._history("9000", "8000"), [])
+        refused = new_or_touched_faults(legacy, c_fixed, touched={3})
+        assert [(f.period_id, f.code, f.counterpart_id) for f in refused] == [
+            (3, OVERLAPPING_ODOMETER, 1)
+        ]
+
+    def test_one_intruder_keeps_a_fault_per_counterpart(self):
+        """Deduplication is by the full triple, never by (period, code).
+
+        Q is mounted below X's dismount in date order (4a; X has no mount
+        odometer, so 4b never sees it) and inside Y's span in odometer order
+        (4b; Y has no mount date, so 4a never sees it). Y is a participant of
+        that one fault and nothing else. Collapsing Q's two faults into one
+        would drop Y, and an edit to Y would no longer be refused.
+        """
+        x = _period(1, start=D(2024, 1, 1), end=D(2024, 2, 1), start_odo=None, end_odo="5000")
+        q = _period(2, start=D(2024, 3, 1), end=D(2024, 4, 1), start_odo="4000", end_odo="7000")
+        y = _period(3, start=None, end=None, start_odo="0", end_odo="6000")
+        faults = validate_period_history([x, q, y], [])
+        assert [(f.period_id, f.code, f.counterpart_id) for f in faults] == [
+            (2, OVERLAPPING_ODOMETER, 1),
+            (2, OVERLAPPING_ODOMETER, 3),
+        ]
+        before = fault_map([x, q, y], [])
+        refused = new_or_touched_faults(before, dict(before), touched={3})
+        assert [(f.period_id, f.counterpart_id) for f in refused] == [(2, 3)]

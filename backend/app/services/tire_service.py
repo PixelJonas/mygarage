@@ -894,7 +894,7 @@ class TireService:
         )
         tire.mount_periods.append(period)
         await self.db.flush()
-        self._refuse_contradictions(tire, before, {period.id})
+        self.refuse_contradictions(tire, before, {period.id})
         # Refreshed so the in-memory object carries the column's quantized
         # precision (`Numeric(10, 2)`) instead of whatever scale the
         # request's JSON happened to use. The append above means no later
@@ -947,7 +947,7 @@ class TireService:
             if data.notes:
                 open_period.notes = data.notes
         await self.db.flush()
-        self._refuse_contradictions(tire, before, {open_period.id} if open_period else set())
+        self.refuse_contradictions(tire, before, {open_period.id} if open_period else set())
         # Published even when there is no open period to close: the user still
         # read that number off the dashboard. Owned by the period when there is
         # one, so the editor can move it later; by the tire otherwise.
@@ -1014,7 +1014,7 @@ class TireService:
         )
         tire.mount_periods.append(period)
         await self.db.flush()
-        self._refuse_contradictions(tire, {}, {period.id})
+        self.refuse_contradictions(tire, {}, {period.id})
         # Refreshed so the in-memory object carries the column's quantized
         # precision (`Numeric(10, 2)`) instead of whatever scale the
         # request's JSON happened to use ("1000" vs "1000.00"). The append
@@ -1076,7 +1076,7 @@ class TireService:
         befores = {
             tid: fault_map(t.mount_periods or [], t.readings or []) for tid, t in tires.items()
         }
-        open_before = {tid: self._open_period_ids(t) for tid, t in tires.items()}
+        open_before = {tid: self.open_period_ids(t) for tid, t in tires.items()}
 
         # A destination held by a tire that is NOT part of this rotation is a
         # conflict, not a swap. Checked before any write.
@@ -1111,8 +1111,8 @@ class TireService:
             notes=data.notes,
         )
         for tid, tire in tires.items():
-            self._refuse_contradictions(
-                tire, befores[tid], open_before[tid] | self._open_period_ids(tire)
+            self.refuse_contradictions(
+                tire, befores[tid], open_before[tid] | self.open_period_ids(tire)
             )
 
         # ONE reading however many tires moved: the odometer is a fact about
@@ -1146,17 +1146,19 @@ class TireService:
         return tire
 
     @staticmethod
-    def _refuse_contradictions(tire: Tire, before: FaultMap, touched: set[int]) -> None:
+    def refuse_contradictions(tire: Tire, before: FaultMap, touched: set[int]) -> None:
         """Second half of the writer sequence: capture, mutate, flush, VALIDATE, commit.
 
         Incremental, not whole-history: `before` is the fault map captured
         before this write mutated anything, and only a fault that is new, or
-        one still sitting on a period this write touched, refuses it. A
-        legacy fault on some other period survives and stays flagged. Runs
-        over the tire's resulting period list, which is why every writer
-        appends new periods to `tire.mount_periods` rather than `db.add`ing
-        them, and flushes first so they have ids. A refusal raises before the
-        commit; the request's rollback discards what the flush wrote.
+        one a period this write touched participates in, refuses it (see
+        `new_or_touched_faults` for what "new" means). A legacy fault on some
+        other period survives and stays flagged. Runs over the tire's resulting
+        period list, which is why every writer appends new periods to
+        `tire.mount_periods` rather than `db.add`ing them, and flushes first so
+        they have ids. A refusal raises before the commit; the request's
+        rollback discards what the flush wrote. Public because the set fit in
+        `tire_set_service` runs the same sequence.
         """
         after = fault_map(tire.mount_periods or [], tire.readings or [])
         faults = new_or_touched_faults(before, after, touched)
@@ -1164,7 +1166,12 @@ class TireService:
             raise HTTPException(status_code=409, detail=faults[0].message)
 
     @staticmethod
-    def _open_period_ids(tire: Tire) -> set[int]:
+    def open_period_ids(tire: Tire) -> set[int]:
+        """Ids of the tire's periods with no dismount date.
+
+        Rotation and set fit close these and open new ones, so the union of
+        this before and after the moves is the set of periods the write touched.
+        """
         return {p.id for p in tire.mount_periods or [] if p.dismounted_on is None}
 
     async def _reload_and_sync(self, tire_id: int, vin: str) -> TireResponse:
@@ -1313,7 +1320,7 @@ class TireService:
 
         tire.retired_on = retired_on
         await self.db.flush()
-        self._refuse_contradictions(tire, before, {closed_period.id} if closed_period else set())
+        self.refuse_contradictions(tire, before, {closed_period.id} if closed_period else set())
         if closed_period is not None:
             await self._publish_odometer(
                 vin,
@@ -1386,7 +1393,7 @@ class TireService:
             period.is_assumed = False
 
         await self.db.flush()
-        self._refuse_contradictions(tire, before, {period.id})
+        self.refuse_contradictions(tire, before, {period.id})
 
         if (period.mounted_on, period.mounted_odometer_km) != old_mount:
             await self._follow_period_event(

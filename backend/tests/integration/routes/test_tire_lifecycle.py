@@ -505,7 +505,7 @@ class TestRestore:
         # values default mounted_on to today (utc_now().date()), which in
         # this run postdates "2026-02-01" and makes the reading look like it
         # precedes the mount with a HIGHER odometer -- a genuine contradiction
-        # (_refuse_contradictions correctly 409s "run backwards"), not the
+        # (refuse_contradictions correctly 409s "run backwards"), not the
         # restore behaviour this test exists to check. Deviation recorded in
         # the task report.
         tire = await _mount(

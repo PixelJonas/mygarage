@@ -295,7 +295,7 @@ class TireSetService:
         befores = {
             tid: fault_map(t.mount_periods or [], t.readings or []) for tid, t in touched.items()
         }
-        open_before = {tid: TireService._open_period_ids(t) for tid, t in touched.items()}
+        open_before = {tid: TireService.open_period_ids(t) for tid, t in touched.items()}
 
         await apply_mount_moves(
             self.db,
@@ -306,8 +306,8 @@ class TireSetService:
             notes=data.notes,
         )
         for tid, tire in touched.items():
-            TireService._refuse_contradictions(
-                tire, befores[tid], open_before[tid] | TireService._open_period_ids(tire)
+            TireService.refuse_contradictions(
+                tire, befores[tid], open_before[tid] | TireService.open_period_ids(tire)
             )
         # ONE reading for the whole swap. Marked as a set fit rather than as a
         # per-tire operation, so deleting any one tire in the set does not take
