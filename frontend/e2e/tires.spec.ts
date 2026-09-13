@@ -332,6 +332,81 @@ test.describe('Tires', () => {
     await expect(card.getByText(/Not yet known/)).toHaveCount(0, { timeout: 10000 })
     await expect(card.getByRole('button', { name: 'Fix' })).toHaveCount(0)
   })
+
+  test('a reading with a mistyped odometer is named by the refusal and deleted from the history', async ({
+    page,
+    request,
+  }) => {
+    const vin = await tireVehicle(request, 'reading-delete')
+    const admin = await adminSession()
+    const created = await request.post(`${API_BASE}/vehicles/${vin}/tires/create-and-mount`, {
+      headers: admin.headers,
+      data: {
+        vin,
+        position: 'FL',
+        brand: 'E2E Typo',
+        tread_depth_mm: 8,
+        mounted_on: '2026-01-01',
+        mounted_odometer_km: 10000,
+      },
+    })
+    expect(created.status(), await created.text()).toBe(201)
+    const tireId = (await created.json()).id
+    // 150,000 typed for 15,000. Log Reading accepts it: readings are not
+    // validated against the mount history, the writers that change it are.
+    const typo = await request.post(`${API_BASE}/vehicles/${vin}/tires/${tireId}/readings`, {
+      headers: admin.headers,
+      data: { recorded_at: '2026-03-01', tread_depth_mm: 7, odometer_km: 150000 },
+    })
+    expect(typo.status(), await typo.text()).toBe(201)
+
+    await openTires(page, vin)
+    const card = page.locator('.rounded-card', { hasText: 'E2E Typo' }).first()
+    await expect(card).toBeVisible({ timeout: 10000 })
+
+    // An honest dismount, today, at an odometer between the mount and the typo
+    // in either unit system. Refused, and the sentence says which reading.
+    const dismount = async () => {
+      await card.getByRole('button', { name: 'Dismount' }).click()
+      const drawer = page.getByRole('dialog')
+      await drawer.locator('#dismount-odometer').fill('20000')
+      await drawer.getByRole('button', { name: 'Dismount', exact: true }).click()
+      return drawer
+    }
+    const refusedDrawer = await dismount()
+    await expect(page.getByText(/contradicts the reading dated 2026-03-01 at 150,000 km/)).toBeVisible({
+      timeout: 10000,
+    })
+    await refusedDrawer.getByRole('button', { name: 'Cancel' }).click()
+    await expect(refusedDrawer).toBeHidden({ timeout: 10000 })
+
+    // The repair: the tire's history, Delete on that reading, confirmed.
+    await card.getByRole('button', { name: /View reading history/ }).click()
+    const history = page.getByRole('dialog')
+    const confirmed = new Promise<string>((resolve) => {
+      page.once('dialog', async (dialog) => {
+        const message = dialog.message()
+        await dialog.accept()
+        resolve(message)
+      })
+    })
+    await history.getByRole('button', { name: /^Delete the reading of / }).click()
+    expect(await confirmed).toMatch(/^Delete the reading of /)
+    await expect(history.getByText('No readings logged yet')).toBeVisible({ timeout: 10000 })
+    await history.getByRole('button', { name: 'Close' }).first().click()
+    await expect(history).toBeHidden({ timeout: 10000 })
+
+    const acceptedDrawer = await dismount()
+    await expect(acceptedDrawer).toBeHidden({ timeout: 10000 })
+    await expect(card.getByText('In storage', { exact: true })).toBeVisible({ timeout: 10000 })
+
+    const listed = await request.get(`${API_BASE}/vehicles/${vin}/tires`, { headers: admin.headers })
+    const tire = (await listed.json()).tires.find((t: { id: number }) => t.id === tireId)
+    expect(tire.readings).toHaveLength(0)
+    expect(tire.position).toBeNull()
+    expect(tire.mount_periods).toHaveLength(1)
+    expect(tire.mount_periods[0].dismounted_on).not.toBeNull()
+  })
 })
 
 test.describe('Tire rotation and retirement', () => {
