@@ -26,10 +26,11 @@ what `test_tire_concurrency.py` spies on.
 from __future__ import annotations
 
 import logging
+import sqlite3
 
 from fastapi import HTTPException
 from sqlalchemy import text
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,42 @@ LOCK_CONTRACT = (
 )
 
 LOCK_BUSY_DETAIL = "Another change to this vehicle is in progress. Try again."
+
+#: lock_not_available (a FOR UPDATE that outlived `lock_timeout`) and
+#: deadlock_detected.
+_PG_CONTENTION_SQLSTATES = frozenset({"55P03", "40P01"})
+#: Primary result codes; the extended BUSY_* and LOCKED_* codes share them.
+_SQLITE_CONTENTION_CODES = frozenset({sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED})
+_SQLITE_CONTENTION_MESSAGES = (
+    "database is locked",
+    "database is busy",
+    "database table is locked",
+    "database schema is locked",
+)
+
+
+def is_lock_contention(exc: DBAPIError) -> bool:
+    """Whether a driver error means another writer holds the lock, and nothing worse.
+
+    Judged on the driver's own code, never on the SQLAlchemy wrapper class,
+    because the class differs by driver for the same condition: asyncpg's
+    lock timeout and deadlock arrive as a plain `DBAPIError`, psycopg's as an
+    `OperationalError`. PostgreSQL drivers expose the SQLSTATE as `sqlstate`
+    (asyncpg through SQLAlchemy, psycopg) or `pgcode` (asyncpg through
+    SQLAlchemy, psycopg2); a present code decides alone. The sqlite3 module
+    attaches `sqlite_errorcode`, masked to its primary code so the extended
+    busy and locked codes count. Only an error carrying neither falls back to
+    SQLite's message text.
+    """
+    orig = exc.orig
+    sqlstate = getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)
+    if isinstance(sqlstate, str):
+        return sqlstate in _PG_CONTENTION_SQLSTATES
+    sqlite_code = getattr(orig, "sqlite_errorcode", None)
+    if isinstance(sqlite_code, int):
+        return (sqlite_code & 0xFF) in _SQLITE_CONTENTION_CODES
+    message = str(orig).lower()
+    return any(fragment in message for fragment in _SQLITE_CONTENTION_MESSAGES)
 
 
 async def lock_vehicle_for_write(db: AsyncSession, vin: str) -> None:
@@ -58,7 +95,10 @@ async def lock_vehicle_for_write(db: AsyncSession, vin: str) -> None:
     a concurrent holder's commit.
 
     A lock that cannot be taken in time is a 503 with a sentence the user can
-    act on. Before this helper the same condition was a generic 500.
+    act on. Before this helper the same condition was a generic 500. Only
+    contention gets that sentence (`is_lock_contention`): a disk I/O error or
+    a dropped connection propagates as itself, because telling the user to try
+    again would send them into the same failure.
     """
     dialect = db.get_bind().dialect.name
     try:
@@ -72,6 +112,8 @@ async def lock_vehicle_for_write(db: AsyncSession, vin: str) -> None:
                 text("SELECT vin FROM vehicles WHERE vin = :vin FOR UPDATE"),
                 {"vin": vin},
             )
-    except OperationalError as exc:
+    except DBAPIError as exc:
+        if not is_lock_contention(exc):
+            raise
         logger.warning("Vehicle write lock unavailable for %s: %s", vin, exc)
         raise HTTPException(status_code=503, detail=LOCK_BUSY_DETAIL) from exc

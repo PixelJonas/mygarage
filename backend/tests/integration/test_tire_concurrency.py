@@ -16,21 +16,25 @@ hands ONE session to every request and therefore cannot race.
 from __future__ import annotations
 
 import asyncio
+import sqlite3
 import uuid
 
 import pytest
 from fastapi import HTTPException
 from httpx import AsyncClient
 from sqlalchemy import func, select, text
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import app.services.tire_service as tire_service_module
 import app.services.tire_set_service as tire_set_service_module
+from app.database import configure_sqlite_engine
 from app.models.tire import Tire, TireMountPeriod
 from app.models.user import User
 from app.models.vehicle import Vehicle
 from app.schemas.tire import TireMountRequest
 from app.services.tire_service import TireService
-from app.services.vehicle_lock import LOCK_CONTRACT, lock_vehicle_for_write
+from app.services.vehicle_lock import LOCK_BUSY_DETAIL, LOCK_CONTRACT, lock_vehicle_for_write
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -60,6 +64,26 @@ async def _seed(db_session) -> tuple[str, User, int, int]:
 async def _mount(sessionmaker, user: User, vin: str, tire_id: int):
     async with sessionmaker() as db:
         return await TireService(db).mount_tire(vin, tire_id, TireMountRequest(position="FL"), user)
+
+
+class _DriverError(Exception):
+    """A driver exception carrying a PostgreSQL SQLSTATE, or no code at all.
+
+    asyncpg errors reach SQLAlchemy's `.orig` with both `sqlstate` and
+    `pgcode` set; psycopg2 sets `pgcode`, psycopg sets `sqlstate`.
+    """
+
+    def __init__(self, message: str, *, sqlstate: str | None = None) -> None:
+        super().__init__(message)
+        self.sqlstate = sqlstate
+        self.pgcode = sqlstate
+
+
+def _sqlite_error(message: str, code: int) -> sqlite3.OperationalError:
+    """A sqlite3 error with the code the driver attaches to real ones."""
+    error = sqlite3.OperationalError(message)
+    error.sqlite_errorcode = code
+    return error
 
 
 class TestCornerRace:
@@ -144,6 +168,74 @@ class TestLockHelper:
         async with test_sessionmaker() as db:
             await db.execute(select(Vehicle).limit(1))
             await lock_vehicle_for_write(db, "X" * 17)
+            await db.rollback()
+
+    async def test_a_lock_held_past_the_wait_is_a_503(
+        self, db_session, test_engine, test_sessionmaker
+    ):
+        """Real contention, on whichever dialect the suite runs.
+
+        SQLite: a second engine whose connections wait 100 ms for the write
+        lock rather than the default. PostgreSQL: `lock_timeout` on the waiting
+        transaction, which turns a FOR UPDATE wait into SQLSTATE 55P03. asyncpg
+        surfaces that through SQLAlchemy as a plain DBAPIError, not an
+        OperationalError, so a handler catching only the latter never saw it.
+        """
+        vin, _user, _a, _b = await _seed(db_session)
+        sqlite = test_engine.dialect.name == "sqlite"
+        impatient = (
+            create_async_engine(test_engine.url, connect_args={"timeout": 0.1}) if sqlite else None
+        )
+        if impatient is not None:
+            configure_sqlite_engine(impatient)
+        waiters = (
+            async_sessionmaker(impatient, class_=AsyncSession, expire_on_commit=False)
+            if impatient is not None
+            else test_sessionmaker
+        )
+        try:
+            async with test_sessionmaker() as holder:
+                await lock_vehicle_for_write(holder, vin)
+                try:
+                    async with waiters() as waiter:
+                        if not sqlite:
+                            await waiter.execute(text("SET LOCAL lock_timeout = '100ms'"))
+                        with pytest.raises(HTTPException) as refused:
+                            await lock_vehicle_for_write(waiter, vin)
+                        await waiter.rollback()
+                finally:
+                    await holder.rollback()
+        finally:
+            if impatient is not None:
+                await impatient.dispose()
+        assert refused.value.status_code == 503
+        assert refused.value.detail == LOCK_BUSY_DETAIL
+
+    @pytest.mark.parametrize(
+        "orig",
+        [
+            pytest.param(_sqlite_error("disk I/O error", sqlite3.SQLITE_IOERR), id="sqlite-ioerr"),
+            pytest.param(_DriverError("connection is closed", sqlstate="08006"), id="pg-08006"),
+            pytest.param(_DriverError("the connection was lost"), id="no-code"),
+        ],
+    )
+    async def test_a_driver_failure_that_is_not_contention_is_re_raised(
+        self, test_sessionmaker, monkeypatch, orig
+    ):
+        """A disk error or a dropped connection is not "another change in progress".
+
+        Mapping every OperationalError to that sentence sent the user to retry
+        something that would fail the same way, and logged it as a warning.
+        """
+        async with test_sessionmaker() as db:
+
+            async def failing(*_args, **_kwargs):
+                raise OperationalError("BEGIN IMMEDIATE", {}, orig)
+
+            monkeypatch.setattr(db, "execute", failing)
+            with pytest.raises(OperationalError) as raised:
+                await lock_vehicle_for_write(db, "X" * 17)
+            assert raised.value.orig is orig
             await db.rollback()
 
 
