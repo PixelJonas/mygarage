@@ -7,13 +7,9 @@ import { useUpdateMountPeriod } from '../../hooks/queries/useTires'
 import { useUnitFormat } from '../../hooks/useUnitFormat'
 import type { MountedPosition, Tire, TireMountPeriod, TirePosition } from '../../types/tire'
 import { getActionErrorMessage } from '../../utils/httpErrorHandler'
-import {
-  canonicalFromUnitField,
-  seedUnitField,
-  type UnitFieldOrigin,
-} from '../../utils/unitFormat'
+import { canonicalFromUnitField, seedUnitField } from '../../utils/unitFormat'
 import { Button, Drawer, Field, Input } from '../ui'
-import MountEventFields from './MountEventFields'
+import MountEventFields, { type OdometerFieldValue } from './MountEventFields'
 
 interface MountPeriodEditorProps {
   vin: string
@@ -26,11 +22,10 @@ interface MountPeriodEditorProps {
 
 interface EditorState {
   mounted_on: string
-  mounted_odometer_km: string
+  mounted_odometer_km: OdometerFieldValue
   dismounted_on: string
-  dismounted_odometer_km: string
+  dismounted_odometer_km: OdometerFieldValue
   notes: string
-  origins: { mount: UnitFieldOrigin; dismount: UnitFieldOrigin }
 }
 
 /**
@@ -64,11 +59,10 @@ export default function MountPeriodEditor({
     const dismount = seedUnitField(num(period.dismounted_odometer_km), u.distance)
     return {
       mounted_on: period.mounted_on ?? '',
-      mounted_odometer_km: mount.display,
+      mounted_odometer_km: { typed: mount.display, origin: mount },
       dismounted_on: period.dismounted_on ?? '',
-      dismounted_odometer_km: dismount.display,
+      dismounted_odometer_km: { typed: dismount.display, origin: dismount },
       notes: period.notes ?? '',
-      origins: { mount, dismount },
     }
   })
 
@@ -84,8 +78,8 @@ export default function MountPeriodEditor({
       periodId: period.id,
       mounted_on: form.mounted_on || null,
       mounted_odometer_km: canonicalFromUnitField(
-        form.mounted_odometer_km,
-        form.origins.mount,
+        form.mounted_odometer_km.typed,
+        form.mounted_odometer_km.origin,
         u.distance
       ),
       notes: form.notes.trim() || null,
@@ -93,8 +87,8 @@ export default function MountPeriodEditor({
         ? {
             dismounted_on: form.dismounted_on,
             dismounted_odometer_km: canonicalFromUnitField(
-              form.dismounted_odometer_km,
-              form.origins.dismount,
+              form.dismounted_odometer_km.typed,
+              form.dismounted_odometer_km.origin,
               u.distance
             ),
           }

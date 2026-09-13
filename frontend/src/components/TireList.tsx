@@ -41,7 +41,7 @@ import {
   ListRow,
   Toggle,
 } from './ui'
-import MountEventFields from './tires/MountEventFields'
+import MountEventFields, { EMPTY_ODOMETER, type OdometerFieldValue } from './tires/MountEventFields'
 import MountPeriodEditor from './tires/MountPeriodEditor'
 import TireHistoryDrawer from './tires/TireHistoryDrawer'
 
@@ -122,9 +122,9 @@ interface TireFormState {
   /** YYYY-MM-DD. Only meaningful on the corner branch of Add; ignored on Edit
    *  and on the storage branch, both of which hide the field that sets it. */
   mounted_on: string
-  /** The odometer as typed, in the user's distance unit. Same scope as
-   *  `mounted_on`. */
-  mounted_odometer_km: string
+  /** The odometer as typed, in the user's distance unit, with the canonical
+   *  value it was last seeded from. Same scope as `mounted_on`. */
+  mounted_odometer_km: OdometerFieldValue
   storage_location: string
   origins: TireFormOrigins
 }
@@ -218,7 +218,7 @@ export default function TireList({ vin }: TireListProps) {
    * dead rather than merely behind -- and a fit needs one field, which does not
    * justify a nested surface even if it worked. */
   const [fittingSetId, setFittingSetId] = useState<number | null>(null)
-  const [fitOdometer, setFitOdometer] = useState('')
+  const [fitOdometer, setFitOdometer] = useState<OdometerFieldValue>(EMPTY_ODOMETER)
   const [mountTireId, setMountTireId] = useState<number | null>(null)
   const [dismountTireId, setDismountTireId] = useState<number | null>(null)
   const [mountPosition, setMountPosition] = useState<MountedPosition>('FL')
@@ -227,10 +227,10 @@ export default function TireList({ vin }: TireListProps) {
    * and silently became that period's closing bound. A wrong odometer here is
    * not a cosmetic slip: it is the number the tire's whole distance is
    * computed from. */
-  const [mountOdometer, setMountOdometer] = useState('')
-  const [dismountOdometer, setDismountOdometer] = useState('')
-  const [retireOdometer, setRetireOdometer] = useState('')
-  const [rotateOdometer, setRotateOdometer] = useState('')
+  const [mountOdometer, setMountOdometer] = useState<OdometerFieldValue>(EMPTY_ODOMETER)
+  const [dismountOdometer, setDismountOdometer] = useState<OdometerFieldValue>(EMPTY_ODOMETER)
+  const [retireOdometer, setRetireOdometer] = useState<OdometerFieldValue>(EMPTY_ODOMETER)
+  const [rotateOdometer, setRotateOdometer] = useState<OdometerFieldValue>(EMPTY_ODOMETER)
   // One date per dialog, defaulting to the LOCAL calendar date. Reset to
   // today on success like the odometer is reset to empty.
   const [mountDate, setMountDate] = useState(() => formatDateForInput())
@@ -282,7 +282,7 @@ export default function TireList({ vin }: TireListProps) {
       min_tread_mm: minTread.display,
       notes: tire?.notes ?? '',
       mounted_on: formatDateForInput(),
-      mounted_odometer_km: '',
+      mounted_odometer_km: EMPTY_ODOMETER,
       storage_location: tire?.storage_location ?? '',
       origins: { tread_depth_mm: tread, min_tread_mm: minTread, pressure_kpa: pressure },
     }
@@ -640,8 +640,8 @@ export default function TireList({ vin }: TireListProps) {
         ...shared,
         mounted_on: form.mounted_on,
         mounted_odometer_km: canonicalFromUnitField(
-          form.mounted_odometer_km,
-          { canonical: null, display: '' },
+          form.mounted_odometer_km.typed,
+          form.mounted_odometer_km.origin,
           u.distance
         ),
       },
@@ -663,8 +663,8 @@ export default function TireList({ vin }: TireListProps) {
       {
         tireId: retireTireId,
         dismounted_odometer_km: canonicalFromUnitField(
-          retireOdometer,
-          { canonical: null, display: '' },
+          retireOdometer.typed,
+          retireOdometer.origin,
           u.distance
         ),
         dismounted_on: retireDate,
@@ -673,7 +673,7 @@ export default function TireList({ vin }: TireListProps) {
         onSuccess: () => {
           toast.success(t('tireList.retired'))
           setRetireTireId(null)
-          setRetireOdometer('')
+          setRetireOdometer(EMPTY_ODOMETER)
           setRetireDate(formatDateForInput())
         },
         onError: (err: unknown) =>
@@ -734,18 +734,14 @@ export default function TireList({ vin }: TireListProps) {
     mountSet.mutate(
       {
         setId,
-        odometer_km: canonicalFromUnitField(
-          fitOdometer,
-          { canonical: null, display: '' },
-          u.distance
-        ),
+        odometer_km: canonicalFromUnitField(fitOdometer.typed, fitOdometer.origin, u.distance),
         mounted_on: fitDate,
       },
       {
         onSuccess: () => {
           toast.success(t('tireList.setFitted'))
           setFittingSetId(null)
-          setFitOdometer('')
+          setFitOdometer(EMPTY_ODOMETER)
           setFitDate(formatDateForInput())
           setSetsOpen(false)
         },
@@ -777,8 +773,8 @@ export default function TireList({ vin }: TireListProps) {
       {
         moves,
         odometer_km: canonicalFromUnitField(
-          rotateOdometer,
-          { canonical: null, display: '' },
+          rotateOdometer.typed,
+          rotateOdometer.origin,
           u.distance
         ),
         rotated_on: rotateDate,
@@ -787,7 +783,7 @@ export default function TireList({ vin }: TireListProps) {
         onSuccess: () => {
           toast.success(t('tireList.rotated'))
           setRotateOpen(false)
-          setRotateOdometer('')
+          setRotateOdometer(EMPTY_ODOMETER)
           setRotateDate(formatDateForInput())
         },
         onError: (err: unknown) =>
@@ -1235,8 +1231,8 @@ export default function TireList({ vin }: TireListProps) {
                     position: mountPosition,
                     mounted_on: mountDate,
                     mounted_odometer_km: canonicalFromUnitField(
-                      mountOdometer,
-                      { canonical: null, display: '' },
+                      mountOdometer.typed,
+                      mountOdometer.origin,
                       u.distance
                     ),
                   },
@@ -1244,7 +1240,7 @@ export default function TireList({ vin }: TireListProps) {
                     onSuccess: () => {
                       toast.success(t('tireList.mounted'))
                       setMountTireId(null)
-                      setMountOdometer('')
+                      setMountOdometer(EMPTY_ODOMETER)
                       setMountDate(formatDateForInput())
                     },
                     onError: (err: unknown) =>
@@ -1307,8 +1303,8 @@ export default function TireList({ vin }: TireListProps) {
                   {
                     tireId: dismountTireId,
                     dismounted_odometer_km: canonicalFromUnitField(
-                      dismountOdometer,
-                      { canonical: null, display: '' },
+                      dismountOdometer.typed,
+                      dismountOdometer.origin,
                       u.distance
                     ),
                     dismounted_on: dismountDate,
@@ -1321,7 +1317,7 @@ export default function TireList({ vin }: TireListProps) {
                     onSuccess: () => {
                       toast.success(t('tireList.dismounted'))
                       setDismountTireId(null)
-                      setDismountOdometer('')
+                      setDismountOdometer(EMPTY_ODOMETER)
                       setDismountDate(formatDateForInput())
                       setDismountLocation('')
                     },
@@ -1565,7 +1561,7 @@ export default function TireList({ vin }: TireListProps) {
                           disabled={tireSet.tire_ids.length === 0 || mountSet.isPending}
                           onClick={() => {
                             setFittingSetId(tireSet.id)
-                            setFitOdometer('')
+                            setFitOdometer(EMPTY_ODOMETER)
                             setFitDate(formatDateForInput())
                           }}
                         >

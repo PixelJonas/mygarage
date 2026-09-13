@@ -1,33 +1,26 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 
+import { IMPERIAL_UNITS } from '../../../__tests__/factories'
+
 const useNearestMock = vi.fn()
 vi.mock('../../../hooks/queries/useOdometerRecords', () => ({
   useNearestOdometer: (vin: string, date: string) => useNearestMock(vin, date),
 }))
 
+// Imperial, the default for every new account: 100000 km does not survive
+// mile rounding (100000 / 1.60934 -> 62137 mi, and back -> 99999.55958 km),
+// which is exactly the shape of the defect this file pins.
 vi.mock('../../../hooks/useUnitPreference', () => ({
   useUnitPreference: () => ({
-    system: 'metric',
+    system: 'imperial',
     showBoth: false,
-    gallonStandard: 'us',
-    units: {
-      consumption: 'l_100km',
-      distance: 'km',
-      length: 'm',
-      mass: 'kg',
-      pressure: 'kpa',
-      secondary_gallon: 'us',
-      speed: 'kmh',
-      temperature: 'c',
-      torque: 'nm',
-      tread: 'mm',
-      volume: 'L',
-    },
+    gallonStandard: IMPERIAL_UNITS.secondary_gallon,
+    units: IMPERIAL_UNITS,
   }),
 }))
 
-import MountEventFields from '../MountEventFields'
+import MountEventFields, { EMPTY_ODOMETER } from '../MountEventFields'
 
 const VIN = '1HGCM82633A004352'
 const READING = { date: '2026-04-01', odometer_km: '100000.00', source: 'manual', days_away: -9 }
@@ -43,7 +36,7 @@ function renderField(overrides: Partial<React.ComponentProps<typeof MountEventFi
       date="2026-04-10"
       onDateChange={onDateChange}
       odometerLabel="tireList.odometer"
-      odometer=""
+      odometer={EMPTY_ODOMETER}
       onOdometerChange={onOdometerChange}
       {...overrides}
     />
@@ -62,19 +55,39 @@ describe('MountEventFields', () => {
     expect(screen.getByLabelText('tireList.eventDate')).toHaveValue('2026-04-10')
   })
 
-  it('shows the suggestion and fills the odometer only on Use', () => {
+  it('shows the suggestion and reports its exact canonical origin only on Use', () => {
     const { onOdometerChange } = renderField()
     expect(screen.getByTestId('mount-suggestion')).toHaveTextContent('tireList.suggestion')
     expect(onOdometerChange).not.toHaveBeenCalled()
     fireEvent.click(screen.getByText('tireList.suggestionUse'))
     expect(onOdometerChange).toHaveBeenCalledTimes(1)
-    expect(Number(onOdometerChange.mock.calls[0][0])).toBe(100000)
+    const next = onOdometerChange.mock.calls[0][0]
+    // The origin must carry the reading's EXACT canonical value (100000), not
+    // a re-conversion of the rounded '62137' mi it displays -- that
+    // re-conversion is what used to store 99999.55958.
+    expect(next.origin.canonical).toBe(100000)
+    expect(next.typed).toBe('62137')
+    expect(next.typed).toBe(next.origin.display)
   })
 
   it('never writes over a value the user typed when a suggestion arrives', () => {
-    const { onOdometerChange } = renderField({ odometer: '123' })
+    const { onOdometerChange } = renderField({
+      odometer: { typed: '123', origin: EMPTY_ODOMETER.origin },
+    })
     expect(screen.getByLabelText('tireList.odometer')).toHaveValue(123)
     expect(onOdometerChange).not.toHaveBeenCalled()
+  })
+
+  it('typing keeps the prior origin instead of resetting it', () => {
+    // A non-null seeded origin is what makes this assertion false-able: if
+    // typing reset the origin to the empty one, this would still pass with a
+    // seed of `{canonical: null, display: ''}`.
+    const seededOrigin = { canonical: 55000, display: '55000' }
+    const { onOdometerChange } = renderField({
+      odometer: { typed: '55000', origin: seededOrigin },
+    })
+    fireEvent.change(screen.getByLabelText('tireList.odometer'), { target: { value: '55001' } })
+    expect(onOdometerChange).toHaveBeenCalledWith({ typed: '55001', origin: seededOrigin })
   })
 
   it('says so quietly when the vehicle has no readings', () => {

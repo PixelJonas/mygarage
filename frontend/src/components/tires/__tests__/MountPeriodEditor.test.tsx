@@ -1,31 +1,31 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, within } from '@testing-library/react'
 
+import { IMPERIAL_UNITS, METRIC_UNITS, type UnitSet } from '../../../__tests__/factories'
+
 const useUpdateMock = vi.fn()
 vi.mock('../../../hooks/queries/useTires', () => ({
   useUpdateMountPeriod: () => useUpdateMock(),
 }))
+
+/** Overridden per test; defaults match every pre-existing test's expectation
+ *  of no suggestion. */
+let nearestData: { date: string; odometer_km: string; source: string; days_away: number } | null | undefined =
+  undefined
+let nearestSuccess = false
 vi.mock('../../../hooks/queries/useOdometerRecords', () => ({
-  useNearestOdometer: () => ({ data: undefined, isSuccess: false }),
+  useNearestOdometer: () => ({ data: nearestData, isSuccess: nearestSuccess }),
 }))
+
+/** Overridden per test; defaults to metric, matching every pre-existing
+ *  test's fixed odometers. */
+let units: UnitSet = METRIC_UNITS
 vi.mock('../../../hooks/useUnitPreference', () => ({
   useUnitPreference: () => ({
-    system: 'metric',
+    system: units.distance === 'km' ? 'metric' : 'imperial',
     showBoth: false,
-    gallonStandard: 'us',
-    units: {
-      consumption: 'l_100km',
-      distance: 'km',
-      length: 'm',
-      mass: 'kg',
-      pressure: 'kpa',
-      secondary_gallon: 'us',
-      speed: 'kmh',
-      temperature: 'c',
-      torque: 'nm',
-      tread: 'mm',
-      volume: 'L',
-    },
+    gallonStandard: units.secondary_gallon,
+    units,
   }),
 }))
 
@@ -44,6 +44,9 @@ describe('MountPeriodEditor', () => {
   beforeEach(() => {
     mutate.mockReset()
     useUpdateMock.mockReturnValue({ mutate, isPending: false })
+    units = METRIC_UNITS
+    nearestData = undefined
+    nearestSuccess = false
   })
 
   it('seeds every field from a closed period and sends all five', () => {
@@ -88,5 +91,36 @@ describe('MountPeriodEditor', () => {
     fireEvent.change(input('period-dismount-date'), { target: { value: '' } })
     fireEvent.click(drawer().getByText('common:save'))
     expect(mutate).not.toHaveBeenCalled()
+  })
+
+  it('an accepted suggestion on imperial units stores the exact value it offered', () => {
+    units = IMPERIAL_UNITS
+    // The period's own mount odometer (50000 km) is deliberately different
+    // from the offered reading (100000 km), so a bug that keeps the OLD
+    // origin while the typed string changes to the NEW suggestion cannot
+    // coincidentally pass. 100000 km does not survive mile rounding
+    // (100000 / 1.60934 -> 62137 mi, and back -> 99999.55958 km), which is
+    // the exact shape of the defect this pins.
+    const period = { ...CLOSED, id: 7, mounted_odometer_km: '50000.00' }
+    nearestData = { date: '2026-01-05', odometer_km: '100000.00', source: 'manual', days_away: -5 }
+    nearestSuccess = true
+    render(<MountPeriodEditor vin={VIN} tire={TIRE as never} period={period as never} open onClose={vi.fn()} labelFor={labelFor} />)
+    // Both halves of a closed period render a suggestion from the same
+    // mocked reading, so the Use button is scoped to the mount half.
+    fireEvent.click(within(screen.getByTestId('period-mount-suggestion')).getByText('tireList.suggestionUse'))
+    fireEvent.click(drawer().getByText('common:save'))
+    expect(mutate.mock.calls[0][0].mounted_odometer_km).toBe(100000)
+  })
+
+  it('an untouched odometer on imperial units still sends the period\'s exact stored value on a notes-only save', () => {
+    units = IMPERIAL_UNITS
+    // 100000 km does not survive mile rounding either, so this proves the
+    // untouched-field path keeps returning the seeded canonical rather than
+    // reconverting the rounded display -- the refactor must not regress it.
+    const period = { ...CLOSED, id: 8, mounted_odometer_km: '100000.00' }
+    render(<MountPeriodEditor vin={VIN} tire={TIRE as never} period={period as never} open onClose={vi.fn()} labelFor={labelFor} />)
+    fireEvent.change(input('period-notes'), { target: { value: 'rotated in' } })
+    fireEvent.click(drawer().getByText('common:save'))
+    expect(mutate.mock.calls[0][0].mounted_odometer_km).toBe(100000)
   })
 })
