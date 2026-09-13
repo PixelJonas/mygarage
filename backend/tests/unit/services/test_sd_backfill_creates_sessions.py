@@ -34,10 +34,14 @@ from datetime import datetime, timedelta
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.drive_session import DriveSession
+from app.models.livelink_device import LiveLinkDevice
+from app.models.user import User
+from app.models.vehicle import Vehicle
 from app.services.sd_log_parser import SdRow
+from app.services.session_boundaries import group_drives
 from app.services.telemetry_service import TelemetryService
 
 pytestmark = pytest.mark.asyncio
@@ -407,4 +411,175 @@ class TestItRunsOncePerCall:
         await db_session.refresh(session)
         assert session.distance_km == pytest.approx(7.0), (
             "the refresh was skipped, which is what a span built from inserts does"
+        )
+
+
+# P4: session reconstruction at a boundary two drives share.
+#
+# Drive 1 moves at minutes 0 and 5. A contact-only sample at minute 15 (RPM,
+# below the movement floor, no odometer proof) chains `group_drives`' walk-back
+# for drive 2 all the way back through drive 1's own burst, so the "never reach
+# back into a drive already accounted for" clamp fires: drive 2's `started_at`
+# is pinned to drive 1's `movement_ended_at` (minute 5) instead of the earlier
+# instant the walk-back would otherwise have found. That shared instant is the
+# boundary these tests pin.
+_BOUNDARY_SPECS: tuple[tuple[int, str, float], ...] = (
+    (0, "A6-ODOMETER", 50_000.0),
+    (0, "SPEED", 45.0),
+    (5, "SPEED", 50.0),
+    (15, "ENGINE_RPM", 700.0),
+    (25, "SPEED", 48.0),
+    (30, "SPEED", 52.0),
+    (30, "A6-ODOMETER", 50_010.0),
+)
+
+
+def _boundary_samples() -> list[tuple[datetime, str, float]]:
+    return [(T0 + timedelta(minutes=m), key, value) for m, key, value in _BOUNDARY_SPECS]
+
+
+async def _seed_device(
+    maker: async_sessionmaker[AsyncSession], prefix: str, suffix: str
+) -> tuple[str, str]:
+    """Seed a user/vehicle/device on their own committed transaction.
+
+    Mirrors `make_livelink_vehicle`, but commits rather than flushes: the
+    reconstruction calls below open their own sessions on this same engine,
+    and a merely-flushed row is invisible to a different connection.
+    """
+    async with maker() as db:
+        user = User(
+            username=f"{prefix}_user_{suffix}",
+            email=f"{prefix}_{suffix}@example.com",
+            hashed_password="x",
+            is_active=True,
+            is_admin=False,
+        )
+        db.add(user)
+        await db.flush()
+
+        vin = f"{prefix.upper()}{suffix:0>6}"[-17:]
+        db.add(Vehicle(vin=vin, user_id=user.id, nickname=f"{prefix} {suffix}", vehicle_type="Car"))
+        await db.flush()
+
+        device_id = f"{prefix}dev{suffix:0>4}"[-20:]
+        db.add(LiveLinkDevice(device_id=device_id, vin=vin, enabled=True, kind="wican"))
+        await db.commit()
+
+    return vin, device_id
+
+
+async def _session_rows(
+    maker: async_sessionmaker[AsyncSession], device_id: str
+) -> list[tuple[int, datetime, datetime | None, float | None, float | None]]:
+    """`(id, started_at, ended_at, distance_km, max_speed)` for every session.
+
+    Read into plain tuples inside the session block on purpose: the objects
+    themselves must not be touched after their session closes.
+    """
+    async with maker() as db:
+        rows = await _sessions(db, device_id)
+        return [(s.id, s.started_at, s.ended_at, s.distance_km, s.max_speed) for s in rows]
+
+
+class TestGroupDrivesSharedBoundary:
+    """Step 1, encoded: where `group_drives` puts the shared instant.
+
+    Pure and database-free on purpose -- a bound mutation here proves nothing
+    about whether the overlap query in `_reconstruct_sessions_from_batch` can
+    see an earlier drive's pending session, which is what the next two tests
+    are for.
+    """
+
+    def test_group_drives_gives_a_shared_boundary_to_one_drive(self):
+        drives = group_drives(_boundary_samples(), GAP)
+
+        assert len(drives) == 2, f"expected 2 drives, got {len(drives)}"
+        first, second = drives
+        assert first.started_at == T0
+        assert first.movement_started_at == T0
+        assert first.movement_ended_at == T0 + timedelta(minutes=5)
+
+        assert second.started_at == T0 + timedelta(minutes=5)
+        assert second.movement_started_at == T0 + timedelta(minutes=25)
+        assert second.movement_ended_at == T0 + timedelta(minutes=30)
+
+        # The shared instant is drive 1's own `movement_ended_at` -- real
+        # evidence drive 1 recorded. Drive 2's `started_at` at that same
+        # instant is only the clamp floor, not evidence of its own: drive 2's
+        # actual movement does not begin until twenty minutes later. The
+        # instant belongs to drive 1.
+        shared = first.movement_ended_at
+        assert second.started_at == shared
+        assert second.movement_started_at > shared, (
+            "drive 2 has no evidence at the shared instant; it is drive 1's "
+            "movement_ended_at, borrowed only as a floor"
+        )
+
+
+class TestReconstructionAtATouchingBoundary:
+    """P4: the two drives `TestGroupDrivesSharedBoundary` describes, replayed
+    through `_reconstruct_sessions_from_batch` on a session that does not
+    autoflush, the way `app/database.py` builds every production session.
+
+    The shared `db_session` fixture autoflushes, which would silently reveal
+    an in-loop, unflushed session to the next drive's overlap query -- a unit
+    of work production never runs. Builds its own session over `test_engine`
+    instead, matching `test_tire_periods.py`'s
+    `TestEditorUnderProductionUnitOfWork`.
+    """
+
+    @staticmethod
+    def _maker(test_engine) -> async_sessionmaker[AsyncSession]:
+        return async_sessionmaker(
+            test_engine, class_=AsyncSession, expire_on_commit=False, autoflush=False
+        )
+
+    async def test_two_touching_drives_in_one_batch_make_two_sessions(
+        self, test_engine, init_test_db
+    ):
+        maker = self._maker(test_engine)
+        vin, device_id = await _seed_device(maker, "sdbound", "1")
+
+        async with maker() as db:
+            await TelemetryService(db).bulk_backfill(vin, device_id, _rows(*_BOUNDARY_SPECS))
+
+        expected = group_drives(_boundary_samples(), GAP)
+        rows = await _session_rows(maker, device_id)
+
+        assert len(rows) == 2, f"expected 2 sessions, got {len(rows)}"
+        (_, start1, end1, _, _), (_, start2, end2, _, _) = rows
+        assert start1 == expected[0].started_at
+        assert end1 == expected[0].movement_ended_at
+        assert start2 == expected[1].started_at
+        assert end2 == expected[1].movement_ended_at
+
+        # Ownership rule: the shared instant is drive 1's, so the windows
+        # touch at it without overlapping.
+        assert end1 == start2
+
+    async def test_running_the_same_backfill_twice_keeps_the_sessions(
+        self, test_engine, init_test_db
+    ):
+        maker = self._maker(test_engine)
+        vin, device_id = await _seed_device(maker, "sdbound", "2")
+        rows_in = _rows(*_BOUNDARY_SPECS)
+
+        async with maker() as db:
+            await TelemetryService(db).bulk_backfill(vin, device_id, rows_in)
+        first_run = await _session_rows(maker, device_id)
+        assert len(first_run) == 2, f"expected 2 sessions after the first run, got {len(first_run)}"
+
+        async with maker() as db:
+            await TelemetryService(db).bulk_backfill(vin, device_id, rows_in)
+        second_run = await _session_rows(maker, device_id)
+
+        assert [r[0] for r in second_run] == [r[0] for r in first_run], (
+            "the same replay must not create or drop a session"
+        )
+        assert [r[1:3] for r in second_run] == [r[1:3] for r in first_run], (
+            "the same replay must not move a window"
+        )
+        assert [r[3:] for r in second_run] == [r[3:] for r in first_run], (
+            "the same replay must not change distance or max speed"
         )
