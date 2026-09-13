@@ -921,6 +921,54 @@ class TestMountPeriodEditor:
         # being computable.
         assert first_id not in fixed.json()["blocking_period_ids"]
 
+    async def test_an_edit_that_hides_behind_a_running_maximum_is_refused(
+        self, client: AsyncClient, auth_headers, vehicle, db_session
+    ):
+        """A legacy FL history where Y is already below W's dismount and Z below
+        X's. X has no mount odometer. Moving X to February and ending it at
+        7,800 km puts it before Y, which mounts at 7,200 km: a contradiction
+        this edit creates. The date-order odometer rule used to report Y only
+        against W, the period holding the highest dismount, so X was no
+        participant of anything and the edit was accepted."""
+        tire = Tire(vin=vehicle, position="FL", brand="Hidden", mount_periods=[], readings=[])
+        db_session.add(tire)
+        await db_session.flush()
+        # Captured immediately: `_periods` below calls `expire_all()`.
+        tire_id = tire.id
+        for start, end, lo, hi in (
+            (date_type(2024, 1, 1), date_type(2024, 2, 1), None, "8000"),
+            (date_type(2024, 3, 1), date_type(2024, 4, 1), "7200", "8500"),
+            (date_type(2024, 5, 1), date_type(2024, 6, 1), None, "9000"),
+            (date_type(2024, 7, 1), None, "7000", None),
+        ):
+            db_session.add(
+                TireMountPeriod(
+                    tire_id=tire_id,
+                    position="FL",
+                    mounted_on=start,
+                    dismounted_on=end,
+                    mounted_odometer_km=None if lo is None else Decimal(lo),
+                    dismounted_odometer_km=None if hi is None else Decimal(hi),
+                    is_assumed=False,
+                )
+            )
+        await db_session.commit()
+        x_id = (await _periods(db_session, tire_id))[2].id
+        base = f"/api/vehicles/{vehicle}/tires"
+
+        hidden = await client.put(
+            f"{base}/{tire_id}/mount-periods/{x_id}",
+            headers=auth_headers,
+            json={
+                "mounted_on": "2024-02-15",
+                "dismounted_on": "2024-02-20",
+                "dismounted_odometer_km": "7800",
+            },
+        )
+        assert hidden.status_code == 409, hidden.text
+        x = (await _periods(db_session, tire_id))[2]
+        assert (x.mounted_on, x.dismounted_odometer_km) == (date_type(2024, 5, 1), Decimal("9000"))
+
     async def test_a_conflict_names_the_intruding_period(
         self, client: AsyncClient, auth_headers, vehicle, db_session
     ):

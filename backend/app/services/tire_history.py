@@ -19,7 +19,6 @@ list after a flush and before the commit.
 
 from __future__ import annotations
 
-import datetime as dt
 from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
@@ -71,10 +70,12 @@ def validate_period_history(
     rotation looks like. An unknown bound is a gap, never a fault; the
     migrated assumed period has two of them.
 
-    Rules 1, 2 and 5 look at every period. Rules 3 and 4 are sweeps, and each
-    runs ONLY over the periods whose ordering key is known: the mount date
-    for 3, the mount odometer for 4. A period with an unknown key is neither
-    judged nor used to judge others. Sorting unknown dates as "earliest", the
+    Rules 1, 2 and 5 look at every period. Rules 3 and 4 are orderings, and
+    each runs ONLY over the periods whose ordering key is known: the mount
+    date for 3 and 4a, a fully known odometer span for 4b. A period with an
+    unknown key is neither judged nor used to judge others. Rules 3 and 4a
+    name every earlier period a later one contradicts, so one period can carry
+    several faults of one code, one per counterpart. Sorting unknown dates as "earliest", the
     way the response sorts for display, is wrong here: clearing a later open
     period's mount date would sort it first, and every earlier closed period
     would then "start while it is still open".
@@ -120,58 +121,66 @@ def validate_period_history(
                 f"odometer of {p.mounted_odometer_km} km.",
             )
 
-    # 3: dates, over periods with a known mount date, in date order. Running
-    # state rather than the neighbour, so a period nested inside an earlier,
-    # non-adjacent one is caught.
+    # 3: dates, over periods with a known mount date, in date order. Each
+    # period is judged against EVERY earlier one, not a running maximum. A
+    # running maximum names only the period holding it, so an earlier period
+    # that also contradicts the later one is no participant of any fault, and
+    # the incremental policy cannot see a write that made it contradict. Rule 3
+    # could not actually hide one that way (every dated period is both judged
+    # and a possible counterpart); it is written like 4a so the two stay one
+    # shape.
     dated = sorted(
         (p for p in periods if p.mounted_on is not None), key=lambda p: (p.mounted_on, p.id or 0)
     )
-    still_open: TireMountPeriod | None = None
-    latest_end: tuple[dt.date, TireMountPeriod] | None = None
-    # 4a rides along the same chronological sweep: the odometer cannot go
-    # down between a known earlier dismount and a known later mount.
-    highest_end: tuple[Decimal, TireMountPeriod] | None = None
-    for q in dated:
-        if still_open is not None:
-            add(
-                q,
-                OVERLAPPING_DATES,
-                f"{_label(q)} starts while {_label(still_open)} is still open.",
-                counterpart=still_open,
-            )
-        elif latest_end is not None and q.mounted_on < latest_end[0]:
-            add(
-                q,
-                OVERLAPPING_DATES,
-                f"{_label(q)} is mounted on {q.mounted_on}, before {_label(latest_end[1])} was "
-                f"dismounted on {latest_end[0]}.",
-                counterpart=latest_end[1],
-            )
-        if (
-            q.mounted_odometer_km is not None
-            and highest_end is not None
-            and q.mounted_odometer_km < highest_end[0]
-        ):
-            add(
-                q,
-                OVERLAPPING_ODOMETER,
-                f"{_label(q)} is mounted at {q.mounted_odometer_km} km, below "
-                f"{_label(highest_end[1])}'s dismount at {highest_end[0]} km.",
-                counterpart=highest_end[1],
-            )
-        if q.dismounted_on is None:
-            still_open = q
-        elif latest_end is None or q.dismounted_on > latest_end[0]:
-            latest_end = (q.dismounted_on, q)
-        if q.dismounted_odometer_km is not None and (
-            highest_end is None or q.dismounted_odometer_km > highest_end[0]
-        ):
-            highest_end = (q.dismounted_odometer_km, q)
+    for index, q in enumerate(dated):
+        # Narrowed again for pyright, which cannot see the filter that built
+        # `dated` through the generator.
+        mounted_on = q.mounted_on
+        assert mounted_on is not None
+        for earlier in dated[:index]:
+            if earlier.dismounted_on is None:
+                add(
+                    q,
+                    OVERLAPPING_DATES,
+                    f"{_label(q)} starts while {_label(earlier)} is still open.",
+                    counterpart=earlier,
+                )
+            elif mounted_on < earlier.dismounted_on:
+                add(
+                    q,
+                    OVERLAPPING_DATES,
+                    f"{_label(q)} is mounted on {mounted_on}, before {_label(earlier)} was "
+                    f"dismounted on {earlier.dismounted_on}.",
+                    counterpart=earlier,
+                )
+            # 4a rides along the same chronological order: the odometer cannot
+            # go down between a known earlier dismount and a known later mount.
+            # This is the rule a running maximum really did hide behind: a
+            # period with a dismount odometer and no mount odometer can be a
+            # counterpart but is never judged, so nothing else names it.
+            if (
+                q.mounted_odometer_km is not None
+                and earlier.dismounted_odometer_km is not None
+                and q.mounted_odometer_km < earlier.dismounted_odometer_km
+            ):
+                add(
+                    q,
+                    OVERLAPPING_ODOMETER,
+                    f"{_label(q)} is mounted at {q.mounted_odometer_km} km, below "
+                    f"{_label(earlier)}'s dismount at {earlier.dismounted_odometer_km} km.",
+                    counterpart=earlier,
+                )
 
     # 4b: order-free. Two fully bounded spans that strictly intersect are a
     # contradiction whatever their dates say: a tire cannot be in two places
     # at once. Sorted by mount odometer; the later-by-odometer span is the
     # intruder. Where 4a already named the same pair, `add` deduplicates.
+    #
+    # A running maximum is safe HERE, unlike in 3 and 4a, because every span
+    # is both judged and a possible counterpart. An earlier span P that a later
+    # span intersects, without holding the maximum, is itself a participant: if
+    # P is not an intruder, the maximum after P is P's own dismount, so the
+    # next span in order (whose mount is below it) is reported against P.
     spans = sorted(
         (
             p
@@ -239,6 +248,10 @@ def new_or_touched_faults(
     PARTICIPANTS, not on the intruder alone: the counterpart of an overlap
     cannot be edited to make it worse while the fault persists.
 
+    The faults about a touched period come first, keeping their order among
+    themselves: a writer raises the first one, and the sentence a user reads
+    should be about the change they just made.
+
     "Introduced" means the period now carries a CODE it did not carry before:
     a fault is new when its `(period_id, code)` was not faulted in `before`.
     The counterpart is deliberately left out of that test. The pair rules name
@@ -254,8 +267,10 @@ def new_or_touched_faults(
     still a participant.
     """
     pre_existing = {(f.period_id, f.code) for f in before.values()}
-    return [
+    refused = [
         f
         for f in after.values()
         if (f.period_id, f.code) not in pre_existing or (f.participants & touched)
     ]
+    # Stable, so the validator's order holds within each group.
+    return sorted(refused, key=lambda f: not (f.participants & touched))

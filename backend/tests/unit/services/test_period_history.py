@@ -105,11 +105,16 @@ class TestSingleRules:
         assert faults[0].counterpart_id == 1
 
     def test_a_period_nested_by_odometer_inside_a_non_adjacent_earlier_one(self):
-        """Running maximum, not the neighbour: p3 is inside p1, two places back."""
+        """Every earlier period, not the neighbour: p3 is inside p1, two places
+        back, and below p2's dismount as well."""
         p1 = _period(1, start=D(2025, 1, 1), end=D(2025, 6, 1), start_odo="0", end_odo="30000")
         p2 = _period(2, start=D(2025, 7, 1), end=D(2025, 8, 1), start_odo="30000", end_odo="31000")
         p3 = _period(3, start=D(2025, 9, 1), end=None, start_odo="20000", end_odo=None)
-        assert _codes(validate_period_history([p1, p2, p3], [])) == [(3, OVERLAPPING_ODOMETER)]
+        faults = validate_period_history([p1, p2, p3], [])
+        assert [(f.period_id, f.code, f.counterpart_id) for f in faults] == [
+            (3, OVERLAPPING_ODOMETER, 1),
+            (3, OVERLAPPING_ODOMETER, 2),
+        ]
 
 
 class TestReadingsContradictPeriods:
@@ -235,11 +240,14 @@ class TestRepairingAShadowedCounterpart:
         ]
 
     def test_the_legacy_history_reports_each_intruder_once(self):
-        """Rules 4a and 4b both name (B, A) and (C, A): one fault each."""
+        """Rules 4a and 4b both name (B, A) and (C, A): one fault each. 4a also
+        names (C, B), since C mounts below B's dismount too; 4b does not, B
+        not holding the maximum, and nothing is reported twice."""
         faults = validate_period_history(self._history("9000", "7000"), [])
         assert [(f.period_id, f.code, f.counterpart_id) for f in faults] == [
             (2, OVERLAPPING_ODOMETER, 1),
             (3, OVERLAPPING_ODOMETER, 1),
+            (3, OVERLAPPING_ODOMETER, 2),
         ]
 
     def test_fixing_the_period_holding_the_maximum_first_then_the_other(self):
@@ -282,3 +290,80 @@ class TestRepairingAShadowedCounterpart:
         before = fault_map([x, q, y], [])
         refused = new_or_touched_faults(before, dict(before), touched={3})
         assert [(f.period_id, f.counterpart_id) for f in refused] == [(2, 3)]
+
+
+class TestEveryContradictedPredecessorIsNamed:
+    """The date-order pair rules name every earlier period a later one contradicts.
+
+    They used to sweep with a running maximum and name only the period holding
+    it. A period that also contradicted the later one was then no participant
+    of anything, so the incremental policy could not see a write that made it
+    contradict: the fault it created was reported against someone else, under
+    a (period, code) that was already faulted.
+    """
+
+    W = _period(1, start=D(2024, 1, 1), end=D(2024, 2, 1), start_odo=None, end_odo="8000")
+    Y = _period(2, start=D(2024, 3, 1), end=D(2024, 4, 1), start_odo="7200", end_odo="8500")
+    Z = _period(4, start=D(2024, 7, 1), end=None, start_odo="7000", end_odo=None)
+
+    def test_a_write_hidden_behind_the_running_maximum_is_refused(self):
+        """X has a mount date and a dismount odometer but no mount odometer, so
+        it can hold a dismount maximum without ever being judged. The edit moves
+        it to February, ending at 7,800 km, before Y mounts at 7,200 km: a
+        contradiction the write creates. W's 8,000 km is the maximum Y was
+        already faulted against, so the running maximum reported Y against W
+        alone and the write was accepted."""
+        x_before = _period(
+            3, start=D(2024, 5, 1), end=D(2024, 6, 1), start_odo=None, end_odo="9000"
+        )
+        x_after = _period(
+            3, start=D(2024, 2, 15), end=D(2024, 2, 20), start_odo=None, end_odo="7800"
+        )
+        before = fault_map([self.W, self.Y, x_before, self.Z], [])
+        after = fault_map([self.W, self.Y, x_after, self.Z], [])
+        refused = new_or_touched_faults(before, after, touched={3})
+        assert refused, "the write created Y's contradiction with X and must be refused"
+        assert (refused[0].period_id, refused[0].code, refused[0].counterpart_id) == (
+            2,
+            OVERLAPPING_ODOMETER,
+            3,
+        )
+
+    def test_rule_4a_names_every_earlier_dismount_above_the_mount(self):
+        x = _period(3, start=D(2024, 2, 15), end=D(2024, 2, 20), start_odo=None, end_odo="7800")
+        faults = validate_period_history([self.W, self.Y, x, self.Z], [])
+        assert [(f.period_id, f.code, f.counterpart_id) for f in faults] == [
+            (2, OVERLAPPING_ODOMETER, 1),
+            (2, OVERLAPPING_ODOMETER, 3),
+            (4, OVERLAPPING_ODOMETER, 1),
+            (4, OVERLAPPING_ODOMETER, 3),
+            (4, OVERLAPPING_ODOMETER, 2),
+        ]
+
+    def test_rule_3_names_every_earlier_period_still_open_or_dismounted_later(self):
+        """Two open periods before a third: the third starts while BOTH are open.
+        And a period nested inside two closed ones overlaps both."""
+        a = _period(1, start=D(2026, 1, 1), end=None, start_odo=None, end_odo=None)
+        b = _period(2, start=D(2026, 2, 1), end=None, start_odo=None, end_odo=None)
+        c = _period(3, start=D(2026, 3, 1), end=D(2026, 3, 5), start_odo=None, end_odo=None)
+        assert [
+            (f.period_id, f.code, f.counterpart_id) for f in validate_period_history([c, b, a], [])
+        ] == [
+            (2, OVERLAPPING_DATES, 1),
+            (3, OVERLAPPING_DATES, 1),
+            (3, OVERLAPPING_DATES, 2),
+        ]
+        outer = _period(1, start=D(2026, 1, 1), end=D(2026, 6, 1), start_odo=None, end_odo=None)
+        inner = _period(2, start=D(2026, 2, 1), end=D(2026, 5, 1), start_odo=None, end_odo=None)
+        nested = _period(3, start=D(2026, 3, 1), end=D(2026, 3, 5), start_odo=None, end_odo=None)
+        assert [
+            (f.period_id, f.counterpart_id)
+            for f in validate_period_history([outer, inner, nested], [])
+        ] == [(2, 1), (3, 1), (3, 2)]
+
+    def test_a_touched_periods_fault_is_refused_first(self):
+        """The 409 carries the first refused fault, so it must be about the write."""
+        untouched = PeriodFault(7, OVERLAPPING_DATES, "about periods the write left alone")
+        touched = PeriodFault(5, REVERSED_ODOMETER, "about the period the write changed")
+        after = {untouched.key: untouched, touched.key: touched}
+        assert new_or_touched_faults({}, after, touched={5}) == [touched, untouched]
