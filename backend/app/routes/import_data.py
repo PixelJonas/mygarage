@@ -495,7 +495,12 @@ async def import_fuel_csv(
                 obc_l_per_100km=obc_l_per_100km,
                 obc_avg_speed_kmh=obc_avg_speed_kmh,
             )
-            db.add(record)
+            # A savepoint per row. Leaving it flushes the insert, so the next
+            # row's duplicate check sees this one (production sessions do not
+            # autoflush), and a row the database rejects rolls back alone
+            # instead of failing the whole upload at the final commit.
+            async with db.begin_nested():
+                db.add(record)
             import_result.add_success()
 
         except Exception as e:
@@ -573,7 +578,12 @@ async def import_def_csv(
                 brand=brand,
                 notes=notes,
             )
-            db.add(record)
+            # A savepoint per row. Leaving it flushes the insert, so the next
+            # row's duplicate check sees this one (production sessions do not
+            # autoflush), and a row the database rejects rolls back alone
+            # instead of failing the whole upload at the final commit.
+            async with db.begin_nested():
+                db.add(record)
             import_result.add_success()
 
         except Exception as e:
@@ -724,7 +734,12 @@ async def import_hours_csv(
                 notes=notes,
                 source="manual",
             )
-            db.add(record)
+            # A savepoint per row. Leaving it flushes the insert, so the next
+            # row's duplicate check sees this one (production sessions do not
+            # autoflush), and a row the database rejects rolls back alone
+            # instead of failing the whole upload at the final commit.
+            async with db.begin_nested():
+                db.add(record)
             import_result.add_success()
 
         except Exception as e:
@@ -1198,7 +1213,12 @@ async def import_vehicle_json(
                 missed_fillup=record_data.get("missed_fillup", False),
                 notes=record_data.get("notes"),
             )
-            db.add(record)
+            # A savepoint per row. Leaving it flushes the insert, so the next
+            # row's duplicate check sees this one (production sessions do not
+            # autoflush), and a row the database rejects rolls back alone
+            # instead of failing the whole upload at the final commit.
+            async with db.begin_nested():
+                db.add(record)
             results["fuel_records"]["success"] += 1
         except Exception as e:
             results["fuel_records"]["errors"] += 1
@@ -1254,7 +1274,12 @@ async def import_vehicle_json(
                 brand=record_data.get("brand"),
                 notes=record_data.get("notes"),
             )
-            db.add(record)
+            # A savepoint per row. Leaving it flushes the insert, so the next
+            # row's duplicate check sees this one (production sessions do not
+            # autoflush), and a row the database rejects rolls back alone
+            # instead of failing the whole upload at the final commit.
+            async with db.begin_nested():
+                db.add(record)
             results["def_records"]["success"] += 1
         except Exception as e:
             results["def_records"]["errors"] += 1
@@ -1289,7 +1314,12 @@ async def import_vehicle_json(
                 odometer_km=imported_odometer_km,
                 notes=record_data.get("notes"),
             )
-            db.add(record)
+            # A savepoint per row. Leaving it flushes the insert, so the next
+            # row's duplicate check sees this one (production sessions do not
+            # autoflush), and a row the database rejects rolls back alone
+            # instead of failing the whole upload at the final commit.
+            async with db.begin_nested():
+                db.add(record)
             results["odometer_records"]["success"] += 1
         except Exception as e:
             results["odometer_records"]["errors"] += 1

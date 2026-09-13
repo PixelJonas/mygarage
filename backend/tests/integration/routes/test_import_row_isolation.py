@@ -15,10 +15,344 @@ A savepoint per row puts the write back inside the handler, so a row that
 violates a CHECK is one reported row and the rest of the file still imports.
 """
 
+import json
+from contextlib import asynccontextmanager
+from datetime import date
+from decimal import Decimal
 from io import BytesIO
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from app.database import get_db
+from app.main import app
+from app.models.def_record import DEFRecord
+from app.models.fuel import FuelRecord
+from app.models.hours import HoursRecord
+from app.models.odometer import OdometerRecord
+
+
+@asynccontextmanager
+async def _production_session(test_engine):
+    """Route one request through a session that does not autoflush.
+
+    Production sessions never autoflush (`app/database.py`); the shared
+    `db_session` fixture behind `client` does (`tests/conftest.py`), which
+    lets a same-session duplicate check see an unflushed insert by accident
+    and hides the defect these tests exist to catch.
+    """
+    maker = async_sessionmaker(
+        test_engine, class_=AsyncSession, expire_on_commit=False, autoflush=False
+    )
+    async with maker() as session:
+
+        async def override_get_db():
+            try:
+                yield session
+            except Exception:
+                await session.rollback()
+                raise
+
+        previous = app.dependency_overrides.get(get_db)
+        app.dependency_overrides[get_db] = override_get_db
+        try:
+            yield session
+        finally:
+            if previous is not None:
+                app.dependency_overrides[get_db] = previous
+            else:
+                app.dependency_overrides.pop(get_db, None)
+
+
+@pytest.mark.asyncio
+class TestOneUploadCannotImportTheSameRowTwice:
+    """Each of these loops checks for a duplicate with a SELECT and then
+    `db.add`s the record with no flush in between. Two identical rows in one
+    upload both pass the check against a table that does not yet hold either
+    of them, so both import despite `skip_duplicates`.
+
+    Uses an explicitly non-autoflushing session, matching production
+    (`app/database.py`): the shared `client` fixture's session autoflushes
+    (`tests/conftest.py`), which would let the second row's duplicate check
+    see the first row's unflushed insert by accident and hide the defect.
+    """
+
+    async def test_fuel_csv_skips_a_row_repeated_within_one_upload(
+        self, client: AsyncClient, auth_headers, test_vehicle, test_engine
+    ):
+        csv_content = (
+            "Date,Odometer (km),Liters,Price Per Liter,Total Cost,Full Tank,Notes\n"
+            "2027-01-10,70000,40.0,1.50,60.0,True,Repeat\n"
+            "2027-01-10,70000,40.0,1.50,60.0,True,Repeat\n"
+        )
+        async with _production_session(test_engine) as session:
+            response = await client.post(
+                f"/api/import/vehicles/{test_vehicle['vin']}/fuel/csv",
+                headers=auth_headers,
+                files={"file": ("fuel.csv", BytesIO(csv_content.encode()), "text/csv")},
+            )
+            assert response.status_code == 200, response.text
+            data = response.json()
+            assert data["success_count"] == 1, data
+            assert data["skipped_count"] == 1, data
+
+            count = await session.execute(
+                select(func.count())
+                .select_from(FuelRecord)
+                .where(
+                    FuelRecord.vin == test_vehicle["vin"],
+                    FuelRecord.date == date(2027, 1, 10),
+                    FuelRecord.odometer_km == Decimal("70000"),
+                )
+            )
+            assert count.scalar() == 1
+
+    async def test_def_csv_skips_a_row_repeated_within_one_upload(
+        self, client: AsyncClient, auth_headers, test_vehicle, test_engine
+    ):
+        csv_content = (
+            "Date,Odometer (km),Liters,Price Per Unit,Total Cost,Fill Level,Source,Brand,Notes\n"
+            "2027-01-11,70010,9.464,1.10,10.41,0.60,dealer,BlueDEF,Repeat\n"
+            "2027-01-11,70010,9.464,1.10,10.41,0.60,dealer,BlueDEF,Repeat\n"
+        )
+        async with _production_session(test_engine) as session:
+            response = await client.post(
+                f"/api/import/vehicles/{test_vehicle['vin']}/def/csv",
+                headers=auth_headers,
+                files={"file": ("def.csv", BytesIO(csv_content.encode()), "text/csv")},
+            )
+            assert response.status_code == 200, response.text
+            data = response.json()
+            assert data["success_count"] == 1, data
+            assert data["skipped_count"] == 1, data
+
+            count = await session.execute(
+                select(func.count())
+                .select_from(DEFRecord)
+                .where(
+                    DEFRecord.vin == test_vehicle["vin"],
+                    DEFRecord.date == date(2027, 1, 11),
+                    DEFRecord.odometer_km == Decimal("70010"),
+                )
+            )
+            assert count.scalar() == 1
+
+    async def test_hours_csv_skips_a_row_repeated_within_one_upload(
+        self, client: AsyncClient, auth_headers, test_vehicle, test_engine
+    ):
+        csv_content = "Date,Engine Hours,Notes\n2027-01-12,55.5,Repeat\n2027-01-12,55.5,Repeat\n"
+        async with _production_session(test_engine) as session:
+            response = await client.post(
+                f"/api/import/vehicles/{test_vehicle['vin']}/hours/csv",
+                headers=auth_headers,
+                files={"file": ("hours.csv", BytesIO(csv_content.encode()), "text/csv")},
+            )
+            assert response.status_code == 200, response.text
+            data = response.json()
+            assert data["success_count"] == 1, data
+            assert data["skipped_count"] == 1, data
+
+            count = await session.execute(
+                select(func.count())
+                .select_from(HoursRecord)
+                .where(
+                    HoursRecord.vin == test_vehicle["vin"],
+                    HoursRecord.date == date(2027, 1, 12),
+                    HoursRecord.engine_hours == Decimal("55.5"),
+                )
+            )
+            assert count.scalar() == 1
+
+    async def test_vehicle_json_fuel_skips_a_row_repeated_within_one_upload(
+        self, client: AsyncClient, auth_headers, test_vehicle, test_engine
+    ):
+        json_data = {
+            "export_version": "3",
+            "units": "metric",
+            "fuel_records": [
+                {"date": "2027-01-13", "odometer_km": 70020, "liters": 40.0, "cost": 60.0},
+                {"date": "2027-01-13", "odometer_km": 70020, "liters": 40.0, "cost": 60.0},
+            ],
+        }
+        async with _production_session(test_engine) as session:
+            response = await client.post(
+                f"/api/import/vehicles/{test_vehicle['vin']}/json",
+                headers=auth_headers,
+                files={
+                    "file": (
+                        "vehicle.json",
+                        BytesIO(json.dumps(json_data).encode()),
+                        "application/json",
+                    )
+                },
+                data={"skip_duplicates": "true"},
+            )
+            assert response.status_code == 200, response.text
+            data = response.json()
+            assert data["fuel_records"]["success_count"] == 1, data
+            assert data["fuel_records"]["skipped_count"] == 1, data
+
+            count = await session.execute(
+                select(func.count())
+                .select_from(FuelRecord)
+                .where(
+                    FuelRecord.vin == test_vehicle["vin"],
+                    FuelRecord.date == date(2027, 1, 13),
+                    FuelRecord.odometer_km == Decimal("70020"),
+                )
+            )
+            assert count.scalar() == 1
+
+    async def test_vehicle_json_def_skips_a_row_repeated_within_one_upload(
+        self, client: AsyncClient, auth_headers, test_vehicle, test_engine
+    ):
+        json_data = {
+            "export_version": "3",
+            "units": "metric",
+            "def_records": [
+                {"date": "2027-01-14", "odometer_km": 70030, "liters": 9.0, "cost": 10.0},
+                {"date": "2027-01-14", "odometer_km": 70030, "liters": 9.0, "cost": 10.0},
+            ],
+        }
+        async with _production_session(test_engine) as session:
+            response = await client.post(
+                f"/api/import/vehicles/{test_vehicle['vin']}/json",
+                headers=auth_headers,
+                files={
+                    "file": (
+                        "vehicle.json",
+                        BytesIO(json.dumps(json_data).encode()),
+                        "application/json",
+                    )
+                },
+                data={"skip_duplicates": "true"},
+            )
+            assert response.status_code == 200, response.text
+            data = response.json()
+            assert data["def_records"]["success_count"] == 1, data
+            assert data["def_records"]["skipped_count"] == 1, data
+
+            count = await session.execute(
+                select(func.count())
+                .select_from(DEFRecord)
+                .where(
+                    DEFRecord.vin == test_vehicle["vin"],
+                    DEFRecord.date == date(2027, 1, 14),
+                    DEFRecord.odometer_km == Decimal("70030"),
+                )
+            )
+            assert count.scalar() == 1
+
+    async def test_vehicle_json_odometer_skips_a_row_repeated_within_one_upload(
+        self, client: AsyncClient, auth_headers, test_vehicle, test_engine
+    ):
+        json_data = {
+            "export_version": "3",
+            "units": "metric",
+            "odometer_records": [
+                {"date": "2027-01-15", "odometer_km": 70040, "notes": "Repeat"},
+                {"date": "2027-01-15", "odometer_km": 70040, "notes": "Repeat"},
+            ],
+        }
+        async with _production_session(test_engine) as session:
+            response = await client.post(
+                f"/api/import/vehicles/{test_vehicle['vin']}/json",
+                headers=auth_headers,
+                files={
+                    "file": (
+                        "vehicle.json",
+                        BytesIO(json.dumps(json_data).encode()),
+                        "application/json",
+                    )
+                },
+                data={"skip_duplicates": "true"},
+            )
+            assert response.status_code == 200, response.text
+            data = response.json()
+            assert data["odometer_records"]["success_count"] == 1, data
+            assert data["odometer_records"]["skipped_count"] == 1, data
+
+            count = await session.execute(
+                select(func.count())
+                .select_from(OdometerRecord)
+                .where(
+                    OdometerRecord.vin == test_vehicle["vin"],
+                    OdometerRecord.date == date(2027, 1, 15),
+                    OdometerRecord.odometer_km == Decimal("70040"),
+                )
+            )
+            assert count.scalar() == 1
+
+
+@pytest.mark.asyncio
+class TestADatabaseInvalidRowDoesNotDiscardTheUpload:
+    """A row that passes parsing but violates the database must not poison
+    the whole upload the way `PendingRollbackError` would without a savepoint
+    per row.
+
+    Only the vehicle JSON odometer loop has a reachable case: an entry with
+    no odometer at all builds `None` into `odometer_km`, which is
+    non-nullable. The fuel, DEF and hours CSV loops and the JSON fuel and DEF
+    loops share `FuelRecord`/`DEFRecord`/`HoursRecord`, none of which declare
+    a `CheckConstraint`, and their non-nullable columns (`vin`, `date`, and
+    for hours `engine_hours`) are either fixed by the route or already
+    guarded by a parser check before the row reaches `db.add`. The test
+    database is built from the ORM models (`Base.metadata.create_all`), so a
+    CHECK that exists only in a migration's raw SQL does not apply here
+    either. No test is written for those five loops.
+    """
+
+    async def test_vehicle_json_odometer_keeps_valid_rows_around_a_database_invalid_one(
+        self, client: AsyncClient, auth_headers, test_vehicle, test_engine
+    ):
+        json_data = {
+            "export_version": "3",
+            "units": "metric",
+            "odometer_records": [
+                {"date": "2027-01-20", "odometer_km": 71000, "notes": "before"},
+                {"date": "2027-01-21", "notes": "no odometer at all"},
+                {"date": "2027-01-22", "odometer_km": 71010, "notes": "after"},
+            ],
+        }
+        async with _production_session(test_engine) as session:
+            response = await client.post(
+                f"/api/import/vehicles/{test_vehicle['vin']}/json",
+                headers=auth_headers,
+                files={
+                    "file": (
+                        "vehicle.json",
+                        BytesIO(json.dumps(json_data).encode()),
+                        "application/json",
+                    )
+                },
+                data={"skip_duplicates": "true"},
+            )
+            assert response.status_code == 200, response.text
+            data = response.json()
+            assert data["odometer_records"]["success_count"] == 2, data
+            assert data["odometer_records"]["error_count"] == 1, data
+
+            count = await session.execute(
+                select(func.count())
+                .select_from(OdometerRecord)
+                .where(
+                    OdometerRecord.vin == test_vehicle["vin"],
+                    OdometerRecord.date.in_([date(2027, 1, 20), date(2027, 1, 22)]),
+                )
+            )
+            assert count.scalar() == 2
+
+            missing = await session.execute(
+                select(func.count())
+                .select_from(OdometerRecord)
+                .where(
+                    OdometerRecord.vin == test_vehicle["vin"],
+                    OdometerRecord.date == date(2027, 1, 21),
+                )
+            )
+            assert missing.scalar() == 0
 
 
 @pytest.mark.asyncio
