@@ -19,14 +19,17 @@ from decimal import Decimal
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.odometer import OdometerRecord
 from app.models.tire import Tire, TireMountPeriod
 from app.models.vehicle import Vehicle
+from app.schemas.tire import MountPeriodUpdate, TireCreateAndMountRequest, TireDismountRequest
 from app.services.tire_service import (
     ODOMETER_SOURCE_TIRE,
     ODOMETER_SOURCE_TIRE_DISMOUNT,
     ODOMETER_SOURCE_TIRE_MOUNT,
+    TireService,
 )
 from app.utils.odometer_sync import auto_sync_marker
 
@@ -958,3 +961,130 @@ class TestMountPeriodEditor:
         # Nothing changed.
         _, still = await _periods(db_session, tire_id)
         assert still.mounted_on == date_type(2026, 4, 1)
+
+
+_SAME_DAY = date_type(2026, 3, 1)
+_EARLIER = date_type(2026, 2, 20)
+
+
+@pytest.mark.asyncio
+class TestEditorUnderProductionUnitOfWork:
+    """The editor's odometer follow on a session that does NOT autoflush.
+
+    `app/database.py` builds every request session with `autoflush=False`.
+    The shared test session autoflushes, so every test above runs a unit of
+    work production never does, and this defect was invisible to all of them.
+
+    The shape: a period mounted and dismounted on one day, owning its mount
+    record and no dismount record (dismounted without an odometer). One save
+    that moves or clears the mount pair AND supplies the dismount odometer.
+    The mount follow changes the owned record in memory; the dismount follow
+    then asks the synchroniser for a same-day row by SQL. Without a flush in
+    between, that query still sees the mount record on its old date and takes
+    it over, so the vehicle ends up with one wrong record, or none.
+
+    Builds its own session over the test engine on purpose, and seeds through
+    the real writers on it too.
+    """
+
+    @staticmethod
+    def _maker(test_engine) -> async_sessionmaker[AsyncSession]:
+        return async_sessionmaker(
+            test_engine, class_=AsyncSession, expire_on_commit=False, autoflush=False
+        )
+
+    async def _seed(self, maker: async_sessionmaker[AsyncSession], vin: str) -> tuple[int, int]:
+        async with maker() as db:
+            made = await TireService(db).create_and_mount(
+                vin,
+                TireCreateAndMountRequest(
+                    vin=vin,
+                    position="FL",
+                    brand="Same day",
+                    mounted_on=_SAME_DAY,
+                    mounted_odometer_km=Decimal("10000"),
+                ),
+                None,
+            )
+        async with maker() as db:
+            off = await TireService(db).dismount_tire(
+                vin, made.id, TireDismountRequest(dismounted_on=_SAME_DAY), None
+            )
+        (period,) = off.mount_periods
+        return made.id, period.id
+
+    @staticmethod
+    async def _records(maker: async_sessionmaker[AsyncSession], vin: str) -> list[tuple]:
+        async with maker() as db:
+            rows = (
+                (
+                    await db.execute(
+                        select(OdometerRecord)
+                        .where(OdometerRecord.vin == vin)
+                        .order_by(OdometerRecord.date, OdometerRecord.id)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            return [(r.date, r.odometer_km, r.notes) for r in rows]
+
+    async def test_moving_the_mount_date_and_adding_the_dismount_odometer(
+        self, test_engine, vehicle
+    ):
+        maker = self._maker(test_engine)
+        tire_id, period_id = await self._seed(maker, vehicle)
+        assert await self._records(maker, vehicle) == [
+            (_SAME_DAY, Decimal("10000"), auto_sync_marker(ODOMETER_SOURCE_TIRE_MOUNT, period_id))
+        ]
+
+        async with maker() as db:
+            await TireService(db).update_mount_period(
+                vehicle,
+                tire_id,
+                period_id,
+                MountPeriodUpdate(
+                    mounted_on=_EARLIER,
+                    mounted_odometer_km=Decimal("10000"),
+                    dismounted_on=_SAME_DAY,
+                    dismounted_odometer_km=Decimal("10500"),
+                ),
+                None,
+            )
+
+        assert await self._records(maker, vehicle) == [
+            (_EARLIER, Decimal("10000"), auto_sync_marker(ODOMETER_SOURCE_TIRE_MOUNT, period_id)),
+            (
+                _SAME_DAY,
+                Decimal("10500"),
+                auto_sync_marker(ODOMETER_SOURCE_TIRE_DISMOUNT, period_id),
+            ),
+        ]
+
+    async def test_clearing_the_mount_odometer_and_adding_the_dismount_odometer(
+        self, test_engine, vehicle
+    ):
+        maker = self._maker(test_engine)
+        tire_id, period_id = await self._seed(maker, vehicle)
+
+        async with maker() as db:
+            await TireService(db).update_mount_period(
+                vehicle,
+                tire_id,
+                period_id,
+                MountPeriodUpdate(
+                    mounted_on=_SAME_DAY,
+                    mounted_odometer_km=None,
+                    dismounted_on=_SAME_DAY,
+                    dismounted_odometer_km=Decimal("10500"),
+                ),
+                None,
+            )
+
+        assert await self._records(maker, vehicle) == [
+            (
+                _SAME_DAY,
+                Decimal("10500"),
+                auto_sync_marker(ODOMETER_SOURCE_TIRE_DISMOUNT, period_id),
+            )
+        ]

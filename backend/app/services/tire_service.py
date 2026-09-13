@@ -1424,10 +1424,22 @@ class TireService:
         of those is this event's to move. A record is published only when both
         the date and the odometer are known, because `odometer_records.date`
         is not nullable and "I know the odometer but not the day" is the
-        common migrated-tire case. Publishing goes through the synchroniser,
-        so a manual record on the target day is never overwritten and an
-        automatic one is replaced under the standing same-day rule, exactly as
-        a new mount does.
+        common migrated-tire case.
+
+        The two branches do not behave alike on the target day. When this
+        period owns NO record, publishing goes through the synchroniser, so a
+        manual record on that day is never overwritten and an automatic one is
+        replaced under the standing same-day rule, exactly as a new mount
+        does. When it owns one, the owned record is edited in place and the
+        synchroniser is bypassed: a moved record can land beside a manual
+        record on its new day, and both then stand: whichever has the higher id
+        wins the same-day tie-break when the vehicle's latest reading is read.
+
+        Both the move and the delete are flushed before returning. Request
+        sessions do not autoflush (`app/database.py`), and the dismount pair's
+        follow runs next in the same save: its synchroniser looks up same-day
+        rows by SQL, and an unflushed move or delete would still show it the
+        mount record at its old state, which it would then take over.
 
         Why: a stale synced record becomes the vehicle's latest reading and
         poisons every mileage reminder, which is the reason `delete_tire`
@@ -1449,10 +1461,12 @@ class TireService:
             if owned is not None:
                 owned.date = when
                 owned.odometer_km = odometer_km
+                await self.db.flush()
             else:
                 await self._publish_odometer(vin, when, odometer_km, source_type, period_id)
         elif owned is not None:
             await self.db.delete(owned)
+            await self.db.flush()
 
     async def restore_tire(self, vin: str, tire_id: int, current_user: User) -> TireResponse:
         """Un-retire a tire. It goes back to storage with its whole history.
