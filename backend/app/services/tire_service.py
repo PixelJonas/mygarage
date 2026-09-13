@@ -69,6 +69,19 @@ ODOMETER_SOURCE_TIRE_MOUNT = "tire_mount"
 ODOMETER_SOURCE_TIRE_DISMOUNT = "tire_dismount"
 
 
+def normalise_storage_location(value: str | None) -> str | None:
+    """A storage location as stored: stripped, and blank is no location.
+
+    One rule for every writer that takes one (create, create and mount, edit,
+    dismount). The creates used to store the text as sent while the other two
+    stripped it, so the same padded input read back differently depending on
+    which form had saved it.
+    """
+    if value is None:
+        return None
+    return value.strip() or None
+
+
 async def apply_mount_moves(
     db: AsyncSession,
     *,
@@ -801,7 +814,9 @@ class TireService:
         vin = vin.upper().strip()
         try:
             await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
-            tire = Tire(vin=vin, **data.model_dump(exclude={"vin"}))
+            fields = data.model_dump(exclude={"vin"})
+            fields["storage_location"] = normalise_storage_location(fields.get("storage_location"))
+            tire = Tire(vin=vin, **fields)
             self.db.add(tire)
             await self.db.commit()
             # Re-query rather than refresh(attribute_names=["readings"]).
@@ -940,7 +955,7 @@ class TireService:
         # location alone, an empty string clears it, text sets it. The
         # Dismount dialog seeds the field from the tire and always sends it.
         if data.storage_location is not None:
-            tire.storage_location = data.storage_location.strip() or None
+            tire.storage_location = normalise_storage_location(data.storage_location)
         if open_period is not None:
             open_period.dismounted_on = dismounted_on
             open_period.dismounted_odometer_km = data.dismounted_odometer_km
@@ -992,6 +1007,8 @@ class TireService:
                 detail=f"Another tire is already mounted at {data.position}.",
             )
 
+        fields = data.model_dump(exclude={"vin", "position", "mounted_on", "mounted_odometer_km"})
+        fields["storage_location"] = normalise_storage_location(fields.get("storage_location"))
         tire = Tire(
             vin=vin,
             position=data.position,
@@ -1000,7 +1017,7 @@ class TireService:
             # load on first touch, which an async session cannot do.
             mount_periods=[],
             readings=[],
-            **data.model_dump(exclude={"vin", "position", "mounted_on", "mounted_odometer_km"}),
+            **fields,
         )
         self.db.add(tire)
         await self.db.flush()
@@ -1242,8 +1259,8 @@ class TireService:
                 if owner is None:
                     raise HTTPException(status_code=404, detail="Tire set not found")
             for key, value in fields.items():
-                if key == "storage_location" and isinstance(value, str):
-                    value = value.strip() or None
+                if key == "storage_location":
+                    value = normalise_storage_location(value)
                 setattr(tire, key, value)
             await self.db.commit()
             # Named, not a bare refresh: the only thing this call needs is

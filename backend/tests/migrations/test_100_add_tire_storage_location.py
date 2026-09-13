@@ -8,7 +8,7 @@ skip would 500 every tire read. Parameterised over SQLite and PostgreSQL via
 import importlib.util
 from pathlib import Path
 
-from sqlalchemy import inspect, text
+from sqlalchemy import String, inspect, text
 
 import app.migrations as _m
 
@@ -44,6 +44,12 @@ def test_100_adds_the_column(engine_for_migration):
     cols = {c["name"]: c for c in inspect(engine).get_columns("tires")}
     assert "storage_location" in cols
     assert cols["storage_location"]["nullable"] is True
+    # The model, the five schemas and the OpenAPI contract all cap it at 120.
+    # Pinned on both dialects: SQLite reflects the declared VARCHAR(120) and
+    # PostgreSQL enforces it, and a regression to TEXT passes neither.
+    column_type = cols["storage_location"]["type"]
+    assert isinstance(column_type, String), column_type
+    assert column_type.length == 120
 
 
 def test_100_is_idempotent(engine_for_migration):
