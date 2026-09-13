@@ -8,12 +8,12 @@
  * the hooks away, so this is the only place the invalidation is observable.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
+import { renderHook, act, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 
 import api from '@/services/api'
-import { useDeleteTire, useMountTire, useUpdateMountPeriod } from '../useTires'
+import { useDeleteTire, useMountTire, useTires, useUpdateMountPeriod } from '../useTires'
 
 const VIN = '1HGCM82633A004352'
 const NEAREST_KEY = ['odometerRecords', VIN, 'nearest', '2026-04-10']
@@ -73,5 +73,51 @@ describe('tire mutations invalidate the odometer caches', () => {
     })
     expect(invalidated(queryClient, LIST_KEY)).toBe(true)
     expect(invalidated(queryClient, NEAREST_KEY)).toBe(true)
+  })
+})
+
+describe('useTires across the Show retired toggle', () => {
+  const listed = (ids: number[]) => ({ tires: ids.map((id) => ({ id })), total: ids.length })
+
+  it('keeps the list on screen while the other variant loads', async () => {
+    const { wrapper } = harness()
+    let finish: (value: { data: unknown }) => void = () => {}
+    vi.mocked(api.get)
+      .mockResolvedValueOnce({ data: listed([1]) })
+      .mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)))
+
+    const { result, rerender } = renderHook(
+      ({ vin, includeRetired }: { vin: string; includeRetired: boolean }) =>
+        useTires(vin, includeRetired),
+      { wrapper, initialProps: { vin: VIN, includeRetired: false } }
+    )
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    rerender({ vin: VIN, includeRetired: true })
+    // Dropping to undefined here is what flashed the whole tab to loading.
+    expect(result.current.data).toEqual(listed([1]))
+    expect(result.current.isPlaceholderData).toBe(true)
+
+    await act(async () => finish({ data: listed([1, 2]) }))
+    await waitFor(() => expect(result.current.data).toEqual(listed([1, 2])))
+    expect(result.current.isPlaceholderData).toBe(false)
+  })
+
+  it('never shows one vehicle\'s tires while another vehicle\'s load', async () => {
+    const { wrapper } = harness()
+    vi.mocked(api.get)
+      .mockResolvedValueOnce({ data: listed([1]) })
+      .mockImplementationOnce(() => new Promise(() => {}))
+
+    const { result, rerender } = renderHook(
+      ({ vin, includeRetired }: { vin: string; includeRetired: boolean }) =>
+        useTires(vin, includeRetired),
+      { wrapper, initialProps: { vin: VIN, includeRetired: false } }
+    )
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    rerender({ vin: '2T1BURHE0JC000001', includeRetired: false })
+    expect(result.current.data).toBeUndefined()
+    expect(result.current.isLoading).toBe(true)
   })
 })

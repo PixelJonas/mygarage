@@ -1,7 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
+import i18next, { type TFunction } from 'i18next'
 
 import { IMPERIAL_UNITS } from '../../../__tests__/factories'
+import vehiclesEn from '../../../locales/en/vehicles.json'
 
 const useNearestMock = vi.fn()
 vi.mock('../../../hooks/queries/useOdometerRecords', () => ({
@@ -102,5 +104,30 @@ describe('MountEventFields', () => {
     renderField()
     expect(screen.queryByTestId('mount-suggestion')).toBeNull()
     expect(screen.queryByText('tireList.suggestionNone')).toBeNull()
+  })
+})
+
+describe('MountEventFields day offset wording', () => {
+  // The component's own t() is the global key-echo mock, which cannot show a
+  // plural. So the shipped English bundle is resolved through a real i18next
+  // instance, the way the app resolves it.
+  const english = async (): Promise<TFunction> => {
+    const instance = i18next.createInstance()
+    await instance.init({
+      lng: 'en',
+      ns: ['vehicles'],
+      defaultNS: 'vehicles',
+      resources: { en: { vehicles: vehiclesEn } },
+      interpolation: { escapeValue: false },
+    })
+    return instance.t
+  }
+
+  it('reads "1 day", not "1 days"', async () => {
+    const t = await english()
+    expect(t('tireList.suggestionEarlier', { count: 1 })).toBe('1 day earlier')
+    expect(t('tireList.suggestionLater', { count: 1 })).toBe('1 day later')
+    expect(t('tireList.suggestionEarlier', { count: 9 })).toBe('9 days earlier')
+    expect(t('tireList.suggestionLater', { count: 2 })).toBe('2 days later')
   })
 })

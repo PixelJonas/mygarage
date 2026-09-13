@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/services/api'
 import type {
   MountPeriodUpdate,
@@ -23,6 +23,12 @@ import type {
  * they come only when asked for; the flag is part of the key so the two
  * lists never share a cache entry, and the `['tires', vin]` prefix every
  * mutation invalidates still covers both.
+ *
+ * Toggling Show retired changes the key, which on its own drops `data` to
+ * undefined and flashes the whole tab to loading. The list on screen is kept
+ * as placeholder data while the other variant loads, but only for the SAME
+ * vehicle: moving to another vehicle's page must not show this one's tires,
+ * and act on them, while that vehicle's list is still loading.
  */
 export function useTires(vin: string, includeRetired = false) {
   return useQuery({
@@ -34,6 +40,8 @@ export function useTires(vin: string, includeRetired = false) {
       return data
     },
     enabled: !!vin,
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[1] === vin ? keepPreviousData(previous) : undefined,
   })
 }
 

@@ -232,7 +232,7 @@ export default function TireList({ vin }: TireListProps) {
   const [retireOdometer, setRetireOdometer] = useState<OdometerFieldValue>(EMPTY_ODOMETER)
   const [rotateOdometer, setRotateOdometer] = useState<OdometerFieldValue>(EMPTY_ODOMETER)
   // One date per dialog, defaulting to the LOCAL calendar date. Reset to
-  // today on success like the odometer is reset to empty.
+  // today, with the odometer emptied, each time its dialog opens.
   const [mountDate, setMountDate] = useState(() => formatDateForInput())
   const [dismountDate, setDismountDate] = useState(() => formatDateForInput())
   const [dismountLocation, setDismountLocation] = useState('')
@@ -550,6 +550,36 @@ export default function TireList({ vin }: TireListProps) {
     setEditingTireId(null)
   }
 
+  /* Mount, Dismount, Retire and Rotate each open fresh: today's date and an
+   * empty odometer, the way Set fit does. They used to reset only on success,
+   * so a cancelled dialog carried its date and odometer, an accepted
+   * suggestion included, into the next tire's dialog, where a quick confirm
+   * recorded them against the wrong tire. */
+  const openMount = (tireId: number): void => {
+    setMountDate(formatDateForInput())
+    setMountOdometer(EMPTY_ODOMETER)
+    setMountTireId(tireId)
+  }
+
+  const openDismount = (tire: Tire): void => {
+    setDismountDate(formatDateForInput())
+    setDismountOdometer(EMPTY_ODOMETER)
+    setDismountLocation(tire.storage_location ?? '')
+    setDismountTireId(tire.id)
+  }
+
+  const openRetire = (tireId: number): void => {
+    setRetireDate(formatDateForInput())
+    setRetireOdometer(EMPTY_ODOMETER)
+    setRetireTireId(tireId)
+  }
+
+  const openRotate = (): void => {
+    setRotateDate(formatDateForInput())
+    setRotateOdometer(EMPTY_ODOMETER)
+    setRotateOpen(true)
+  }
+
   /* Seeded from the tire's current values so the common case — pressure checked,
    * tread unchanged — is a single edit rather than re-typing both.
    *
@@ -606,8 +636,12 @@ export default function TireList({ vin }: TireListProps) {
         canonicalFromUnitField(form.min_tread_mm, form.origins.min_tread_mm, u.tread) ??
         DEFAULT_MIN_TREAD_MM,
       notes: form.notes || null,
-      storage_location: form.storage_location.trim() || null,
     }
+    // Sent only where its input is rendered: editing, or adding to storage.
+    // The corner branch of Add hides it, so a location typed on In storage
+    // before switching to a corner would be saved where the form no longer
+    // shows it.
+    const storageLocation = form.storage_location.trim() || null
 
     const handlers = {
       onSuccess: () => {
@@ -623,14 +657,17 @@ export default function TireList({ vin }: TireListProps) {
       // `set_id` goes ONLY here. `TireCreate` declares extra="forbid", so
       // sending it on a create is a 422 rather than a field the server ignores
       // -- membership is a label applied to a tire you already own.
-      updateTire.mutate({ tireId: editingTireId, set_id: form.set_id, ...shared }, handlers)
+      updateTire.mutate(
+        { tireId: editingTireId, set_id: form.set_id, ...shared, storage_location: storageLocation },
+        handlers
+      )
       return
     }
     // `POST /tires` forbids a `position` key outright (extra="forbid"), so the
     // two creates cannot share one payload: passing `position: null` to it is a
     // 422, not a null.
     if (form.position == null) {
-      createTire.mutate({ vin, ...shared }, handlers)
+      createTire.mutate({ vin, ...shared, storage_location: storageLocation }, handlers)
       return
     }
     createAndMount.mutate(
@@ -673,8 +710,6 @@ export default function TireList({ vin }: TireListProps) {
         onSuccess: () => {
           toast.success(t('tireList.retired'))
           setRetireTireId(null)
-          setRetireOdometer(EMPTY_ODOMETER)
-          setRetireDate(formatDateForInput())
         },
         onError: (err: unknown) =>
           toast.error(getActionErrorMessage(err, t('tireList.retireAction'))),
@@ -783,8 +818,6 @@ export default function TireList({ vin }: TireListProps) {
         onSuccess: () => {
           toast.success(t('tireList.rotated'))
           setRotateOpen(false)
-          setRotateOdometer(EMPTY_ODOMETER)
-          setRotateDate(formatDateForInput())
         },
         onError: (err: unknown) =>
           toast.error(getActionErrorMessage(err, t('tireList.rotateAction'))),
@@ -905,7 +938,7 @@ export default function TireList({ vin }: TireListProps) {
             icon={RotateCw}
             disabled={!canRotate || rotate.isPending}
             title={canRotate ? undefined : t('tireList.rotateNeedsFourCorners')}
-            onClick={() => setRotateOpen(true)}
+            onClick={openRotate}
           >
             {t('tireList.rotate')}
           </Button>
@@ -1042,10 +1075,7 @@ export default function TireList({ vin }: TireListProps) {
                 variant="ghost"
                 className="relative z-10"
                 disabled={dismount.isPending}
-                onClick={() => {
-                  setDismountLocation(tire.storage_location ?? '')
-                  setDismountTireId(tire.id)
-                }}
+                onClick={() => openDismount(tire)}
               >
                 {t('tireList.dismount')}
               </Button>
@@ -1059,7 +1089,7 @@ export default function TireList({ vin }: TireListProps) {
                 variant="ghost"
                 className="relative z-10"
                 disabled={retire.isPending}
-                onClick={() => setRetireTireId(tire.id)}
+                onClick={() => openRetire(tire.id)}
               >
                 {t('tireList.retire')}
               </Button>
@@ -1125,7 +1155,7 @@ export default function TireList({ vin }: TireListProps) {
                     size="sm"
                     variant="secondary"
                     disabled={freePositions.length === 0 || mount.isPending}
-                    onClick={() => setMountTireId(tire.id)}
+                    onClick={() => openMount(tire.id)}
                   >
                     {t('tireList.mount')}
                   </Button>
@@ -1139,7 +1169,7 @@ export default function TireList({ vin }: TireListProps) {
                     size="sm"
                     variant="ghost"
                     disabled={retire.isPending}
-                    onClick={() => setRetireTireId(tire.id)}
+                    onClick={() => openRetire(tire.id)}
                   >
                     {t('tireList.retire')}
                   </Button>
@@ -1240,8 +1270,6 @@ export default function TireList({ vin }: TireListProps) {
                     onSuccess: () => {
                       toast.success(t('tireList.mounted'))
                       setMountTireId(null)
-                      setMountOdometer(EMPTY_ODOMETER)
-                      setMountDate(formatDateForInput())
                     },
                     onError: (err: unknown) =>
                       toast.error(getActionErrorMessage(err, t('tireList.mountAction'))),
@@ -1317,9 +1345,6 @@ export default function TireList({ vin }: TireListProps) {
                     onSuccess: () => {
                       toast.success(t('tireList.dismounted'))
                       setDismountTireId(null)
-                      setDismountOdometer(EMPTY_ODOMETER)
-                      setDismountDate(formatDateForInput())
-                      setDismountLocation('')
                     },
                     onError: (err: unknown) =>
                       toast.error(getActionErrorMessage(err, t('tireList.dismountAction'))),

@@ -89,6 +89,7 @@ vi.mock('../../hooks/useUnitPreference', () => ({
 }))
 
 import TireList from '../TireList'
+import { formatDateForInput } from '../../utils/dateUtils'
 
 const VIN = '1HGCM82633A004352'
 const CORNERS = ['FL', 'FR', 'RL', 'RR'] as const
@@ -549,6 +550,86 @@ describe('TireList dates and storage location', () => {
     fireEvent.change(drawer().getByLabelText('tireList.storageLocation'), { target: { value: 'Garage shelf B' } })
     fireEvent.click(drawer().getByText('common:save'))
     expect(create.mock.calls[0][0]).toMatchObject({ storage_location: 'Garage shelf B' })
+  })
+
+  it('a location typed on In storage is not sent once the tire goes to a corner', () => {
+    // The corner branch does not render the location input, so whatever was
+    // typed before switching would be saved where this form no longer shows it.
+    const createAndMount = vi.fn()
+    useCreateAndMountTireMock.mockReturnValue({ mutate: createAndMount, isPending: false })
+    setTires(FOUR_MOUNTED.slice(0, 3))
+    render(<TireList vin={VIN} />)
+    fireEvent.click(screen.getByText('tireList.add'))
+    fireEvent.click(drawer().getByText('tireList.inStorage'))
+    fireEvent.change(drawer().getByLabelText('tireList.storageLocation'), { target: { value: 'Garage shelf B' } })
+    fireEvent.click(drawer().getByText('RR'))
+    expect(drawer().queryByLabelText('tireList.storageLocation')).toBeNull()
+    fireEvent.click(drawer().getByText('common:save'))
+    expect(createAndMount.mock.calls[0][0].position).toBe('RR')
+    expect(createAndMount.mock.calls[0][0]).not.toHaveProperty('storage_location')
+  })
+
+  it('edit still sends the storage location it renders', () => {
+    const update = vi.fn()
+    useUpdateTireMock.mockReturnValue({ mutate: update, isPending: false })
+    render(<TireList vin={VIN} />)
+    fireEvent.click(screen.getAllByLabelText('tireList.edit')[0])
+    fireEvent.change(drawer().getByLabelText('tireList.storageLocation'), { target: { value: ' Loft ' } })
+    fireEvent.click(drawer().getByText('common:save'))
+    expect(update.mock.calls[0][0]).toMatchObject({ tireId: 1, storage_location: 'Loft' })
+  })
+
+  describe('each event dialog opens fresh', () => {
+    const TODAY = formatDateForInput()
+    const STORED = [
+      { ...tireAt(9, null), brand: 'First' },
+      { ...tireAt(10, null), brand: 'Second' },
+    ]
+    const MOUNTED = [
+      { ...tireAt(1, 'FL'), brand: 'First' },
+      { ...tireAt(2, 'FR'), brand: 'Second' },
+    ]
+    const cardOf = (brand: string): ReturnType<typeof within> =>
+      within(screen.getByText(brand).closest('.rounded-card') as HTMLElement)
+
+    /* Type a date and an odometer, cancel, then open the same dialog for the
+     * other tire. Before, both values survived the cancel. */
+    const dirtyCancelReopen = (open: (brand: string) => void, dateLabel: string): void => {
+      open('First')
+      fireEvent.change(drawer().getByLabelText(dateLabel), { target: { value: '2026-01-05' } })
+      fireEvent.change(drawer().getByLabelText('tireList.odometerWithUnit'), {
+        target: { value: '12345' },
+      })
+      fireEvent.click(drawer().getByText('common:cancel'))
+      open('Second')
+      expect(drawer().getByLabelText(dateLabel)).toHaveValue(TODAY)
+      expect(drawer().getByLabelText('tireList.odometerWithUnit')).toHaveValue(null)
+    }
+
+    it('mount', () => {
+      setTires(STORED)
+      render(<TireList vin={VIN} />)
+      dirtyCancelReopen((brand) => fireEvent.click(cardOf(brand).getByText('tireList.mount')), 'tireList.mountedOn')
+    })
+
+    it('dismount, keeping the storage location seeded from the tire', () => {
+      setTires([MOUNTED[0], { ...MOUNTED[1], storage_location: 'Shed' }])
+      render(<TireList vin={VIN} />)
+      dirtyCancelReopen((brand) => fireEvent.click(cardOf(brand).getByText('tireList.dismount')), 'tireList.eventDate')
+      expect(drawer().getByLabelText('tireList.storageLocation')).toHaveValue('Shed')
+    })
+
+    it('retire', () => {
+      setTires(MOUNTED)
+      render(<TireList vin={VIN} />)
+      dirtyCancelReopen((brand) => fireEvent.click(cardOf(brand).getByText('tireList.retire')), 'tireList.eventDate')
+    })
+
+    it('rotate', () => {
+      setTires(FOUR_MOUNTED)
+      render(<TireList vin={VIN} />)
+      dirtyCancelReopen(() => fireEvent.click(screen.getAllByText('tireList.rotate')[0]), 'tireList.eventDate')
+    })
   })
 
   it('mount sends its date', () => {
