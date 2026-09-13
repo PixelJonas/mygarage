@@ -1075,32 +1075,34 @@ class TelemetryService:
         """Update vehicle_telemetry_latest only when ts is strictly newer.
 
         Never clobbers a fresher live reading with a backfilled historical row.
-        VehicleTelemetryLatest has no device_id column — do not pass one.
+        VehicleTelemetryLatest has no device_id column -- do not pass one.
         Caller must pass ts as naive UTC (tzinfo=None).
-        """
-        existing = (
-            await self.db.execute(
-                select(VehicleTelemetryLatest).where(
-                    VehicleTelemetryLatest.vin == vin,
-                    VehicleTelemetryLatest.param_key == param_key,
-                )
-            )
-        ).scalar_one_or_none()
 
-        if existing is None:
-            self.db.add(
-                VehicleTelemetryLatest(
-                    vin=vin,
-                    param_key=param_key,
-                    value=value,
-                    timestamp=ts,
-                    received_at=utc_now(),
-                )
-            )
-        elif ts > existing.timestamp:
-            existing.value = value
-            existing.timestamp = ts
-            existing.received_at = utc_now()
+        One atomic statement, not a SELECT then an ORM add. Production sessions
+        do not autoflush, so the add was invisible to the next row's SELECT: an
+        SD-card file carrying a param with no latest row yet added it twice and
+        the chunk's commit failed on the unique key, which left the file's
+        watermark unmoved and the device's SD backfill retrying that file
+        forever. The conditional upsert also cannot race live ingest, and it
+        holds no ORM object across `bulk_backfill`'s per-chunk commits.
+        """
+        stmt = dialect_insert(VehicleTelemetryLatest).values(
+            vin=vin,
+            param_key=param_key,
+            value=value,
+            timestamp=ts,
+            received_at=utc_now(),
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["vin", "param_key"],
+            set_={
+                "value": stmt.excluded.value,
+                "timestamp": stmt.excluded.timestamp,
+                "received_at": stmt.excluded.received_at,
+            },
+            where=VehicleTelemetryLatest.timestamp < stmt.excluded.timestamp,
+        )
+        await self.db.execute(stmt)
 
     # =========================================================================
     # Query Methods
