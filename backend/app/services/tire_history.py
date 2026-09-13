@@ -358,13 +358,14 @@ def new_or_touched_faults(
 
     "Introduced" means the period now carries a CODE it did not carry before:
     a fault is new when its `(period_id, code)` was not faulted in `before`.
-    The counterpart is deliberately left out of that test. The pair rules name
-    a running maximum, the period holding the highest dismount so far, so
-    repairing that period hands the maximum to the next one and re-labels an
-    untouched fault against a different counterpart. Judged by the full key,
-    that relabelled fault read as new and refused the honest repair, and a
-    history with two legacy typos could be refused in either order. Nothing is
-    lost by leaving the counterpart out: a fault between two untouched periods
+    The counterpart is deliberately left out of that test. Rules 3 and 4a name
+    every earlier period a later one contradicts, so their faults never change
+    counterpart. Rule 4b still names a running maximum, the span holding the
+    highest dismount odometer so far, so repairing that span hands the maximum
+    to the next one and re-labels an untouched 4b fault against a different
+    counterpart. Judged by the full key, that relabelled fault would read as
+    new and refuse the honest repair. Nothing is lost by leaving the
+    counterpart out: a fault between two untouched periods
     depends only on their own bounds, so no write can create one, and a fault
     whose new counterpart IS a touched period is still refused through its
     participants. `FaultMap` keeps the full triple so each counterpart is
