@@ -1,4 +1,10 @@
-import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import {
+  keepPreviousData,
+  useQuery,
+  useMutation,
+  useQueryClient,
+  type UseMutationResult,
+} from '@tanstack/react-query'
 import api from '@/services/api'
 import type {
   MountPeriodUpdate,
@@ -214,6 +220,26 @@ export function useAddTireReading(vin: string) {
         payload
       )
       return data
+    },
+    onSuccess: () => invalidateTireViews(queryClient, vin),
+  })
+}
+
+/**
+ * Delete one reading, for one logged with the wrong odometer or date.
+ *
+ * Through the helper like every other tire write: the server may put the
+ * tire's tread and pressure back to an older reading, delete the odometer
+ * record the reading published and complete a low-tread reminder, so the tire
+ * list, reminders and odometer caches are all stale afterwards.
+ */
+export function useDeleteTireReading(
+  vin: string
+): UseMutationResult<void, Error, { tireId: number; readingId: number }> {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ tireId, readingId }: { tireId: number; readingId: number }) => {
+      await api.delete(`/vehicles/${vin}/tires/${tireId}/readings/${readingId}`)
     },
     onSuccess: () => invalidateTireViews(queryClient, vin),
   })

@@ -1,12 +1,16 @@
 import { Gauge } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 
+import { useDeleteTireReading } from '../../hooks/queries/useTires'
 import { useUnitFormat } from '../../hooks/useUnitFormat'
 import type { MountedPosition, Tire, TireMountPeriod, TirePosition, TireReading } from '../../types/tire'
 import { formatDateForDisplay } from '../../utils/dateUtils'
+import { getActionErrorMessage } from '../../utils/httpErrorHandler'
 import { Badge, Button, Drawer, EmptyState, ListRow } from '../ui'
 
 interface TireHistoryDrawerProps {
+  vin: string
   tire: Tire | null
   open: boolean
   onClose: () => void
@@ -38,6 +42,7 @@ export function needsOdometer(period: TireMountPeriod): boolean {
  * them; this is the first surface that does.
  */
 export default function TireHistoryDrawer({
+  vin,
   tire,
   open,
   onClose,
@@ -46,6 +51,7 @@ export default function TireHistoryDrawer({
 }: TireHistoryDrawerProps) {
   const { t } = useTranslation('vehicles')
   const u = useUnitFormat()
+  const removeReading = useDeleteTireReading(vin)
   const num = (v: number | string | null | undefined): number | null =>
     v === null || v === undefined || v === '' ? null : Number(v)
 
@@ -64,6 +70,26 @@ export default function TireHistoryDrawer({
     v ? formatDateForDisplay(v) : t('tireList.dateUnknown')
   const bound = (d: string | null | undefined, o: number | string | null | undefined): string =>
     `${day(d)} @ ${odometer(o)}`
+
+  /* The way out of a reading logged with the wrong odometer or date: the
+     server refuses a dismount, retire, rotation or set fit that contradicts
+     one, and its message names the reading to delete here. A native confirm
+     rather than a modal, because a modal opened from a drawer is inert in this
+     app. There is no reading edit; the user logs the right one again. */
+  const deleteReading = (reading: TireReading): void => {
+    if (!tire) return
+    if (!confirm(t('tireList.readingConfirmDelete', { date: formatDateForDisplay(reading.recorded_at) }))) {
+      return
+    }
+    removeReading.mutate(
+      { tireId: tire.id, readingId: reading.id },
+      {
+        onSuccess: () => toast.success(t('tireList.readingDeleted')),
+        onError: (err: unknown) =>
+          toast.error(getActionErrorMessage(err, t('tireList.readingDeleteAction'))),
+      }
+    )
+  }
 
   return (
     <Drawer
@@ -156,8 +182,25 @@ export default function TireHistoryDrawer({
             {readings.length > 0 ? (
               <ul className="space-y-2">
                 {readings.map((reading: TireReading) => (
-                  <li key={reading.id} className="space-y-1 rounded-card border border-border p-3">
-                    <div className="font-semibold">{formatDateForDisplay(reading.recorded_at)}</div>
+                  <li
+                    key={reading.id}
+                    data-testid={`reading-${reading.id}`}
+                    className="space-y-1 rounded-card border border-border p-3"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="font-semibold">{formatDateForDisplay(reading.recorded_at)}</div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        aria-label={t('tireList.readingDeleteLabel', {
+                          date: formatDateForDisplay(reading.recorded_at),
+                        })}
+                        disabled={removeReading.isPending}
+                        onClick={() => deleteReading(reading)}
+                      >
+                        {t('common:delete')}
+                      </Button>
+                    </div>
                     {/* Every value through the same adapters the card uses, so a
                         history row can never disagree with the card above it. The
                         ternaries stay spelled out per row rather than folding into

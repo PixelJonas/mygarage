@@ -46,6 +46,7 @@ vi.mock('../../hooks/queries/useTires', () => ({
   useRotateTires: () => useRotateTiresMock(),
   useAddTireReading: () => noop(),
   useDeleteTire: () => useDeleteTireMock(),
+  useDeleteTireReading: () => ({ mutate: vi.fn(), isPending: false }),
   useTireSets: () => useTireSetsMock(),
   useCreateTireSet: () => useCreateTireSetMock(),
   useUpdateTireSet: () => noop(),

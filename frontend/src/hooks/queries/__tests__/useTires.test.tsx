@@ -13,7 +13,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 
 import api from '@/services/api'
-import { useDeleteTire, useMountTire, useTires, useUpdateMountPeriod } from '../useTires'
+import {
+  useDeleteTire,
+  useDeleteTireReading,
+  useMountTire,
+  useTires,
+  useUpdateMountPeriod,
+} from '../useTires'
 
 const VIN = '1HGCM82633A004352'
 const NEAREST_KEY = ['odometerRecords', VIN, 'nearest', '2026-04-10']
@@ -73,6 +79,38 @@ describe('tire mutations invalidate the odometer caches', () => {
     })
     expect(invalidated(queryClient, LIST_KEY)).toBe(true)
     expect(invalidated(queryClient, NEAREST_KEY)).toBe(true)
+  })
+})
+
+describe('deleting a reading', () => {
+  beforeEach(() => {
+    vi.mocked(api.delete).mockResolvedValue({ data: {} })
+  })
+
+  it('invalidates every view a tire write can change, and only this vehicle\'s', async () => {
+    const { queryClient, wrapper } = harness()
+    const OTHER = '2T1BURHE0JC000001'
+    const keys = {
+      tires: ['tires', VIN, false],
+      reminders: ['reminders', VIN],
+      sets: ['tire-sets', VIN],
+      odometer: LIST_KEY,
+      otherVehicle: ['tires', OTHER, false],
+    }
+    for (const key of Object.values(keys)) queryClient.setQueryData(key, {})
+
+    const { result } = renderHook(() => useDeleteTireReading(VIN), { wrapper })
+    await act(async () => {
+      await result.current.mutateAsync({ tireId: 4, readingId: 17 })
+    })
+
+    expect(vi.mocked(api.delete)).toHaveBeenCalledWith('/vehicles/' + VIN + '/tires/4/readings/17')
+    expect(invalidated(queryClient, keys.tires)).toBe(true)
+    expect(invalidated(queryClient, keys.reminders)).toBe(true)
+    expect(invalidated(queryClient, keys.sets)).toBe(true)
+    expect(invalidated(queryClient, keys.odometer)).toBe(true)
+    expect(invalidated(queryClient, NEAREST_KEY)).toBe(true)
+    expect(invalidated(queryClient, keys.otherVehicle)).toBe(false)
   })
 })
 

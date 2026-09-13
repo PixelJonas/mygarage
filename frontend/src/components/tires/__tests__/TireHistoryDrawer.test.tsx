@@ -1,5 +1,24 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, fireEvent, within } from '@testing-library/react'
+
+const useDeleteReadingMock = vi.fn()
+vi.mock('../../../hooks/queries/useTires', () => ({
+  useDeleteTireReading: () => useDeleteReadingMock(),
+}))
+
+const getActionErrorMessageMock = vi.fn()
+vi.mock('../../../utils/httpErrorHandler', () => ({
+  getActionErrorMessage: (...args: unknown[]) => getActionErrorMessageMock(...args),
+}))
+
+const toastSuccess = vi.fn()
+const toastError = vi.fn()
+vi.mock('sonner', () => ({
+  toast: {
+    success: (...args: unknown[]) => toastSuccess(...args),
+    error: (...args: unknown[]) => toastError(...args),
+  },
+}))
 
 vi.mock('../../../hooks/useUnitPreference', () => ({
   useUnitPreference: () => ({
@@ -66,9 +85,20 @@ const tire = (overrides: Record<string, unknown> = {}) => ({
 
 const drawer = () => within(screen.getByRole('dialog'))
 
+const mutate = vi.fn()
+beforeEach(() => {
+  mutate.mockReset()
+  toastSuccess.mockReset()
+  toastError.mockReset()
+  useDeleteReadingMock.mockReturnValue({ mutate, isPending: false })
+})
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
 describe('TireHistoryDrawer', () => {
   it('lists periods oldest first with the badges each one earns', () => {
-    render(<TireHistoryDrawer tire={tire() as never} open onClose={vi.fn()} onEditPeriod={vi.fn()} labelFor={labelFor} />)
+    render(<TireHistoryDrawer tire={tire() as never} open onClose={vi.fn()} onEditPeriod={vi.fn()} labelFor={labelFor} vin={VIN} />)
     expect(drawer().getByText('tireList.firstInstalledUnknown')).toBeInTheDocument()
     const rows = drawer().getAllByTestId(/^period-/)
     expect(rows.map((r) => r.getAttribute('data-testid'))).toEqual(['period-1', 'period-2'])
@@ -85,7 +115,7 @@ describe('TireHistoryDrawer', () => {
 
   it('a fully bounded blocking period is a fault, not a gap', () => {
     const faulted = { ...OPEN, id: 3, dismounted_on: '2026-02-01', dismounted_odometer_km: '2500.00' }
-    render(<TireHistoryDrawer tire={tire({ mount_periods: [faulted], blocking_period_ids: [3] }) as never} open onClose={vi.fn()} onEditPeriod={vi.fn()} labelFor={labelFor} />)
+    render(<TireHistoryDrawer tire={tire({ mount_periods: [faulted], blocking_period_ids: [3] }) as never} open onClose={vi.fn()} onEditPeriod={vi.fn()} labelFor={labelFor} vin={VIN} />)
     expect(drawer().getByText('tireList.periodCheck')).toBeInTheDocument()
     expect(needsOdometer(faulted as never)).toBe(false)
     expect(needsOdometer(ASSUMED as never)).toBe(true)
@@ -114,19 +144,70 @@ describe('TireHistoryDrawer', () => {
   })
 
   it('names the first installation when it is known', () => {
-    render(<TireHistoryDrawer tire={tire({ installed_date: '2024-11-02', mount_periods: [{ ...OPEN, mounted_on: '2024-11-02' }] }) as never} open onClose={vi.fn()} onEditPeriod={vi.fn()} labelFor={labelFor} />)
+    render(<TireHistoryDrawer tire={tire({ installed_date: '2024-11-02', mount_periods: [{ ...OPEN, mounted_on: '2024-11-02' }] }) as never} open onClose={vi.fn()} onEditPeriod={vi.fn()} labelFor={labelFor} vin={VIN} />)
     expect(drawer().getByText('tireList.firstInstalled')).toBeInTheDocument()
   })
 
   it('Edit hands the row\'s period to the caller', () => {
     const onEditPeriod = vi.fn()
-    render(<TireHistoryDrawer tire={tire() as never} open onClose={vi.fn()} onEditPeriod={onEditPeriod} labelFor={labelFor} />)
+    render(<TireHistoryDrawer tire={tire() as never} open onClose={vi.fn()} onEditPeriod={onEditPeriod} labelFor={labelFor} vin={VIN} />)
     fireEvent.click(within(drawer().getByTestId('period-2')).getByText('tireList.periodEdit'))
     expect(onEditPeriod).toHaveBeenCalledWith(expect.objectContaining({ id: 2 }))
   })
 
+  describe('deleting a reading', () => {
+    /* Newest first, as the server sends them. */
+    const READINGS = [
+      { id: 31, tire_id: 9, recorded_at: '2026-03-01', odometer_km: '150000.00', tread_depth_mm: '7.00', pressure_kpa: null, notes: null },
+      { id: 30, tire_id: 9, recorded_at: '2026-01-10', odometer_km: '10500.00', tread_depth_mm: '8.00', pressure_kpa: null, notes: null },
+    ]
+    const renderWithReadings = () =>
+      render(<TireHistoryDrawer tire={tire({ readings: READINGS }) as never} open onClose={vi.fn()} onEditPeriod={vi.fn()} labelFor={labelFor} vin={VIN} />)
+    const deleteIn = (readingId: number) =>
+      within(drawer().getByTestId(`reading-${readingId}`)).getByRole('button', { name: 'tireList.readingDeleteLabel' })
+
+    it('sends the row\'s tire and reading ids once the confirm is accepted', () => {
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+      renderWithReadings()
+      fireEvent.click(deleteIn(30))
+      expect(confirmSpy).toHaveBeenCalledWith('tireList.readingConfirmDelete')
+      expect(mutate).toHaveBeenCalledTimes(1)
+      expect(mutate.mock.calls[0][0]).toEqual({ tireId: 9, readingId: 30 })
+    })
+
+    it('sends nothing when the confirm is declined', () => {
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+      renderWithReadings()
+      fireEvent.click(deleteIn(31))
+      expect(confirmSpy).toHaveBeenCalledTimes(1)
+      expect(mutate).not.toHaveBeenCalled()
+    })
+
+    it('reads Delete and is disabled while a delete is in flight', () => {
+      useDeleteReadingMock.mockReturnValue({ mutate, isPending: true })
+      renderWithReadings()
+      const button = deleteIn(31)
+      expect(button).toHaveTextContent('common:delete')
+      expect(button).toBeDisabled()
+    })
+
+    it('reports the outcome through the reading keys', () => {
+      vi.spyOn(window, 'confirm').mockReturnValue(true)
+      renderWithReadings()
+      fireEvent.click(deleteIn(31))
+      const callbacks = mutate.mock.calls[0][1]
+      callbacks.onSuccess()
+      expect(toastSuccess).toHaveBeenCalledWith('tireList.readingDeleted')
+      const failure = new Error('boom')
+      getActionErrorMessageMock.mockReturnValue('the sentence the user reads')
+      callbacks.onError(failure)
+      expect(getActionErrorMessageMock).toHaveBeenCalledWith(failure, 'tireList.readingDeleteAction')
+      expect(toastError).toHaveBeenCalledWith('the sentence the user reads')
+    })
+  })
+
   it('is empty when there is nothing to show', () => {
-    render(<TireHistoryDrawer tire={tire({ mount_periods: [], blocking_period_ids: [] }) as never} open onClose={vi.fn()} onEditPeriod={vi.fn()} labelFor={labelFor} />)
+    render(<TireHistoryDrawer tire={tire({ mount_periods: [], blocking_period_ids: [] }) as never} open onClose={vi.fn()} onEditPeriod={vi.fn()} labelFor={labelFor} vin={VIN} />)
     expect(drawer().getByText('tireList.historyEmpty')).toBeInTheDocument()
   })
 })

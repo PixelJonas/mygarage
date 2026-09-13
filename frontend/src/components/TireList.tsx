@@ -1951,6 +1951,7 @@ export default function TireList({ vin }: TireListProps) {
       </Drawer>
 
       <TireHistoryDrawer
+        vin={vin}
         tire={historyTire}
         open={historyTire !== null}
         onClose={() => {

@@ -23,6 +23,7 @@ vi.mock('../../hooks/queries/useTires', () => ({
   useRotateTires: () => useUpsertTireMock(),
   useAddTireReading: () => useAddTireReadingMock(),
   useDeleteTire: () => useDeleteTireMock(),
+  useDeleteTireReading: () => ({ mutate: vi.fn(), isPending: false }),
   // Sets are not this file's subject; it just has to render past them.
   useTireSets: () => ({ data: { sets: [], total: 0 }, isLoading: false, error: null }),
   useCreateTireSet: () => useUpsertTireMock(),
