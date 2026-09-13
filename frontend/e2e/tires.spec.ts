@@ -430,10 +430,14 @@ test.describe('Tire rotation and retirement', () => {
           tread_depth_mm: 8,
           // Explicit and before the reading below. Omitting this defaults
           // `mounted_on` to today (TireService.create_and_mount), which put
-          // the mount AFTER a reading dated in the past and tripped this
+          // the mount AFTER the reading dated in the past and tripped this
           // release's own period-contradiction validation (142c42f, 4a66146)
-          // -- correctly, since a tire cannot have a tread reading before it
-          // was mounted. First caught by this task's full Playwright run.
+          // -- correctly, since that reading's odometer (15000) is ABOVE the
+          // mount odometer (1000): the vehicle's odometer would have run
+          // backwards between the reading and the mount. A reading taken
+          // before mounting is legal in itself (a stored tire measured on the
+          // shelf); only one above the mount odometer contradicts it. First
+          // caught by this task's full Playwright run.
           mounted_on: '2026-01-01',
           mounted_odometer_km: 1000,
         },
