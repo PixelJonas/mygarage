@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Upgrade note
+
+Back up first. Migration 100 adds one nullable column to `tires`; it is additive, and there are no down-migrations.
+
+### Added
+
+- A mount date and odometer on the Add Tire form when the tire goes on a corner, with the vehicle's nearest odometer reading offered beside the field (#153).
+- A date on every tire operation: mount, dismount, retire, rotate and set fit, so a swap done on Saturday can be logged on Monday.
+- Mount history on every tire, with editing of a period's dates, odometers and notes. A Fix control on the card opens it when a period blocks a figure.
+- "Mounted <date> @ <odometer>" on a mounted tire's card and "In storage since <date>" on a stored one.
+- A storage location on a tire, set when adding or editing it, or on dismount (#153).
+- Retired tires can be shown on the Tires tab and restored to storage.
+
+### Fixed
+
+- The Add Tire form never sent the mount odometer, so every tire added at a corner had an unbounded mount period, a blank distance and a withheld wear estimate, and the card asked for an odometer nothing could supply.
+- A dismount could be recorded before its own mount, and a remount below the last dismount; every tire operation now refuses a history that contradicts itself. To correct a period already recorded, edit it in the tire's mount history rather than backdating a new mount.
+- A retired tire could be mounted or rotated through the API.
+- Two simultaneous mounts at one corner answered 500 instead of 409.
+- The Log Reading date defaulted to the UTC calendar date, which is tomorrow after early evening in the Americas.
+
 ## [3.3.1] - 2026-09-10
 
 ### Behaviour note
