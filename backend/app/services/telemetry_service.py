@@ -479,9 +479,15 @@ class TelemetryService:
                 if not should_store:
                     continue
 
-            # Store to historical table
-            try:
-                telemetry = VehicleTelemetry(
+            # Store to historical table. INSERT ... ON CONFLICT DO NOTHING on
+            # the (device_id, param_key, timestamp) unique index, the same
+            # dedup `bulk_backfill` and `store_torque_telemetry` already use
+            # for this table: a replayed duplicate is a routine outcome here,
+            # not an exceptional one, and rowcount says whether the row
+            # actually landed.
+            stmt = (
+                dialect_insert(VehicleTelemetry)
+                .values(
                     vin=vin,
                     device_id=device_id,
                     param_key=param_key,
@@ -489,11 +495,10 @@ class TelemetryService:
                     timestamp=timestamp,
                     received_at=received_at,
                 )
-                self.db.add(telemetry)
-                stored_count += 1
-            except IntegrityError:
-                # Duplicate (same device_id, param_key, timestamp) - skip
-                pass
+                .on_conflict_do_nothing(index_elements=["device_id", "param_key", "timestamp"])
+            )
+            result = await self.db.execute(stmt)
+            stored_count += result.rowcount or 0
 
         # Decide what this batch means for the device's drive session.
         #
@@ -575,6 +580,15 @@ class TelemetryService:
 
         Open sessions are excluded — `end_session` computes those on close.
         """
+        # `refresh_aggregates` recomputes by SQL and production sessions do
+        # not autoflush, so this is the one guaranteed flush point before
+        # that recompute runs. The historical row above reaches the database
+        # on its own now (a Core INSERT, not a pending `add`), but this stays
+        # as the safety net for whatever else this batch left pending in the
+        # ORM session -- a session-open, an odometer sync -- ahead of a
+        # recompute that reads the database directly and cannot see it.
+        await self.db.flush()
+
         reading_at = timestamp.replace(tzinfo=None) if timestamp.tzinfo else timestamp
         await self._refresh_sessions_in_span(vin, device_id, reading_at, reading_at)
 
