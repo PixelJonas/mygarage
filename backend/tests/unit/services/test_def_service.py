@@ -30,9 +30,11 @@ def _make_mock_record(record_date, mileage_mi, gallons, cost, fill_level=None):
     record = MagicMock()
     record.date = record_date
     record.odometer_km = (
-        None if mileage_mi is None else Decimal(str(round(float(mileage_mi) * 1.60934, 2)))
+        None if mileage_mi is None else Decimal(str(round(float(mileage_mi) * 1.609344, 2)))
     )
-    record.liters = None if gallons is None else Decimal(str(round(float(gallons) * 3.78541, 2)))
+    record.liters = (
+        None if gallons is None else Decimal(str(round(float(gallons) * 3.785411784, 2)))
+    )
     record.cost = cost
     record.fill_level = fill_level
     return record

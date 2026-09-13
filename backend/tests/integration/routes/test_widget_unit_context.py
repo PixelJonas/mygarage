@@ -58,7 +58,7 @@ TEST_PASSWORD_HASH = (
 # Chosen so every derived figure below is exact, with no rounding tie in
 # sight: a value sitting on a .5 boundary would make a rounding-mode change
 # look like a conversion change.
-SEED_ODOMETER_KM = Decimal("16093.40")  # 16093.40 / 1.60934 == 10000 exactly
+SEED_ODOMETER_KM = Decimal("16093.44")  # 16093.44 / 1.609344 == 10000 exactly
 SEED_ODOMETER_DATE = date(2026, 1, 20)
 SEED_PREV_FILL_KM = Decimal("15000.00")
 SEED_PREV_FILL_DATE = date(2026, 1, 1)
@@ -72,12 +72,12 @@ SEED_MODEL = "Civic"
 SEED_LABEL = "2022 Honda Civic"
 
 # --- expected display figures, derived by hand from the seed above -------
-# odometer:            16093.40 km / 1.60934 km-per-mi = 10000 mi
-# odometer_km:         round(16093.40)                 = 16093 km
-# consumption:         40.000 L / 500.00 km * 100      = 8.00 L/100km
-# recent/average_km_per_l:  100 / 8.00                 = 12.5 km/L
-# recent/average_mpg (US):  235.214 / 8.00 = 29.40175  -> 29.4 (precision 1)
-# recent/average_mpg (UK):  282.481 / 8.00 = 35.310125 -> 35.3 (precision 1)
+# odometer:            16093.44 km / 1.609344 km-per-mi = 10000 mi
+# odometer_km:         round(16093.44)                   = 16093 km
+# consumption:         40.000 L / 500.00 km * 100        = 8.00 L/100km
+# recent/average_km_per_l:  100 / 8.00                   = 12.5 km/L
+# recent/average_mpg (US):  235.2145833... / 8.00 = 29.40183 -> 29.4 (precision 1)
+# recent/average_mpg (UK):  282.4809363... / 8.00 = 35.31012 -> 35.3 (precision 1)
 EXPECTED_ODOMETER_MI = 10000
 EXPECTED_ODOMETER_KM = 16093
 EXPECTED_L_PER_100KM = 8.0
@@ -87,25 +87,27 @@ EXPECTED_MPG_UK = 35.3
 
 # --- odometer values that do NOT divide exactly ---------------------------
 # `SEED_ODOMETER_KM` above is exact on purpose, which means it cannot see the
-# rounding path at all: 16093.40 / 1.60934 is 10000 with nothing to round.
+# rounding path at all: 16093.44 / 1.609344 is 10000 with nothing to round.
 # These two do, in both directions, and they are the values at which this
 # phase's single-rounding path DISAGREES with the pre-phase double-rounding
 # one (`int(round(UnitConverter.km_to_miles(km)))`, where `km_to_miles`
-# already rounded to 2 dp before the outer `round` saw it). Derived by hand
-# and confirmed against the adapter's own factor, `UnitConverter.MILES_TO_KM`
-# = 1.60934:
+# already rounded to 2 dp before the outer `round` saw it). Found by a
+# brute-force scan of the same 0.01 km-granularity neighbourhood against
+# `UnitConverter.MILES_TO_KM = 1.609344` (v3.4.0 changed the factor, so the
+# exact boundary points moved; the scan, not hand arithmetic, is the only
+# reliable way to relocate them):
 #
-#   120001.24 / 1.60934 = 74565.49890...  -> 74565 (rounds DOWN)
-#     old path: round(74565.49890, 2) = 74565.50 -> round() -> 74566
-#   120006.07 / 1.60934 = 74568.50013...  -> 74569 (rounds UP)
-#     old path: round(74568.50013, 2) = 74568.50 -> round() -> 74568 (even)
+#   120001.54 / 1.609344 = 74565.49998...  -> 74565 (rounds DOWN)
+#     old path: round(74565.49998, 2) = 74565.50 -> round() -> 74566
+#   120006.37 / 1.609344 = 74568.50120...  -> 74569 (rounds UP)
+#     old path: round(74568.50120, 2) = 74568.50 -> round() -> 74568 (even)
 #
 # `odometer_km` is unaffected either way (`Decimal / Decimal("1")` is the
 # identity, then rounded to the nearest whole km).
-ROUNDS_DOWN_ODOMETER_KM = Decimal("120001.24")
+ROUNDS_DOWN_ODOMETER_KM = Decimal("120001.54")
 EXPECTED_ROUNDS_DOWN_MI = 74565
-EXPECTED_ROUNDS_DOWN_KM = 120001
-ROUNDS_UP_ODOMETER_KM = Decimal("120006.07")
+EXPECTED_ROUNDS_DOWN_KM = 120002
+ROUNDS_UP_ODOMETER_KM = Decimal("120006.37")
 EXPECTED_ROUNDS_UP_MI = 74569
 EXPECTED_ROUNDS_UP_KM = 120006
 
@@ -458,7 +460,7 @@ class TestWidgetFieldMeaningsAreFrozen:
     ):
         """`odometer` is miles by contract, for everyone.
 
-        16093.40 canonical km is 10,000 mi and 16,093 km. Rendering the
+        16093.44 canonical km is 10,000 mi and 16,093 km. Rendering the
         owner's resolved distance unit here would hand a metric owner 16093
         under the key `odometer`, which is the exact silent-meaning-change D7
         forbids.
@@ -697,7 +699,7 @@ class TestOdometerRoundsOnceNotTwice:
     `int(round(km / MILES_TO_KM))`, which is strictly more correct and shifts
     roughly 0.6% of readings by exactly 1 mile.
 
-    Every other test in this file seeds `SEED_ODOMETER_KM = 16093.40`, which
+    Every other test in this file seeds `SEED_ODOMETER_KM = 16093.44`, which
     divides exactly into 10,000 mi and therefore exercises no rounding at
     all. These two seed values do, one in each direction, and both are values
     at which the old and new paths disagree -- so this is a regression pin on

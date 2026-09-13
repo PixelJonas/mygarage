@@ -32,7 +32,8 @@ logger = logging.getLogger(__name__)
 
 # Propane-by-weight → liters conversion factor.
 # Derived from: gal = lb/4.24 (old imperial formula, 4.24 lb/gal density of propane)
-#   L_per_kg = (1/0.45359237) / 4.24 * 3.78541  ≈  1.96850 L/kg
+#   L_per_kg = (1/0.45359237) / 4.24 * 3.785411784  ≈  1.96826 L/kg
+# (a separately rounded figure; the stored constant below is unchanged)
 PROPANE_LITERS_PER_KG = Decimal("1.9685")
 
 

@@ -22,17 +22,17 @@ def _make_fuel_record(**kwargs):
     if "mileage" in kwargs:
         miles = kwargs.pop("mileage")
         kwargs["odometer_km"] = (
-            None if miles is None else Decimal(str(round(float(miles) * 1.60934, 2)))
+            None if miles is None else Decimal(str(round(float(miles) * 1.609344, 2)))
         )
     if "gallons" in kwargs:
         gallons = kwargs.pop("gallons")
         kwargs["liters"] = (
-            None if gallons is None else Decimal(str(round(float(gallons) * 3.78541, 2)))
+            None if gallons is None else Decimal(str(round(float(gallons) * 3.785411784, 2)))
         )
     if "propane_gallons" in kwargs:
         pg = kwargs.pop("propane_gallons")
         kwargs["propane_liters"] = (
-            None if pg is None else Decimal(str(round(float(pg) * 3.78541, 2)))
+            None if pg is None else Decimal(str(round(float(pg) * 3.785411784, 2)))
         )
     if "tank_size_lb" in kwargs:
         lb = kwargs.pop("tank_size_lb")
@@ -957,7 +957,7 @@ def _make_service_visit(**kwargs):
     if "mileage" in kwargs:
         miles = kwargs.pop("mileage")
         kwargs["odometer_km"] = (
-            None if miles is None else Decimal(str(round(float(miles) * 1.60934, 2)))
+            None if miles is None else Decimal(str(round(float(miles) * 1.609344, 2)))
         )
     defaults = {
         "id": 1,
@@ -995,12 +995,12 @@ def _make_def_record(**kwargs):
     if "mileage" in kwargs:
         miles = kwargs.pop("mileage")
         kwargs["odometer_km"] = (
-            None if miles is None else Decimal(str(round(float(miles) * 1.60934, 2)))
+            None if miles is None else Decimal(str(round(float(miles) * 1.609344, 2)))
         )
     if "gallons" in kwargs:
         gallons = kwargs.pop("gallons")
         kwargs["liters"] = (
-            None if gallons is None else Decimal(str(round(float(gallons) * 3.78541, 2)))
+            None if gallons is None else Decimal(str(round(float(gallons) * 3.785411784, 2)))
         )
     defaults = {
         "id": 1,

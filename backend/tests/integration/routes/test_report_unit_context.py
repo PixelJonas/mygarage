@@ -50,15 +50,14 @@ _VIEWER_USERNAME = "unitctx_viewer"
 _VIN = "UNITCTXPDF000001"
 
 # 19,312 canonical km. Chosen so the imperial rendering is a clean, distinct
-# number: 19312 / 1.60934 = 11,999.9503, which the mi adapter (precision 0)
+# number: 19312 / 1.609344 = 11,999.9205, which the mi adapter (precision 0)
 # renders as "12,000". Neither figure can be mistaken for the other. The
-# divisor is `UnitConverter.MILES_TO_KM`, the rounded 1.60934 this codebase
-# actually uses, not the ISO-exact 1.609344.
+# divisor is `UnitConverter.MILES_TO_KM`, the ISO-exact 1.609344.
 _ODOMETER_KM = Decimal("19312")
 _EXPECTED_KM = "19,312"
 _EXPECTED_MI = "12,000"
 
-# 50,000 canonical km -> 50000 / 1.60934 = 31,068.6368 -> "31,069" at
+# 50,000 canonical km -> 50000 / 1.609344 = 31,068.5596 -> "31,069" at
 # precision 0. Rendered by the analytics report's reminders table.
 _DUE_MILEAGE_KM = Decimal("50000")
 _EXPECTED_DUE_KM = "50,000 km"

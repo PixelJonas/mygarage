@@ -10,11 +10,11 @@ not exist yet.
 
 Every expected string below is a hand-typed LITERAL, with the arithmetic
 that produces it written out in the comment or docstring beside it, worked
-from `UnitConverter`'s own constants (mile 1.60934 km, US gallon 3.78541 L,
-UK gallon 4.54609 L). Deliberately literals rather than a re-derivation in
+from `UnitConverter`'s own constants (mile 1.609344 km, US gallon
+3.785411784 L, UK gallon 4.54609 L). Deliberately literals rather than a re-derivation in
 this file: an expectation computed from the same constant the code under
 test uses moves with that constant instead of pinning it. They are equally
-deliberately not transcribed from the brief's illustrative grammar table,
+deliberately not transcribed from an illustrative grammar table,
 which shipped arithmetic errors in two consecutive revisions.
 """
 
@@ -33,9 +33,9 @@ from app.utils.unit_formatting import (
     format_rate,
 )
 
-# 1000 / 1.60934 = 621.3727... -> "621" at precision 0. Verified independently
-# by hand: 621 * 1.60934 = 999.60 and 622 * 1.60934 = 1001.21, so 621 is the
-# nearer whole number, matching the brief's illustrative row.
+# 1000 / 1.609344 = 621.3711... -> "621" at precision 0. Verified independently
+# by hand: 621 * 1.609344 = 999.4026 and 622 * 1.609344 = 1001.0120, so 621 is
+# the nearer whole number, matching the illustrative row.
 _MI_FOR_1000_KM = "621"
 
 
@@ -110,7 +110,7 @@ class TestMissingCounterpart:
 class TestSecondaryGallon:
     """A litre primary's show-both counterpart has no flavour of its own
     (D4b), so `secondary_gallon` supplies one. Canonical: 40 L.
-    40 / 3.78541 = 10.5678... -> "10.57"; 40 / 4.54609 = 8.7995... -> "8.80"."""
+    40 / 3.785411784 = 10.56688... -> "10.57"; 40 / 4.54609 = 8.79877... -> "8.80"."""
 
     def test_us_secondary_gallon(self) -> None:
         ctx = _ctx(show_both=True, volume="L", secondary_gallon="us")
@@ -179,7 +179,7 @@ class TestForcedVolumePair:
     """DEF's forced dual representation: always litres-then-gallons,
     independent of `show_both`, with the gallon flavour chosen by D4b
     precedence rather than the show-both counterpart table. Canonical: 2.5 L.
-    2.5 / 3.78541 = 0.660430... -> "0.66"; 2.5 / 4.54609 = 0.549923... ->
+    2.5 / 3.785411784 = 0.660430... -> "0.66"; 2.5 / 4.54609 = 0.549923... ->
     "0.55". Preserves the live string's separator: `" / "`, single spaces,
     no surrounding parenthesis or "remaining" text (that belongs to the
     dispatcher's own message template, Task 6)."""

@@ -13,13 +13,13 @@ into canonical storage permanently, which is why every expected value below
 is a hand-written literal computed from the documented factor by hand, never
 routed back through the adapter under test.
 
-Factors used, from `UnitConverter` (note these are the app's rounded
-constants, not the exact SI definitions):
-  MILES_TO_KM                 1.60934
-  US_GALLONS_TO_LITERS        3.78541
+Factors used, from `UnitConverter` (the app's constants, the exact SI
+definitions since v3.4.0):
+  MILES_TO_KM                 1.609344
+  US_GALLONS_TO_LITERS        3.785411784
   UK_GALLONS_TO_LITERS        4.54609
-  US_MPG_TO_L100KM_NUMERATOR  235.214
-  UK_MPG_TO_L100KM_NUMERATOR  282.481
+  US_MPG_TO_L100KM_NUMERATOR  235.2145833...
+  UK_MPG_TO_L100KM_NUMERATOR  282.4809363...
   Fahrenheit                  (F - 32) * 5 / 9
 """
 
@@ -134,7 +134,7 @@ async def _one(db_session: AsyncSession, model, vin: str):
 class TestDistanceConsumers:
     """All four distance consumers read a v6 `(mi)` token.
 
-    100 mi * 1.60934 = 160.934 km, stored into NUMERIC(10, 2) as 160.93.
+    100 mi * 1.609344 = 160.9344 km, stored into NUMERIC(10, 2) as 160.93.
     """
 
     async def test_service_distance_token(self, client, auth_headers, test_user, db_session):
@@ -242,7 +242,7 @@ class TestDerivedFuelConsumers:
             assert float(record.outside_temp_c) == pytest.approx(20.0, abs=0.05)
 
     async def test_fuel_consumption_token(self, client, auth_headers, test_user, db_session):
-        """235.214 / 23.5214 US MPG = 10.00 L/100km. Reciprocal, not linear."""
+        """235.2145833... / 23.5214 US MPG = 10.00 L/100km. Reciprocal, not linear."""
         async with _vehicle(db_session, test_user["id"], "V6FUELCONS000001") as vin:
             body = (
                 "units_version,unit_system,Date,OBC Economy (mpg_us)\n6,custom,2026-03-10,23.5214\n"
@@ -253,7 +253,7 @@ class TestDerivedFuelConsumers:
             assert float(record.obc_l_per_100km) == pytest.approx(10.00, abs=0.01)
 
     async def test_fuel_speed_token(self, client, auth_headers, test_user, db_session):
-        """100 mph * 1.60934 = 160.934 km/h, stored into NUMERIC(5, 1)."""
+        """100 mph * 1.609344 = 160.9344 km/h, stored into NUMERIC(5, 1)."""
         async with _vehicle(db_session, test_user["id"], "V6FUELSPEED00001") as vin:
             body = "units_version,unit_system,Date,OBC Avg Speed (mph)\n6,custom,2026-03-11,100\n"
             resp = await _post(client, auth_headers, vin, "fuel", body)
@@ -295,7 +295,7 @@ class TestATokenlessDistanceColumnResolvesToKilometres:
     shape that reaches the cell, and no fixture had one.
 
     What a regression would cost: a future tidy-up of that table multiplies
-    every such odometer by 1.60934 on the way into canonical storage,
+    every such odometer by 1.609344 on the way into canonical storage,
     permanently, with `bin/ci-check`, the compatibility corpus and the
     PostgreSQL suite all still green.
     """
@@ -473,7 +473,7 @@ class TestRejections:
     ):
         """`Odometer (gal_us)` resolves to a real adapter and must still fail.
 
-        Global adapter membership is not validation: applying 3.78541 to a
+        Global adapter membership is not validation: applying 3.785411784 to a
         distance column is dimensionally meaningless and silently wrong.
         """
         async with _vehicle(db_session, test_user["id"], "V6REJWRONGQ00001") as vin:
@@ -583,7 +583,7 @@ class TestReportAmbiguity:
         """Same seven columns, different ORDER. Rejecting by membership would
         break every v2 backup restore, so the signature is the ordered tuple.
 
-        100 mi * 1.60934 = 160.934 km.
+        100 mi * 1.609344 = 160.9344 km.
         """
         async with _vehicle(db_session, test_user["id"], "V6V2PRIMARY00001") as vin:
             body = f"{self.V2_PRIMARY_HEADER}\n2026-04-13,Maintenance,Oil,100,10.00,Shop,\n"
@@ -600,7 +600,7 @@ class TestReportAmbiguity:
 
         The v2 standalone odometer export wrote miles under `Reading` with no
         marker and no version, and nothing in such a file distinguishes it
-        from a metric sheet. 100 mi * 1.60934 = 160.934 km.
+        from a metric sheet. 100 mi * 1.609344 = 160.9344 km.
         """
         async with _vehicle(db_session, test_user["id"], "V6V2READING00001") as vin:
             body = "Date,Reading,Notes\n2026-04-14,100,v2 shape\n"
@@ -638,9 +638,9 @@ class TestHistoricalShapes:
     async def test_v5_us_imperial_fuel_shape(self, client, auth_headers, test_user, db_session):
         """The `imperial` marker settles every gallon-denominated column.
 
-        100 mi -> 160.934 km; 10 US gal -> 37.8541 L; 3.78541 per US gal ->
-        1.000 per L; 68 F -> 20.0 C; 235.214 / 23.5214 US MPG -> 10.00
-        L/100km; 100 mph -> 160.934 km/h.
+        100 mi -> 160.9344 km; 10 US gal -> 37.85412 L; 3.785411784 per US
+        gal -> 1.000 per L; 68 F -> 20.0 C; 235.2145833... / 23.5214 US MPG -> 10.00
+        L/100km; 100 mph -> 160.9344 km/h.
         """
         async with _vehicle(db_session, test_user["id"], "V6HISTUSIMP00001") as vin:
             body = (
@@ -662,7 +662,7 @@ class TestHistoricalShapes:
         """`imperial_uk` picks the UK gallon AND the UK MPG numerator.
 
         10 UK gal -> 45.4609 L; 4.54609 per UK gal -> 1.000 per L;
-        282.481 / 28.2481 UK MPG -> 10.00 L/100km.
+        282.4809363... / 28.2481 UK MPG -> 10.00 L/100km.
         """
         async with _vehicle(db_session, test_user["id"], "V6HISTUKIMP00001") as vin:
             body = (

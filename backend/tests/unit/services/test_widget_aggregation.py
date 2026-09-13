@@ -42,11 +42,11 @@ GALLON_STANDARD_KEY = "imperial_gallon_standard"
 
 # Conversion helpers — all storage is metric, but legacy widget output is imperial.
 def _mi_to_km(miles: float | int) -> Decimal:
-    return Decimal(str(round(float(miles) * 1.60934, 2)))
+    return Decimal(str(round(float(miles) * float(UnitConverter.MILES_TO_KM), 2)))
 
 
 def _gal_to_l(gallons: float | int | Decimal) -> Decimal:
-    return Decimal(str(round(float(gallons) * 3.78541, 2)))
+    return Decimal(str(round(float(gallons) * float(UnitConverter.US_GALLONS_TO_LITERS), 2)))
 
 
 async def _seed_gallon_standard(db_session, value: str) -> str | None:
@@ -379,8 +379,8 @@ class TestMpgParity:
             assert metric_result is not None
             assert uk_result.recent_mpg == pytest.approx(expected_uk_mpg, abs=0.1)
             assert uk_result.average_mpg == pytest.approx(expected_uk_mpg, abs=0.1)
-            # 282.481 (UK) vs 235.214 (US) are far enough apart that this also
-            # rules out the flavour silently defaulting back to US.
+            # 282.480936... (UK) vs 235.214583... (US) are far enough apart that
+            # this also rules out the flavour silently defaulting back to US.
             assert uk_result.recent_mpg != pytest.approx(expected_us_mpg, abs=0.1)
             # ... and the instance setting sitting at "uk" must not drag these
             # two back to the UK numerator.

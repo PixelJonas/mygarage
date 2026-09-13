@@ -31,19 +31,34 @@ GallonFlavour = Literal["us", "uk"]
 class UnitConverter:
     """Unit conversion between imperial and metric systems."""
 
-    # Conversion factors (imperial to metric).
-    # NB: LBS_TO_KG matches migration 053's exact factor (was 0.453592, now 0.45359237).
-    US_GALLONS_TO_LITERS = Decimal("3.78541")
-    UK_GALLONS_TO_LITERS = Decimal("4.54609")
-    MILES_TO_KM = Decimal("1.60934")
+    # Conversion factors (imperial to metric), from their legal definitions.
+    #
+    # The base factors are exact by definition (the 1959 international yard
+    # and pound agreement, the 231 cubic inch US gallon, the imperial gallon
+    # of 4.54609 L, standard gravity). Every other factor is DERIVED from them
+    # right here, so a derived value cannot drift from its inputs.
+    #
+    # Before v3.4.0 these were truncated (a mile of 1.60934 km, a US gallon of
+    # 3.78541 L) while the CSV importer and the webhooks used the exact values,
+    # so the same miles typed into a form and imported from a file stored
+    # different kilometres. frontend/src/utils/units.ts mirrors this table and
+    # frontend/src/utils/__tests__/unitFactorCrossLayer.test.ts fails when the
+    # two disagree. Migration 053 keeps its own frozen copies on purpose: it is
+    # a historical transform.
+    MILES_TO_KM = Decimal("1.609344")
     FEET_TO_METERS = Decimal("0.3048")
-    PSI_TO_BAR = Decimal("0.0689476")
-    PSI_TO_KPA = Decimal("6.89476")
+    INCH_TO_METERS = Decimal("0.0254")
+    US_GALLONS_TO_LITERS = Decimal("3.785411784")
+    UK_GALLONS_TO_LITERS = Decimal("4.54609")
     LBS_TO_KG = Decimal("0.45359237")
-    LBFT_TO_NM = Decimal("1.35582")
+    STANDARD_GRAVITY = Decimal("9.80665")
+    LBF_TO_N = LBS_TO_KG * STANDARD_GRAVITY
+    PSI_TO_KPA = LBF_TO_N / (INCH_TO_METERS * INCH_TO_METERS) / Decimal(1000)
+    PSI_TO_BAR = PSI_TO_KPA / Decimal(100)
+    LBFT_TO_NM = LBF_TO_N * FEET_TO_METERS
     # L/100km = numerator / MPG (reciprocal - division, not multiplication).
-    US_MPG_TO_L100KM_NUMERATOR = Decimal("235.214")
-    UK_MPG_TO_L100KM_NUMERATOR = Decimal("282.481")
+    US_MPG_TO_L100KM_NUMERATOR = Decimal(100) * US_GALLONS_TO_LITERS / MILES_TO_KM
+    UK_MPG_TO_L100KM_NUMERATOR = Decimal(100) * UK_GALLONS_TO_LITERS / MILES_TO_KM
 
     @classmethod
     def _gallons_to_liters_factor(cls, flavour: GallonFlavour) -> Decimal:

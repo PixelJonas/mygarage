@@ -164,7 +164,7 @@ class TestEmittedPrecision:
     def test_distance(self) -> None:
         column = EMITTED_COLUMNS["Odometer (km)"]
         assert cell_for(column, "km", Decimal("500.00")) == "500.00"
-        # 500 / 1.60934 = 310.68562...; 3 dp because 0.01 mi is 16.1 m, which
+        # 500 / 1.609344 = 310.68560...; 3 dp because 0.01 mi is 16.1 m, which
         # cannot round-trip the 10 m half-step of NUMERIC(10, 2) kilometres.
         assert cell_for(column, "mi", Decimal("500.00")) == "310.686"
 
@@ -176,10 +176,10 @@ class TestEmittedPrecision:
     def test_volume(self) -> None:
         column = EMITTED_COLUMNS["Liters"]
         assert cell_for(column, "L", Decimal("40.000")) == "40.000"
-        # 40 / 3.78541 = 10.566876...; 4 dp because 0.001 gal is 3.79 mL and
-        # the litre cell carries 1 mL.
+        # 40 / 3.785411784 = 10.566882...; 4 dp because 0.001 gal is 3.79 mL
+        # and the litre cell carries 1 mL.
         assert cell_for(column, "gal_us", Decimal("40.000")) == "10.5669"
-        # 40 / 4.54609 = 8.798787...
+        # 40 / 4.54609 = 8.798770...
         assert cell_for(column, "gal_uk", Decimal("40.000")) == "8.7988"
 
     def test_price_is_denominator_aware(self) -> None:
@@ -189,7 +189,7 @@ class TestEmittedPrecision:
         is off by 14x for US gallons."""
         column = EMITTED_COLUMNS["Price Per Liter"]
         assert cell_for(column, "L", Decimal("1.500")) == "1.500"
-        # 1.5 * 3.78541 = 5.678115
+        # 1.5 * 3.785411784 = 5.678118 (rounds to 5.678)
         assert cell_for(column, "gal_us", Decimal("1.500")) == "5.678"
         # 1.5 * 4.54609 = 6.819135
         assert cell_for(column, "gal_uk", Decimal("1.500")) == "6.819"
@@ -211,15 +211,15 @@ class TestEmittedPrecision:
         assert cell_for(column, "l_100km", Decimal("8.00")) == "8.00"
         # 100 / 8 = 12.5
         assert cell_for(column, "km_l", Decimal("8.00")) == "12.500"
-        # 235.214 / 8 = 29.40175
+        # 235.2145833... / 8 = 29.401823 (rounds to 29.402)
         assert cell_for(column, "mpg_us", Decimal("8.00")) == "29.402"
-        # 282.481 / 8 = 35.310125
+        # 282.4809363... / 8 = 35.310117 (rounds to 35.310)
         assert cell_for(column, "mpg_uk", Decimal("8.00")) == "35.310"
 
     def test_speed(self) -> None:
         column = EMITTED_COLUMNS["OBC Avg Speed (km/h)"]
         assert cell_for(column, "kmh", Decimal("100.0")) == "100.0"
-        # 100 / 1.60934 = 62.13723...
+        # 100 / 1.609344 = 62.13712...
         assert cell_for(column, "mph", Decimal("100.0")) == "62.14"
 
     def test_none_is_an_empty_cell_in_every_unit(self) -> None:

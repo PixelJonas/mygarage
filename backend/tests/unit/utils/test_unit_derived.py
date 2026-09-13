@@ -435,8 +435,8 @@ class TestVolumePerDistanceMixedFlip:
         This pins the computed-correct value the code under test actually
         produces and documents the table disagreement rather than silently
         reproducing it. 8.5 / 1000 = 0.0085 L/km; 0.0085 L/km is already
-        the L/km rate (L's factor is 1); 0.0085 * 1.60934 (km per mile,
-        UnitConverter.MILES_TO_KM) * 1000 = 13.679... -> "13.68"."""
+        the L/km rate (L's factor is 1); 0.0085 * 1.609344 (km per mile,
+        UnitConverter.MILES_TO_KM) * 1000 = 13.6794... -> "13.68"."""
         result = format_volume_per_1000_distance(Decimal("8.5"), _ctx(_MIXED, True))
         assert result == "2.25 gal/1,000 km (13.68 L/1,000 mi)"
         assert "(8.50 L/1,000 km)" not in result
@@ -458,23 +458,24 @@ class TestHandComputedGoldens:
     volume-per-distance figure unpinned.
 
     These are hand-typed literals, derived below from the three constants and
-    nothing else. `UnitConverter`'s values, not the ISO-exact ones:
-    US gallon 3.78541 L, UK gallon 4.54609 L, mile 1.60934 km.
+    nothing else, `UnitConverter`'s values, which since v3.4.0 ARE the
+    ISO-exact ones: US gallon 3.785411784 L, UK gallon 4.54609 L,
+    mile 1.609344 km.
 
         cost per volume, canonical 0.32 per litre
-          gal_us  0.32 * 3.78541 = 1.2113312  -> "$1.21/gal"
-          gal_uk  0.32 * 4.54609 = 1.4547488  -> "$1.45/gal"
-          L       0.32 * 1       = 0.32       -> "$0.32/L"
+          gal_us  0.32 * 3.785411784 = 1.21133177088  -> "$1.21/gal"
+          gal_uk  0.32 * 4.54609     = 1.4547488       -> "$1.45/gal"
+          L       0.32 * 1           = 0.32            -> "$0.32/L"
 
         cost per distance, canonical 0.012 per km
-          mi      0.012 * 1.60934 * 1000 = 19.31208 -> "$19.31/1,000 mi"
-          km      0.012 * 1       *  100 =  1.2     -> "$1.20/100 km"
+          mi      0.012 * 1.609344 * 1000 = 19.312128 -> "$19.31/1,000 mi"
+          km      0.012 * 1        *  100 =  1.2       -> "$1.20/100 km"
 
         volume per distance, canonical 8.5 L per 1,000 km
           (8.5 / 1000 = 0.0085 L per canonical km)
-          L      /1,000 km  0.0085 / 1       * 1       * 1000 =  8.500  -> "8.50"
-          gal_us /1,000 mi  0.0085 / 3.78541 * 1.60934 * 1000 =  3.6137 -> "3.61"
-          gal_uk /1,000 mi  0.0085 / 4.54609 * 1.60934 * 1000 =  3.0090 -> "3.01"
+          L      /1,000 km  0.0085 / 1           * 1        * 1000 =  8.500...  -> "8.50"
+          gal_us /1,000 mi  0.0085 / 3.785411784 * 1.609344 * 1000 =  3.6137... -> "3.61"
+          gal_uk /1,000 mi  0.0085 / 4.54609     * 1.609344 * 1000 =  3.0091... -> "3.01"
 
     The first three of these ($1.21/gal, $19.31/1,000 mi, and the fuel-rate
     pair 0.66/0.55 gal/hr that `test_unit_formatting.py` already carries) are
