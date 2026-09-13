@@ -22,12 +22,14 @@ import pytest
 import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.odometer import OdometerRecord
 from app.models.reminder import Reminder
 from app.models.tire import Tire, TireReading
 from app.models.vehicle import Vehicle
-from app.services.tire_service import ODOMETER_SOURCE_TIRE
+from app.schemas.tire import TireCreate, TireCreateAndMountRequest, TireReadingCreate
+from app.services.tire_service import ODOMETER_SOURCE_TIRE, TireService
 from app.utils.odometer_sync import auto_sync_marker
 
 
@@ -364,6 +366,143 @@ class TestTheOdometerRecordTheReadingPublished:
         gone = await client.delete(_url(vehicle, mine, reading), headers=auth_headers)
         assert gone.status_code == 204, gone.text
         assert await _records(db_session, vehicle) == [(self.DAY, Decimal("11000"), theirs_marker)]
+
+
+_SESSION_DAY = date(2026, 3, 1)
+
+
+@pytest.mark.asyncio
+class TestTheDaysRecordOtherReadingsStillSupport:
+    """The vehicle keeps one automatic odometer record per day, rewritten by
+    each publish on that day, so after a Log Reading session it carries the
+    LAST reading's marker and value while every other reading of that day
+    stands behind the same kilometres. Deleting the reading whose marker it
+    carries must leave the day with a record, or the vehicle's latest odometer
+    falls back to an older day and every mounted tire reads a confident
+    too-low distance.
+
+    On a session that does not autoflush, as every request session is: the
+    record's delete has to reach the database before the republish looks for
+    a same-day row by SQL.
+    """
+
+    @staticmethod
+    def _maker(test_engine) -> async_sessionmaker[AsyncSession]:
+        return async_sessionmaker(
+            test_engine, class_=AsyncSession, expire_on_commit=False, autoflush=False
+        )
+
+    @staticmethod
+    async def _day(
+        maker: async_sessionmaker[AsyncSession], vin: str, day: date
+    ) -> list[tuple[Decimal, str | None]]:
+        async with maker() as db:
+            rows = (
+                (
+                    await db.execute(
+                        select(OdometerRecord)
+                        .where(OdometerRecord.vin == vin, OdometerRecord.date == day)
+                        .order_by(OdometerRecord.id)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            return [(r.odometer_km, r.notes) for r in rows]
+
+    @staticmethod
+    async def _log(maker: async_sessionmaker[AsyncSession], vin: str, tire_id: int, **body) -> int:
+        """Log a reading and return its id: ids increase, so it is the tire's highest."""
+        async with maker() as db:
+            logged = await TireService(db).add_reading(
+                vin, tire_id, TireReadingCreate(**body), None
+            )
+        return max(r.id for r in logged.readings)
+
+    async def test_four_tires_read_on_one_day_keep_the_days_record_when_the_last_is_deleted(
+        self, test_engine, vehicle
+    ):
+        maker = self._maker(test_engine)
+        ids: dict[str, int] = {}
+        for position in ("FL", "FR", "RL", "RR"):
+            async with maker() as db:
+                made = await TireService(db).create_and_mount(
+                    vehicle,
+                    TireCreateAndMountRequest(
+                        vin=vehicle,
+                        position=position,
+                        brand=position,
+                        mounted_on=date(2026, 1, 1),
+                        mounted_odometer_km=Decimal("10000"),
+                    ),
+                    None,
+                )
+            ids[position] = made.id
+        readings = {
+            position: await self._log(
+                maker,
+                vehicle,
+                ids[position],
+                recorded_at=_SESSION_DAY,
+                odometer_km=Decimal("15000"),
+                tread_depth_mm=Decimal("7.0"),
+            )
+            for position in ("FL", "FR", "RL", "RR")
+        }
+
+        async def fl_distance() -> Decimal | None:
+            async with maker() as db:
+                listed = await TireService(db).list_tires(vehicle, None)
+            return next(t for t in listed.tires if t.id == ids["FL"]).distance_km
+
+        assert await self._day(maker, vehicle, _SESSION_DAY) == [
+            (Decimal("15000"), auto_sync_marker(ODOMETER_SOURCE_TIRE, ids["RR"]))
+        ]
+        assert await fl_distance() == Decimal("5000")
+
+        async with maker() as db:
+            await TireService(db).delete_reading(vehicle, ids["RR"], readings["RR"], None)
+
+        (only,) = await self._day(maker, vehicle, _SESSION_DAY)
+        assert only[0] == Decimal("15000")
+        assert only[1] in {
+            auto_sync_marker(ODOMETER_SOURCE_TIRE, ids[position]) for position in ("FL", "FR", "RL")
+        }
+        assert await fl_distance() == Decimal("5000")
+
+    async def test_deleting_the_later_of_two_same_day_readings_puts_the_earlier_back(
+        self, test_engine, vehicle
+    ):
+        maker = self._maker(test_engine)
+        async with maker() as db:
+            tire_id = (
+                await TireService(db).create_tire(
+                    vehicle, TireCreate(vin=vehicle, brand="Twice"), None
+                )
+            ).id
+        marker = auto_sync_marker(ODOMETER_SOURCE_TIRE, tire_id)
+        await self._log(
+            maker,
+            vehicle,
+            tire_id,
+            recorded_at=_SESSION_DAY,
+            odometer_km=Decimal("11000"),
+            tread_depth_mm=Decimal("7.0"),
+        )
+        later = await self._log(
+            maker,
+            vehicle,
+            tire_id,
+            recorded_at=_SESSION_DAY,
+            odometer_km=Decimal("11050"),
+            pressure_kpa=Decimal("230"),
+        )
+        assert await self._day(maker, vehicle, _SESSION_DAY) == [(Decimal("11050"), marker)]
+
+        async with maker() as db:
+            await TireService(db).delete_reading(vehicle, tire_id, later, None)
+
+        assert await self._day(maker, vehicle, _SESSION_DAY) == [(Decimal("11000"), marker)]
 
 
 @pytest.mark.asyncio

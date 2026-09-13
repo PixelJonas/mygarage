@@ -1706,7 +1706,7 @@ class TireService:
         reading: TireReading,
         remaining: Sequence[TireReading],
     ) -> None:
-        """Delete the vehicle odometer record a reading published, if it is still that.
+        """Withdraw the vehicle odometer record a reading published, if it is still that.
 
         `add_reading` publishes with `ODOMETER_SOURCE_TIRE` keyed by the TIRE,
         so the marker alone does not say which reading a record came from, and
@@ -1716,8 +1716,21 @@ class TireService:
         the reading's odometer, and no remaining reading of this tire has that
         same date and odometer to keep it true. Anything else (a manual row,
         another tire's or a rotation's takeover, a row on another day) is left
-        alone. At most one record goes. Flushed, because request sessions do
-        not autoflush and the reload that follows reads odometer records by SQL.
+        alone, and nothing is done when no such record exists. At most one
+        record goes.
+
+        That one row is also the day's record for every OTHER reading logged
+        on that day: a Log Reading session for four tires leaves one record,
+        carrying the last tire's marker, that all four stand behind. Removing
+        it alone would drop the vehicle's latest odometer back to an older day
+        and make every mounted tire's distance confidently too low. So when a
+        record is deleted, the newest remaining reading of this VEHICLE on that
+        date that carries an odometer (by id, the order they were published
+        in) is published again, through the synchroniser and under its own
+        tire's marker; a later same-day reading of the same tire at another
+        odometer is covered the same way. The delete is flushed first: request
+        sessions do not autoflush, and the synchroniser looks for a same-day
+        row by SQL, where an unflushed delete would still show it this one.
         """
         odometer = reading.odometer_km
         if odometer is None:
@@ -1745,9 +1758,29 @@ class TireService:
         # The odometer compared in Python, as Decimals: NUMERIC equality in SQL
         # depends on how each dialect stores the value.
         record = next((c for c in candidates if _same_measure(c.odometer_km, odometer)), None)
-        if record is not None:
-            await self.db.delete(record)
-            await self.db.flush()
+        if record is None:
+            return
+        await self.db.delete(record)
+        await self.db.flush()
+        # The reading being deleted is still in the database here (it goes on
+        # the caller's commit), hence the id filter.
+        backer = (
+            await self.db.execute(
+                select(TireReading)
+                .where(
+                    TireReading.vin == vin,
+                    TireReading.recorded_at == reading.recorded_at,
+                    TireReading.odometer_km.is_not(None),
+                    TireReading.id != reading.id,
+                )
+                .order_by(TireReading.id.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if backer is not None:
+            await self._publish_odometer(
+                vin, backer.recorded_at, backer.odometer_km, ODOMETER_SOURCE_TIRE, backer.tire_id
+            )
 
     async def _sync_low_tread_reminder(self, tire: Tire) -> None:
         """Create or complete a pending 'Tire tread low (POS)' reminder.
