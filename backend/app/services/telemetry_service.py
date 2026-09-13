@@ -6,9 +6,10 @@ import logging
 from dataclasses import dataclass, field
 from datetime import date as date_type
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import delete, func, select, text
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -498,7 +499,7 @@ class TelemetryService:
                 .on_conflict_do_nothing(index_elements=["device_id", "param_key", "timestamp"])
             )
             result = await self.db.execute(stmt)
-            stored_count += result.rowcount or 0
+            stored_count += cast(CursorResult[Any], result).rowcount or 0
 
         # Decide what this batch means for the device's drive session.
         #
@@ -580,13 +581,18 @@ class TelemetryService:
 
         Open sessions are excluded — `end_session` computes those on close.
         """
-        # `refresh_aggregates` recomputes by SQL and production sessions do
-        # not autoflush, so this is the one guaranteed flush point before
-        # that recompute runs. The historical row above reaches the database
-        # on its own now (a Core INSERT, not a pending `add`), but this stays
-        # as the safety net for whatever else this batch left pending in the
-        # ORM session -- a session-open, an odometer sync -- ahead of a
-        # recompute that reads the database directly and cannot see it.
+        # `_refresh_sessions_in_span` below selects on `ended_at IS NOT NULL`.
+        # `end_session` sets `ended_at` as a plain ORM attribute, no flush, so
+        # a session this same unit of work already closed -- the HTTPS route
+        # calling `handle_ecu_offline` (grace period 0) ahead of this same
+        # payload's `store_telemetry`, both on one request's session -- is
+        # invisible to that SELECT until something flushes it, and the very
+        # readings that arrived alongside the close are excluded from the
+        # session they just closed. `_open_session_for_movement` does not
+        # need this: it flushes inside its own savepoint and only ever
+        # creates an OPEN session, which this SELECT already excludes.
+        # `refresh_aggregates` never reads `OdometerRecord` either, so an
+        # odometer sync earlier in this batch is not a reason for this flush.
         await self.db.flush()
 
         reading_at = timestamp.replace(tzinfo=None) if timestamp.tzinfo else timestamp
@@ -832,7 +838,7 @@ class TelemetryService:
             )
             result = await self.db.execute(stmt)
             # rowcount is 1 on insert, 0 when the conflict clause fires
-            row_inserted = result.rowcount or 0
+            row_inserted = cast(CursorResult[Any], result).rowcount or 0
             inserted += row_inserted
             await self._update_latest_if_newer(vin, r.param_key, value, ts)
 
@@ -1079,7 +1085,7 @@ class TelemetryService:
                 .on_conflict_do_nothing(index_elements=["device_id", "param_key", "timestamp"])
             )
             result = await self.db.execute(stmt)
-            inserted += result.rowcount or 0
+            inserted += cast(CursorResult[Any], result).rowcount or 0
             await self._update_latest_if_newer(vin, param_key, float(value), ts)
         return inserted
 
