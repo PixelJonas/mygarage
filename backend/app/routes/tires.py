@@ -213,6 +213,24 @@ async def add_tire_reading(
     return await TireService(db).add_reading(vin, tire_id, data, current_user)
 
 
+@router.delete("/{vin}/tires/{tire_id}/readings/{reading_id}", status_code=204)
+async def delete_tire_reading(
+    vin: str,
+    tire_id: int,
+    reading_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_auth),
+) -> None:
+    """Delete one reading, for one logged with the wrong odometer or date.
+
+    404 when the reading is not this tire's. The tire's tread and pressure fall
+    back to the newest remaining reading when they still hold the deleted
+    reading's value, the odometer record the reading published goes with it,
+    and the low-tread reminder is re-synced.
+    """
+    await TireService(db).delete_reading(vin, tire_id, reading_id, current_user)
+
+
 # --- Tire sets ------------------------------------------------------------
 #
 # `/{vin}/tire-sets` rather than `/{vin}/tires/sets`: the second would sit under

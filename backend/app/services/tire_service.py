@@ -566,6 +566,15 @@ def project_wear(
     )
 
 
+def _same_measure(a: Decimal | None, b: Decimal | None) -> bool:
+    """Whether two stored measurements are the same known value.
+
+    As Decimals, so "7.0" from a request and "7.00" from a `Numeric(5, 2)`
+    column compare equal. An unknown on either side is never the same.
+    """
+    return a is not None and b is not None and Decimal(a) == Decimal(b)
+
+
 def _low_tread_title(position: str | None) -> str:
     """Title for a low-tread reminder.
 
@@ -1596,6 +1605,149 @@ class TireService:
             await self.db.rollback()
             logger.error("DB error adding tire reading %s: %s", tire_id, sanitize_for_log(e))
             raise HTTPException(status_code=503, detail="Database temporarily unavailable")
+
+    async def delete_reading(
+        self, vin: str, tire_id: int, reading_id: int, current_user: User
+    ) -> None:
+        """Delete one reading, for one logged with the wrong odometer or date.
+
+        The repair for a mistyped reading. The writers that validate the mount
+        history refuse any write that leaves a period contradicting a reading,
+        and that refusal names the reading to delete; there is no reading edit,
+        so the user re-logs the correct one.
+
+        No vehicle write lock, for the reason `add_reading` takes none: it
+        writes no position, retirement or period row, which is what the lock
+        serialises. And a delete is safer still than an add: the history rules
+        only compare periods against readings that exist, so removing a
+        reading can remove a contradiction but never create one.
+
+        Undoes what `add_reading` left behind, and only that: the tread and
+        pressure it may have copied onto the tire, the vehicle odometer record
+        it published, and, through the same reload-and-sync path, the
+        low-tread reminder that copied tread may have raised.
+        """
+        from app.services.auth import get_vehicle_or_403
+
+        vin = vin.upper().strip()
+        try:
+            await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
+            tire = (
+                await self.db.execute(
+                    select(Tire)
+                    .where(Tire.id == tire_id, Tire.vin == vin)
+                    .options(selectinload(Tire.readings), selectinload(Tire.mount_periods))
+                )
+            ).scalar_one_or_none()
+            if tire is None:
+                raise HTTPException(status_code=404, detail="Tire not found")
+            # Looked up inside THIS tire's readings, so a reading id belonging
+            # to another tire or another vehicle is a 404, never a delete.
+            reading = next((r for r in tire.readings or [] if r.id == reading_id), None)
+            if reading is None:
+                raise HTTPException(status_code=404, detail="Reading not found")
+
+            remaining = sorted(
+                (r for r in tire.readings or [] if r.id != reading.id),
+                key=lambda r: (r.recorded_at, r.id),
+                reverse=True,
+            )
+            # The tire's tread and pressure, one measure at a time. `add_reading`
+            # copies a reading's value onto the tire only when that reading is
+            # the newest, and Add Tire and Edit set the tire's value with no
+            # reading at all. So the value is the deleted reading's only while
+            # the tire still holds exactly that value; then it falls back to
+            # the newest remaining reading that measures it. When none does,
+            # null: the only dated measurement on file was the one being
+            # withdrawn, and an Add Tire value it replaced carries no date that
+            # would make it true now. An unknown tread is what
+            # `_sync_low_tread_reminder` treats as unknown, never as healthy.
+            # A value that differs was set by the user or by a newer reading,
+            # and is left alone.
+            if _same_measure(tire.tread_depth_mm, reading.tread_depth_mm):
+                tire.tread_depth_mm = next(
+                    (r.tread_depth_mm for r in remaining if r.tread_depth_mm is not None), None
+                )
+            if _same_measure(tire.pressure_kpa, reading.pressure_kpa):
+                tire.pressure_kpa = next(
+                    (r.pressure_kpa for r in remaining if r.pressure_kpa is not None), None
+                )
+
+            await self._withdraw_reading_odometer(vin, tire.id, reading, remaining)
+
+            # Removed from the loaded collection, not just `db.delete`d: the
+            # reload below finds this tire in the identity map with `readings`
+            # already loaded, and would otherwise hand the reminder sync a
+            # collection that still holds the deleted row. `delete-orphan`
+            # issues the DELETE on commit.
+            tire.readings.remove(reading)
+            await self.db.commit()
+            # The response is discarded: the route answers 204, and the sync is
+            # the point. It completes a low-tread reminder once the tire's
+            # tread is measured healthy again, and leaves one pending when the
+            # tread is still low or now unknown.
+            await self._reload_and_sync(tire.id, vin)
+        except HTTPException:
+            raise
+        except OperationalError as e:
+            await self.db.rollback()
+            logger.error(
+                "DB error deleting tire reading %s of tire %s: %s",
+                reading_id,
+                tire_id,
+                sanitize_for_log(e),
+            )
+            raise HTTPException(status_code=503, detail="Database temporarily unavailable")
+
+    async def _withdraw_reading_odometer(
+        self,
+        vin: str,
+        tire_id: int,
+        reading: TireReading,
+        remaining: Sequence[TireReading],
+    ) -> None:
+        """Delete the vehicle odometer record a reading published, if it is still that.
+
+        `add_reading` publishes with `ODOMETER_SOURCE_TIRE` keyed by the TIRE,
+        so the marker alone does not say which reading a record came from, and
+        the synchroniser keeps one automatic row per day, updated in place by
+        the next publish on that day. A record is this reading's only when it
+        carries this tire's marker, sits on the reading's date, still holds
+        the reading's odometer, and no remaining reading of this tire has that
+        same date and odometer to keep it true. Anything else (a manual row,
+        another tire's or a rotation's takeover, a row on another day) is left
+        alone. At most one record goes. Flushed, because request sessions do
+        not autoflush and the reload that follows reads odometer records by SQL.
+        """
+        odometer = reading.odometer_km
+        if odometer is None:
+            return
+        if any(
+            r.recorded_at == reading.recorded_at and _same_measure(r.odometer_km, odometer)
+            for r in remaining
+        ):
+            return
+        candidates = (
+            (
+                await self.db.execute(
+                    select(OdometerRecord)
+                    .where(
+                        OdometerRecord.vin == vin,
+                        OdometerRecord.notes == auto_sync_marker(ODOMETER_SOURCE_TIRE, tire_id),
+                        OdometerRecord.date == reading.recorded_at,
+                    )
+                    .order_by(OdometerRecord.id.desc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        # The odometer compared in Python, as Decimals: NUMERIC equality in SQL
+        # depends on how each dialect stores the value.
+        record = next((c for c in candidates if _same_measure(c.odometer_km, odometer)), None)
+        if record is not None:
+            await self.db.delete(record)
+            await self.db.flush()
 
     async def _sync_low_tread_reminder(self, tire: Tire) -> None:
         """Create or complete a pending 'Tire tread low (POS)' reminder.
