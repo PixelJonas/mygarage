@@ -322,39 +322,44 @@ async def import_service_csv(
                     import_result.add_skip()
                     continue
 
-            # Lookup or create Vendor
-            vendor_id = None
-            if vendor_name:
-                vendor_result = await db.execute(
-                    select(Vendor).where(Vendor.name == vendor_name).limit(1)
+            # A savepoint per row, covering the vendor lookup/create, the
+            # visit and its line item together: a CHECK or length violation
+            # on any of them rolls the whole row back alone instead of
+            # poisoning the session for every row and loop still to come.
+            async with db.begin_nested():
+                # Lookup or create Vendor
+                vendor_id = None
+                if vendor_name:
+                    vendor_result = await db.execute(
+                        select(Vendor).where(Vendor.name == vendor_name).limit(1)
+                    )
+                    vendor = vendor_result.scalar_one_or_none()
+                    if not vendor:
+                        vendor = Vendor(name=vendor_name)
+                        db.add(vendor)
+                        await db.flush()
+                    vendor_id = vendor.id
+
+                # Create ServiceVisit with one line item per CSV row
+                visit = ServiceVisit(
+                    vin=vin,
+                    date=date,
+                    odometer_km=odometer_km,
+                    engine_hours=engine_hours,
+                    service_category=category or "Maintenance",
+                    vendor_id=vendor_id,
+                    notes=notes,
+                    total_cost=cost or Decimal("0"),
                 )
-                vendor = vendor_result.scalar_one_or_none()
-                if not vendor:
-                    vendor = Vendor(name=vendor_name)
-                    db.add(vendor)
-                    await db.flush()
-                vendor_id = vendor.id
+                db.add(visit)
+                await db.flush()
 
-            # Create ServiceVisit with one line item per CSV row
-            visit = ServiceVisit(
-                vin=vin,
-                date=date,
-                odometer_km=odometer_km,
-                engine_hours=engine_hours,
-                service_category=category or "Maintenance",
-                vendor_id=vendor_id,
-                notes=notes,
-                total_cost=cost or Decimal("0"),
-            )
-            db.add(visit)
-            await db.flush()
-
-            line_item = ServiceLineItem(
-                visit_id=visit.id,
-                description=description or category or "Service",
-                cost=cost or Decimal("0"),
-            )
-            db.add(line_item)
+                line_item = ServiceLineItem(
+                    visit_id=visit.id,
+                    description=description or category or "Service",
+                    cost=cost or Decimal("0"),
+                )
+                db.add(line_item)
             import_result.add_success()
 
         except Exception as e:
@@ -1126,44 +1131,61 @@ async def import_vehicle_json(
                     results["service_records"]["skipped"] += 1
                     continue
 
-            # Lookup or create Vendor
-            vendor_id = None
-            vendor_name = record_data.get("vendor_name")
-            if vendor_name:
-                vendor_result = await db.execute(
-                    select(Vendor).where(Vendor.name == vendor_name).limit(1)
-                )
-                vendor = vendor_result.scalar_one_or_none()
-                if not vendor:
-                    vendor = Vendor(name=vendor_name)
-                    db.add(vendor)
-                    await db.flush()
-                vendor_id = vendor.id
-
             cost = Decimal(str(record_data["cost"])) if record_data.get("cost") else Decimal("0")
             description = (
                 record_data.get("service_type") or record_data.get("description") or "Service"
             )
-            category = record_data.get("service_category") or "Maintenance"
+            # Only a name IN VALID_SERVICE_CATEGORIES is accepted, the same
+            # vocabulary the CSV importer matches against. Reported as this
+            # row's error rather than left for the database's own CHECK
+            # constraint to reject.
+            raw_category = record_data.get("service_category")
+            if raw_category and raw_category not in VALID_SERVICE_CATEGORIES:
+                results["service_records"]["errors"] += 1
+                results["errors"].append(
+                    f"Service record {idx}: service_category {raw_category!r} is not "
+                    "a recognized category"
+                )
+                continue
+            category = raw_category or "Maintenance"
 
-            visit = ServiceVisit(
-                vin=vin,
-                date=date,
-                odometer_km=imported_odometer_km,
-                service_category=category,
-                vendor_id=vendor_id,
-                notes=record_data.get("notes"),
-                total_cost=cost,
-            )
-            db.add(visit)
-            await db.flush()
+            # A savepoint per row, covering the vendor lookup/create, the
+            # visit and its line item together: a CHECK or length violation
+            # on any of them rolls the whole row back alone instead of
+            # poisoning the session for every row and loop still to come.
+            async with db.begin_nested():
+                # Lookup or create Vendor
+                vendor_id = None
+                vendor_name = record_data.get("vendor_name")
+                if vendor_name:
+                    vendor_result = await db.execute(
+                        select(Vendor).where(Vendor.name == vendor_name).limit(1)
+                    )
+                    vendor = vendor_result.scalar_one_or_none()
+                    if not vendor:
+                        vendor = Vendor(name=vendor_name)
+                        db.add(vendor)
+                        await db.flush()
+                    vendor_id = vendor.id
 
-            line_item = ServiceLineItem(
-                visit_id=visit.id,
-                description=description,
-                cost=cost,
-            )
-            db.add(line_item)
+                visit = ServiceVisit(
+                    vin=vin,
+                    date=date,
+                    odometer_km=imported_odometer_km,
+                    service_category=category,
+                    vendor_id=vendor_id,
+                    notes=record_data.get("notes"),
+                    total_cost=cost,
+                )
+                db.add(visit)
+                await db.flush()
+
+                line_item = ServiceLineItem(
+                    visit_id=visit.id,
+                    description=description,
+                    cost=cost,
+                )
+                db.add(line_item)
             results["service_records"]["success"] += 1
         except Exception as e:
             results["service_records"]["errors"] += 1
@@ -1337,6 +1359,15 @@ async def import_vehicle_json(
             has_date = bool(is_recurring and recurrence_days)
             has_miles = bool(is_recurring and recurrence_miles)
 
+            # The database requires a positive due_mileage_km when one is set
+            # (check_due_mileage_km); reject a negative recurrence here
+            # rather than letting that CHECK reject the row. Not clamped: a
+            # negative value is reported, never silently corrected.
+            if has_miles and Decimal(str(recurrence_miles)) <= 0:
+                results["reminders"]["errors"] += 1
+                results["errors"].append(f"Reminder {idx}: recurrence_miles must be positive")
+                continue
+
             if has_date and has_miles:
                 reminder_type = "both"
             elif has_miles:
@@ -1358,7 +1389,11 @@ async def import_vehicle_json(
                 status="pending",
                 notes=reminder_data.get("notes"),
             )
-            db.add(reminder)
+            # A savepoint per row. A row the database still rejects rolls
+            # back alone here, instead of poisoning the session for every
+            # row and loop still to come.
+            async with db.begin_nested():
+                db.add(reminder)
             results["reminders"]["success"] += 1
         except Exception as e:
             results["reminders"]["errors"] += 1
@@ -1376,7 +1411,11 @@ async def import_vehicle_json(
                 title=note_data["title"],
                 content=note_data["content"],
             )
-            db.add(note)
+            # A savepoint per row. A row the database still rejects rolls
+            # back alone here, instead of poisoning the session for every
+            # row and loop still to come.
+            async with db.begin_nested():
+                db.add(note)
             results["notes"]["success"] += 1
         except Exception as e:
             results["notes"]["errors"] += 1

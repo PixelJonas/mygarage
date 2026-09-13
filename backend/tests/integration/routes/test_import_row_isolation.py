@@ -356,6 +356,109 @@ class TestADatabaseInvalidRowDoesNotDiscardTheUpload:
 
 
 @pytest.mark.asyncio
+class TestABadServiceOrReminderRowDoesNotFailOtherRecordTypes:
+    """`import_vehicle_json` writes six record types in one request behind one
+    final `db.commit()`. Before this round, the service_records and reminders
+    loops added their rows with no savepoint (a bare `db.add` plus flush, or
+    a bare `db.add`), so a CHECK violation in either one raised at that add
+    or at the unguarded final commit, escaped every per-row `try/except` in
+    the whole function, and rolled back everything the request had written so
+    far, other record types included.
+
+    A service record with a category outside `VALID_SERVICE_CATEGORIES` and
+    a reminder with a negative `recurrence_miles` are now also rejected by
+    application-level validation before they ever reach the database, in
+    addition to the savepoint each loop's `db.add` now runs in.
+    """
+
+    async def test_vehicle_json_service_record_with_invalid_category_does_not_500_the_upload(
+        self, client: AsyncClient, auth_headers, test_vehicle, test_engine
+    ):
+        json_data = {
+            "export_version": "3",
+            "units": "metric",
+            "fuel_records": [
+                {"date": "2027-02-01", "odometer_km": 72000, "liters": 40.0, "cost": 60.0},
+            ],
+            "service_records": [
+                {"date": "2027-02-02", "service_category": "Bogus", "cost": 10.0},
+            ],
+        }
+        async with _production_session(test_engine) as session:
+            response = await client.post(
+                f"/api/import/vehicles/{test_vehicle['vin']}/json",
+                headers=auth_headers,
+                files={
+                    "file": (
+                        "vehicle.json",
+                        BytesIO(json.dumps(json_data).encode()),
+                        "application/json",
+                    )
+                },
+                data={"skip_duplicates": "true"},
+            )
+            assert response.status_code == 200, response.text
+            data = response.json()
+            assert data["service_records"]["success_count"] == 0, data
+            assert data["service_records"]["error_count"] == 1, data
+            assert data["fuel_records"]["success_count"] == 1, data
+
+            fuel_count = await session.execute(
+                select(func.count())
+                .select_from(FuelRecord)
+                .where(
+                    FuelRecord.vin == test_vehicle["vin"],
+                    FuelRecord.date == date(2027, 2, 1),
+                    FuelRecord.odometer_km == Decimal("72000"),
+                )
+            )
+            assert fuel_count.scalar() == 1
+
+    async def test_vehicle_json_reminder_with_negative_recurrence_miles_does_not_500_the_upload(
+        self, client: AsyncClient, auth_headers, test_vehicle, test_engine
+    ):
+        json_data = {
+            "export_version": "3",
+            "units": "metric",
+            "fuel_records": [
+                {"date": "2027-02-03", "odometer_km": 72010, "liters": 40.0, "cost": 60.0},
+            ],
+            "reminders": [
+                {"description": "Oil change", "is_recurring": True, "recurrence_miles": -50},
+            ],
+        }
+        async with _production_session(test_engine) as session:
+            response = await client.post(
+                f"/api/import/vehicles/{test_vehicle['vin']}/json",
+                headers=auth_headers,
+                files={
+                    "file": (
+                        "vehicle.json",
+                        BytesIO(json.dumps(json_data).encode()),
+                        "application/json",
+                    )
+                },
+                data={"skip_duplicates": "true"},
+            )
+            assert response.status_code == 200, response.text
+            data = response.json()
+            assert data["reminders"]["success_count"] == 0, data
+            assert data["reminders"]["error_count"] == 1, data
+            assert data["fuel_records"]["success_count"] == 1, data
+
+            fuel_count = await session.execute(
+                select(func.count())
+                .select_from(FuelRecord)
+                .where(
+                    FuelRecord.vin == test_vehicle["vin"],
+                    FuelRecord.date == date(2027, 2, 3),
+                    FuelRecord.odometer_km == Decimal("72010"),
+                )
+            )
+            assert fuel_count.scalar() == 1
+
+
+@pytest.mark.asyncio
 class TestOneBadRowDoesNotFailTheFile:
     async def test_an_invalid_warranty_type_is_a_row_error_not_a_500(
         self, client: AsyncClient, auth_headers, test_vehicle
