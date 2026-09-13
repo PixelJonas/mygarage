@@ -74,8 +74,8 @@ class TestSingleRules:
         q = _period(2, start=D(2026, 2, 15), end=D(2026, 5, 1), start_odo="2000", end_odo="3000")
         faults = validate_period_history([q, p], [])  # order of input must not matter
         assert _codes(faults) == [(2, OVERLAPPING_DATES)]
-        # The fault names the intruding period first.
-        assert faults[0].message.startswith("period 2")
+        # The fault names the intruding period first, by corner and mount date.
+        assert faults[0].message.startswith("The FL period mounted 2026-02-15 ")
 
     def test_a_period_starting_while_an_earlier_one_is_still_open(self):
         p = _period(1, start=D(2026, 1, 1), end=None, start_odo="1000", end_odo=None)
@@ -367,3 +367,120 @@ class TestEveryContradictedPredecessorIsNamed:
         touched = PeriodFault(5, REVERSED_ODOMETER, "about the period the write changed")
         after = {untouched.key: untouched, touched.key: touched}
         assert new_or_touched_faults({}, after, touched={5}) == [touched, untouched]
+
+
+class TestFaultMessages:
+    """A 409 is read by someone looking at the history drawer, which shows
+    corners, dates and odometers and never a period id. So every message names
+    a period by corner and mount date, and a reading by its date and odometer.
+    """
+
+    @staticmethod
+    def _message(periods: list[TireMountPeriod], readings: list[TireReading] | None = None) -> str:
+        (fault,) = validate_period_history(periods, readings or [])
+        return fault.message
+
+    def test_reversed_dates(self):
+        p = _period(1, start=D(2026, 4, 10), end=D(2026, 3, 1), start_odo=None, end_odo=None)
+        assert self._message([p]) == (
+            "The FL period mounted 2026-04-10 is dismounted on 2026-03-01, before it was mounted."
+        )
+
+    def test_reversed_odometer_with_thousands_separators(self):
+        p = _period(1, start=D(2026, 1, 1), end=D(2026, 3, 1), start_odo="5000.00", end_odo="4000")
+        assert self._message([p]) == (
+            "The FL period mounted 2026-01-01 is dismounted at 4,000 km, below its mount "
+            "odometer of 5,000 km."
+        )
+
+    def test_starting_while_an_earlier_period_is_open(self):
+        p = _period(1, start=D(2026, 1, 1), end=None, start_odo=None, end_odo=None)
+        q = _period(
+            2, start=D(2026, 2, 1), end=D(2026, 3, 1), start_odo=None, end_odo=None, position="FR"
+        )
+        assert self._message([p, q]) == (
+            "The FR period mounted 2026-02-01 starts while the FL period mounted 2026-01-01 "
+            "is still open."
+        )
+
+    def test_starting_before_an_earlier_period_was_dismounted(self):
+        p = _period(1, start=D(2026, 1, 1), end=D(2026, 3, 1), start_odo=None, end_odo=None)
+        q = _period(
+            2, start=D(2026, 2, 15), end=D(2026, 5, 1), start_odo=None, end_odo=None, position="FR"
+        )
+        assert self._message([p, q]) == (
+            "The FR period mounted 2026-02-15 starts before the FL period mounted 2026-01-01 "
+            "was dismounted on 2026-03-01."
+        )
+
+    def test_mounted_below_an_earlier_dismount(self):
+        p = _period(1, start=D(2026, 1, 1), end=D(2026, 3, 1), start_odo="1000", end_odo="12000.50")
+        q = _period(
+            2, start=D(2026, 4, 1), end=None, start_odo="11500", end_odo=None, position="RL"
+        )
+        assert self._message([p, q]) == (
+            "The RL period mounted 2026-04-01 is mounted at 11,500 km, below the 12,000.5 km "
+            "at which the FL period mounted 2026-01-01 was dismounted."
+        )
+
+    def test_overlapping_spans_with_unknown_mount_dates(self):
+        p = _period(1, start=None, end=None, start_odo="1000", end_odo="3000")
+        q = _period(2, start=None, end=None, start_odo="2000", end_odo="4000", position="FR")
+        assert self._message([p, q]) == (
+            "The FR period with an unknown mount date claims kilometres the FL period with an "
+            "unknown mount date already covers: it starts at 2,000 km, before that period ended "
+            "at 3,000 km."
+        )
+
+    def test_a_period_with_no_corner(self):
+        p = TireMountPeriod(
+            id=1,
+            position=None,
+            mounted_on=D(2026, 4, 10),
+            dismounted_on=D(2026, 3, 1),
+            is_assumed=False,
+        )
+        assert self._message([p]) == (
+            "The period mounted 2026-04-10 is dismounted on 2026-03-01, before it was mounted."
+        )
+
+    def test_a_reading_contradiction_names_the_reading_and_the_repair(self):
+        """The typo that made every honest write to one tire a 409: the message
+        is the only place the user learns which reading to delete."""
+        p = _period(1, start=D(2026, 1, 1), end=D(2026, 6, 1), start_odo="10000", end_odo="20000")
+        assert self._message([p], [_reading(D(2026, 3, 1), "150000.00")]) == (
+            "The FL period mounted 2026-01-01 contradicts the reading dated 2026-03-01 at "
+            "150,000 km: the vehicle's odometer would have to run backwards. If that reading "
+            "is wrong, delete it from the tire's history."
+        )
+
+    def test_the_earliest_contradicting_reading_is_named_whatever_the_input_order(self):
+        p = _period(1, start=D(2026, 1, 1), end=D(2026, 6, 1), start_odo="10000", end_odo="20000")
+        later = _reading(D(2026, 4, 1), "90000")
+        earlier = _reading(D(2026, 2, 1), "150000")
+        healthy = _reading(D(2026, 1, 15), "11000")
+        message = self._message([p], [later, healthy, earlier])
+        assert "the reading dated 2026-02-01 at 150,000 km" in message
+
+    def test_no_message_carries_a_period_id(self):
+        """One history that raises every code, with ids that appear nowhere else."""
+        reversed_both = _period(
+            9101, start=D(2026, 4, 10), end=D(2026, 3, 1), start_odo="5000", end_odo="4000"
+        )
+        still_open = _period(9102, start=D(2026, 5, 1), end=None, start_odo="6000", end_odo=None)
+        intruder = _period(
+            9103, start=D(2026, 6, 1), end=D(2026, 7, 1), start_odo="3500", end_odo="7000"
+        )
+        faults = validate_period_history(
+            [reversed_both, still_open, intruder], [_reading(D(2026, 6, 15), "90000")]
+        )
+        assert {f.code for f in faults} == {
+            REVERSED_DATES,
+            REVERSED_ODOMETER,
+            OVERLAPPING_DATES,
+            OVERLAPPING_ODOMETER,
+            CONTRADICTS_READING,
+        }
+        for fault in faults:
+            assert "910" not in fault.message, fault.message
+            assert "period 9" not in fault.message, fault.message

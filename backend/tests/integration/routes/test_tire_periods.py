@@ -904,7 +904,9 @@ class TestMountPeriodEditor:
             json={"dismounted_on": "2026-02-20"},
         )
         assert worse.status_code == 409, worse.text
-        assert f"period {second_id}" in worse.json()["detail"]
+        # Named as the drawer shows it, by corner and mount date, never by id.
+        assert worse.json()["detail"].startswith("The FL period mounted 2026-01-10 ")
+        assert f"period {second_id}" not in worse.json()["detail"]
         # Resolving it from the counterpart's side is accepted.
         fixed = await client.put(
             f"{base}/{tire_id}/mount-periods/{first_id}",
@@ -1005,7 +1007,10 @@ class TestMountPeriodEditor:
             json={"mounted_on": "2026-02-15"},
         )
         assert bad.status_code == 409, bad.text
-        assert f"period {second_id}" in bad.json()["detail"]
+        assert bad.json()["detail"] == (
+            "The FR period mounted 2026-02-15 starts before the FL period mounted 2026-01-01 "
+            "was dismounted on 2026-03-01."
+        )
         # Nothing changed.
         _, still = await _periods(db_session, tire_id)
         assert still.mounted_on == date_type(2026, 4, 1)

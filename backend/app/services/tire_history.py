@@ -56,8 +56,106 @@ class PeriodFault:
         return frozenset(i for i in (self.period_id, self.counterpart_id) if i is not None)
 
 
-def _label(period: TireMountPeriod) -> str:
-    return f"period {period.id} ({period.position})"
+def _label(period: TireMountPeriod, *, capital: bool = False) -> str:
+    """A period as the history drawer shows it: by corner and mount date.
+
+    Never by id. The drawer renders no period ids, so a message saying
+    "period 12" named a row the user had no way to find. Two periods of one
+    tire at one corner with the same mount date, or with both mount dates
+    unknown, read alike; the drawer lists them in mount order, and the dates
+    and odometers in the rest of the sentence usually tell them apart.
+    """
+    article = "The" if capital else "the"
+    corner = f"{period.position} period" if period.position else "period"
+    if period.mounted_on is None:
+        return f"{article} {corner} with an unknown mount date"
+    return f"{article} {corner} mounted {period.mounted_on.isoformat()}"
+
+
+def _km(value: Decimal) -> str:
+    """An odometer for a message: thousands separators, no trailing zeros.
+
+    Stored odometers come back from `Numeric(10, 2)` as "12000.00", which read
+    as twelve thousand kilometres and zero hundredths in a sentence.
+    """
+    return f"{value.normalize():,f}"
+
+
+def odometer_contradictions(
+    periods: Sequence[TireMountPeriod], readings: Sequence[TireReading]
+) -> list[tuple[TireMountPeriod, TireReading]]:
+    """C5: every (period, reading) pair whose odometer bounds contradict the reading's date.
+
+    The invariant is that a vehicle's odometer does not run backwards in
+    time. Relating a reading to a period's mount and dismount, that
+    invariant yields four implications, all enforced here:
+
+    1. A reading dated AFTER `dismounted_on` cannot read BELOW
+       `dismounted_odometer_km` (the odometer would have to have gone down
+       since the dismount).
+    2. A reading dated BEFORE `mounted_on` cannot read ABOVE
+       `mounted_odometer_km` (the odometer would have to go down between the
+       reading and the mount).
+    3. A reading dated AFTER `mounted_on` cannot read BELOW
+       `mounted_odometer_km` (the odometer would have to have gone down
+       since the mount).
+    4. A reading dated BEFORE `dismounted_on` cannot read ABOVE
+       `dismounted_odometer_km` (the odometer would have to go down between
+       the reading and the dismount).
+
+    A violation of any of the four means the dates and the odometers
+    describe two different histories, which is what an odometer reset looks
+    like.
+
+    Every comparison is STRICT on the date, never `>=`/`<=`. These dates are
+    day-granular, so two events recorded on the same calendar day cannot be
+    ordered: a tire legitimately measured on the morning of its mount day can
+    read slightly below the mount odometer, because the vehicle was driven
+    between the measurement and the mount later that day. On the boundary
+    day the true order is unknowable, so it must not be judged. The same
+    applies symmetrically to a reading taken on the day of a dismount.
+
+    Stated as monotonicity, NOT as range membership. An earlier revision
+    asked whether a reading's odometer fell inside a period's odometer range
+    while its date fell outside that period's dates, which assumes an
+    odometer value identifies a date. It does not: a parked vehicle holds one
+    odometer reading across many days, so a tire dismounted at 12,000 and
+    measured in storage two days later at 12,000 was rejected as corrupt, and
+    two periods sharing an endpoint odometer rejected each other's boundary
+    readings.
+
+    Only bounds that are actually known take part. A null is unknown, not
+    wrong, which is what keeps the migrated assumed period out of this.
+
+    Pairs, not period ids, and here rather than in `tire_service`: the
+    projection needs only which periods to withhold a figure over (its
+    `_odometer_goes_backwards` reduces these pairs to ids), while a write-time
+    refusal has to name the READING, because a mistyped reading is as likely
+    as a mistyped period and deleting it is the repair. One rule, two callers.
+    Each pair appears once however many implications it violates, in the
+    order of `periods`, then of `readings`.
+    """
+    pairs: list[tuple[TireMountPeriod, TireReading]] = []
+    for period in periods:
+        for reading in readings:
+            odometer = reading.odometer_km
+            if odometer is None:
+                continue
+            day = reading.recorded_at
+            backwards = False
+            if period.dismounted_on is not None and period.dismounted_odometer_km is not None:
+                if day > period.dismounted_on and odometer < period.dismounted_odometer_km:
+                    backwards = True
+                if day < period.dismounted_on and odometer > period.dismounted_odometer_km:
+                    backwards = True
+            if period.mounted_on is not None and period.mounted_odometer_km is not None:
+                if day < period.mounted_on and odometer > period.mounted_odometer_km:
+                    backwards = True
+                if day > period.mounted_on and odometer < period.mounted_odometer_km:
+                    backwards = True
+            if backwards:
+                pairs.append((period, reading))
+    return pairs
 
 
 def validate_period_history(
@@ -107,7 +205,8 @@ def validate_period_history(
             add(
                 p,
                 REVERSED_DATES,
-                f"{_label(p)} is dismounted on {p.dismounted_on} before it was mounted on {p.mounted_on}.",
+                f"{_label(p, capital=True)} is dismounted on {p.dismounted_on}, before it was "
+                "mounted.",
             )
         if (
             p.mounted_odometer_km is not None
@@ -117,8 +216,8 @@ def validate_period_history(
             add(
                 p,
                 REVERSED_ODOMETER,
-                f"{_label(p)} is dismounted at {p.dismounted_odometer_km} km, below its mount "
-                f"odometer of {p.mounted_odometer_km} km.",
+                f"{_label(p, capital=True)} is dismounted at {_km(p.dismounted_odometer_km)} km, "
+                f"below its mount odometer of {_km(p.mounted_odometer_km)} km.",
             )
 
     # 3: dates, over periods with a known mount date, in date order. Each
@@ -142,15 +241,15 @@ def validate_period_history(
                 add(
                     q,
                     OVERLAPPING_DATES,
-                    f"{_label(q)} starts while {_label(earlier)} is still open.",
+                    f"{_label(q, capital=True)} starts while {_label(earlier)} is still open.",
                     counterpart=earlier,
                 )
             elif mounted_on < earlier.dismounted_on:
                 add(
                     q,
                     OVERLAPPING_DATES,
-                    f"{_label(q)} is mounted on {mounted_on}, before {_label(earlier)} was "
-                    f"dismounted on {earlier.dismounted_on}.",
+                    f"{_label(q, capital=True)} starts before {_label(earlier)} was dismounted "
+                    f"on {earlier.dismounted_on}.",
                     counterpart=earlier,
                 )
             # 4a rides along the same chronological order: the odometer cannot
@@ -166,8 +265,9 @@ def validate_period_history(
                 add(
                     q,
                     OVERLAPPING_ODOMETER,
-                    f"{_label(q)} is mounted at {q.mounted_odometer_km} km, below "
-                    f"{_label(earlier)}'s dismount at {earlier.dismounted_odometer_km} km.",
+                    f"{_label(q, capital=True)} is mounted at {_km(q.mounted_odometer_km)} km, "
+                    f"below the {_km(earlier.dismounted_odometer_km)} km at which "
+                    f"{_label(earlier)} was dismounted.",
                     counterpart=earlier,
                 )
 
@@ -195,8 +295,9 @@ def validate_period_history(
             add(
                 q,
                 OVERLAPPING_ODOMETER,
-                f"{_label(q)} claims kilometres {_label(covered[1])} already covers "
-                f"(it starts at {q.mounted_odometer_km} km, before that period ended at {covered[0]} km).",
+                f"{_label(q, capital=True)} claims kilometres {_label(covered[1])} already "
+                f"covers: it starts at {_km(q.mounted_odometer_km)} km, before that period ended "
+                f"at {_km(covered[0])} km.",
                 counterpart=covered[1],
             )
         if covered is None or q.dismounted_odometer_km > covered[0]:
@@ -207,21 +308,24 @@ def validate_period_history(
             assert end is not None
             covered = (end, q)
 
-    # 5: the projection's own monotonicity rule, unchanged. Imported lazily:
-    # tire_service imports this module for its writers, and a top-level import
-    # here would be circular.
-    from app.services.tire_service import _odometer_goes_backwards
-
-    by_id = {p.id: p for p in periods}
-    for pid in _odometer_goes_backwards(list(periods), tuple(readings)):
-        p = by_id.get(pid)
-        if p is not None:
-            add(
-                p,
-                CONTRADICTS_READING,
-                f"{_label(p)}'s dates and odometers contradict a tread reading: the vehicle's "
-                "odometer would have to run backwards.",
-            )
+    # 5: the projection's own monotonicity rule, the same function it calls.
+    # One fault per period, naming the EARLIEST reading it contradicts, so the
+    # sentence is stable whatever order the readings were loaded in. The
+    # message says what to do, because until readings could be deleted a
+    # mistyped one refused every honest dismount, retire, rotation, set fit
+    # and remount of its tire with no way out.
+    in_order = sorted(readings, key=lambda r: (r.recorded_at, r.id or 0))
+    for p, reading in odometer_contradictions(sorted(periods, key=lambda p: p.id or 0), in_order):
+        # `odometer_contradictions` pairs only readings with an odometer.
+        odometer = reading.odometer_km
+        assert odometer is not None
+        add(
+            p,
+            CONTRADICTS_READING,
+            f"{_label(p, capital=True)} contradicts the reading dated {reading.recorded_at} at "
+            f"{_km(odometer)} km: the vehicle's odometer would have to run backwards. If that "
+            "reading is wrong, delete it from the tire's history.",
+        )
     return faults
 
 

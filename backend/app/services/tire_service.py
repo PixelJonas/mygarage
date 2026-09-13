@@ -32,7 +32,12 @@ from app.schemas.tire import (
     TireRotationRequest,
     TireUpdate,
 )
-from app.services.tire_history import FaultMap, fault_map, new_or_touched_faults
+from app.services.tire_history import (
+    FaultMap,
+    fault_map,
+    new_or_touched_faults,
+    odometer_contradictions,
+)
 from app.services.tire_results import (
     DistanceResult,
     DistanceStatus,
@@ -265,77 +270,15 @@ def _overlapping_period_ids(contributions: list[tuple[Decimal, Decimal, int]]) -
 def _odometer_goes_backwards(
     periods: list[TireMountPeriod], readings: tuple[TireReading, ...]
 ) -> list[int]:
-    """C5: periods whose odometer bounds contradict a reading's date.
+    """C5: periods whose odometer bounds contradict a reading's date, by id.
 
-    The invariant is that a vehicle's odometer does not run backwards in
-    time. Relating a reading to a period's mount and dismount, that
-    invariant yields four implications, all enforced here:
-
-    1. A reading dated AFTER `dismounted_on` cannot read BELOW
-       `dismounted_odometer_km` (the odometer would have to have gone down
-       since the dismount).
-    2. A reading dated BEFORE `mounted_on` cannot read ABOVE
-       `mounted_odometer_km` (the odometer would have to go down between the
-       reading and the mount).
-    3. A reading dated AFTER `mounted_on` cannot read BELOW
-       `mounted_odometer_km` (the odometer would have to have gone down
-       since the mount).
-    4. A reading dated BEFORE `dismounted_on` cannot read ABOVE
-       `dismounted_odometer_km` (the odometer would have to go down between
-       the reading and the dismount).
-
-    A violation of any of the four means the dates and the odometers
-    describe two different histories, which is what an odometer reset looks
-    like.
-
-    Every comparison is STRICT on the date, never `>=`/`<=`. These dates are
-    day-granular, so two events recorded on the same calendar day cannot be
-    ordered: a tire legitimately measured on the morning of its mount day can
-    read slightly below the mount odometer, because the vehicle was driven
-    between the measurement and the mount later that day. On the boundary
-    day the true order is unknowable, so it must not be judged. The same
-    applies symmetrically to a reading taken on the day of a dismount.
-
-    Stated as monotonicity, NOT as range membership. An earlier revision
-    asked whether a reading's odometer fell inside a period's odometer range
-    while its date fell outside that period's dates, which assumes an
-    odometer value identifies a date. It does not: a parked vehicle holds one
-    odometer reading across many days, so a tire dismounted at 12,000 and
-    measured in storage two days later at 12,000 was rejected as corrupt, and
-    two periods sharing an endpoint odometer rejected each other's boundary
-    readings.
-
-    Only bounds that are actually known take part. A null is unknown, not
-    wrong, which is what keeps the migrated assumed period out of this.
+    The rule, its four implications and why every date comparison is strict
+    live on `tire_history.odometer_contradictions`, which yields the offending
+    (period, reading) pairs. The projection needs only which periods to
+    withhold a figure over; the write-time validator names the reading from
+    the same pairs, so the two cannot disagree about what contradicts.
     """
-    clashing: set[int] = set()
-    for period in periods:
-        for reading in readings:
-            if reading.odometer_km is None:
-                continue
-            if period.dismounted_on is not None and period.dismounted_odometer_km is not None:
-                if (
-                    reading.recorded_at > period.dismounted_on
-                    and reading.odometer_km < period.dismounted_odometer_km
-                ):
-                    clashing.add(period.id)
-                if (
-                    reading.recorded_at < period.dismounted_on
-                    and reading.odometer_km > period.dismounted_odometer_km
-                ):
-                    clashing.add(period.id)
-            if period.mounted_on is not None and period.mounted_odometer_km is not None:
-                if (
-                    reading.recorded_at < period.mounted_on
-                    and reading.odometer_km > period.mounted_odometer_km
-                ):
-                    clashing.add(period.id)
-                if (
-                    reading.recorded_at > period.mounted_on
-                    and reading.odometer_km < period.mounted_odometer_km
-                ):
-                    clashing.add(period.id)
-    return sorted(clashing)
+    return sorted({period.id for period, _ in odometer_contradictions(periods, readings)})
 
 
 def distance_between(
