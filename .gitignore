@@ -175,3 +175,6 @@ frontend/src/__selftest_fixture__.ts
 frontend/src/__tests__/__selftest_fixture__.test.ts
 *.mutant.generated.ts
 *.mutant.generated.js
+
+# Isolated worktrees for feature branches
+.worktrees/
