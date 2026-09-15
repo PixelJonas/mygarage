@@ -25,9 +25,9 @@ migration A gaining structured tread and distance columns (recorded in
 boundary in both directions, so a later change cannot quietly start rewriting
 stored text.
 
-Derivations, from `UnitConverter.MILES_TO_KM = 1.60934`:
+Derivations, from `UnitConverter.MILES_TO_KM = 1.609344`:
 
-    50,000 canonical km / 1.60934 = 31,068.6368... -> "31,069 mi"
+    50,000 canonical km / 1.609344 = 31,068.5596... -> "31,069 mi"
 
 Tests share one database with no per-test rollback: every row here is torn
 down in `finally`, and the VIN/username are scoped to this module.

@@ -51,6 +51,7 @@
 
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import api from '@/services/api'
@@ -61,6 +62,7 @@ import UnitSetEditor, { type UnitSetSelection } from './UnitSetEditor'
 export default function InstanceUnitDefaultsCard(): React.ReactElement | null {
   const { t } = useTranslation('settings')
   const { isAdmin, authMode, defaultUnitPrefs, publicSettingsLoaded, refreshUser } = useAuth()
+  const queryClient = useQueryClient()
   // Optimistic overlay, so the control responds before the round trip lands.
   // Null while the published row is authoritative.
   const [pendingUnits, setPendingUnits] = useState<UnitSet | null>(null)
@@ -91,6 +93,9 @@ export default function InstanceUnitDefaultsCard(): React.ReactElement | null {
       // Re-reads `/settings/public`, which is where this row is published, so
       // every mounted consumer repaints instead of waiting for a reload.
       await refreshUser()
+      // Tire history messages are worded by the server in the caller's units,
+      // so a cached tire list would keep the previous unit's sentences.
+      await queryClient.invalidateQueries({ queryKey: ['tires'] })
       toast.success(t('units.instanceDefaultSaved'))
     } catch {
       toast.error(t('units.instanceDefaultError'))

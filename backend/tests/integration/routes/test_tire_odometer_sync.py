@@ -27,8 +27,14 @@ from sqlalchemy import delete, select
 
 from app.models.odometer import OdometerRecord
 from app.models.vehicle import Vehicle
+from app.services.tire_service import ODOMETER_SOURCE_TIRE_MOUNT
 
 TODAY = date(2026, 3, 14)
+# A mount date safely before TODAY. Since v3.4.0 a dismount/retire/rotation
+# dated before its own tire's mount is refused (409), and `_mount` with no
+# `mounted_on` defaults to the real current date -- which this fictional
+# TODAY predates.
+BEFORE_TODAY = date(2026, 1, 1).isoformat()
 
 
 @pytest_asyncio.fixture
@@ -98,7 +104,11 @@ class TestTheOdometerIsRecorded:
 
         rows = await _odometer_rows(db_session, vehicle)
         assert [(r.date, r.odometer_km) for r in rows] == [(TODAY, 20000)]
-        assert rows[0].source == "tire"
+        # Was "tire" before v3.4.0: mount, dismount and retire each now
+        # publish with their own per-period marker so the period editor
+        # can move the one record a specific period owns. Readings still
+        # publish with the tire-level marker.
+        assert rows[0].source == ODOMETER_SOURCE_TIRE_MOUNT
 
     async def test_mounting_an_existing_tire_records_the_odometer(
         self, client: AsyncClient, auth_headers, vehicle, db_session
@@ -128,7 +138,7 @@ class TestTheOdometerIsRecorded:
     async def test_dismounting_records_the_odometer(
         self, client: AsyncClient, auth_headers, vehicle, db_session
     ):
-        tire = await _mount(client, auth_headers, vehicle, "FL")
+        tire = await _mount(client, auth_headers, vehicle, "FL", mounted_on=BEFORE_TODAY)
 
         response = await client.post(
             f"/api/vehicles/{vehicle}/tires/{tire['id']}/dismount",
@@ -144,7 +154,7 @@ class TestTheOdometerIsRecorded:
         self, client: AsyncClient, auth_headers, vehicle, db_session
     ):
         """Retire takes the same request body as dismount, so it is the same writer."""
-        tire = await _mount(client, auth_headers, vehicle, "RL")
+        tire = await _mount(client, auth_headers, vehicle, "RL", mounted_on=BEFORE_TODAY)
 
         response = await client.post(
             f"/api/vehicles/{vehicle}/tires/{tire['id']}/retire",
@@ -323,8 +333,8 @@ class TestDeletingTheSourceRemovesTheReading:
         reading untrue, and cascading it would break the distance figure for
         every other tire in the same rotation.
         """
-        left = await _mount(client, auth_headers, vehicle, "FL")
-        right = await _mount(client, auth_headers, vehicle, "FR")
+        left = await _mount(client, auth_headers, vehicle, "FL", mounted_on=BEFORE_TODAY)
+        right = await _mount(client, auth_headers, vehicle, "FR", mounted_on=BEFORE_TODAY)
 
         response = await client.post(
             f"/api/vehicles/{vehicle}/tires/rotate",

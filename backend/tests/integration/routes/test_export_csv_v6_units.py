@@ -81,15 +81,15 @@ UK_IMPERIAL = UnitSet.model_validate(
 
 # --- seeded canonical values, and every unit's rendering of them ------------
 #
-# 500.00 km / 1.60934        = 310.68562...  -> "310.686" at 3 dp
-# 40.000 L  / 3.78541        = 10.566876...  -> "10.5669" at 4 dp
-# 40.000 L  / 4.54609        = 8.798787...   -> "8.7988"  at 4 dp
-# 1.500/L   * 3.78541        = 5.678115      -> "5.678"   at 3 dp
+# 500.00 km / 1.609344       = 310.68560...  -> "310.686" at 3 dp
+# 40.000 L  / 3.785411784    = 10.566882...  -> "10.5669" at 4 dp
+# 40.000 L  / 4.54609        = 8.798770...   -> "8.7988"  at 4 dp
+# 1.500/L   * 3.785411784    = 5.678118      -> "5.678"   at 3 dp
 # 1.500/L   * 4.54609        = 6.819135      -> "6.819"   at 3 dp
 # 20.0 C    * 9/5 + 32       = 68.0          -> "68.0"    at 1 dp
-# 235.214   / 8.00           = 29.40175      -> "29.402"  at 3 dp
-# 282.481   / 8.00           = 35.310125     -> "35.310"  at 3 dp
-# 100.0 kmh / 1.60934        = 62.13723...   -> "62.14"   at 2 dp
+# 235.2145833... / 8.00      = 29.40182      -> "29.402"  at 3 dp
+# 282.4809363... / 8.00      = 35.31012      -> "35.310"  at 3 dp
+# 100.0 kmh / 1.609344       = 62.13712...   -> "62.14"   at 2 dp
 _FUEL_ODOMETER_KM = Decimal("500.00")
 _FUEL_LITERS = Decimal("40.000")
 _FUEL_PRICE_PER_L = Decimal("1.500")
@@ -97,9 +97,9 @@ _FUEL_TEMP_C = Decimal("20.0")
 _FUEL_L_100KM = Decimal("8.00")
 _FUEL_SPEED_KMH = Decimal("100.0")
 
-# 600.00 km / 1.60934 = 372.82372... -> "372.824"
+# 600.00 km / 1.609344 = 372.82272... -> "372.823"
 _SERVICE_ODOMETER_KM = Decimal("600.00")
-# 1000.00 km / 1.60934 = 621.37265... -> "621.373"
+# 1000.00 km / 1.609344 = 621.37119... -> "621.371"
 _ODOMETER_KM = Decimal("1000.00")
 # 10.000 L / 4.54609 = 2.19969... -> "2.1997"; 0.850 * 4.54609 = 3.8641765
 _DEF_LITERS = Decimal("10.000")
@@ -593,8 +593,8 @@ class TestEveryUnitBearingPairEmitsTokenisedHeaders:
                 "Notes",
             ]
             assert row["unit_system"] == "custom"
-            # 600 km / 1.60934 = 372.82372...
-            assert row["Odometer (mi)"] == "372.824"
+            # 600 km / 1.609344 = 372.82272...
+            assert row["Odometer (mi)"] == "372.823"
             assert row["Cost"] == "20.00"
         finally:
             await _cleanup(db_session)
@@ -650,8 +650,8 @@ class TestEveryUnitBearingPairEmitsTokenisedHeaders:
             headers, row = _read(response.text)
             assert headers == ["units_version", "unit_system", "Date", "Reading (mi)", "Notes"]
             assert row["unit_system"] == "custom"
-            # 1000 km / 1.60934 = 621.37265...
-            assert row["Reading (mi)"] == "621.373"
+            # 1000 km / 1.609344 = 621.37119...
+            assert row["Reading (mi)"] == "621.371"
         finally:
             await _cleanup(db_session)
 

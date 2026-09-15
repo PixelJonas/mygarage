@@ -426,7 +426,11 @@ class WidgetAggregationService:
         stmt = (
             select(OdometerRecord.odometer_km, OdometerRecord.date)
             .where(OdometerRecord.vin == vin)
-            .order_by(OdometerRecord.date.desc(), OdometerRecord.id.desc())
+            .order_by(
+                OdometerRecord.date.desc(),
+                OdometerRecord.odometer_km.desc(),
+                OdometerRecord.id.desc(),
+            )
             .limit(1)
         )
         row = (await self.db.execute(stmt)).first()
@@ -439,7 +443,11 @@ class WidgetAggregationService:
         stmt = (
             select(OdometerRecord.odometer_km)
             .where(OdometerRecord.vin == vin)
-            .order_by(OdometerRecord.date.desc(), OdometerRecord.id.desc())
+            .order_by(
+                OdometerRecord.date.desc(),
+                OdometerRecord.odometer_km.desc(),
+                OdometerRecord.id.desc(),
+            )
             .limit(1)
         )
         row = (await self.db.execute(stmt)).first()

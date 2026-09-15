@@ -179,9 +179,14 @@ test.describe('Tires', () => {
     // dismounted; a reordering would have made it assert against someone
     // else's card. Order-dependent assertions are the same defect as the
     // `.first()` one below, just not yet triggered.
+    //
+    // `exact: true`: v3.4.0 added a second "In storage since <date>" line to
+    // the same card (the in-storage-since summary), and a loose substring
+    // match now resolves to both, a strict-mode violation this task's first
+    // real Playwright run against the full suite is what caught.
     const card = page.locator('.rounded-card', { hasText: 'E2E Michelin' }).first()
     await expect(card).toBeVisible({ timeout: 10000 })
-    await expect(card.getByText('In storage')).toBeVisible()
+    await expect(card.getByText('In storage', { exact: true })).toBeVisible()
     // And it can be put back on, which is the seasonal-swap case the whole
     // mount-period model exists for.
     await expect(card.getByRole('button', { name: 'Mount' })).toBeVisible()
@@ -249,6 +254,310 @@ test.describe('Tires', () => {
     expect(response.status()).toBe(422)
     const detail = await response.text()
     expect(detail).toContain('position')
+  })
+
+  test('a tire added at a corner takes a backdated date and the suggested odometer', async ({
+    page,
+    request,
+  }) => {
+    const vin = await tireVehicle(request, 'add-dated')
+    const admin = await adminSession()
+    const seeded = await request.post(`${API_BASE}/vehicles/${vin}/odometer`, {
+      headers: admin.headers,
+      data: { vin, date: '2026-04-01', odometer_km: 100000 },
+    })
+    expect(seeded.status(), await seeded.text()).toBe(201)
+
+    await openTires(page, vin)
+    await page.getByRole('button', { name: 'Add Tire' }).click()
+    const drawer = page.getByRole('dialog')
+    await drawer.getByRole('button', { name: 'FL', exact: true }).click()
+    await drawer.getByLabel('Brand').fill('E2E Dated')
+    await drawer.locator('#tire-mount-date').fill('2026-04-10')
+    // The suggestion names the reading's own date, so the user can judge it.
+    await expect(drawer.getByText(/Nearest reading/)).toBeVisible({ timeout: 5000 })
+    await drawer.getByRole('button', { name: 'Use' }).click()
+    await expect(drawer.locator('#tire-mount-odometer')).toHaveValue(/100000|62137/)
+    await drawer.getByRole('button', { name: 'Save' }).click()
+    await expect(drawer).toBeHidden({ timeout: 10000 })
+
+    const card = page.locator('.rounded-card', { hasText: 'E2E Dated' }).first()
+    await expect(card).toBeVisible({ timeout: 10000 })
+    await expect(card.getByText('Mounted', { exact: true })).toBeVisible()
+    await expect(card.getByText(/Not yet known/)).toHaveCount(0)
+
+    // The contract, from the API: the period is bounded and dated as typed.
+    const listed = await request.get(`${API_BASE}/vehicles/${vin}/tires`, { headers: admin.headers })
+    const tire = (await listed.json()).tires.find((t: { brand: string }) => t.brand === 'E2E Dated')
+    expect(tire.mount_periods[0].mounted_on).toBe('2026-04-10')
+    expect(Number(tire.mount_periods[0].mounted_odometer_km)).toBe(100000)
+  })
+
+  test('Fix opens the history, and supplying the mount odometer fills the distance in', async ({
+    page,
+    request,
+  }) => {
+    const vin = await tireVehicle(request, 'fix-ui')
+    const admin = await adminSession()
+    // The upgrade-day shape: mounted with no odometer on the mount.
+    const created = await request.post(`${API_BASE}/vehicles/${vin}/tires/create-and-mount`, {
+      headers: admin.headers,
+      data: { vin, position: 'RL', brand: 'E2E Fixable', tread_depth_mm: 7, mounted_on: '2026-04-01' },
+    })
+    expect(created.status(), await created.text()).toBe(201)
+    // A later vehicle reading, so a bounded period has a distance to show.
+    const later = await request.post(`${API_BASE}/vehicles/${vin}/odometer`, {
+      headers: admin.headers,
+      data: { vin, date: '2026-05-01', odometer_km: 101000 },
+    })
+    expect(later.status(), await later.text()).toBe(201)
+
+    await openTires(page, vin)
+    const card = page.locator('.rounded-card', { hasText: 'E2E Fixable' }).first()
+    await expect(card.getByText(/Not yet known/)).toBeVisible({ timeout: 10000 })
+    await card.getByRole('button', { name: 'Fix' }).click()
+
+    const history = page.getByRole('dialog').first()
+    await expect(history.getByText('Needs an odometer')).toBeVisible({ timeout: 5000 })
+    await history.getByRole('button', { name: 'Edit' }).first().click()
+    // Named, not `.last()`: the history drawer stays open behind the nested
+    // editor, so once the editor closes on save, `.last()` re-resolves to the
+    // still-open history dialog and `toBeHidden` never observes it -- a
+    // locator that silently retargets rather than a save that fails to close.
+    const editor = page.getByRole('dialog', { name: /Edit mount period/ })
+    await editor.locator('#period-mount-odometer').fill('100500')
+    await editor.getByRole('button', { name: 'Save', exact: true }).click()
+    await expect(editor).toBeHidden({ timeout: 10000 })
+
+    await expect(card.getByText(/Not yet known/)).toHaveCount(0, { timeout: 10000 })
+    await expect(card.getByRole('button', { name: 'Fix' })).toHaveCount(0)
+  })
+
+  test('a reading with a mistyped odometer is named by the refusal and deleted from the history', async ({
+    page,
+    request,
+  }) => {
+    const vin = await tireVehicle(request, 'reading-delete')
+    const admin = await adminSession()
+    // Pinned rather than assumed: the refusal names the reading's odometer in
+    // the account's resolved unit, and imperial is this suite's steady state
+    // (settings.spec.ts restores it there), so nothing needs restoring after.
+    const units = await request.put(`${API_BASE}/auth/me/units`, {
+      data: { unit_preference: 'imperial' },
+      headers: admin.headers,
+    })
+    expect(units.ok(), `pin to imperial failed: ${units.status()} ${await units.text()}`).toBeTruthy()
+
+    const created = await request.post(`${API_BASE}/vehicles/${vin}/tires/create-and-mount`, {
+      headers: admin.headers,
+      data: {
+        vin,
+        position: 'FL',
+        brand: 'E2E Typo',
+        tread_depth_mm: 8,
+        mounted_on: '2026-01-01',
+        mounted_odometer_km: 10000,
+      },
+    })
+    expect(created.status(), await created.text()).toBe(201)
+    const tireId = (await created.json()).id
+    // 150,000 typed for 15,000. Log Reading accepts it: readings are not
+    // validated against the mount history, the writers that change it are.
+    const typo = await request.post(`${API_BASE}/vehicles/${vin}/tires/${tireId}/readings`, {
+      headers: admin.headers,
+      data: { recorded_at: '2026-03-01', tread_depth_mm: 7, odometer_km: 150000 },
+    })
+    expect(typo.status(), await typo.text()).toBe(201)
+
+    await openTires(page, vin)
+    const card = page.locator('.rounded-card', { hasText: 'E2E Typo' }).first()
+    await expect(card).toBeVisible({ timeout: 10000 })
+
+    // An honest dismount, today, at an odometer (in miles, the pinned unit)
+    // between the mount and the typo. Refused, and the sentence says which
+    // reading.
+    const dismount = async () => {
+      await card.getByRole('button', { name: 'Dismount' }).click()
+      const drawer = page.getByRole('dialog')
+      await drawer.locator('#dismount-odometer').fill('20000')
+      await drawer.getByRole('button', { name: 'Dismount', exact: true }).click()
+      return drawer
+    }
+    const refusedDrawer = await dismount()
+    // The reading's odometer was seeded directly in km through the API
+    // (150,000), so the refusal names it in the account's pinned unit. The
+    // server's message formatter (`distance_formatter` in tire_history.py)
+    // keeps one decimal place, unlike the frontend's whole-mile display:
+    // 150000 / 1.609344 = 93205.678..., quantized to 93,205.7 mi.
+    await expect(
+      page.getByText('contradicts the reading dated 2026-03-01 at 93,205.7 mi')
+    ).toBeVisible({
+      timeout: 10000,
+    })
+    await refusedDrawer.getByRole('button', { name: 'Cancel' }).click()
+    await expect(refusedDrawer).toBeHidden({ timeout: 10000 })
+
+    // The repair: the tire's history, Delete on that reading, confirmed.
+    await card.getByRole('button', { name: /View reading history/ }).click()
+    const history = page.getByRole('dialog')
+    const confirmed = new Promise<string>((resolve) => {
+      page.once('dialog', async (dialog) => {
+        const message = dialog.message()
+        await dialog.accept()
+        resolve(message)
+      })
+    })
+    await history.getByRole('button', { name: /^Delete the reading of / }).click()
+    expect(await confirmed).toMatch(/^Delete the reading of /)
+    await expect(history.getByText('No readings logged yet')).toBeVisible({ timeout: 10000 })
+    await history.getByRole('button', { name: 'Close' }).first().click()
+    await expect(history).toBeHidden({ timeout: 10000 })
+
+    const acceptedDrawer = await dismount()
+    await expect(acceptedDrawer).toBeHidden({ timeout: 10000 })
+    await expect(card.getByText('In storage', { exact: true })).toBeVisible({ timeout: 10000 })
+
+    const listed = await request.get(`${API_BASE}/vehicles/${vin}/tires`, { headers: admin.headers })
+    const tire = (await listed.json()).tires.find((t: { id: number }) => t.id === tireId)
+    expect(tire.readings).toHaveLength(0)
+    expect(tire.position).toBeNull()
+    expect(tire.mount_periods).toHaveLength(1)
+    expect(tire.mount_periods[0].dismounted_on).not.toBeNull()
+  })
+
+  test('a past period is recorded from the history drawer, closed, and does not move the current mount', async ({
+    page,
+    request,
+  }) => {
+    const vin = await tireVehicle(request, 'past-period')
+    const admin = await adminSession()
+    // Mounted at FL today. The past period records this SAME tire on a
+    // different corner before that, which is legal as long as the two date
+    // ranges do not overlap.
+    const created = await request.post(`${API_BASE}/vehicles/${vin}/tires/create-and-mount`, {
+      headers: admin.headers,
+      data: { vin, position: 'FL', brand: 'E2E PastPeriod', tread_depth_mm: 8 },
+    })
+    expect([201, 409], `seed failed: ${await created.text()}`).toContain(created.status())
+    test.skip(created.status() === 409, 'FL already occupied by a previous run')
+    const tireId = (await created.json()).id
+
+    const monthsAgo = (months: number): string => {
+      const date = new Date()
+      date.setMonth(date.getMonth() - months)
+      return date.toISOString().slice(0, 10)
+    }
+    const mountedOn = monthsAgo(12)
+    const dismountedOn = monthsAgo(11)
+
+    await openTires(page, vin)
+    const card = page.locator('.rounded-card', { hasText: 'E2E PastPeriod' }).first()
+    await expect(card).toBeVisible({ timeout: 10000 })
+    await card.getByRole('button', { name: /View reading history/ }).click()
+    const history = page.getByRole('dialog').first()
+    await expect(history).toBeVisible({ timeout: 5000 })
+
+    await history.getByRole('button', { name: 'Add past period' }).click()
+    const addDrawer = page.getByRole('dialog', { name: 'Add a past period' })
+    await expect(addDrawer).toBeVisible({ timeout: 5000 })
+    await addDrawer.getByRole('button', { name: 'Front Right', exact: true }).click()
+    await addDrawer.locator('#past-mount-date').fill(mountedOn)
+    await addDrawer.locator('#past-dismount-date').fill(dismountedOn)
+    await addDrawer.locator('#past-mount-odometer').fill('5000')
+    await addDrawer.locator('#past-dismount-odometer').fill('8000')
+    await addDrawer.getByRole('button', { name: 'Save', exact: true }).click()
+    await expect(addDrawer).toBeHidden({ timeout: 10000 })
+
+    // The new period is on the history list, labelled by its OWN corner
+    // rather than the tire's current one.
+    await expect(history.getByText('Front Right')).toBeVisible({ timeout: 10000 })
+
+    const listed = await request.get(`${API_BASE}/vehicles/${vin}/tires`, { headers: admin.headers })
+    const tire = (await listed.json()).tires.find((t: { id: number }) => t.id === tireId)
+    const pastPeriod = tire.mount_periods.find((p: { position: string }) => p.position === 'FR')
+    expect(pastPeriod, JSON.stringify(tire.mount_periods)).toBeTruthy()
+    expect(pastPeriod.mounted_on).toBe(mountedOn)
+    expect(pastPeriod.dismounted_on).toBe(dismountedOn)
+    // The past period is closed and the tire's CURRENT mount is untouched.
+    expect(tire.position).toBe('FL')
+  })
+
+  test('a contradiction is badged and explained, and clears when the reading is deleted', async ({
+    page,
+    request,
+  }) => {
+    const vin = await tireVehicle(request, 'contradiction-ui')
+    const admin = await adminSession()
+    // Pinned rather than assumed: the fault names the reading's odometer in
+    // the account's resolved unit, and imperial is this suite's steady state
+    // (settings.spec.ts restores it there), so nothing needs restoring after.
+    const units = await request.put(`${API_BASE}/auth/me/units`, {
+      data: { unit_preference: 'imperial' },
+      headers: admin.headers,
+    })
+    expect(units.ok(), `pin to imperial failed: ${units.status()} ${await units.text()}`).toBeTruthy()
+
+    const created = await request.post(`${API_BASE}/vehicles/${vin}/tires/create-and-mount`, {
+      headers: admin.headers,
+      data: {
+        vin,
+        position: 'RR',
+        brand: 'E2E Contradiction',
+        tread_depth_mm: 8,
+        mounted_on: '2026-01-01',
+        mounted_odometer_km: 10000,
+      },
+    })
+    expect([201, 409], `seed failed: ${await created.text()}`).toContain(created.status())
+    test.skip(created.status() === 409, 'RR already occupied by a previous run')
+    const tireId = (await created.json()).id
+
+    const dismounted = await request.post(`${API_BASE}/vehicles/${vin}/tires/${tireId}/dismount`, {
+      headers: admin.headers,
+      data: { dismounted_on: '2026-03-02', dismounted_odometer_km: 15000 },
+    })
+    expect(dismounted.status(), await dismounted.text()).toBe(200)
+
+    // Between the mount and the dismount, at an odometer ABOVE the dismount:
+    // a real contradiction (the vehicle's odometer would have to run
+    // backwards), which the reading endpoint does not refuse -- only the
+    // writers that change the mount history do.
+    const reading = await request.post(`${API_BASE}/vehicles/${vin}/tires/${tireId}/readings`, {
+      headers: admin.headers,
+      data: { recorded_at: '2026-02-01', tread_depth_mm: 7, odometer_km: 20000 },
+    })
+    expect(reading.status(), await reading.text()).toBe(201)
+
+    await openTires(page, vin)
+    const card = page.locator('.rounded-card', { hasText: 'E2E Contradiction' }).first()
+    await expect(card).toBeVisible({ timeout: 10000 })
+    await card.getByRole('button', { name: 'History', exact: true }).click()
+    const history = page.getByRole('dialog')
+    await expect(history).toBeVisible({ timeout: 5000 })
+
+    await expect(history.getByText('Check this period')).toBeVisible({ timeout: 10000 })
+    // The reading's odometer was seeded directly in km through the API
+    // (20,000), so the fault names it in the account's pinned unit. The
+    // server's message formatter keeps one decimal place, unlike the
+    // frontend's whole-mile display: 20000 / 1.609344 = 12427.423...,
+    // quantized to 12,427.4 mi.
+    await expect(
+      history.getByText('contradicts the reading dated 2026-02-01 at 12,427.4 mi')
+    ).toBeVisible({ timeout: 10000 })
+
+    const confirmed = new Promise<string>((resolve) => {
+      page.once('dialog', async (dialog) => {
+        const message = dialog.message()
+        await dialog.accept()
+        resolve(message)
+      })
+    })
+    await history.getByRole('button', { name: /^Delete the reading of / }).click()
+    expect(await confirmed).toMatch(/^Delete the reading of /)
+
+    await expect(history.getByText('No readings logged yet')).toBeVisible({ timeout: 10000 })
+    await expect(history.getByText('Check this period')).toHaveCount(0)
+    await expect(history.getByText(/contradicts the reading dated/)).toHaveCount(0)
   })
 })
 
@@ -346,6 +655,17 @@ test.describe('Tire rotation and retirement', () => {
           position: 'SPARE',
           brand: 'E2E Retire',
           tread_depth_mm: 8,
+          // Explicit and before the reading below. Omitting this defaults
+          // `mounted_on` to today (TireService.create_and_mount), which put
+          // the mount AFTER the reading dated in the past and tripped this
+          // release's own period-contradiction validation (142c42f, 4a66146)
+          // -- correctly, since that reading's odometer (15000) is ABOVE the
+          // mount odometer (1000): the vehicle's odometer would have run
+          // backwards between the reading and the mount. A reading taken
+          // before mounting is legal in itself (a stored tire measured on the
+          // shelf); only one above the mount odometer contradicts it. First
+          // caught by this task's full Playwright run.
+          mounted_on: '2026-01-01',
           mounted_odometer_km: 1000,
         },
       }
@@ -507,6 +827,16 @@ test.describe('Tire rotation and retirement, through the UI', () => {
     expect(retired).toHaveLength(1)
     expect(retired[0].retired_on).not.toBeNull()
     expect(retired[0].mount_periods.length).toBeGreaterThanOrEqual(1)
+
+    // The way back. Retired tires are hidden until asked for, then restorable.
+    await page.getByLabel('Show retired').click()
+    const retiredCard = page.locator('.rounded-card', { hasText: 'E2E RetireUI' }).first()
+    await expect(retiredCard).toBeVisible({ timeout: 10000 })
+    await expect(retiredCard.getByText(/^Retired /)).toBeVisible()
+    await retiredCard.getByRole('button', { name: 'Restore' }).click()
+    // Back in storage: a Mount button, no Restore.
+    await expect(retiredCard.getByRole('button', { name: 'Mount' })).toBeVisible({ timeout: 10000 })
+    await expect(retiredCard.getByRole('button', { name: 'Restore' })).toHaveCount(0)
   })
 
   test('a tire can be entered straight into storage', async ({ page, request }) => {
@@ -595,7 +925,7 @@ test.describe('Tire sets', () => {
     drawer = page.getByRole('dialog')
     await expect(drawer.getByText('Tires: 2 · Fitted: 0')).toBeVisible({ timeout: 10000 })
     await drawer.getByRole('button', { name: 'Fit', exact: true }).click()
-    await drawer.locator('input[id^="set-fit-odometer-"]').fill('30000')
+    await drawer.locator('input[id^="set-fit-"][id$="-odometer"]').fill('30000')
     await drawer.getByRole('button', { name: 'Fit', exact: true }).last().click()
     await expect(drawer).toBeHidden({ timeout: 10000 })
 
@@ -635,7 +965,7 @@ test.describe('Tire sets', () => {
     await page.getByRole('button', { name: 'Sets' }).click()
     const drawer = page.getByRole('dialog')
     await drawer.getByRole('button', { name: 'Fit', exact: true }).click()
-    await drawer.locator('input[id^="set-fit-odometer-"]').fill('30000')
+    await drawer.locator('input[id^="set-fit-"][id$="-odometer"]').fill('30000')
     await drawer.getByRole('button', { name: 'Fit', exact: true }).last().click()
 
     // Named, and nothing moves. Guessing a corner would put a tire somewhere

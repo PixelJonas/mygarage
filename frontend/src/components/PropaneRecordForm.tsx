@@ -26,7 +26,7 @@ import { Button, Field, Input, NumberInput, Select, Textarea, registerDecimal } 
 import { applyServerErrors } from '../hooks/useApiFormErrors'
 import { getActionErrorMessage } from '../utils/httpErrorHandler'
 
-// Propane density: 1 kg ≈ 1.968 L (1 gal ≈ 1.923 kg, 1 gal = 3.78541 L).
+// Propane density: 1 kg ≈ 1.968 L (1 gal ≈ 1.923 kg, 1 gal = 3.785411784 L).
 const KG_TO_LITERS = 1.968
 
 // Tank sizes in kg (canonical). The nominal display size differs per MASS unit
@@ -56,11 +56,12 @@ const TANK_SIZES: readonly {
  * example beside a field labelled with ITS gallon. `Record` over the token
  * means a volume unit added later cannot compile without its own example.
  *
- * All three describe the same 39.75 L at $0.766/L: 39.75 / 3.78541 = 10.500 US
- * gallons at 0.766 x 3.78541 = $2.899, and 39.75 / 4.54609 = 8.744 imperial
- * gallons at 0.766 x 4.54609 = $3.482. They are placeholders, not converted
- * quantities (ruling R5's exempt class), which is why they are written out
- * rather than computed: there is no canonical value behind an example.
+ * All three describe the same 39.75 L at $0.766/L, each to within a thousandth:
+ * 39.75 / 3.785411784 = 10.5008 US gallons at 0.766 x 3.785411784 = $2.8996, and
+ * 39.75 / 4.54609 = 8.7438 imperial gallons at 0.766 x 4.54609 = $3.4823. They
+ * are placeholders, not converted quantities (ruling R5's exempt class), which
+ * is why they are written out rather than computed: there is no canonical value
+ * behind an example.
  */
 const VOLUME_EXAMPLES: Readonly<Record<UnitSet['volume'], { volume: string; price: string }>> = {
   L: { volume: '39.750', price: '0.766' },

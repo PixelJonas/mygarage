@@ -1264,7 +1264,7 @@ MUTATIONS = [
     Mutation(
         "M12-drop-named-list",
         "config",
-        "'Literal[raw=/^(?:1609\\\\.34|25\\\\.4|235\\\\.214|282\\\\.481)$/]'",
+        "'Literal[raw=/^(?:1609\\\\.34|1609\\\\.344|25\\\\.4|235\\\\.214|282\\\\.481)$/]'",
         "'Literal[raw=/^(?:__never__)$/]'",
         "eslint",
         [
@@ -1272,6 +1272,7 @@ MUTATIONS = [
             "E-P3-mm-per-inch",
             "E-P4-mpg-to-l100km",
             "E-P9-uk-mpg-factor",
+            "E-P11-miles-exact",
         ],
         "the low-precision factors are invisible to the precision rule",
     ),
@@ -1302,6 +1303,7 @@ MUTATIONS = [
         [
             "E-N1-propane-density",
             "E-N3-ordinary-ui-numbers",
+            "E-P11-miles-exact",
             "E-P4-mpg-to-l100km",
             "E-P9-uk-mpg-factor",
         ],
@@ -1363,6 +1365,7 @@ MUTATIONS = [
             "E-N3-ordinary-ui-numbers",
             "E-N4-positive-control",
             "E-P1-metres-per-mile",
+            "E-P11-miles-exact",
             "E-P3-mm-per-inch",
             "E-P4-mpg-to-l100km",
             "E-P7-c-to-f-ninths",

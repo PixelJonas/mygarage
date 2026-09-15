@@ -123,8 +123,9 @@ export default function OdometerRecordForm({ vin, record, onClose, onSuccess }: 
               /* One example reading (72420 km) rendered in the client's own
                  distance unit, rather than one of two literals chosen by a
                  collapsed system. It reproduces both shipped hints exactly
-                 (72420 km, and 72420 / 1.60934 = 44999.81 shown as 45000) and
-                 needs no new branch for a distance token added later. */
+                 (72420 km, and 72420 / 1.609344 = 44999.7017418, shown as
+                 45000) and needs no new branch for a distance token added
+                 later. */
               placeholder={u.distance.toInputValue(72420)}
               invalid={!!errors.odometer_km}
               disabled={isSubmitting}

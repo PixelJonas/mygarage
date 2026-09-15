@@ -110,7 +110,7 @@ describe('POIFinder radius options', () => {
 })
 
 describe('POIFinder search radius in metres', () => {
-  it('sends the default mile radius as metres (5 x 1.60934 km = 8046.7 m)', async () => {
+  it('sends the default mile radius as metres (5 x 1.609344 km = 8046.72 m)', async () => {
     render(<POIFinder />)
     ;(await screen.findByText('poiFinder.useMyLocation')).click()
     await waitFor(() => expect(apiPost).toHaveBeenCalled())

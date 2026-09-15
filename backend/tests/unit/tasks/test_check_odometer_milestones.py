@@ -15,11 +15,11 @@ duration of each test while the owner is IMPERIAL, so an owned vehicle that
 fell back to `render_context_default` fails rather than coincidentally
 agreeing, and an ownerless vehicle that somehow resolved a user fails too.
 
-Derivations, computed from `UnitConverter.MILES_TO_KM = 1.60934` rather
+Derivations, computed from `UnitConverter.MILES_TO_KM = 1.609344` rather
 than transcribed:
 
-    100,000 canonical km / 1.60934 = 62,137.2736... -> "62,137 mi"
-    100,000 canonical km rendered as km              -> "100,000 km"
+    100,000 canonical km / 1.609344 = 62,137.1192... -> "62,137 mi"
+    100,000 canonical km rendered as km               -> "100,000 km"
 
 Tests share one database with no per-test rollback, so every row created
 here is torn down in `finally`, and every VIN/username is scoped to this

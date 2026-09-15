@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date as date_type
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Literal
 
@@ -50,6 +50,9 @@ class TireBase(BaseModel):
         description="Wear-out threshold in mm; drives reminder hooks",
     )
     notes: str | None = None
+    storage_location: str | None = Field(
+        None, max_length=120
+    )  #: Where the tire is kept while it is off the vehicle. Free text (migration 100).
 
 
 class TireCreate(TireBase):
@@ -82,6 +85,9 @@ class TireUpdate(BaseModel):
     #: membership alone and sending null clears it -- two different intents that
     #: a plain optional field would collapse into one.
     set_id: int | None = None
+    storage_location: str | None = Field(
+        None, max_length=120
+    )  #: Where the tire is kept while it is off the vehicle. Free text (migration 100).
 
 
 class TireMountRequest(BaseModel):
@@ -103,6 +109,9 @@ class TireDismountRequest(BaseModel):
     dismounted_on: date_type | None = None
     dismounted_odometer_km: Decimal | None = Field(None, ge=0)
     notes: str | None = None
+    storage_location: str | None = Field(
+        None, max_length=120
+    )  #: Where the tire is kept while it is off the vehicle. Free text (migration 100).
 
 
 class TireCreateAndMountRequest(TireCreate):
@@ -227,6 +236,66 @@ class MountPeriodResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class MountPeriodUpdate(BaseModel):
+    """Correct one mount period's bounds or notes.
+
+    Every field optional, `exclude_unset` semantics: a key absent from the
+    body is untouched, a key sent as null is cleared to unknown. `position`
+    is deliberately not here (D14: only mount, dismount and rotate write it),
+    and forbid-extra makes sending it a 422 rather than a silent ignore.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    mounted_on: date_type | None = None
+    mounted_odometer_km: Decimal | None = Field(None, ge=0)
+    dismounted_on: date_type | None = None
+    dismounted_odometer_km: Decimal | None = Field(None, ge=0)
+    notes: str | None = None
+
+
+class MountPeriodCreate(BaseModel):
+    """A closed period the tire spent on a corner, recorded after the fact.
+
+    Closed only: an open period is what Mount creates, and it is the one whose
+    corner `tires.position` holds. Odometers optional, dates required, the
+    dismount no later than tomorrow (a day of slack for a user whose calendar
+    is ahead of the server's).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    position: TirePosition
+    mounted_on: date_type
+    mounted_odometer_km: Decimal | None = Field(None, ge=0)
+    dismounted_on: date_type
+    dismounted_odometer_km: Decimal | None = Field(None, ge=0)
+    notes: str | None = None
+
+    @model_validator(mode="after")
+    def _a_closed_period_in_the_past(self) -> MountPeriodCreate:
+        if self.dismounted_on < self.mounted_on:
+            raise ValueError("dismounted_on cannot be before mounted_on")
+        if self.dismounted_on > date_type.today() + timedelta(days=1):
+            raise ValueError("dismounted_on cannot be in the future")
+        return self
+
+
+class HistoryFaultResponse(BaseModel):
+    """One contradiction in a tire's mount history.
+
+    The same validator that refuses a contradictory write, run over the
+    stored history, so a contradiction that blocks writes always has a period
+    to badge even when no distance or projection figure is blocked by it.
+    `message` is in the requesting user's distance unit.
+    """
+
+    period_id: int
+    code: str
+    counterpart_id: int | None = None
+    message: str
+
+
 class TireResponse(TireBase):
     """A tire, with where it is now and what is known about its wear.
 
@@ -268,6 +337,9 @@ class TireResponse(TireBase):
     # The periods a user must supply a number for, so the UI can link to the
     # exact one instead of saying "record a mount".
     blocking_period_ids: list[int] = Field(default_factory=list)
+    # Every contradiction the history validator finds, including ones no
+    # figure is blocked by, so the history drawer can badge and explain them.
+    history_faults: list[HistoryFaultResponse] = Field(default_factory=list)
     below_threshold: bool = False
     mount_periods: list[MountPeriodResponse] = Field(default_factory=list)
     readings: list[TireReadingResponse] = Field(default_factory=list)

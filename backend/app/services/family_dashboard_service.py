@@ -171,7 +171,11 @@ class FamilyDashboardService:
         odometer_result = await self.db.execute(
             select(OdometerRecord.odometer_km)
             .where(OdometerRecord.vin == vehicle.vin)
-            .order_by(OdometerRecord.date.desc())
+            .order_by(
+                OdometerRecord.date.desc(),
+                OdometerRecord.odometer_km.desc(),
+                OdometerRecord.id.desc(),
+            )
             .limit(1)
         )
         current_odometer_km = odometer_result.scalar_one_or_none()

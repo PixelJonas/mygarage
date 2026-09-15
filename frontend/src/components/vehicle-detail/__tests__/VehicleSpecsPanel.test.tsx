@@ -277,8 +277,8 @@ describe('VehicleSpecsPanel', () => {
 
       await waitFor(() => expect(mockedUpdate).toHaveBeenCalledTimes(1))
       const [, payload] = mockedUpdate.mock.calls[0]
-      // 100 lb-ft x 1.35582 = 135.582 Nm
-      expect(payload.lug_nut_torque_nm).toBeCloseTo(135.582, 3)
+      // 100 lb-ft x 1.3558179483314004 = 135.58179483314004 Nm
+      expect(payload.lug_nut_torque_nm).toBeCloseTo(135.5817948, 6)
     })
 
     it('reads a comma decimal mark, which NumberInput can carry', async () => {

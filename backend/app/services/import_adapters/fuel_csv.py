@@ -16,10 +16,12 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from app.utils.units import UnitConverter
+
 logger = logging.getLogger(__name__)
 
-GAL_TO_L = Decimal("3.785411784")
-MI_TO_KM = Decimal("1.609344")
+GAL_TO_L = UnitConverter.US_GALLONS_TO_LITERS
+MI_TO_KM = UnitConverter.MILES_TO_KM
 
 
 @dataclass(frozen=True)

@@ -77,7 +77,7 @@ beforeEach(() => {
 
 describe('DEFRecordForm — the odometer follows the distance token', () => {
   it('★ EDIT: volume, price and odometer all render in the units the client resolved', async () => {
-    //   72420.3 km / 1.60934 = 45000 mi exactly (45000 x 1.60934 = 72420.3)
+    //   72420.3 km / 1.609344 = 44999.888 mi, shown as 45000 (mi has no decimals)
     //   5.5 L and $4.50/L are already litres: this client's volume IS canonical
     units = LITRES_MILES
 
@@ -143,12 +143,13 @@ describe('DEFRecordForm — the odometer follows the distance token', () => {
   })
 
   it('★ EDIT: an odometer BETWEEN two whole miles survives a save that never touched it', async () => {
-    // The case above round-trips exactly, so it cannot tell a `seedUnitField`
-    // origin from a re-conversion. This one can:
+    // An odometer that is not a whole number of miles cannot survive a
+    // re-conversion of its rounded display, so only a `seedUnitField` origin
+    // posts it back unchanged:
     //
-    //   72420.5 km / 1.60934 = 45000.1242745 mi, shown as 45000 (mi has no
-    //                          decimals)
-    //   45000 mi x 1.60934   = 72420.3 km, which is NOT what was stored
+    //   72420.5 km / 1.609344 = 45000.0124 mi, shown as 45000 (mi has no
+    //                           decimals)
+    //   45000 mi x 1.609344   = 72420.48 km, which is NOT what was stored
     units = LITRES_MILES
 
     render(
@@ -163,7 +164,7 @@ describe('DEFRecordForm — the odometer follows the distance token', () => {
     await waitFor(() => expect(updateMock).toHaveBeenCalled())
     const payload = updateMock.mock.calls[0][0] as Record<string, unknown>
     expect(payload.odometer_km).toBe(72420.5)
-    expect(payload.odometer_km).not.toBe(72420.3)
+    expect(payload.odometer_km).not.toBe(72420.48)
 
     // ★ The assumption that mechanism rests on, pinned rather than defended
     // against. `canonicalFromUnitField` compares the field against
@@ -177,7 +178,7 @@ describe('DEFRecordForm — the odometer follows the distance token', () => {
   })
 
   it('CREATE: a typed mileage reaches the API as canonical kilometres', async () => {
-    //   45000 mi x 1.60934 = 72420.3 km
+    //   45000 mi x 1.609344 = 72420.48 km
     units = LITRES_MILES
 
     render(<DEFRecordForm {...DEFAULT_PROPS} />)
@@ -188,7 +189,7 @@ describe('DEFRecordForm — the odometer follows the distance token', () => {
 
     await waitFor(() => expect(createMock).toHaveBeenCalled())
     const payload = createMock.mock.calls[0][0] as Record<string, unknown>
-    expect(payload.odometer_km).toBe(72420.3)
+    expect(payload.odometer_km).toBe(72420.48)
     expect(payload.liters).toBe(5.5)
   })
 

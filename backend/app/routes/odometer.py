@@ -1,6 +1,7 @@
 """Odometer Record CRUD API endpoints."""
 
 import logging
+from datetime import date as date_type
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import delete, func, select
@@ -11,12 +12,14 @@ from app.database import get_db
 from app.models.odometer import OdometerRecord
 from app.models.user import User
 from app.schemas.odometer import (
+    NearestOdometerResponse,
     OdometerRecordCreate,
     OdometerRecordListResponse,
     OdometerRecordResponse,
     OdometerRecordUpdate,
 )
 from app.services.auth import get_vehicle_or_403, require_auth
+from app.services.odometer_service import nearest_odometer
 from app.utils.logging_utils import sanitize_for_log
 
 logger = logging.getLogger(__name__)
@@ -54,7 +57,7 @@ async def list_odometer_records(
         result = await db.execute(
             select(OdometerRecord)
             .where(OdometerRecord.vin == vin)
-            .order_by(OdometerRecord.date.desc())
+            .order_by(OdometerRecord.date.desc(), OdometerRecord.id.desc())
             .offset(skip)
             .limit(limit)
         )
@@ -66,11 +69,16 @@ async def list_odometer_records(
         )
         total = count_result.scalar()
 
-        # Get latest odometer_km
+        # The current odometer: the highest reading on the latest date. The
+        # listing above keeps date, then id; this picks a value.
         latest_result = await db.execute(
             select(OdometerRecord.odometer_km)
             .where(OdometerRecord.vin == vin)
-            .order_by(OdometerRecord.date.desc())
+            .order_by(
+                OdometerRecord.date.desc(),
+                OdometerRecord.odometer_km.desc(),
+                OdometerRecord.id.desc(),
+            )
             .limit(1)
         )
         latest_odometer_km = latest_result.scalar_one_or_none()
@@ -90,6 +98,34 @@ async def list_odometer_records(
             sanitize_for_log(str(e)),
         )
         raise HTTPException(status_code=503, detail="Database temporarily unavailable")
+
+
+# Declared above `/{record_id}` on purpose: FastAPI matches routes in
+# declaration order, and below it "nearest" would be parsed as a record id
+# and answer 422. `test_odometer_nearest.py` notices if this moves.
+@router.get("/nearest", response_model=NearestOdometerResponse)
+async def nearest_odometer_record(
+    vin: str,
+    on: date_type = Query(..., alias="date"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(require_auth),
+):
+    """The odometer record closest to a date, for prefilling a tire dialog.
+
+    404 when the vehicle has no odometer records at all: that is an answer
+    the suggestion renders as "no readings yet", not an error.
+    """
+    vin = vin.upper().strip()
+    await get_vehicle_or_403(vin, current_user, db)
+    record = await nearest_odometer(db, vin, on)
+    if record is None:
+        raise HTTPException(status_code=404, detail="No odometer readings for this vehicle")
+    return NearestOdometerResponse(
+        date=record.date,
+        odometer_km=record.odometer_km,
+        source=record.source,
+        days_away=(record.date - on).days,
+    )
 
 
 @router.get("/{record_id}", response_model=OdometerRecordResponse)

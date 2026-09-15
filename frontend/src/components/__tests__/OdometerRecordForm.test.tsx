@@ -36,11 +36,11 @@ describe('OdometerRecordForm — routing + canonical conversion + exact payload'
     fireEvent.change(document.getElementById('odometer_km')!, { target: { value: '50000' } })
     fireEvent.click(screen.getByRole('button', { name: 'common:create' }))
     await waitFor(() => expect(createMutateAsync).toHaveBeenCalledTimes(1))
-    // 50000 mi x 1.60934 = 80467 km, NOT the raw 50000.
+    // 50000 mi x 1.609344 = 80467.2 km, NOT the raw 50000.
     expect(createMutateAsync).toHaveBeenCalledWith({
       vin: 'V1',
       date: '2026-03-01',
-      odometer_km: 80467,
+      odometer_km: 80467.2,
       notes: '',
     })
     expect(updateMutateAsync).not.toHaveBeenCalled()
@@ -53,8 +53,9 @@ describe('OdometerRecordForm — routing + canonical conversion + exact payload'
     fireEvent.click(screen.getByRole('button', { name: 'common:update' }))
     await waitFor(() => expect(updateMutateAsync).toHaveBeenCalledTimes(1))
     // The edit seeds from the stored 80467 km, shown as 50000 mi
-    // (80467 / 1.60934 = 50000 exactly). The reading was never touched, so the
-    // ORIGIN is posted back rather than a re-conversion of the display.
+    // (80467 / 1.609344 = 49999.8757258, at the mi adapter's zero decimals).
+    // The reading was never touched, so the ORIGIN is posted back rather than
+    // a re-conversion of the display.
     expect(updateMutateAsync).toHaveBeenCalledWith({
       id: 7,
       vin: 'V1',

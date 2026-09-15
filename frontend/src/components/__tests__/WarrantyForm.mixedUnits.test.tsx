@@ -12,7 +12,7 @@
  * this slice removes, and a payload assertion alone cannot see it.
  *
  * Expected values are hand-written and derived in comments, never computed
- * through the code under test. `MILES_TO_KM` is 1.60934 (`utils/units.ts`).
+ * through the code under test. `MILES_TO_KM` is 1.609344 (`utils/units.ts`).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -77,7 +77,7 @@ const RECORD = {
 
 describe('WarrantyForm — the mileage limit follows units.distance', () => {
   it('★ EDIT: a litres-and-miles client reads the limit in miles, under a miles label', () => {
-    // 96560 km / 1.60934 = 59999.7513... mi, shown at the mi adapter's zero
+    // 96560 km / 1.609344 = 59999.6023224 mi, shown at the mi adapter's zero
     // decimals as 60000.
     unitPrefMock.units = LITRES_MILES
     render(<WarrantyForm {...DEFAULT_PROPS} record={RECORD} />)
@@ -90,8 +90,8 @@ describe('WarrantyForm — the mileage limit follows units.distance', () => {
   })
 
   it('★ CREATE: a typed mileage limit is stored as kilometres, not verbatim', async () => {
-    // 50000 mi x 1.60934 = 80467 km. Before this slice the same entry stored
-    // 50000, because `system` reads 'metric' off the litres.
+    // 50000 mi x 1.609344 = 80467.2 km. Before this slice the same entry
+    // stored 50000, because `system` reads 'metric' off the litres.
     unitPrefMock.units = LITRES_MILES
     render(<WarrantyForm {...DEFAULT_PROPS} />)
 
@@ -102,7 +102,7 @@ describe('WarrantyForm — the mileage limit follows units.distance', () => {
 
     await waitFor(() => expect(createMutateAsync).toHaveBeenCalledTimes(1))
     const payload = createMutateAsync.mock.calls[0][0] as Record<string, unknown>
-    expect(payload.mileage_limit_km).toBe(80467)
+    expect(payload.mileage_limit_km).toBe(80467.2)
     expect(payload.mileage_limit_km).not.toBe(50000)
   })
 
@@ -111,7 +111,7 @@ describe('WarrantyForm — the mileage limit follows units.distance', () => {
     // code that merely inverted the branch.
     //
     // It is also where the origin becomes visible: 96560 km displays as 60000
-    // mi and 60000 mi converts back to 96560.4 km, so before this slice an
+    // mi and 60000 mi converts back to 96560.64 km, so before this slice an
     // imperial-volume account that opened this record and pressed Update moved
     // a stored limit it never touched.
     unitPrefMock.units = GALLONS_KM
@@ -125,11 +125,11 @@ describe('WarrantyForm — the mileage limit follows units.distance', () => {
     await waitFor(() => expect(updateMutateAsync).toHaveBeenCalledTimes(1))
     const payload = updateMutateAsync.mock.calls[0][0] as Record<string, unknown>
     expect(payload.mileage_limit_km).toBe(96560)
-    expect(payload.mileage_limit_km).not.toBe(96560.4)
+    expect(payload.mileage_limit_km).not.toBe(96560.64)
   })
 
   it('★ EDIT: a miles client saving an untouched record posts the stored kilometres, not a re-conversion', async () => {
-    // 96560 km -> '60000' mi -> 96560.4 km. The origin hands the stored value
+    // 96560 km -> '60000' mi -> 96560.64 km. The origin hands the stored value
     // straight back, so reopening a warranty to fix a typo in the provider
     // does not nudge its mileage limit.
     unitPrefMock.units = LITRES_MILES
@@ -142,7 +142,7 @@ describe('WarrantyForm — the mileage limit follows units.distance', () => {
     const payload = updateMutateAsync.mock.calls[0][0] as Record<string, unknown>
     expect(payload.provider).toBe('Honda Ltd')
     expect(payload.mileage_limit_km).toBe(96560)
-    expect(payload.mileage_limit_km).not.toBe(96560.4)
+    expect(payload.mileage_limit_km).not.toBe(96560.64)
   })
 
   it('a limit cleared to blank posts no mileage limit at all', async () => {

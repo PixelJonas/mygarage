@@ -227,8 +227,8 @@ describe('FuelRecordForm — odometer and temperature follow their own tokens', 
     // The whole-form proof. One record, four quantities, four different
     // decisions, all read from the resolved set at once.
     //
-    //   72420.3 km / 1.60934 = 45000 mi exactly (45000 x 1.60934 = 72420.3)
-    //   20 C x 9/5 + 32      = 68.0 F
+    //   72420.3 km / 1.609344 = 44999.888 mi, shown as 45000 (mi has no decimals)
+    //   20 C x 9/5 + 32       = 68.0 F
     //   47.318 L is already litres; $1.234/L is already per litre
     units = LITRES_MILES_FAHRENHEIT
 
@@ -277,7 +277,7 @@ describe('FuelRecordForm — odometer and temperature follow their own tokens', 
     // A seed in one unit and a submit in another rewrites a record the user
     // only opened. `seedUnitField` records the canonical origin so an untouched
     // field returns the stored value rather than a re-conversion of a rounded
-    // display: 45000 mi converts back to 72420.3 km, but 72420.3 is what was
+    // display: 45000 mi converts back to 72420.48 km, but 72420.3 is what was
     // stored and 72420.3 is what must be posted.
     //
     // ★ NAMED FOR WHAT IT EXERCISES. This test used to be called "changes none
@@ -322,15 +322,15 @@ describe('FuelRecordForm — odometer and temperature follow their own tokens', 
   })
 
   it('★ EDIT: an odometer BETWEEN two whole miles survives a save that never touched it', async () => {
-    // The case above round-trips exactly, so it cannot tell an origin from a
-    // re-conversion. This one can, and it is what makes `seedUnitField`
-    // load-bearing rather than decorative:
+    // An odometer that is not a whole number of miles cannot survive a
+    // re-conversion of its rounded display, which is what makes
+    // `seedUnitField` load-bearing rather than decorative:
     //
-    //   72420.5 km / 1.60934 = 45000.1242745 mi, shown as 45000 (mi has no
-    //                          decimals)
-    //   45000 mi x 1.60934   = 72420.3 km, which is NOT what was stored
+    //   72420.5 km / 1.609344 = 45000.0124 mi, shown as 45000 (mi has no
+    //                           decimals)
+    //   45000 mi x 1.609344   = 72420.48 km, which is NOT what was stored
     //
-    // Re-converting the display would quietly move the reading 0.2 km every
+    // Re-converting the display would quietly move the reading 0.02 km every
     // time the record was opened and saved.
     units = LITRES_MILES_FAHRENHEIT
 
@@ -347,7 +347,7 @@ describe('FuelRecordForm — odometer and temperature follow their own tokens', 
     await waitFor(() => expect(mockedApiPut).toHaveBeenCalled())
     const payload = putPayload()
     expect(payload.odometer_km).toBe(72420.5)
-    expect(payload.odometer_km).not.toBe(72420.3)
+    expect(payload.odometer_km).not.toBe(72420.48)
 
     // ★ The displayed precision, pinned. This used to be the thing holding
     // the untouched-save mechanism together: `canonicalFromUnitField`
@@ -392,8 +392,8 @@ describe('FuelRecordForm — odometer and temperature follow their own tokens', 
   })
 
   it('CREATE: a typed mileage and a typed Fahrenheit temperature reach the API canonical', async () => {
-    //   45000 mi x 1.60934 = 72420.3 km
-    //   (68 - 32) x 5/9    = 20 C
+    //   45000 mi x 1.609344 = 72420.48 km
+    //   (68 - 32) x 5/9     = 20 C
     //   47.318 L and $1.234/L pass through: the client's volume IS the canonical
     units = LITRES_MILES_FAHRENHEIT
 
@@ -410,7 +410,7 @@ describe('FuelRecordForm — odometer and temperature follow their own tokens', 
 
     await waitFor(() => expect(mockedApiPost).toHaveBeenCalled())
     const payload = postedPayload()
-    expect(payload.odometer_km).toBe(72420.3)
+    expect(payload.odometer_km).toBe(72420.48)
     expect(payload.outside_temp_c).toBe(20)
     expect(payload.liters).toBe(47.318)
     expect(payload.price_per_unit).toBe(1.234)
@@ -507,9 +507,9 @@ describe('FuelRecordForm — odometer and temperature follow their own tokens', 
     const accept = await screen.findByRole('button', { name: 'fuel.receiptDraftAccept' })
     fireEvent.click(accept)
 
-    // 72420.3 km is 45000 mi. Seeding it raw would have put a kilometre reading
-    // into a field labelled `mi`, and the submit would then have converted it
-    // AGAIN into 116,564 km.
+    // 72420.3 km is 44999.888 mi, shown as 45000. Seeding it raw would have put
+    // a kilometre reading into a field labelled `mi`, and the submit would then
+    // have converted it AGAIN, as miles, into 116,549 km.
     await waitFor(() => expect(field('odometer_km').value).toBe('45000'))
 
     fireEvent.change(field('date'), { target: { value: '2026-02-10' } })
@@ -525,7 +525,7 @@ describe('FuelRecordForm — odometer and temperature follow their own tokens', 
     // converts it through `litersToVolumeUnit` before seeding the field, so a
     // gallons account read "47.318 L", accepted it, and watched the field it
     // landed in say 12.50 gal: one quantity under two units, one click apart.
-    // 47.318 / 3.78541 = 12.4998... US gallons, at the gal adapter's 2 decimals.
+    // 47.318 / 3.785411784 = 12.5001... US gallons, at the gal adapter's 2 decimals.
     units = GALLONS_KM_CELSIUS
     receipt.draft = { odometer_km: 72420.3, liters: 47.318 }
 
@@ -541,13 +541,13 @@ describe('FuelRecordForm — odometer and temperature follow their own tokens', 
   })
 
   it('★ the RECEIPT path moves the ORIGIN too, so a draft between two whole miles is not rounded', async () => {
-    // The case above cannot see the origin: 72420.3 km displays as 45000 mi and
-    // 45000 mi converts back to 72420.3 km, so seeding the value alone gives the
-    // right answer by luck of the rounding. This one breaks the tie.
+    // The same origin from just above a whole mile. The receipt case above sits
+    // just below one: 72420.3 km displays as 45000 mi, which converts back to
+    // 72420.48 km, so neither can pass by seeding the value alone.
     //
-    //   72420.5 km / 1.60934 = 45000.1242745 mi, shown as 45000 (mi has no
-    //                          decimals)
-    //   45000 mi x 1.60934   = 72420.3 km, which is NOT what the receipt said
+    //   72420.5 km / 1.609344 = 45000.0124 mi, shown as 45000 (mi has no
+    //                           decimals)
+    //   45000 mi x 1.609344   = 72420.48 km, which is NOT what the receipt said
     //
     // Setting the field without recording where the value came from is the same
     // defect the OBC suggestion had, and it sat here unguarded until the two
@@ -567,7 +567,7 @@ describe('FuelRecordForm — odometer and temperature follow their own tokens', 
     fireEvent.submit(drawerForm())
     await waitFor(() => expect(mockedApiPost).toHaveBeenCalled())
     expect(postedPayload().odometer_km).toBe(72420.5)
-    expect(postedPayload().odometer_km).not.toBe(72420.3)
+    expect(postedPayload().odometer_km).not.toBe(72420.48)
   })
 
   it('a blank odometer and a cleared temperature post nothing rather than zero', async () => {
@@ -614,12 +614,12 @@ describe('FuelRecordForm — the OBC pair follows the speed and consumption toke
    * Expected values are hand-written and derived in comments, never computed
    * through the code under test:
    *
-   *   100 km/h / 1.60934   = 62.137273665 mph, shown as 62 (mph has no decimals)
-   *   62 mph x 1.60934     = 99.77908 km/h, which is NOT what was stored
-   *   235.214 / 10         = 23.5214 MPG, shown as 23.5 (MPG carries one)
-   *   235.214 / 23.5       = 10.009106383 L/100km, which is NOT what was stored
-   *   60 mph x 1.60934     = 96.5604 km/h
-   *   235.214 / 30         = 7.84046666667 L/100km
+   *   100 km/h / 1.609344   = 62.1371192237 mph, shown as 62 (mph has no decimals)
+   *   62 mph x 1.609344     = 99.779328 km/h, which is NOT what was stored
+   *   235.2145833333 / 10   = 23.5214583333 MPG, shown as 23.5 (MPG carries one)
+   *   235.2145833333 / 23.5 = 10.0091312057 L/100km, which is NOT what was stored
+   *   60 mph x 1.609344     = 96.56064 km/h
+   *   235.2145833333 / 30   = 7.84048611111 L/100km
    */
 
   it('★ EDIT: an MPG/MPH client reads both OBC values, and their labels, in its own units', async () => {
@@ -675,7 +675,7 @@ describe('FuelRecordForm — the OBC pair follows the speed and consumption toke
     expect(payload.obc_l_per_100km).not.toBe(10.009106383)
   })
 
-  it('★ CREATE: the 60 mph an MPH client types is stored as 96.5604 km/h, not as 60', async () => {
+  it('★ CREATE: the 60 mph an MPH client types is stored as 96.56064 km/h, not as 60', async () => {
     // The headline defect, driven end to end.
     units = LITRES_MPH_MPG
 
@@ -689,9 +689,9 @@ describe('FuelRecordForm — the OBC pair follows the speed and consumption toke
 
     await waitFor(() => expect(mockedApiPost).toHaveBeenCalled())
     const payload = postedPayload()
-    expect(payload.obc_avg_speed_kmh).toBe(96.5604)
+    expect(payload.obc_avg_speed_kmh).toBe(96.56064)
     expect(payload.obc_avg_speed_kmh).not.toBe(60)
-    expect(payload.obc_l_per_100km).toBe(7.84046666667)
+    expect(payload.obc_l_per_100km).toBe(7.84048611111)
     expect(payload.obc_l_per_100km).not.toBe(30)
   })
 

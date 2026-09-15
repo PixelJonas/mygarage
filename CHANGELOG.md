@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Upgrade note
+
+Back up first. Migration 100 adds a nullable column to `tires`.
+
+### Added
+
+- Mount date and odometer on the Add Tire form, with the nearest odometer reading suggested (#153).
+- A date on every tire operation, so a swap can be logged after the fact.
+- Mount history on every tire, with editing of each period's dates, odometers and notes.
+- Add a past mount period from a tire's history.
+- Contradictions in a tire's mount history are badged, with a Fix button on the card.
+- Tire cards show the mount date and odometer, or the date a tire went into storage.
+- A storage location on a tire (#153).
+- Retired tires can be shown on the Tires tab and restored to storage.
+- A tread reading can be deleted from a tire's history.
+
+### Changed
+
+- A vehicle's current odometer is the highest reading of its latest day.
+
+### Fixed
+
+- The Add Tire form never sent the mount odometer, leaving the tire's distance and wear estimate blank.
+- Tire operations accepted a history that contradicts itself, such as a dismount before its mount.
+- A retired tire could be mounted or rotated through the API.
+- Two simultaneous mounts at one corner returned 500 instead of 409.
+- The Log Reading date defaulted to the UTC date instead of your local date.
+- Imperial conversions in the app and server now use the same exact factors.
+- Tire operations could overwrite a same-day odometer reading from a service visit, fuel-up or LiveLink.
+- Re-saving a fuel, DEF or service record could overwrite a same-day tire odometer reading.
+- LiveLink skipped its odometer reading on a day that already had one from another record.
+- SD-card backfill could stop importing a device's logs when a reading appeared twice in one file.
+- A LiveLink reading replayed after a drive ended was left out of that drive's totals.
+- A re-run SD-card backfill did not extend two drives that touch end to start.
+- Fuel, DEF, hours and vehicle JSON imports ignored skip duplicates for rows repeated within one file.
+- One invalid row could discard a whole JSON import.
+- An import that failed partway could leave some of its rows saved.
+- CSV imports longer than about ten rows were refused with "Could not determine delimiter" (#163).
+
 ## [3.3.1] - 2026-09-10
 
 ### Behaviour note

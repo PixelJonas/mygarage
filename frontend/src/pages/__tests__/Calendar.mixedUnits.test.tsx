@@ -105,7 +105,7 @@ const IN_FIVE_DAYS = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000)
   .toISOString()
   .slice(0, 10)
 
-/** 80467 km is exactly 50000 mi; 16093.4 km is exactly 10000 mi. */
+/** 80467 km shows as 50,000 mi (49999.88); 16093.4 km shows as 10,000 mi (9999.98). */
 const EVENT = {
   id: 'reminder-1',
   title: 'Oil change',
@@ -144,9 +144,10 @@ describe('Calendar distance badges follow units.distance, not the collapsed syst
     unitPrefMock.units = LITRES_MILES
     render(<CalendarPage />)
 
-    // The due-mileage badge: 80467 km / 1.60934 = 50000 mi.
+    // The due-mileage badge: 80467 km / 1.609344 = 49999.88 mi, shown as 50,000.
     await waitFor(() => expect(screen.getByText('50,000 mi')).toBeInTheDocument())
-    // The remaining-distance badge: 16093.4 km / 1.60934 = 10000 mi. It also
+    // The remaining-distance badge: 16093.4 km / 1.609344 = 9999.98 mi, shown
+    // as 10,000. It also
     // carried the `system === 'imperial'` comparison and the raw kmToMiles call.
     expect(screen.getByText('calendar.misc.distanceLeft 10,000 mi')).toBeInTheDocument()
     expect(screen.queryByText('80,467 km')).not.toBeInTheDocument()

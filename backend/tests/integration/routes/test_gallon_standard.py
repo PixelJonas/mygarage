@@ -6,7 +6,7 @@ legacy-format converters in `import_data.py` and the imperial export in
 `export.py` both read it, so on a UK-configured instance:
 
 - importing a v2-era backup (always US gallons) multiplied every volume by
-  4.54609 instead of 3.78541 and wrote that into canonical storage, permanently;
+  4.54609 instead of 3.785411784 and wrote that into canonical storage, permanently;
 - the imperial export emitted UK gallons under a "Gallons" header that the
   importer then read back as US.
 
@@ -56,7 +56,7 @@ from app.models.vehicle import Vehicle
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
-US_GAL_L = Decimal("3.78541")
+US_GAL_L = Decimal("3.785411784")
 UK_GAL_L = Decimal("4.54609")
 
 GALLON_STANDARD_KEY = "imperial_gallon_standard"
@@ -168,7 +168,7 @@ class TestGallonStandardRoundTrip:
         # has to. `imperial_uk` is never emitted again.
         assert rows[0]["unit_system"] == "imperial"
         assert rows[0]["unit_system"] != "imperial_uk"
-        # 45.461 L / 3.78541 = 12.0095 US gal. Under the old contract this
+        # 45.461 L / 3.785411784 = 12.0095 US gal. Under the old contract this
         # instance would have written 10.0 UK gal here.
         assert rows[0]["Volume (gal_us)"] == "12.0095"
         assert "Volume (gal_uk)" not in body.splitlines()[0]
@@ -209,8 +209,9 @@ class TestGallonStandardRoundTrip:
         row = (
             await db_session.execute(select(FuelRecord).where(FuelRecord.vin == vin))
         ).scalar_one()
-        # 10 US gal = 37.8541 L. Reading it as UK would store 45.4609 L, a
-        # permanent 20 percent inflation of the user's history.
+        # 10 US gal = 37.85411784 L (stored to 4 dp as 37.8541). Reading it as
+        # UK would store 45.4609 L, a permanent 20 percent inflation of the
+        # user's history.
         assert float(row.liters) == pytest.approx(float(Decimal("10") * US_GAL_L), abs=0.01)
         assert float(row.liters) != pytest.approx(float(Decimal("10") * UK_GAL_L), abs=0.01)
 
@@ -238,7 +239,9 @@ class TestGallonStandardRoundTrip:
         assert resp.status_code == 200
         rows = list(csv.DictReader(io.StringIO(resp.content.decode())))
         assert rows[0]["unit_system"] == "imperial"
-        # 37.8541 L / 3.78541 = exactly 10 US gal, at four decimals.
+        # 37.8541 L / 3.785411784 = 9.999995... US gal, rounding to "10.0000"
+        # at four decimals (the FuelRecord above stores the pre-v3.4.0
+        # 4-decimal rounding of 10 US gal, not a bit-exact multiple).
         assert rows[0]["Volume (gal_us)"] == "10.0000"
 
     async def test_metric_export_is_unaffected_by_the_uk_setting(

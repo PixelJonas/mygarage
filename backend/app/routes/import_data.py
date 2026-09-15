@@ -33,13 +33,14 @@ from collections.abc import Mapping, Sequence
 from datetime import date as date_type
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import InstrumentedAttribute
 
 from app.config import settings
 from app.constants.fuel import FuelTypeEnum, normalize_fuel_type
@@ -64,6 +65,7 @@ from app.services.fuel_side_effects import (
     apply_fuel_record_side_effects,
     invalidate_cache_for_vehicle,
 )
+from app.services.vehicle_lock import lock_vehicle_for_write
 from app.utils.csv_units import (
     CONSUMPTION,
     DEF_PRICE,
@@ -87,6 +89,7 @@ from app.utils.csv_units import (
 from app.utils.def_sync import ensure_def_capable
 from app.utils.file_validation import validate_csv_upload
 from app.utils.logging_utils import sanitize_for_log
+from app.utils.odometer_tolerance import KM_STEP, LITRE_STEP, conversion_tolerance
 from app.utils.units import UnitConverter
 
 logger = logging.getLogger(__name__)
@@ -126,7 +129,43 @@ def _normalized_fuel_type(raw: str | None) -> str | None:
     return normalized.value if normalized is not None else None
 
 
+def _converted_value_matches(
+    column: InstrumentedAttribute[Any], value: Decimal | None, step: Decimal
+) -> ColumnElement[bool]:
+    """A duplicate-check condition on a column holding a unit-converted value.
+
+    Values stored before the exact conversion factors differ from the same
+    figure converted today by a few parts per million, on top of the column's
+    rounding to `step`, so an equality match would import a pre-upgrade row a
+    second time. The band (`conversion_tolerance`, shared with tire history)
+    allows the two together; an absent value still matches only NULL. More
+    than one stored row can fall inside the band, so a caller treats any match
+    as the duplicate rather than asking for exactly one.
+    """
+    if value is None:
+        return column.is_(None)
+    tolerance = conversion_tolerance(value, step)
+    return column.between(value - tolerance, value + tolerance)
+
+
+def _odometer_matches(
+    column: InstrumentedAttribute[Any], odometer_km: Decimal | None
+) -> ColumnElement[bool]:
+    """`_converted_value_matches` for an odometer column, in km."""
+    return _converted_value_matches(column, odometer_km, KM_STEP)
+
+
 router = APIRouter(prefix="/api/import", tags=["import"])
+
+#: The record lists a vehicle JSON backup may carry, in the order they import.
+_JSON_IMPORT_SECTIONS = (
+    "service_records",
+    "fuel_records",
+    "def_records",
+    "odometer_records",
+    "reminders",
+    "notes",
+)
 
 # Valid service categories matching the ServiceVisit check constraint
 VALID_SERVICE_CATEGORIES = {"Maintenance", "Inspection", "Collision", "Upgrades", "Detailing"}
@@ -270,6 +309,13 @@ async def import_service_csv(
     csv_data = await validate_csv_upload(file)
     rows, units = _read_csv_with_units(csv_data, (ODOMETER_DISTANCE,))
 
+    # The vehicle write lock, taken before the first read of stored rows and
+    # before any write. On SQLite it opens the one transaction that every
+    # row's savepoint nests in; without it each savepoint commits its row on
+    # release (see `app.database`), and a failure later in the upload would
+    # leave the rows before it behind. Every import route takes it the same way.
+    await lock_vehicle_for_write(db, vin)
+
     import_result = ImportResult()
 
     for row_num, row in enumerate(rows, start=2):  # Start at 2 (header is row 1)
@@ -315,46 +361,51 @@ async def import_service_csv(
                     select(ServiceVisit).where(
                         ServiceVisit.vin == vin,
                         ServiceVisit.date == date,
-                        ServiceVisit.odometer_km == odometer_km,
+                        _odometer_matches(ServiceVisit.odometer_km, odometer_km),
                     )
                 )
-                if existing.scalar_one_or_none():
+                if existing.scalars().first():
                     import_result.add_skip()
                     continue
 
-            # Lookup or create Vendor
-            vendor_id = None
-            if vendor_name:
-                vendor_result = await db.execute(
-                    select(Vendor).where(Vendor.name == vendor_name).limit(1)
+            # A savepoint per row, covering the vendor lookup/create, the
+            # visit and its line item together: a CHECK or length violation
+            # on any of them rolls the whole row back alone instead of
+            # poisoning the session for every row and loop still to come.
+            async with db.begin_nested():
+                # Lookup or create Vendor
+                vendor_id = None
+                if vendor_name:
+                    vendor_result = await db.execute(
+                        select(Vendor).where(Vendor.name == vendor_name).limit(1)
+                    )
+                    vendor = vendor_result.scalar_one_or_none()
+                    if not vendor:
+                        vendor = Vendor(name=vendor_name)
+                        db.add(vendor)
+                        await db.flush()
+                    vendor_id = vendor.id
+
+                # Create ServiceVisit with one line item per CSV row
+                visit = ServiceVisit(
+                    vin=vin,
+                    date=date,
+                    odometer_km=odometer_km,
+                    engine_hours=engine_hours,
+                    service_category=category or "Maintenance",
+                    vendor_id=vendor_id,
+                    notes=notes,
+                    total_cost=cost or Decimal("0"),
                 )
-                vendor = vendor_result.scalar_one_or_none()
-                if not vendor:
-                    vendor = Vendor(name=vendor_name)
-                    db.add(vendor)
-                    await db.flush()
-                vendor_id = vendor.id
+                db.add(visit)
+                await db.flush()
 
-            # Create ServiceVisit with one line item per CSV row
-            visit = ServiceVisit(
-                vin=vin,
-                date=date,
-                odometer_km=odometer_km,
-                engine_hours=engine_hours,
-                service_category=category or "Maintenance",
-                vendor_id=vendor_id,
-                notes=notes,
-                total_cost=cost or Decimal("0"),
-            )
-            db.add(visit)
-            await db.flush()
-
-            line_item = ServiceLineItem(
-                visit_id=visit.id,
-                description=description or category or "Service",
-                cost=cost or Decimal("0"),
-            )
-            db.add(line_item)
+                line_item = ServiceLineItem(
+                    visit_id=visit.id,
+                    description=description or category or "Service",
+                    cost=cost or Decimal("0"),
+                )
+                db.add(line_item)
             import_result.add_success()
 
         except Exception as e:
@@ -399,6 +450,8 @@ async def import_fuel_csv(
             FUEL_SPEED,
         ),
     )
+
+    await lock_vehicle_for_write(db, vin)
 
     import_result = ImportResult()
 
@@ -467,10 +520,10 @@ async def import_fuel_csv(
                     select(FuelRecord).where(
                         FuelRecord.vin == vin,
                         FuelRecord.date == date,
-                        FuelRecord.odometer_km == odometer_km,
+                        _odometer_matches(FuelRecord.odometer_km, odometer_km),
                     )
                 )
-                if existing.scalar_one_or_none():
+                if existing.scalars().first():
                     import_result.add_skip()
                     continue
 
@@ -495,7 +548,12 @@ async def import_fuel_csv(
                 obc_l_per_100km=obc_l_per_100km,
                 obc_avg_speed_kmh=obc_avg_speed_kmh,
             )
-            db.add(record)
+            # A savepoint per row. Leaving it flushes the insert, so the next
+            # row's duplicate check sees this one (production sessions do not
+            # autoflush), and a row the database rejects rolls back alone
+            # instead of failing the whole upload at the final commit.
+            async with db.begin_nested():
+                db.add(record)
             import_result.add_success()
 
         except Exception as e:
@@ -526,6 +584,8 @@ async def import_def_csv(
     csv_data = await validate_csv_upload(file)
     rows, units = _read_csv_with_units(csv_data, (ODOMETER_DISTANCE, FUEL_VOLUME, DEF_PRICE))
 
+    await lock_vehicle_for_write(db, vin)
+
     import_result = ImportResult()
 
     for row_num, row in enumerate(rows, start=2):
@@ -554,10 +614,10 @@ async def import_def_csv(
                     select(DEFRecord).where(
                         DEFRecord.vin == vin,
                         DEFRecord.date == date,
-                        DEFRecord.odometer_km == odometer_km,
+                        _odometer_matches(DEFRecord.odometer_km, odometer_km),
                     )
                 )
-                if existing.scalar_one_or_none():
+                if existing.scalars().first():
                     import_result.add_skip()
                     continue
 
@@ -573,7 +633,12 @@ async def import_def_csv(
                 brand=brand,
                 notes=notes,
             )
-            db.add(record)
+            # A savepoint per row. Leaving it flushes the insert, so the next
+            # row's duplicate check sees this one (production sessions do not
+            # autoflush), and a row the database rejects rolls back alone
+            # instead of failing the whole upload at the final commit.
+            async with db.begin_nested():
+                db.add(record)
             import_result.add_success()
 
         except Exception as e:
@@ -603,6 +668,8 @@ async def import_odometer_csv(
     csv_data = await validate_csv_upload(file)
     rows, units = _read_csv_with_units(csv_data, (READING_DISTANCE,))
 
+    await lock_vehicle_for_write(db, vin)
+
     import_result = ImportResult()
 
     for row_num, row in enumerate(rows, start=2):
@@ -629,10 +696,10 @@ async def import_odometer_csv(
                     select(OdometerRecord).where(
                         OdometerRecord.vin == vin,
                         OdometerRecord.date == date,
-                        OdometerRecord.odometer_km == odometer_km,
+                        _odometer_matches(OdometerRecord.odometer_km, odometer_km),
                     )
                 )
-                if existing.scalar_one_or_none():
+                if existing.scalars().first():
                     import_result.add_skip()
                     continue
 
@@ -684,6 +751,8 @@ async def import_hours_csv(
     csv_data = await validate_csv_upload(file)
     csv_reader = csv.DictReader(io.StringIO(csv_data))
 
+    await lock_vehicle_for_write(db, vin)
+
     import_result = ImportResult()
 
     for row_num, row in enumerate(csv_reader, start=2):
@@ -724,7 +793,12 @@ async def import_hours_csv(
                 notes=notes,
                 source="manual",
             )
-            db.add(record)
+            # A savepoint per row. Leaving it flushes the insert, so the next
+            # row's duplicate check sees this one (production sessions do not
+            # autoflush), and a row the database rejects rolls back alone
+            # instead of failing the whole upload at the final commit.
+            async with db.begin_nested():
+                db.add(record)
             import_result.add_success()
 
         except Exception as e:
@@ -755,6 +829,8 @@ async def import_warranties_csv(
     # see a tokenised header at all, and would silently store miles as km.
     csv_data = await validate_csv_upload(file)
     rows, units = _read_csv_with_units(csv_data, (MILEAGE_LIMIT_DISTANCE,))
+
+    await lock_vehicle_for_write(db, vin)
 
     import_result = ImportResult()
 
@@ -833,6 +909,8 @@ async def import_insurance_csv(
     csv_data = await validate_csv_upload(file)
     csv_reader = csv.DictReader(io.StringIO(csv_data))
 
+    await lock_vehicle_for_write(db, vin)
+
     import_result = ImportResult()
 
     for row_num, row in enumerate(csv_reader, start=2):
@@ -908,6 +986,8 @@ async def import_tax_csv(
     csv_data = await validate_csv_upload(file)
     csv_reader = csv.DictReader(io.StringIO(csv_data))
 
+    await lock_vehicle_for_write(db, vin)
+
     import_result = ImportResult()
 
     for row_num, row in enumerate(csv_reader, start=2):
@@ -982,6 +1062,8 @@ async def import_notes_csv(
     csv_data = await validate_csv_upload(file)
     csv_reader = csv.DictReader(io.StringIO(csv_data))
 
+    await lock_vehicle_for_write(db, vin)
+
     import_result = ImportResult()
 
     for row_num, row in enumerate(csv_reader, start=2):
@@ -1048,11 +1130,28 @@ async def import_vehicle_json(
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=400, detail=f"Invalid JSON: {str(e)}")
 
+    # Every section is settled here, before the lock and before any write. A
+    # missing or null section is empty; anything else that is not a list
+    # refuses the whole file, instead of raising halfway through the loops
+    # below with the sections before it already written.
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=400, detail="The import file must be a JSON object")
+    backup = cast(dict[str, Any], data)
+    sections: dict[str, list[Any]] = {}
+    for section in _JSON_IMPORT_SECTIONS:
+        value = backup.get(section)
+        if value is None:
+            sections[section] = []
+        elif isinstance(value, list):
+            sections[section] = cast(list[Any], value)
+        else:
+            raise HTTPException(status_code=400, detail=f"{section} must be a list of records")
+
     # Detect schema version. v3+ exports include `"export_version": "3"` and
     # `"units": "metric"`. Pre-v3 backups omit both — treat as legacy v2 and
     # convert imperial values to metric on ingest.
-    export_version = str(data.get("export_version") or "").strip()
-    units = str(data.get("units") or "").strip().lower()
+    export_version = str(backup.get("export_version") or "").strip()
+    units = str(backup.get("units") or "").strip().lower()
     is_legacy_v2 = export_version != "3" and units != "metric"
     if is_legacy_v2:
         logger.warning(
@@ -1079,6 +1178,8 @@ async def import_vehicle_json(
         d = Decimal(str(val))
         return d / UnitConverter.US_GALLONS_TO_LITERS if is_legacy_v2 else d
 
+    await lock_vehicle_for_write(db, vin)
+
     results = {
         "service_records": {"success": 0, "errors": 0, "skipped": 0},
         "fuel_records": {"success": 0, "errors": 0, "skipped": 0},
@@ -1090,7 +1191,7 @@ async def import_vehicle_json(
     }
 
     # Import service records (creates ServiceVisit + ServiceLineItem + Vendor)
-    for idx, record_data in enumerate(data.get("service_records", [])):
+    for idx, record_data in enumerate(sections["service_records"]):
         try:
             date = datetime.fromisoformat(record_data["date"]).date()
 
@@ -1104,51 +1205,68 @@ async def import_vehicle_json(
                     select(ServiceVisit).where(
                         ServiceVisit.vin == vin,
                         ServiceVisit.date == date,
-                        ServiceVisit.odometer_km == imported_odometer_km,
+                        _odometer_matches(ServiceVisit.odometer_km, imported_odometer_km),
                     )
                 )
-                if existing.scalar_one_or_none():
+                if existing.scalars().first():
                     results["service_records"]["skipped"] += 1
                     continue
-
-            # Lookup or create Vendor
-            vendor_id = None
-            vendor_name = record_data.get("vendor_name")
-            if vendor_name:
-                vendor_result = await db.execute(
-                    select(Vendor).where(Vendor.name == vendor_name).limit(1)
-                )
-                vendor = vendor_result.scalar_one_or_none()
-                if not vendor:
-                    vendor = Vendor(name=vendor_name)
-                    db.add(vendor)
-                    await db.flush()
-                vendor_id = vendor.id
 
             cost = Decimal(str(record_data["cost"])) if record_data.get("cost") else Decimal("0")
             description = (
                 record_data.get("service_type") or record_data.get("description") or "Service"
             )
-            category = record_data.get("service_category") or "Maintenance"
+            # Only a name IN VALID_SERVICE_CATEGORIES is accepted, the same
+            # vocabulary the CSV importer matches against. Reported as this
+            # row's error rather than left for the database's own CHECK
+            # constraint to reject.
+            raw_category = record_data.get("service_category")
+            if raw_category and raw_category not in VALID_SERVICE_CATEGORIES:
+                results["service_records"]["errors"] += 1
+                results["errors"].append(
+                    f"Service record {idx}: service_category {raw_category!r} is not "
+                    "a recognized category"
+                )
+                continue
+            category = raw_category or "Maintenance"
 
-            visit = ServiceVisit(
-                vin=vin,
-                date=date,
-                odometer_km=imported_odometer_km,
-                service_category=category,
-                vendor_id=vendor_id,
-                notes=record_data.get("notes"),
-                total_cost=cost,
-            )
-            db.add(visit)
-            await db.flush()
+            # A savepoint per row, covering the vendor lookup/create, the
+            # visit and its line item together: a CHECK or length violation
+            # on any of them rolls the whole row back alone instead of
+            # poisoning the session for every row and loop still to come.
+            async with db.begin_nested():
+                # Lookup or create Vendor
+                vendor_id = None
+                vendor_name = record_data.get("vendor_name")
+                if vendor_name:
+                    vendor_result = await db.execute(
+                        select(Vendor).where(Vendor.name == vendor_name).limit(1)
+                    )
+                    vendor = vendor_result.scalar_one_or_none()
+                    if not vendor:
+                        vendor = Vendor(name=vendor_name)
+                        db.add(vendor)
+                        await db.flush()
+                    vendor_id = vendor.id
 
-            line_item = ServiceLineItem(
-                visit_id=visit.id,
-                description=description,
-                cost=cost,
-            )
-            db.add(line_item)
+                visit = ServiceVisit(
+                    vin=vin,
+                    date=date,
+                    odometer_km=imported_odometer_km,
+                    service_category=category,
+                    vendor_id=vendor_id,
+                    notes=record_data.get("notes"),
+                    total_cost=cost,
+                )
+                db.add(visit)
+                await db.flush()
+
+                line_item = ServiceLineItem(
+                    visit_id=visit.id,
+                    description=description,
+                    cost=cost,
+                )
+                db.add(line_item)
             results["service_records"]["success"] += 1
         except Exception as e:
             results["service_records"]["errors"] += 1
@@ -1156,7 +1274,7 @@ async def import_vehicle_json(
             results["errors"].append(f"Service record {idx}: could not be imported")
 
     # Import fuel records
-    for idx, record_data in enumerate(data.get("fuel_records", [])):
+    for idx, record_data in enumerate(sections["fuel_records"]):
         try:
             date = datetime.fromisoformat(record_data["date"]).date()
 
@@ -1175,10 +1293,10 @@ async def import_vehicle_json(
                     select(FuelRecord).where(
                         FuelRecord.vin == vin,
                         FuelRecord.date == date,
-                        FuelRecord.odometer_km == imported_odometer_km,
+                        _odometer_matches(FuelRecord.odometer_km, imported_odometer_km),
                     )
                 )
-                if existing.scalar_one_or_none():
+                if existing.scalars().first():
                     results["fuel_records"]["skipped"] += 1
                     continue
 
@@ -1198,7 +1316,12 @@ async def import_vehicle_json(
                 missed_fillup=record_data.get("missed_fillup", False),
                 notes=record_data.get("notes"),
             )
-            db.add(record)
+            # A savepoint per row. Leaving it flushes the insert, so the next
+            # row's duplicate check sees this one (production sessions do not
+            # autoflush), and a row the database rejects rolls back alone
+            # instead of failing the whole upload at the final commit.
+            async with db.begin_nested():
+                db.add(record)
             results["fuel_records"]["success"] += 1
         except Exception as e:
             results["fuel_records"]["errors"] += 1
@@ -1213,7 +1336,7 @@ async def import_vehicle_json(
     # has since changed (or never was diesel per current data) — refusing to
     # restore data the user already had would be a data-loss bug, not a
     # safety feature.
-    for idx, record_data in enumerate(data.get("def_records", [])):
+    for idx, record_data in enumerate(sections["def_records"]):
         try:
             date = datetime.fromisoformat(record_data["date"]).date()
 
@@ -1231,10 +1354,10 @@ async def import_vehicle_json(
                     select(DEFRecord).where(
                         DEFRecord.vin == vin,
                         DEFRecord.date == date,
-                        DEFRecord.odometer_km == imported_odometer_km,
+                        _odometer_matches(DEFRecord.odometer_km, imported_odometer_km),
                     )
                 )
-                if existing.scalar_one_or_none():
+                if existing.scalars().first():
                     results["def_records"]["skipped"] += 1
                     continue
 
@@ -1254,7 +1377,12 @@ async def import_vehicle_json(
                 brand=record_data.get("brand"),
                 notes=record_data.get("notes"),
             )
-            db.add(record)
+            # A savepoint per row. Leaving it flushes the insert, so the next
+            # row's duplicate check sees this one (production sessions do not
+            # autoflush), and a row the database rejects rolls back alone
+            # instead of failing the whole upload at the final commit.
+            async with db.begin_nested():
+                db.add(record)
             results["def_records"]["success"] += 1
         except Exception as e:
             results["def_records"]["errors"] += 1
@@ -1262,7 +1390,7 @@ async def import_vehicle_json(
             results["errors"].append(f"DEF record {idx}: could not be imported")
 
     # Import odometer records
-    for idx, record_data in enumerate(data.get("odometer_records", [])):
+    for idx, record_data in enumerate(sections["odometer_records"]):
         try:
             date = datetime.fromisoformat(record_data["date"]).date()
 
@@ -1276,10 +1404,10 @@ async def import_vehicle_json(
                     select(OdometerRecord).where(
                         OdometerRecord.vin == vin,
                         OdometerRecord.date == date,
-                        OdometerRecord.odometer_km == imported_odometer_km,
+                        _odometer_matches(OdometerRecord.odometer_km, imported_odometer_km),
                     )
                 )
-                if existing.scalar_one_or_none():
+                if existing.scalars().first():
                     results["odometer_records"]["skipped"] += 1
                     continue
 
@@ -1289,7 +1417,12 @@ async def import_vehicle_json(
                 odometer_km=imported_odometer_km,
                 notes=record_data.get("notes"),
             )
-            db.add(record)
+            # A savepoint per row. Leaving it flushes the insert, so the next
+            # row's duplicate check sees this one (production sessions do not
+            # autoflush), and a row the database rejects rolls back alone
+            # instead of failing the whole upload at the final commit.
+            async with db.begin_nested():
+                db.add(record)
             results["odometer_records"]["success"] += 1
         except Exception as e:
             results["odometer_records"]["errors"] += 1
@@ -1297,7 +1430,7 @@ async def import_vehicle_json(
             results["errors"].append(f"Odometer record {idx}: could not be imported")
 
     # Import reminders → map to vehicle_reminders
-    for idx, reminder_data in enumerate(data.get("reminders", [])):
+    for idx, reminder_data in enumerate(sections["reminders"]):
         try:
             # Determine reminder type from recurrence fields
             is_recurring = reminder_data.get("is_recurring", False)
@@ -1306,6 +1439,15 @@ async def import_vehicle_json(
 
             has_date = bool(is_recurring and recurrence_days)
             has_miles = bool(is_recurring and recurrence_miles)
+
+            # The database requires a positive due_mileage_km when one is set
+            # (check_due_mileage_km); reject a negative recurrence here
+            # rather than letting that CHECK reject the row. Not clamped: a
+            # negative value is reported, never silently corrected.
+            if has_miles and Decimal(str(recurrence_miles)) <= 0:
+                results["reminders"]["errors"] += 1
+                results["errors"].append(f"Reminder {idx}: recurrence_miles must be positive")
+                continue
 
             if has_date and has_miles:
                 reminder_type = "both"
@@ -1328,7 +1470,11 @@ async def import_vehicle_json(
                 status="pending",
                 notes=reminder_data.get("notes"),
             )
-            db.add(reminder)
+            # A savepoint per row. A row the database still rejects rolls
+            # back alone here, instead of poisoning the session for every
+            # row and loop still to come.
+            async with db.begin_nested():
+                db.add(reminder)
             results["reminders"]["success"] += 1
         except Exception as e:
             results["reminders"]["errors"] += 1
@@ -1336,7 +1482,7 @@ async def import_vehicle_json(
             results["errors"].append(f"Reminder {idx}: could not be imported")
 
     # Import notes
-    for idx, note_data in enumerate(data.get("notes", [])):
+    for idx, note_data in enumerate(sections["notes"]):
         try:
             date = datetime.fromisoformat(note_data["date"]).date()
 
@@ -1346,7 +1492,11 @@ async def import_vehicle_json(
                 title=note_data["title"],
                 content=note_data["content"],
             )
-            db.add(note)
+            # A savepoint per row. A row the database still rejects rolls
+            # back alone here, instead of poisoning the session for every
+            # row and loop still to come.
+            async with db.begin_nested():
+                db.add(note)
             results["notes"]["success"] += 1
         except Exception as e:
             results["notes"]["errors"] += 1
@@ -1482,6 +1632,7 @@ async def import_external_fuel_csv(
     # Re-wrap for the shared helper (it re-reads the upload); parse inline instead.
     await get_vehicle_or_403(vin, current_user, db, require_write=True)
     parsed = PARSERS[fmt](csv_data, _parse_options(odometer_unit, decimal_separator))
+    await lock_vehicle_for_write(db, vin)
     return await _persist_parsed_fuel(vin, parsed, skip_duplicates, db)
 
 
@@ -1498,12 +1649,24 @@ async def import_external_fuel_csv(
 # When an export carries no time at all, filled_at is NULL on both rows and two
 # sessions with the same odometer and the same amount are genuinely
 # indistinguishable in the data, so collapsing them is correct.
-_IMPORT_DUPLICATE_FIELDS = (
-    "filled_at",
-    "odometer_km",
-    "liters",
-    "kwh",
-)
+def _third_party_duplicate_conditions(
+    vin: str, row: Mapping[str, Any]
+) -> list[ColumnElement[bool]]:
+    """The natural key above, as the conditions a stored duplicate must meet.
+
+    `filled_at` and `kwh` are never converted and match exactly (`== None`
+    renders as IS NULL). The odometer and the volume may have been converted
+    from miles and gallons, so they match within `_converted_value_matches`'s
+    band.
+    """
+    return [
+        FuelRecord.vin == vin,
+        FuelRecord.date == row.get("date"),
+        FuelRecord.filled_at == row.get("filled_at"),
+        _odometer_matches(FuelRecord.odometer_km, row.get("odometer_km")),
+        _converted_value_matches(FuelRecord.liters, row.get("liters"), LITRE_STEP),
+        FuelRecord.kwh == row.get("kwh"),
+    ]
 
 
 def _parse_options(odometer_unit: str, decimal_separator: str):
@@ -1531,6 +1694,7 @@ async def _import_third_party_fuel(
     await get_vehicle_or_403(vin, current_user, db, require_write=True)
     csv_data = await validate_csv_upload(file)
     parsed = PARSERS[format_name](csv_data, opts)
+    await lock_vehicle_for_write(db, vin)
     return await _persist_parsed_fuel(vin, parsed, skip_duplicates, db)
 
 
@@ -1554,12 +1718,9 @@ async def _persist_parsed_fuel(
                 continue
             odometer_km = row.get("odometer_km")
             if skip_duplicates:
-                # `== None` renders as IS NULL in SQLAlchemy, so nullable
-                # columns match correctly without a special case.
-                predicates = [FuelRecord.vin == vin, FuelRecord.date == date]
-                for field in _IMPORT_DUPLICATE_FIELDS:
-                    predicates.append(getattr(FuelRecord, field) == row.get(field))
-                existing = await db.execute(select(FuelRecord).where(*predicates))
+                existing = await db.execute(
+                    select(FuelRecord).where(*_third_party_duplicate_conditions(vin, row))
+                )
                 # .first(), not scalar_one_or_none(): pre-existing duplicates in
                 # the table would otherwise raise MultipleResultsFound.
                 if existing.scalars().first():

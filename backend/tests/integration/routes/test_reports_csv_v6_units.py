@@ -26,21 +26,21 @@ The rulings this pins
 
 Hand-computed expectations
 --------------------------
-Factors are `UnitConverter`'s rounded constants, not the exact SI values.
+Factors are `UnitConverter`'s constants, the exact SI values since v3.4.0.
 Every literal below was computed BY HAND and never routed back through the
 code under test.
 
-  MILES_TO_KM           1.60934
-  US_GALLONS_TO_LITERS  3.78541
+  MILES_TO_KM           1.609344
+  US_GALLONS_TO_LITERS  3.785411784
   UK_GALLONS_TO_LITERS  4.54609
 
-  12345.00 km / 1.60934 = 7670.846433...  -> "7670.846"  (3 dp)
-    800.00 km / 1.60934 =  497.098189...  ->  "497.098"
-    900.00 km / 1.60934 =  559.235463...  ->  "559.235"
-   40.000 L  / 3.78541  =   10.566887...  ->  "10.5669"  (4 dp)
-   20.000 L  / 3.78541  =    5.283443...  ->   "5.2834"
-   40.000 L  / 4.54609  =    8.798769...  ->   "8.7988"
-   20.000 L  / 4.54609  =    4.399384...  ->   "4.3994"
+  12345.00 km / 1.609344 = 7670.827368...  -> "7670.827"  (3 dp)
+    800.00 km / 1.609344 =  497.096954...  ->  "497.097"
+    900.00 km / 1.609344 =  559.234073...  ->  "559.234"
+   40.000 L  / 3.785411784  =   10.566882...  ->  "10.5669"  (4 dp)
+   20.000 L  / 3.785411784  =    5.283441...  ->   "5.2834"
+   40.000 L  / 4.54609  =    8.798770...  ->   "8.7988"
+   20.000 L  / 4.54609  =    4.399385...  ->   "4.3994"
 
 Tests share one database with no per-test rollback, so every row created here
 is torn down in `finally`, and every username, email and VIN is scoped to this
@@ -355,7 +355,7 @@ class TestServiceHistoryCsv:
             assert rows[0] == SERVICE_HISTORY_IMPERIAL
             assert rows[1] == [
                 "2026-03-01",
-                "7670.846",
+                "7670.827",
                 "Maintenance",
                 "Oil change",
                 "49.99",
@@ -430,11 +430,11 @@ class TestAllRecordsCsv:
             await _seed(db_session, owner)
             rows = _rows(await _get(client, _headers_for(caller), "all-records-csv"))
             assert rows[0] == ALL_RECORDS_IMPERIAL
-            assert rows[1][5] == "7670.846"
+            assert rows[1][5] == "7670.827"
             assert rows[1][7] == ""
-            assert rows[2][5] == "497.098"
+            assert rows[2][5] == "497.097"
             assert rows[2][7] == "10.5669"
-            assert rows[3][5] == "559.235"
+            assert rows[3][5] == "559.234"
             assert rows[3][7] == "5.2834"
         finally:
             await _cleanup(db_session)
@@ -724,7 +724,7 @@ class TestCellsAreNumericOnly:
             all_records = _rows(await _get(client, _headers_for(caller), "all-records-csv"))
             # The conversion DID happen, so "no counterpart in the cell" is
             # not just "nothing was converted".
-            assert service[1][1] == "7670.846"
+            assert service[1][1] == "7670.827"
             assert all_records[2][7] == "10.5669"
             for report, rows in (("service", service), ("all", all_records)):
                 for row in rows[1:]:
@@ -745,7 +745,7 @@ class TestCellsAreNumericOnly:
             await _seed(db_session, owner)
             rows = _rows(await _get(client, _headers_for(caller), "service-history-csv"))
             odometer = rows[1][1]
-            assert odometer == "7670.846"
+            assert odometer == "7670.827"
             assert "," not in odometer
             assert "mi" not in odometer
         finally:

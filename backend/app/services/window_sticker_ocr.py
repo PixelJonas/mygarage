@@ -14,14 +14,15 @@ from app.services.window_sticker_parsers import (
     WindowStickerData,
     get_parser_for_vehicle,
 )
+from app.utils.units import UnitConverter
 
 logger = logging.getLogger(__name__)
 
 # Check if PaddleOCR is enabled
 PADDLEOCR_ENABLED = os.getenv("ENABLE_PADDLEOCR", "false").lower() == "true"
 
-# US MPG -> L/100km conversion factor (235.214583 / mpg = L/100km)
-_MPG_TO_L100KM = Decimal("235.214583")
+# US MPG -> L/100km conversion factor: the shared numerator from UnitConverter.
+_MPG_TO_L100KM = UnitConverter.US_MPG_TO_L100KM_NUMERATOR
 
 
 class WindowStickerOCRService:

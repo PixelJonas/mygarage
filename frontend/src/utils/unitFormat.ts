@@ -344,8 +344,8 @@ const VOLUME_PER_DISTANCE_PRECISION = 1
 export function formatVolumePerDistance(units: UnitSet, litersPer1kKm: number): string {
   const volume = adapterFor(units, 'volume').toDisplay(litersPer1kKm) ?? 0
   // Per 1,000 km to per 1,000 of the reader's own distance unit. One mile is
-  // 1.60934 km, so the same volume covers that many fewer of them and the rate
-  // rises by the same factor. The canonical length of one display unit is
+  // 1.609344 km, so the same volume covers that many fewer of them and the
+  // rate rises by the same factor. The canonical length of one display unit is
   // exactly what the distance adapter's `toCanonical(1)` answers, so no factor
   // is spelled here.
   //

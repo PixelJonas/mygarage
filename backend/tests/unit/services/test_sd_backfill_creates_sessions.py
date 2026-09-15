@@ -34,13 +34,12 @@ from datetime import datetime, timedelta
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.drive_session import DriveSession
 from app.services.sd_log_parser import SdRow
+from app.services.session_boundaries import group_drives
 from app.services.telemetry_service import TelemetryService
-
-pytestmark = pytest.mark.asyncio
 
 T0 = datetime(2026, 9, 1, 8, 0, 0)
 GAP = 15
@@ -52,7 +51,11 @@ async def _sessions(db: AsyncSession, device_id: str) -> list[DriveSession]:
             await db.execute(
                 select(DriveSession)
                 .where(DriveSession.device_id == device_id)
-                .order_by(DriveSession.started_at)
+                # `id` breaks ties deterministically when two sessions share a
+                # `started_at` -- a zero-length drive and a later drive
+                # backdated to the same instant both do. PostgreSQL and
+                # SQLite order ties differently on `started_at` alone.
+                .order_by(DriveSession.started_at, DriveSession.id)
             )
         )
         .scalars()
@@ -408,3 +411,559 @@ class TestItRunsOncePerCall:
         assert session.distance_km == pytest.approx(7.0), (
             "the refresh was skipped, which is what a span built from inserts does"
         )
+
+
+# Session reconstruction at a boundary two drives share.
+#
+# Drive 1 moves at minutes 0 and 5. A contact-only sample at minute 15 (RPM,
+# below the movement floor, no odometer proof) chains `group_drives`' walk-back
+# for drive 2 all the way back through drive 1's own burst, so the "never reach
+# back into a drive already accounted for" clamp fires: drive 2's `started_at`
+# is pinned to drive 1's `movement_ended_at` (minute 5) instead of the earlier
+# instant the walk-back would otherwise have found. That shared instant is the
+# boundary these tests pin.
+#
+# Minutes 3 and 27 are each drive's second odometer reading, placed away from
+# the shared instant so each session's distance comes from its own two clean
+# points rather than a boundary sample two windows both read.
+_BOUNDARY_SPECS: tuple[tuple[int, str, float], ...] = (
+    (0, "A6-ODOMETER", 50_000.0),
+    (0, "SPEED", 45.0),
+    (3, "A6-ODOMETER", 50_002.0),
+    (5, "SPEED", 50.0),
+    (15, "ENGINE_RPM", 700.0),
+    (25, "SPEED", 48.0),
+    (27, "A6-ODOMETER", 50_007.0),
+    (30, "SPEED", 52.0),
+    (30, "A6-ODOMETER", 50_010.0),
+)
+
+# A later pull that widens both drives without crossing the shared instant:
+# minute -10 joins drive 1's burst (drive 1's own end stays at minute 5), and
+# minute 35 joins drive 2's (drive 2's own start stays at minute 5).
+_EXTENSION_SPECS: tuple[tuple[int, str, float], ...] = (
+    (-10, "SPEED", 55.0),
+    (35, "SPEED", 60.0),
+)
+
+
+def _samples(
+    *spec_groups: tuple[tuple[int, str, float], ...],
+) -> list[tuple[datetime, str, float]]:
+    """One or more `(minute_offset, param_key, value)` spec tuples, merged
+    and stamped from `T0`, in the shape `group_drives` takes directly."""
+    flat = (spec for specs in spec_groups for spec in specs)
+    return [(r.timestamp, r.param_key, r.value) for r in _rows(*flat)]
+
+
+async def _session_rows(
+    maker: async_sessionmaker[AsyncSession], device_id: str
+) -> list[tuple[int, datetime, datetime | None, float | None, float | None]]:
+    """`(id, started_at, ended_at, distance_km, max_speed)` for every session.
+
+    Read into plain tuples inside the session block on purpose: the objects
+    themselves must not be touched after their session closes.
+    """
+    async with maker() as db:
+        rows = await _sessions(db, device_id)
+        return [(s.id, s.started_at, s.ended_at, s.distance_km, s.max_speed) for s in rows]
+
+
+class TestGroupDrivesSharedBoundary:
+    """Where `group_drives` puts an instant two drives share.
+
+    Pure and database-free on purpose -- a bound mutation here proves nothing
+    about whether the overlap query in `_reconstruct_sessions_from_batch` can
+    see an earlier drive's pending session, which is what the next two tests
+    are for.
+    """
+
+    def test_group_drives_gives_a_shared_boundary_to_one_drive(self):
+        drives = group_drives(_samples(_BOUNDARY_SPECS), GAP)
+
+        assert len(drives) == 2, f"expected 2 drives, got {len(drives)}"
+        first, second = drives
+        assert first.started_at == T0
+        assert first.movement_started_at == T0
+        assert first.movement_ended_at == T0 + timedelta(minutes=5)
+
+        assert second.started_at == T0 + timedelta(minutes=5)
+        assert second.movement_started_at == T0 + timedelta(minutes=25)
+        assert second.movement_ended_at == T0 + timedelta(minutes=30)
+
+        # The shared instant is drive 1's own `movement_ended_at` -- real
+        # evidence drive 1 recorded. Drive 2's `started_at` at that same
+        # instant is only the clamp floor, not evidence of its own: drive 2's
+        # actual movement does not begin until twenty minutes later. The
+        # instant belongs to drive 1.
+        shared = first.movement_ended_at
+        assert second.started_at == shared
+        assert second.movement_started_at > shared, (
+            "drive 2 has no evidence at the shared instant; it is drive 1's "
+            "movement_ended_at, borrowed only as a floor"
+        )
+
+
+class TestReconstructionAtATouchingBoundary:
+    """The two drives `TestGroupDrivesSharedBoundary` describes, replayed
+    through `_reconstruct_sessions_from_batch` on a session that does not
+    autoflush, the way `app/database.py` builds every production session.
+
+    Builds its own session over `test_engine`, pinning `autoflush=False`
+    directly rather than depending on conftest's `test_sessionmaker`, so this
+    class keeps exercising production's unit of work even if that setting
+    ever changes. Matches `test_tire_periods.py`'s
+    `TestEditorUnderProductionUnitOfWork`.
+    """
+
+    @staticmethod
+    def _maker(test_engine) -> async_sessionmaker[AsyncSession]:
+        return async_sessionmaker(
+            test_engine, class_=AsyncSession, expire_on_commit=False, autoflush=False
+        )
+
+    async def test_two_touching_drives_in_one_batch_make_two_sessions(
+        self, test_engine, init_test_db, db_session, make_livelink_vehicle
+    ):
+        maker = self._maker(test_engine)
+        vin, device = await make_livelink_vehicle("sdbound", "1")
+        await db_session.commit()
+        device_id = device.device_id
+
+        async with maker() as db:
+            await TelemetryService(db).bulk_backfill(vin, device_id, _rows(*_BOUNDARY_SPECS))
+
+        expected = group_drives(_samples(_BOUNDARY_SPECS), GAP)
+        rows = await _session_rows(maker, device_id)
+
+        assert len(rows) == 2, f"expected 2 sessions, got {len(rows)}"
+        (_, start1, end1, _, _), (_, start2, end2, _, _) = rows
+        assert start1 == expected[0].started_at
+        assert end1 == expected[0].movement_ended_at
+        assert start2 == expected[1].started_at
+        assert end2 == expected[1].movement_ended_at
+
+        # Ownership rule: the shared instant is drive 1's, so the windows
+        # touch at it without overlapping.
+        assert end1 == start2
+
+    async def test_running_the_same_backfill_twice_keeps_the_sessions(
+        self, test_engine, init_test_db, db_session, make_livelink_vehicle
+    ):
+        maker = self._maker(test_engine)
+        vin, device = await make_livelink_vehicle("sdbound", "2")
+        await db_session.commit()
+        device_id = device.device_id
+        rows_in = _rows(*_BOUNDARY_SPECS)
+
+        async with maker() as db:
+            await TelemetryService(db).bulk_backfill(vin, device_id, rows_in)
+        first_run = await _session_rows(maker, device_id)
+        assert len(first_run) == 2, f"expected 2 sessions after the first run, got {len(first_run)}"
+
+        # Pinned from the fixture's own odometer pairs, not read back from the
+        # code under test: drive 1 carries 50_000.0 at minute 0 and 50_002.0 at
+        # minute 3 (2.0 km); drive 2 carries 50_007.0 at minute 27 and 50_010.0
+        # at minute 30 (3.0 km). Both pairs sit away from the shared instant, so
+        # neither session's distance is the boundary sample the other reads too.
+        assert first_run[0][3] == pytest.approx(2.0), "session 1's distance from its own pair"
+        assert first_run[1][3] == pytest.approx(3.0), "session 2's distance from its own pair"
+
+        async with maker() as db:
+            await TelemetryService(db).bulk_backfill(vin, device_id, rows_in)
+        second_run = await _session_rows(maker, device_id)
+
+        assert [r[0] for r in second_run] == [r[0] for r in first_run], (
+            "the same replay must not create or drop a session"
+        )
+        assert [r[1:3] for r in second_run] == [r[1:3] for r in first_run], (
+            "the same replay must not move a window"
+        )
+        assert [r[3:] for r in second_run] == [r[3:] for r in first_run], (
+            "the same replay must not change distance or max speed"
+        )
+
+    async def test_a_rerun_that_extends_a_touching_drive_updates_its_own_session(
+        self, test_engine, init_test_db, db_session, make_livelink_vehicle
+    ):
+        """A later pull can legitimately widen one drive's window without
+        crossing into its neighbour's. That widened drive must still find
+        and extend its own session -- not get treated as spanning both
+        sessions at the touching boundary, which is what the false
+        "ambiguous" match there otherwise causes, silently dropping the
+        extension.
+
+        Extends both directions at once: drive 2's real evidence grows
+        past its old end, and drive 1's grows before its old start, short
+        of the shared instant -- so both of the query's two comparisons
+        are exercised, not just the one the second drive's own overlap
+        check uses.
+        """
+        maker = self._maker(test_engine)
+        vin, device = await make_livelink_vehicle("sdbound", "3")
+        await db_session.commit()
+        device_id = device.device_id
+
+        async with maker() as db:
+            await TelemetryService(db).bulk_backfill(vin, device_id, _rows(*_BOUNDARY_SPECS))
+        first_run = await _session_rows(maker, device_id)
+        assert len(first_run) == 2, f"expected 2 sessions after the first run, got {len(first_run)}"
+
+        async with maker() as db:
+            await TelemetryService(db).bulk_backfill(
+                vin, device_id, _rows(*_BOUNDARY_SPECS, *_EXTENSION_SPECS)
+            )
+        second_run = await _session_rows(maker, device_id)
+
+        expected = group_drives(_samples(_BOUNDARY_SPECS, _EXTENSION_SPECS), GAP)
+        assert len(second_run) == 2, f"expected 2 sessions, no third one, got {len(second_run)}"
+        assert [r[0] for r in second_run] == [r[0] for r in first_run], (
+            "the extension must update the drives' own sessions, not create new ones"
+        )
+        (_, start1, end1, _, speed1), (_, start2, end2, _, speed2) = second_run
+        assert start1 == expected[0].started_at, "drive 1's backward extension must move its start"
+        assert end1 == expected[0].movement_ended_at, (
+            "drive 1's end must stay at the shared instant"
+        )
+        assert start2 == expected[1].started_at, "drive 2's start must stay at the shared instant"
+        assert end2 == expected[1].movement_ended_at, (
+            "drive 2's forward extension must move its end"
+        )
+        assert speed1 == pytest.approx(55.0), "session 1's aggregates must reflect the new sample"
+        assert speed2 == pytest.approx(60.0), "session 2's aggregates must reflect the new sample"
+
+
+# A single drive, alone in its batch, with no contact prefix: started_at
+# equals movement_started_at.
+_SOLO_DRIVE_SPECS: tuple[tuple[int, str, float], ...] = (
+    (0, "SPEED", 45.0),
+    (5, "SPEED", 50.0),
+)
+
+# A single drive, alone in its batch, whose started_at is backdated past its
+# first movement sample by a leading contact-only reading.
+_SOLO_DRIVE_WITH_PREFIX_SPECS: tuple[tuple[int, str, float], ...] = (
+    (0, "ENGINE_RPM", 700.0),
+    (5, "SPEED", 45.0),
+    (10, "SPEED", 50.0),
+)
+
+
+class TestCrossSourceTouchesStillMerge:
+    """The touch exclusions in `_reconstruct_sessions_from_batch` apply only
+    at an instant a drive shares with a neighbour from its own batch. A
+    session from anywhere else (the live path, or an earlier SD file's batch)
+    that touches a drive at exactly one instant with no batch neighbour there
+    is most plausibly the same physical drive seen by two sources, so it
+    matches and merges.
+    """
+
+    @staticmethod
+    def _maker(test_engine) -> async_sessionmaker[AsyncSession]:
+        return TestReconstructionAtATouchingBoundary._maker(test_engine)
+
+    async def test_a_live_session_after_the_batch_merges_at_the_shared_instant(
+        self, test_engine, init_test_db, db_session, make_livelink_vehicle
+    ):
+        maker = self._maker(test_engine)
+        vin, device = await make_livelink_vehicle("sdmergeaft", "1")
+        await db_session.commit()
+        device_id = device.device_id
+
+        drives = group_drives(_samples(_SOLO_DRIVE_SPECS), GAP)
+        assert len(drives) == 1, f"expected 1 drive, got {len(drives)}"
+        drive = drives[0]
+
+        async with maker() as db:
+            db.add(
+                DriveSession(
+                    vin=vin,
+                    device_id=device_id,
+                    started_at=drive.movement_ended_at,
+                    ended_at=drive.movement_ended_at + timedelta(minutes=15),
+                )
+            )
+            await db.commit()
+
+        async with maker() as db:
+            await TelemetryService(db).bulk_backfill(vin, device_id, _rows(*_SOLO_DRIVE_SPECS))
+
+        rows = await _session_rows(maker, device_id)
+        assert len(rows) == 1, f"expected the two to merge into one session, got {len(rows)}"
+        assert rows[0][1] == drive.started_at, "the merge must keep the drive's own start"
+        assert rows[0][2] == drive.movement_ended_at + timedelta(minutes=15), (
+            "the merge must keep the live session's later end"
+        )
+
+    async def test_a_live_session_before_the_batch_merges_at_the_contact_prefix(
+        self, test_engine, init_test_db, db_session, make_livelink_vehicle
+    ):
+        maker = self._maker(test_engine)
+        vin, device = await make_livelink_vehicle("sdmergebef", "1")
+        await db_session.commit()
+        device_id = device.device_id
+
+        drives = group_drives(_samples(_SOLO_DRIVE_WITH_PREFIX_SPECS), GAP)
+        assert len(drives) == 1, f"expected 1 drive, got {len(drives)}"
+        drive = drives[0]
+        assert drive.started_at < drive.movement_started_at, "the drive needs a contact prefix"
+
+        async with maker() as db:
+            db.add(
+                DriveSession(
+                    vin=vin,
+                    device_id=device_id,
+                    started_at=drive.started_at - timedelta(minutes=20),
+                    ended_at=drive.started_at,
+                )
+            )
+            await db.commit()
+
+        async with maker() as db:
+            await TelemetryService(db).bulk_backfill(
+                vin, device_id, _rows(*_SOLO_DRIVE_WITH_PREFIX_SPECS)
+            )
+
+        rows = await _session_rows(maker, device_id)
+        assert len(rows) == 1, f"expected the two to merge into one session, got {len(rows)}"
+        assert rows[0][1] == drive.started_at - timedelta(minutes=20), (
+            "the merge must keep the live session's earlier start"
+        )
+        assert rows[0][2] == drive.movement_ended_at, "the merge must extend to the drive's own end"
+
+
+# A single odometer-proven sample, isolated from everything else by more than
+# the gap on both sides, so group_drives emits it as its own drive whose
+# started_at, movement_started_at and movement_ended_at all land on the same
+# instant. Drive 1 (minutes 0-10) is a normal drive; drive 2 (minute 60) is
+# the zero-length one, proven only because its odometer reading is higher
+# than any seen before it.
+_ZERO_LEN_SPECS: tuple[tuple[int, str, float], ...] = (
+    (0, "A6-ODOMETER", 50_000.0),
+    (0, "SPEED", 40.0),
+    (5, "SPEED", 45.0),
+    (10, "A6-ODOMETER", 50_008.0),
+    (10, "SPEED", 0.0),
+    (60, "A6-ODOMETER", 50_009.0),
+    (60, "ENGINE_RPM", 800.0),
+    (65, "ENGINE_RPM", 800.0),
+    (65, "A6-ODOMETER", 50_009.0),
+    (70, "ENGINE_RPM", 800.0),
+)
+
+# A zero-length earlier drive at minute 60 (an isolated odometer-proven
+# sample, same shape as `_ZERO_LEN_SPECS`'s drive 2), followed by contact-only
+# RPM samples that chain `group_drives`' walk-back for a later, genuine drive
+# (minutes 90 and 95) all the way back to minute 60 -- so the later drive's
+# started_at lands on the exact same instant as the earlier drive's entire
+# window. `_ZERO_LEN_NEIGHBOUR_EXTENSION_SPECS` then grows the later drive's
+# own end further, without moving minute 60 at all.
+_ZERO_LEN_NEIGHBOUR_SPECS: tuple[tuple[int, str, float], ...] = (
+    (0, "A6-ODOMETER", 50_000.0),
+    (60, "A6-ODOMETER", 50_001.0),
+    (64, "ENGINE_RPM", 800.0),
+    (77, "ENGINE_RPM", 800.0),
+    (90, "SPEED", 40.0),
+    (95, "SPEED", 45.0),
+)
+_ZERO_LEN_NEIGHBOUR_EXTENSION_SPECS: tuple[tuple[int, str, float], ...] = ((100, "SPEED", 42.0),)
+
+
+class TestReconstructionAtDegenerateWindows:
+    """Shapes `group_drives` can produce that collapse a window to a single
+    instant, distinct from an ordinary touching boundary: a drive with no
+    duration at all, a live session still open, and a zero-length drive
+    sitting right where a later drive's own start is backdated to. A bound
+    exclusion written to fix the touching case can reject these for the same
+    reason it fixes that one, so each needs its own case. Every test asserts
+    the `group_drives` shape it depends on before touching the database, so
+    a fixture that drifts from the shape it is supposed to pin fails loudly
+    on that assertion rather than passing for an unrelated reason.
+    """
+
+    @staticmethod
+    def _maker(test_engine) -> async_sessionmaker[AsyncSession]:
+        return TestReconstructionAtATouchingBoundary._maker(test_engine)
+
+    async def test_a_zero_length_drive_matches_itself_across_reruns(
+        self, test_engine, init_test_db, db_session, make_livelink_vehicle
+    ):
+        maker = self._maker(test_engine)
+        vin, device = await make_livelink_vehicle("sdzero", "1")
+        await db_session.commit()
+        device_id = device.device_id
+        rows_in = _rows(*_ZERO_LEN_SPECS)
+
+        drives = group_drives(_samples(_ZERO_LEN_SPECS), GAP)
+        assert len(drives) == 2, f"expected 2 drives, got {len(drives)}"
+        zero_length = drives[1]
+        assert zero_length.started_at == zero_length.movement_started_at, (
+            "drive 2 must be the zero-length one this test pins"
+        )
+        assert zero_length.movement_started_at == zero_length.movement_ended_at, (
+            "drive 2 must be the zero-length one this test pins"
+        )
+
+        counts = []
+        for _ in range(3):
+            async with maker() as db:
+                await TelemetryService(db).bulk_backfill(vin, device_id, rows_in)
+            counts.append(len(await _session_rows(maker, device_id)))
+
+        assert counts == [2, 2, 2], f"the drive count must stay stable across reruns, got {counts}"
+
+    async def test_an_open_session_at_a_drives_start_is_left_alone(
+        self, test_engine, init_test_db, db_session, make_livelink_vehicle
+    ):
+        maker = self._maker(test_engine)
+        vin, device = await make_livelink_vehicle("sdopen", "1")
+        await db_session.commit()
+        device_id = device.device_id
+
+        specs = ((0, "ENGINE_RPM", 800.0), (5, "SPEED", 40.0), (10, "SPEED", 50.0))
+        drives = group_drives(_samples(specs), GAP)
+        assert len(drives) == 1, f"expected 1 drive, got {len(drives)}"
+        assert drives[0].started_at == T0, "the drive's start must match the open session's start"
+        assert drives[0].started_at < drives[0].movement_started_at, (
+            "the drive needs a contact prefix"
+        )
+
+        async with maker() as db:
+            db.add(DriveSession(vin=vin, device_id=device_id, started_at=T0, ended_at=None))
+            await db.commit()
+
+        async with maker() as db:
+            await TelemetryService(db).bulk_backfill(vin, device_id, _rows(*specs))
+
+        rows = await _session_rows(maker, device_id)
+        assert len(rows) == 1, (
+            f"the open session must not get a closed session created beside it, got {len(rows)}"
+        )
+        assert rows[0][2] is None, "the open session must still be open"
+
+    async def test_a_zero_length_earlier_drive_does_not_block_extending_the_later_one(
+        self, test_engine, init_test_db, db_session, make_livelink_vehicle
+    ):
+        """A zero-length drive at an instant p, followed by a later drive whose
+        started_at is backdated to that same p by a contact prefix chained far
+        enough back to reach it.
+
+        Both first-run sessions start at p, and the zero-length one also ends
+        there. The zero-length drive's right exclusion removes the later
+        session (it starts at p and runs on past it), and the later drive's
+        left exclusion removes the zero-length session (the previous drive in
+        the batch ends at p), so each drive keeps matching only its own
+        session. The zero-length drive has no previous neighbour touching it,
+        so no left exclusion ever applies to its own query. The re-run extends
+        the later drive's end and must move only that drive's session.
+        """
+        maker = self._maker(test_engine)
+        vin, device = await make_livelink_vehicle("sdzeronb", "1")
+        await db_session.commit()
+        device_id = device.device_id
+
+        drives = group_drives(_samples(_ZERO_LEN_NEIGHBOUR_SPECS), GAP)
+        assert len(drives) == 2, f"expected 2 drives, got {len(drives)}"
+        p = drives[0].started_at
+        assert drives[0].started_at == drives[0].movement_started_at, (
+            "drive 1 must be the zero-length one this test pins"
+        )
+        assert drives[0].movement_started_at == drives[0].movement_ended_at, (
+            "drive 1 must be the zero-length one this test pins"
+        )
+        assert drives[1].started_at == p, "drive 2's start must be backdated to drive 1's instant"
+        assert drives[1].movement_started_at > p, "drive 2 must have real evidence after p"
+
+        async with maker() as db:
+            await TelemetryService(db).bulk_backfill(
+                vin, device_id, _rows(*_ZERO_LEN_NEIGHBOUR_SPECS)
+            )
+        first_run = await _session_rows(maker, device_id)
+        assert len(first_run) == 2, f"expected 2 sessions after the first run, got {len(first_run)}"
+
+        expected = group_drives(
+            _samples(_ZERO_LEN_NEIGHBOUR_SPECS, _ZERO_LEN_NEIGHBOUR_EXTENSION_SPECS), GAP
+        )
+        assert len(expected) == 2, f"expected 2 drives in the extended set, got {len(expected)}"
+        assert expected[0].started_at == p, (
+            "the zero-length drive must be unaffected by the extension"
+        )
+        assert (
+            expected[0].started_at
+            == expected[0].movement_started_at
+            == expected[0].movement_ended_at
+        ), "the zero-length drive must still be zero-length after the extension"
+        assert expected[1].started_at == p, "drive 2's start must still be backdated to p"
+        assert expected[1].movement_started_at > p, "drive 2 must still have real evidence after p"
+
+        async with maker() as db:
+            await TelemetryService(db).bulk_backfill(
+                vin,
+                device_id,
+                _rows(*_ZERO_LEN_NEIGHBOUR_SPECS, *_ZERO_LEN_NEIGHBOUR_EXTENSION_SPECS),
+            )
+        second_run = await _session_rows(maker, device_id)
+
+        assert len(second_run) == 2, f"expected 2 sessions, no third one, got {len(second_run)}"
+        assert [r[0] for r in second_run] == [r[0] for r in first_run], (
+            "the extension must update the later drive's own session, not create a new one"
+        )
+        (_, start1, end1, _, _), (_, start2, end2, _, _) = second_run
+        assert start1 == expected[0].started_at, "the zero-length drive's session must not move"
+        assert end1 == expected[0].movement_ended_at, (
+            "the zero-length drive's session must not move"
+        )
+        assert start2 == expected[1].started_at, "the later drive's start must stay put"
+        assert end2 == expected[1].movement_ended_at, (
+            "the later drive's extension must reach its end"
+        )
+
+    async def test_an_open_session_at_a_shared_instant_is_left_for_the_first_drive(
+        self, test_engine, init_test_db, db_session, make_livelink_vehicle
+    ):
+        """Two touching drives, D1 and D2, sharing instant p, plus an open
+        session (the live path's, no `external_session_id`) also starting
+        at p. D1's own right exclusion applies -- D2 is its batch neighbour
+        at p -- and now excludes an open session too, since one still
+        running has in reality already run on past p, the same as a closed
+        one whose `ended_at` says so. D1 gets its own closed session. D2's
+        left exclusion excludes D1's own (closed) session, so the only
+        candidate left for D2 is the open one, and D2 matches it and is
+        left alone by the open-session branch: no closed session is created
+        at p, and the open session itself is untouched.
+        """
+        maker = self._maker(test_engine)
+        vin, device = await make_livelink_vehicle("sdopenmid", "1")
+        await db_session.commit()
+        device_id = device.device_id
+
+        drives = group_drives(_samples(_BOUNDARY_SPECS), GAP)
+        assert len(drives) == 2, f"expected 2 drives, got {len(drives)}"
+        shared = drives[0].movement_ended_at
+        assert drives[1].started_at == shared, "drive 2 must be backdated to drive 1's own end"
+
+        async with maker() as db:
+            db.add(DriveSession(vin=vin, device_id=device_id, started_at=shared, ended_at=None))
+            await db.commit()
+        before = await _session_rows(maker, device_id)
+        assert len(before) == 1
+        open_id = before[0][0]
+
+        async with maker() as db:
+            await TelemetryService(db).bulk_backfill(vin, device_id, _rows(*_BOUNDARY_SPECS))
+
+        rows = await _session_rows(maker, device_id)
+        assert len(rows) == 2, (
+            f"expected drive 1's own session plus the untouched open one, got {len(rows)}"
+        )
+        by_id = {r[0]: r for r in rows}
+        assert open_id in by_id, "the open session must still be the same row"
+        assert by_id[open_id][2] is None, "the open session must still be open"
+        assert by_id[open_id][1] == shared, "the open session must be untouched"
+
+        closed = [r for r in rows if r[0] != open_id]
+        assert len(closed) == 1, "no closed session may start at the shared instant"
+        assert closed[0][1] == drives[0].started_at, (
+            "drive 1's own session must start at its own start"
+        )
+        assert closed[0][2] == shared, "drive 1's own session must end at the shared instant"

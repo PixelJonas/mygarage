@@ -91,15 +91,15 @@ different order) and `service-v2-initial` (eight names overlapping the
 eight-column report's, different order, `Vendor Location` not `Vendor
 Phone`). Both import, and would not if the signature were column membership.
 
-Factors, from `UnitConverter` (the app's rounded constants, not the exact SI
-definitions). Every expected value below was computed from these BY HAND and
+Factors, from `UnitConverter` (the app's constants, the exact SI definitions
+since v3.4.0). Every expected value below was computed from these BY HAND and
 never routed back through the code under test:
 
-  MILES_TO_KM                 1.60934
-  US_GALLONS_TO_LITERS        3.78541
+  MILES_TO_KM                 1.609344
+  US_GALLONS_TO_LITERS        3.785411784
   UK_GALLONS_TO_LITERS        4.54609
-  US_MPG_TO_L100KM_NUMERATOR  235.214
-  UK_MPG_TO_L100KM_NUMERATOR  282.481
+  US_MPG_TO_L100KM_NUMERATOR  235.2145833...
+  UK_MPG_TO_L100KM_NUMERATOR  282.4809363...
   Fahrenheit                  (F - 32) * 5 / 9
 
 Assertions are on the value that LANDS IN THE DATABASE, read back through a
@@ -318,7 +318,7 @@ CORPUS: Mapping[str, Shape] = {
         pair="service",
         evidence="ad13de6",
         header=_SVC_V2_INITIAL,
-        # 110 mi * 1.60934 = 177.0274 km
+        # 110 mi * 1.609344 = 177.02784 km
         row=f"2026-01-05,Oil Change,Synthetic oil,110,49.99,{CORPUS_VENDOR},Springfield,v2.14.0",
         expected={"odometer_km": "177.03"},
     ),
@@ -326,7 +326,7 @@ CORPUS: Mapping[str, Shape] = {
         pair="service",
         evidence="3fc799c",
         header=_SVC_V2,
-        # 120 mi * 1.60934 = 193.1208 km. Same seven columns as the rejected
+        # 120 mi * 1.609344 = 193.12128 km. Same seven columns as the rejected
         # service-history report, in a different order (R9).
         row=f"2026-01-06,Maintenance,Tyre rotation,120,25.00,{CORPUS_VENDOR},v2.20 backup",
         expected={"odometer_km": "193.12"},
@@ -370,7 +370,7 @@ CORPUS: Mapping[str, Shape] = {
         pair="service",
         evidence="f6c8a05",
         header=_SVC_MARKER_MI,
-        # 130 mi * 1.60934 = 209.2142 km
+        # 130 mi * 1.609344 = 209.21472 km
         row=f"4,imperial,2026-01-10,Maintenance,Plugs,130,13.5,120.00,{CORPUS_VENDOR},",
         expected={"odometer_km": "209.21"},
     ),
@@ -385,7 +385,7 @@ CORPUS: Mapping[str, Shape] = {
         pair="service",
         evidence="a88f4bd",
         header=_SVC_MARKER_MI,
-        # 140 mi * 1.60934 = 225.3076 km
+        # 140 mi * 1.609344 = 225.30816 km
         row=f"5,imperial,2026-01-12,Maintenance,Filter,140,15.5,35.00,{CORPUS_VENDOR},",
         expected={"odometer_km": "225.31"},
     ),
@@ -393,7 +393,7 @@ CORPUS: Mapping[str, Shape] = {
         pair="service",
         evidence="75b8920",
         header=_SVC_MARKER_MI,
-        # 150 mi * 1.60934 = 241.401 km. The gallon flavour cannot reach a
+        # 150 mi * 1.609344 = 241.4016 km. The gallon flavour cannot reach a
         # distance column, so imperial_uk must read exactly like imperial.
         row=f"5,imperial_uk,2026-01-13,Maintenance,Belt,150,16.5,210.00,{CORPUS_VENDOR},",
         expected={"odometer_km": "241.40"},
@@ -409,15 +409,15 @@ CORPUS: Mapping[str, Shape] = {
         pair="service",
         evidence="49a4166",
         header=_SVC_V6_MI,
-        # 160 mi * 1.60934 = 257.4944 km
+        # 160 mi * 1.609344 = 257.49504 km
         row=f"6,imperial,2026-01-15,Maintenance,Oil,160,18.5,55.00,{CORPUS_VENDOR},",
-        expected={"odometer_km": "257.49"},
+        expected={"odometer_km": "257.50"},
     ),
     "service-v6-custom": Shape(
         pair="service",
         evidence="49a4166",
         header=_SVC_V6_MI,
-        # 170 mi * 1.60934 = 273.5878 km
+        # 170 mi * 1.609344 = 273.58848 km
         row=f"6,custom,2026-01-16,Maintenance,Oil,170,19.5,55.00,{CORPUS_VENDOR},",
         expected={"odometer_km": "273.59"},
     ),
@@ -429,7 +429,7 @@ CORPUS: Mapping[str, Shape] = {
         pair="odometer",
         evidence="ad13de6",
         header=_ODO_V2,
-        # 180 mi * 1.60934 = 289.6812 km. R9 DEFINES this shape as miles.
+        # 180 mi * 1.609344 = 289.68192 km. R9 DEFINES this shape as miles.
         row="2026-02-01,180,v2 standalone odometer",
         expected={"odometer_km": "289.68"},
     ),
@@ -437,11 +437,11 @@ CORPUS: Mapping[str, Shape] = {
         pair="odometer",
         evidence="(never emitted)",
         header=_ODO_V2_MILEAGE,
-        # 190 mi * 1.60934 = 305.7746 km. No odometer export ever wrote
+        # 190 mi * 1.609344 = 305.77536 km. No odometer export ever wrote
         # `Mileage`, but the importer has accepted it since v3 and a
         # hand-built sheet can carry it, so the alias is pinned here.
         row="2026-02-02,190,importer-only alias",
-        expected={"odometer_km": "305.77"},
+        expected={"odometer_km": "305.78"},
     ),
     "odometer-v3": Shape(
         pair="odometer",
@@ -468,7 +468,7 @@ CORPUS: Mapping[str, Shape] = {
         pair="odometer",
         evidence="f6c8a05",
         header=_ODO_MARKER_BARE,
-        # 210 mi * 1.60934 = 337.9614 km. A bare `Reading` that is NOT the v2
+        # 210 mi * 1.609344 = 337.96224 km. A bare `Reading` that is NOT the v2
         # shape: the marker says imperial outright, so R9's definition is
         # never consulted.
         row="4,imperial,2026-02-06,210,",
@@ -485,15 +485,15 @@ CORPUS: Mapping[str, Shape] = {
         pair="odometer",
         evidence="a88f4bd",
         header=_ODO_MARKER_BARE,
-        # 220 mi * 1.60934 = 354.0548 km
+        # 220 mi * 1.609344 = 354.05568 km
         row="5,imperial,2026-02-08,220,",
-        expected={"odometer_km": "354.05"},
+        expected={"odometer_km": "354.06"},
     ),
     "odometer-v5-imperial-uk": Shape(
         pair="odometer",
         evidence="75b8920",
         header=_ODO_MARKER_BARE,
-        # 230 mi * 1.60934 = 370.1482 km
+        # 230 mi * 1.609344 = 370.14912 km
         row="5,imperial_uk,2026-02-09,230,",
         expected={"odometer_km": "370.15"},
     ),
@@ -508,7 +508,7 @@ CORPUS: Mapping[str, Shape] = {
         pair="odometer",
         evidence="49a4166",
         header=_ODO_V6_MI,
-        # 240 mi * 1.60934 = 386.2416 km
+        # 240 mi * 1.609344 = 386.24256 km
         row="6,imperial,2026-02-11,240,",
         expected={"odometer_km": "386.24"},
     ),
@@ -516,7 +516,7 @@ CORPUS: Mapping[str, Shape] = {
         pair="odometer",
         evidence="49a4166",
         header=_ODO_V6_MI,
-        # 260 mi * 1.60934 = 418.4284 km
+        # 260 mi * 1.609344 = 418.42944 km
         row="6,custom,2026-02-12,260,",
         expected={"odometer_km": "418.43"},
     ),
@@ -526,8 +526,8 @@ CORPUS: Mapping[str, Shape] = {
         evidence="4a45b70",
         header=_DEF_V2,
         # DEF DID have an unversioned shape: the export landed 2026-02-11,
-        # ten weeks before v3. 270 mi * 1.60934 = 434.5218 km;
-        # 8 US gal * 3.78541 = 30.28328 L; 7.57082 / 3.78541 = 2 per litre.
+        # ten weeks before v3. 270 mi * 1.609344 = 434.52288 km;
+        # 8 US gal * 3.785411784 = 30.28329 L; 7.57082 / 3.785411784 = 2 per litre.
         row="2026-03-01,270,8,7.57082,60.57,0.75,Pump,BlueDEF,v2 DEF backup",
         expected={
             "odometer_km": "434.52",
@@ -572,8 +572,8 @@ CORPUS: Mapping[str, Shape] = {
         pair="def",
         evidence="f6c8a05",
         header=_DEF_MARKER_IMPERIAL,
-        # 280 mi * 1.60934 = 450.6152 km; 9 US gal * 3.78541 = 34.06869 L;
-        # 11.35623 / 3.78541 = 3 per litre. `Price Per Unit` keeps its name
+        # 280 mi * 1.609344 = 450.61632 km; 9 US gal * 3.785411784 = 34.06871 L;
+        # 11.35623 / 3.785411784 = 3 per litre. `Price Per Unit` keeps its name
         # on imperial export, so its unit can only come from the marker.
         row="4,imperial,2026-03-05,280,9,11.35623,102.21,0.60,Pump,BlueDEF,",
         expected={
@@ -597,9 +597,9 @@ CORPUS: Mapping[str, Shape] = {
         pair="def",
         evidence="a88f4bd",
         header=_DEF_MARKER_IMPERIAL,
-        # 290 mi * 1.60934 = 466.7086 km; 11 US gal * 3.78541 = 41.63951 L;
-        # 3.78541 / 3.78541 = 1 per litre.
-        row="5,imperial,2026-03-07,290,11,3.78541,41.64,0.50,Pump,BlueDEF,",
+        # 290 mi * 1.609344 = 466.70976 km; 11 US gal * 3.785411784 = 41.63953 L;
+        # 3.785411784 / 3.785411784 = 1 per litre.
+        row="5,imperial,2026-03-07,290,11,3.785411784,41.64,0.50,Pump,BlueDEF,",
         expected={
             "odometer_km": "466.71",
             "liters": "41.640",
@@ -610,7 +610,7 @@ CORPUS: Mapping[str, Shape] = {
         pair="def",
         evidence="75b8920",
         header=_DEF_MARKER_IMPERIAL,
-        # 310 mi * 1.60934 = 498.8954 km; 12 UK gal * 4.54609 = 54.55308 L;
+        # 310 mi * 1.609344 = 498.89664 km; 12 UK gal * 4.54609 = 54.55308 L;
         # 9.09218 / 4.54609 = 2 per litre. Reading these as US gallons
         # instead understates the volume by 17%.
         row="5,imperial_uk,2026-03-08,310,12,9.09218,109.11,0.45,Pump,BlueDEF,",
@@ -635,8 +635,8 @@ CORPUS: Mapping[str, Shape] = {
         pair="def",
         evidence="49a4166",
         header=_DEF_V6_US,
-        # 320 mi * 1.60934 = 514.9888 km; 14 US gal * 3.78541 = 52.99574 L;
-        # 7.57082 / 3.78541 = 2 per litre.
+        # 320 mi * 1.609344 = 514.99008 km; 14 US gal * 3.785411784 = 52.99576 L;
+        # 7.57082 / 3.785411784 = 2 per litre.
         row="6,imperial,2026-03-10,320,14,7.57082,105.99,0.35,Pump,BlueDEF,",
         expected={
             "odometer_km": "514.99",
@@ -662,11 +662,11 @@ CORPUS: Mapping[str, Shape] = {
         pair="fuel",
         evidence="ad13de6",
         header=_FUEL_V2_INITIAL,
-        # 330 mi * 1.60934 = 531.0822 km; 10 US gal * 3.78541 = 37.8541 L;
-        # 3.78541 / 3.78541 = 1 per litre. The bare `MPG` column was a
+        # 330 mi * 1.609344 = 531.08352 km; 10 US gal * 3.785411784 = 37.85412 L;
+        # 3.785411784 / 3.785411784 = 1 per litre. The bare `MPG` column was a
         # DERIVED figure and has never been imported: it must stay ignored,
         # not be mistaken for the `OBC MPG` consumption column.
-        row="2026-04-01,330,10,3.78541,37.85,25.5,Yes,No,v2.14.0 fuel",
+        row="2026-04-01,330,10,3.785411784,37.85,25.5,Yes,No,v2.14.0 fuel",
         expected={
             "odometer_km": "531.08",
             "liters": "37.854",
@@ -678,8 +678,8 @@ CORPUS: Mapping[str, Shape] = {
         pair="fuel",
         evidence="26d0ee5",
         header=_FUEL_V2,
-        # 340 mi * 1.60934 = 547.1756 km; 12 US gal * 3.78541 = 45.42492 L;
-        # 7.57082 / 3.78541 = 2 per litre.
+        # 340 mi * 1.609344 = 547.17696 km; 12 US gal * 3.785411784 = 45.42494 L;
+        # 7.57082 / 3.785411784 = 2 per litre.
         row="2026-04-02,340,12,7.57082,90.85,Yes,No,No,Gasoline,v2.20 fuel",
         expected={
             "odometer_km": "547.18",
@@ -781,9 +781,9 @@ CORPUS: Mapping[str, Shape] = {
         pair="fuel",
         evidence="f6c8a05",
         header=_FUEL_V4_MARKER_IMPERIAL,
-        # 350 mi * 1.60934 = 563.269 km; 15 US gal * 3.78541 = 56.78115 L;
-        # 11.35623 / 3.78541 = 3 per litre; (68 - 32) * 5/9 = 20 C;
-        # 235.214 / 23.5214 = 10.00 L/100km; 60 mph * 1.60934 = 96.5604 km/h.
+        # 350 mi * 1.609344 = 563.2704 km; 15 US gal * 3.785411784 = 56.78118 L;
+        # 11.35623 / 3.785411784 = 3 per litre; (68 - 32) * 5/9 = 20 C;
+        # 235.2145833... / 23.5214 = 10.00 L/100km; 60 mph * 1.609344 = 96.56064 km/h.
         row=(
             "4,imperial,2026-04-06,2026-04-06T09:30:00,350,22.5,15,11.35623,0.00,170.34,"
             "Yes,No,No,Gasoline,gasoline,,Shell,,Alex,Card,Commute,68,23.5214,60,3800,"
@@ -807,9 +807,9 @@ CORPUS: Mapping[str, Shape] = {
         # before any tag was cut, so it appears in no release. Its unit
         # resolution is the same as v5 imperial; what it adds is proof that
         # the extra dimensionless column does not disturb the R6 allowlist.
-        # 390 mi * 1.60934 = 627.6426 km; 24 US gal * 3.78541 = 90.84984 L;
-        # 15.14164 / 3.78541 = 4 per litre; (140 - 32) * 5/9 = 60 C;
-        # 235.214 / 47.0428 = 5.00 L/100km; 90 mph * 1.60934 = 144.8406.
+        # 390 mi * 1.609344 = 627.64416 km; 24 US gal * 3.785411784 = 90.84988 L;
+        # 15.14164 / 3.785411784 = 4 per litre; (140 - 32) * 5/9 = 60 C;
+        # 235.2145833... / 47.0428 = 5.00 L/100km; 90 mph * 1.609344 = 144.84096.
         row=(
             "4,imperial,2026-04-15,2026-04-15T14:00:00,390,30.5,24,15.14164,0.50,363.40,"
             "Yes,No,No,Gasoline,gasoline,,Shell,,Alex,Card,Commute,140,47.0428,90,4700,"
@@ -846,9 +846,9 @@ CORPUS: Mapping[str, Shape] = {
         pair="fuel",
         evidence="a88f4bd",
         header=_FUEL_V5_IMPERIAL,
-        # 360 mi * 1.60934 = 579.3624 km; 16 US gal * 3.78541 = 60.56656 L;
-        # 7.57082 / 3.78541 = 2 per litre; (50 - 32) * 5/9 = 10 C;
-        # 235.214 / 11.7607 = 20.00 L/100km; 55 mph * 1.60934 = 88.5137 km/h.
+        # 360 mi * 1.609344 = 579.36384 km; 16 US gal * 3.785411784 = 60.56659 L;
+        # 7.57082 / 3.785411784 = 2 per litre; (50 - 32) * 5/9 = 10 C;
+        # 235.2145833... / 11.7607 = 20.00 L/100km; 55 mph * 1.609344 = 88.51392 km/h.
         row=(
             "5,imperial,2026-04-08,2026-04-08T10:30:00,360,24.5,16,7.57082,0.00,121.13,"
             "Yes,No,No,gasoline,,Shell,,Alex,Card,Commute,50,11.7607,55,4000,"
@@ -870,9 +870,9 @@ CORPUS: Mapping[str, Shape] = {
         # The only version that ever emitted `imperial_uk`. It settles BOTH
         # the gallon (volume and price) and the MPG numerator, which are two
         # separate code paths: 18 UK gal * 4.54609 = 81.82962 L;
-        # 13.63827 / 4.54609 = 3 per litre; 282.481 / 14.12405 = 20.00
-        # L/100km. 370 mi * 1.60934 = 595.4558 km; (86 - 32) * 5/9 = 30 C;
-        # 65 mph * 1.60934 = 104.6071 km/h.
+        # 13.63827 / 4.54609 = 3 per litre; 282.4809363... / 14.12405 = 20.00
+        # L/100km. 370 mi * 1.609344 = 595.45728 km; (86 - 32) * 5/9 = 30 C;
+        # 65 mph * 1.609344 = 104.60736 km/h.
         row=(
             "5,imperial_uk,2026-04-09,2026-04-09T11:00:00,370,25.5,18,13.63827,0.00,245.49,"
             "Yes,No,No,gasoline,,Shell,,Alex,Card,Commute,86,14.12405,65,4100,"
@@ -909,9 +909,9 @@ CORPUS: Mapping[str, Shape] = {
         pair="fuel",
         evidence="49a4166",
         header=_FUEL_V6_US,
-        # 380 mi * 1.60934 = 611.5492 km; 20 US gal * 3.78541 = 75.7082 L;
-        # 11.35623 / 3.78541 = 3 per litre; (104 - 32) * 5/9 = 40 C;
-        # 235.214 / 23.5214 = 10.00 L/100km; 70 mph * 1.60934 = 112.6538.
+        # 380 mi * 1.609344 = 611.55072 km; 20 US gal * 3.785411784 = 75.70824 L;
+        # 11.35623 / 3.785411784 = 3 per litre; (104 - 32) * 5/9 = 40 C;
+        # 235.2145833... / 23.5214 = 10.00 L/100km; 70 mph * 1.609344 = 112.65408.
         row=(
             "6,imperial,2026-04-11,2026-04-11T12:00:00,380,27.5,20,11.35623,0.00,227.12,"
             "Yes,No,No,gasoline,,Shell,,Alex,Card,Commute,104,23.5214,70,4300,"
@@ -935,7 +935,7 @@ CORPUS: Mapping[str, Shape] = {
         # file. No `unit_system` value describes it, so every column has to
         # be read from its own token. 22 UK gal * 4.54609 = 100.01398 L;
         # 9.09218 / 4.54609 = 2 per litre; (122 - 32) * 5/9 = 50 C;
-        # 282.481 / 28.2481 = 10.00 L/100km; 80 mph * 1.60934 = 128.7472.
+        # 282.4809363... / 28.2481 = 10.00 L/100km; 80 mph * 1.609344 = 128.74752.
         row=(
             "6,custom,2026-04-12,2026-04-12T12:30:00,4600.30,28.5,22,9.09218,0.00,200.03,"
             "Yes,No,No,gasoline,,Shell,,Alex,Card,Commute,122,28.2481,80,4400,"
@@ -1419,7 +1419,7 @@ class TestR9OrderedTupleSignature:
     async def test_the_v2_primary_backup_still_imports(
         self, client, auth_headers, test_user, db_session, test_sessionmaker
     ) -> None:
-        """Same seven names, v2's order. 320 mi * 1.60934 = 514.9888 km."""
+        """Same seven names, v2's order. 320 mi * 1.609344 = 514.99008 km."""
         async with _vehicle(db_session, test_user["id"], "R9V2PRIMARY00001") as vin:
             body = f"{self.V2_PRIMARY}\n2026-06-02,Maintenance,Oil,320,10.00,{CORPUS_VENDOR},\n"
             resp = await _post(client, auth_headers, vin, "service", body)
@@ -1435,7 +1435,7 @@ class TestR9OrderedTupleSignature:
         MyGarage never emitted this order; it is here because a set-based
         signature would swallow it too, and only an ordered-tuple signature
         distinguishes the one file that is genuinely ambiguous.
-        330 mi * 1.60934 = 531.0822 km.
+        330 mi * 1.609344 = 531.08352 km.
         """
         async with _vehicle(db_session, test_user["id"], "R9PERMUTATION001") as vin:
             body = (

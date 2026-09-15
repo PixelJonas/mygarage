@@ -30,14 +30,16 @@ from app.schemas.tire import (
     TireSetResponse,
     TireSetUpdate,
 )
+from app.services.tire_history import fault_map
 from app.services.tire_service import (
     ODOMETER_SOURCE_SET,
     TireService,
     apply_mount_moves,
+    publish_tire_odometer,
 )
+from app.services.vehicle_lock import lock_vehicle_for_write
 from app.utils.datetime_utils import utc_now
 from app.utils.logging_utils import sanitize_for_log
-from app.utils.odometer_sync import sync_odometer_from_record
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +113,10 @@ class TireSetService:
             await self.db.execute(
                 select(TireSet)
                 .where(TireSet.id == set_id, TireSet.vin == vin)
-                .options(selectinload(TireSet.tires).selectinload(Tire.mount_periods))
+                .options(
+                    selectinload(TireSet.tires).selectinload(Tire.mount_periods),
+                    selectinload(TireSet.tires).selectinload(Tire.readings),
+                )
             )
         ).scalar_one_or_none()
         if tire_set is None:
@@ -210,6 +215,8 @@ class TireSetService:
 
         vin = vin.upper().strip()
         await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
+        await lock_vehicle_for_write(self.db, vin)
+        format_distance = await TireService(self.db).request_distance_formatter(current_user)
         tire_set = await self._get_set(vin, set_id)
 
         members = [tire for tire in (tire_set.tires or []) if tire.retired_on is None]
@@ -262,11 +269,13 @@ class TireSetService:
         displaced = (
             (
                 await self.db.execute(
-                    select(Tire).where(
+                    select(Tire)
+                    .where(
                         Tire.vin == vin,
                         Tire.position.in_(wanted),
                         Tire.id.notin_(member_ids),
                     )
+                    .options(selectinload(Tire.readings), selectinload(Tire.mount_periods))
                 )
             )
             .scalars()
@@ -280,6 +289,15 @@ class TireSetService:
         moving = [tire for tire in members if tire.position != destinations[tire.id]]
         when = data.mounted_on or utc_now().date()
 
+        # Every tire the fit touches, coming off as well as going on. A
+        # backdated fit closes each displaced tire's period at the same `when`,
+        # so a displaced tire can end up dismounted before it was mounted.
+        touched = {tire.id: tire for tire in [*displaced, *moving]}
+        befores = {
+            tid: fault_map(t.mount_periods or [], t.readings or []) for tid, t in touched.items()
+        }
+        open_before = {tid: TireService.open_period_ids(t) for tid, t in touched.items()}
+
         await apply_mount_moves(
             self.db,
             vacate=[*displaced, *[tire for tire in moving if tire.position is not None]],
@@ -288,17 +306,19 @@ class TireSetService:
             odometer_km=data.odometer_km,
             notes=data.notes,
         )
+        for tid, tire in touched.items():
+            TireService.refuse_contradictions(
+                tire,
+                befores[tid],
+                open_before[tid] | TireService.open_period_ids(tire),
+                format_distance,
+            )
         # ONE reading for the whole swap. Marked as a set fit rather than as a
         # per-tire operation, so deleting any one tire in the set does not take
-        # the vehicle's odometer reading with it.
-        await sync_odometer_from_record(
-            self.db,
-            vin,
-            when,
-            data.odometer_km,
-            ODOMETER_SOURCE_SET,
-            tire_set.id,
-            commit=False,
+        # the vehicle's odometer reading with it. Published like every other
+        # tire event: a day that already has a record keeps it untouched.
+        await publish_tire_odometer(
+            self.db, vin, when, data.odometer_km, ODOMETER_SOURCE_SET, tire_set.id
         )
         await self.db.commit()
         logger.info(

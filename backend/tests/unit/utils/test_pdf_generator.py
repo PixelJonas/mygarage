@@ -107,12 +107,11 @@ class TestOdometerColumnFollowsTheRenderContext:
     bare number in each cell.
 
     Expected values computed from the distance adapters, not transcribed.
-    The factor is `UnitConverter.MILES_TO_KM`, which is the rounded
-    `1.60934`, not the ISO-exact `1.609344`; recomputing from the exact
-    value gives an intermediate this code never produces.
+    The factor is `UnitConverter.MILES_TO_KM`, the ISO-exact `1.609344`
+    (the international mile).
 
-        19,312 / 1.60934 = 11,999.9503 -> "12,000" at precision 0
-        123.90 / 1.60934 = 76.9881     -> "77"     at precision 0
+        19,312 / 1.609344 = 11,999.9205 -> "12,000" at precision 0
+        123.90 / 1.609344 = 76.9879     -> "77"     at precision 0
     """
 
     def test_service_history_header_and_cell_are_metric_under_a_metric_context(self) -> None:
@@ -254,7 +253,7 @@ class TestOdometerCellsStaySingleRepresentationUnderShowBoth:
     Pinned rather than left incidental: without these assertions, "route the
     odometer values through `format_quantity` like everything else" looks like
     a tidy-up rather than the layout regression it is. 19,312 km is 12,000 mi
-    (19,312 / 1.60934 = 11,999.9503 -> "12,000" at precision 0), so each
+    (19,312 / 1.609344 = 11,999.9205 -> "12,000" at precision 0), so each
     reader's counterpart figure is a distinct string that either appears or
     does not.
     """

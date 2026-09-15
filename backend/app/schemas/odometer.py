@@ -106,3 +106,13 @@ class OdometerRecordListResponse(BaseModel):
             ]
         }
     }
+
+
+class NearestOdometerResponse(BaseModel):
+    """The reading closest to a requested day, for the tire dialogs' suggestion."""
+
+    date: date_type
+    odometer_km: Decimal
+    source: str
+    #: Signed days from the requested date to the reading. Negative is before.
+    days_away: int

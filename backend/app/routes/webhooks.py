@@ -37,6 +37,7 @@ from app.services.fuel_side_effects import (
     invalidate_cache_for_vehicle,
 )
 from app.services.settings_service import SettingsService
+from app.utils.units import UnitConverter
 
 logger = logging.getLogger(__name__)
 
@@ -291,7 +292,7 @@ def _parse_fuel_command(text: str) -> tuple[str, WebhookFuelPayload]:
 
     odo_unit = (match.group("odo_unit") or "km").lower()
     vol_unit = (match.group("vol_unit") or "L").lower()
-    odometer_km = odo * Decimal("1.609344") if odo_unit == "mi" else odo
+    odometer_km = odo * UnitConverter.MILES_TO_KM if odo_unit == "mi" else odo
 
     liters = None
     kwh = None
@@ -300,7 +301,7 @@ def _parse_fuel_command(text: str) -> tuple[str, WebhookFuelPayload]:
         kwh = vol
         price_basis = "per_kwh"
     elif vol_unit == "gal":
-        liters = vol * Decimal("3.785411784")
+        liters = vol * UnitConverter.US_GALLONS_TO_LITERS
         price_basis = "per_volume"
     else:
         liters = vol
@@ -312,7 +313,7 @@ def _parse_fuel_command(text: str) -> tuple[str, WebhookFuelPayload]:
         price = Decimal(match.group("price"))
         if vol_unit == "gal" and price_basis == "per_volume":
             # Convert $/gal → $/L
-            price = price / Decimal("3.785411784")
+            price = price / UnitConverter.US_GALLONS_TO_LITERS
     if match.group("cost"):
         cost = Decimal(match.group("cost"))
 

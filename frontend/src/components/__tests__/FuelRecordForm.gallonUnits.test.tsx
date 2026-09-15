@@ -143,8 +143,9 @@ describe('FuelRecordForm — the gallon comes from the user, not the instance', 
     const payload = postedPayload()
     // 10 x 4.54609 = 45.4609 -> 45.461 at the schema's three decimal places.
     expect(payload.liters).toBe(45.461)
-    // 6 / 4.54609 = 1.31981548979. The shipped bug stored 6 / 3.78541 = 1.585,
-    // 20.1 percent high, against a volume converted on the OTHER gallon.
+    // 6 / 4.54609 = 1.31981548979. The shipped bug divided by the US gallon,
+    // 6 / 3.785411784 = 1.585, 20.1 percent high, against a volume converted
+    // on the OTHER gallon.
     expect(payload.price_per_unit).toBe(1.31981548979)
     // The instance really is on US gallons; nothing above consulted it.
     expect(UnitConverter.getGallonStandard()).toBe('us')
@@ -162,7 +163,7 @@ describe('FuelRecordForm — the gallon comes from the user, not the instance', 
     await waitFor(() => expect(mockedApiPost).toHaveBeenCalled())
     const payload = postedPayload()
     expect(payload.liters).toBe(37.854)
-    expect(payload.price_per_unit).toBe(1.58503306115)
+    expect(payload.price_per_unit).toBe(1.58503231415)
     expect(UnitConverter.getGallonStandard()).toBe('uk')
   })
 
@@ -170,7 +171,7 @@ describe('FuelRecordForm — the gallon comes from the user, not the instance', 
     // This is what "atomically" buys, and what a half-migration destroys. The
     // form computes cost in DISPLAY units, so price x volume comes back to the
     // gross total only when both conversions used the same gallon. Convert one
-    // half and not the other and this ratio lands on 4.54609 / 3.78541.
+    // half and not the other and this ratio lands on 4.54609 / 3.785411784.
     UnitConverter.setGallonStandard('us')
     unitPrefMock.units = UK_IMPERIAL_UNITS
 
@@ -482,9 +483,9 @@ describe('FuelRecordForm — the gallon comes from the user, not the instance', 
     fireEvent.submit(drawerForm())
     await waitFor(() => expect(mockedApiPut).toHaveBeenCalled())
     const payload = mockedApiPut.mock.calls[0][1] as Record<string, unknown>
-    // 6.001 / 0.453592 = 13.2299511455 $/kg at 12 significant digits.
+    // 6.001 / 0.45359237 = 13.2299403537 $/kg at 12 significant digits.
     expect(payload.price_basis).toBe('per_weight')
-    expect(payload.price_per_unit).toBe(13.2299511455)
+    expect(payload.price_per_unit).toBe(13.2299403537)
     expect(payload.price_per_unit).not.toBe(1.32)
     // The volume beside it did NOT move: only the field whose denominator
     // changed is treated as edited.

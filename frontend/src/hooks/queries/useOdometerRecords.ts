@@ -1,6 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/services/api'
-import type { OdometerRecordListResponse, OdometerRecordCreate, OdometerRecordUpdate } from '@/types/odometer'
+import type {
+  OdometerRecordListResponse,
+  OdometerRecordCreate,
+  OdometerRecordUpdate,
+  NearestOdometer,
+} from '@/types/odometer'
 
 export function useOdometerRecords(vin: string) {
   return useQuery({
@@ -78,5 +83,35 @@ export function useImportOdometerCSV(vin: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['odometerRecords', vin] })
     },
+  })
+}
+
+/**
+ * The vehicle's odometer reading nearest to a date, for the suggestion under
+ * every tire dialog's odometer field.
+ *
+ * Under the `['odometerRecords', vin]` prefix on purpose: every tire mutation
+ * invalidates that prefix, so a suggestion can never offer a value a mount,
+ * an edit or a delete just changed. 404 means the vehicle has no readings,
+ * which is an answer the field renders, not an error, so it resolves to null
+ * rather than throwing; `retry: false` for the same reason.
+ */
+export function useNearestOdometer(vin: string, date: string) {
+  return useQuery({
+    queryKey: ['odometerRecords', vin, 'nearest', date],
+    queryFn: async (): Promise<NearestOdometer | null> => {
+      try {
+        const { data } = await api.get<NearestOdometer>(`/vehicles/${vin}/odometer/nearest`, {
+          params: { date },
+        })
+        return data
+      } catch (err) {
+        const status = (err as { response?: { status?: number } }).response?.status
+        if (status === 404) return null
+        throw err
+      }
+    },
+    enabled: Boolean(vin) && /^\d{4}-\d{2}-\d{2}$/.test(date),
+    retry: false,
   })
 }

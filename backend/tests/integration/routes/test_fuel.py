@@ -268,7 +268,7 @@ class TestFuelRecordRoutes:
         )
         assert second_response.status_code == 201
         second_record = second_response.json()
-        # 25 MPG = 9.41 L/100km (235.214 / 25)
+        # 25 MPG = 9.41 L/100km (235.2145833... / 25)
         assert second_record["l_per_100km"] is not None
         assert float(second_record["l_per_100km"]) == pytest.approx(9.41, rel=0.1)
 

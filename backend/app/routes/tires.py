@@ -8,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.user import User
 from app.schemas.tire import (
+    MountPeriodCreate,
+    MountPeriodUpdate,
     TireCreate,
     TireCreateAndMountRequest,
     TireDismountRequest,
@@ -127,6 +129,53 @@ async def retire_tire(
     return await TireService(db).retire_tire(vin, tire_id, data, current_user)
 
 
+@router.post("/{vin}/tires/{tire_id}/restore", response_model=TireResponse)
+async def restore_tire(
+    vin: str,
+    tire_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_auth),
+) -> TireResponse:
+    """Un-retire a tire: back to storage, history intact. 409 if it is not retired."""
+    return await TireService(db).restore_tire(vin, tire_id, current_user)
+
+
+@router.post("/{vin}/tires/{tire_id}/mount-periods", response_model=TireResponse, status_code=201)
+async def create_mount_period(
+    vin: str,
+    tire_id: int,
+    data: MountPeriodCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_auth),
+) -> TireResponse:
+    """Record a closed period the tire spent on a corner in the past.
+
+    409 when it contradicts the tire's other periods or its readings. Returns
+    the whole tire.
+    """
+    return await TireService(db).create_mount_period(vin, tire_id, data, current_user)
+
+
+@router.put("/{vin}/tires/{tire_id}/mount-periods/{period_id}", response_model=TireResponse)
+async def update_mount_period(
+    vin: str,
+    tire_id: int,
+    period_id: int,
+    data: MountPeriodUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_auth),
+) -> TireResponse:
+    """Correct one mount period's dates, odometers or notes.
+
+    Absent keys are untouched; null clears a value to unknown. 409 when the
+    edit contradicts the tire's other periods or its readings, when a dismount
+    field is set on the open period, or when a closed period would be
+    reopened. Returns the whole tire, so the card and the history refresh
+    from one payload.
+    """
+    return await TireService(db).update_mount_period(vin, tire_id, period_id, data, current_user)
+
+
 @router.post("/{vin}/tires/{tire_id}/dismount", response_model=TireResponse)
 async def dismount_tire(
     vin: str,
@@ -179,6 +228,24 @@ async def add_tire_reading(
 ) -> TireResponse:
     """Append a tread/pressure reading and refresh wear projection + reminders."""
     return await TireService(db).add_reading(vin, tire_id, data, current_user)
+
+
+@router.delete("/{vin}/tires/{tire_id}/readings/{reading_id}", status_code=204)
+async def delete_tire_reading(
+    vin: str,
+    tire_id: int,
+    reading_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_auth),
+) -> None:
+    """Delete one reading, for one logged with the wrong odometer or date.
+
+    404 when the reading is not this tire's. The tire's tread and pressure fall
+    back to the newest remaining reading when they still hold the deleted
+    reading's value, the odometer record the reading published goes with it,
+    and the low-tread reminder is re-synced.
+    """
+    await TireService(db).delete_reading(vin, tire_id, reading_id, current_user)
 
 
 # --- Tire sets ------------------------------------------------------------

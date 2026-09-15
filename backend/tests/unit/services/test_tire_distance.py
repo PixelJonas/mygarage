@@ -218,6 +218,73 @@ class TestDistanceOnTire:
         )
 
 
+#: 89,044 mi typed today (the exact mile) and as a record saved before v3.4.0
+#: stored it (the old 1.60934 km mile), each rounded to the column's 0.01 km.
+#: Worked from the definitions here, not read back from the code under test.
+_EXACT = (Decimal("89044") * Decimal("1.609344")).quantize(Decimal("0.01"))
+_OLD = (Decimal("89044") * Decimal("1.60934")).quantize(Decimal("0.01"))
+
+
+class TestTheOldMileAtABoundary:
+    """Two spellings of one odometer, within 3 ppm plus 0.01 km of each other,
+    are one reading: a period between them has rolled nothing, not run
+    backwards."""
+
+    def test_the_figures(self):
+        assert (_EXACT, _OLD) == (Decimal("143302.43"), Decimal("143302.07"))
+        assert _EXACT - _OLD < abs(_EXACT) * Decimal("3e-6") + Decimal("0.01")
+
+    def test_a_period_reversed_within_the_band_rolled_nothing(self):
+        """Contributes zero, not minus 0.36 km, beside a period that rolled."""
+
+        def history(dismount: Decimal) -> Tire:
+            return _tire(
+                [
+                    _period(
+                        id=1,
+                        mounted_on=dt.date(2025, 11, 1),
+                        mounted_odometer_km=Decimal("130000"),
+                        dismounted_on=dt.date(2026, 6, 21),
+                        dismounted_odometer_km=_EXACT,
+                    ),
+                    _period(
+                        id=2,
+                        mounted_on=dt.date(2026, 6, 21),
+                        mounted_odometer_km=_EXACT,
+                        dismounted_on=dt.date(2026, 6, 21),
+                        dismounted_odometer_km=dismount,
+                    ),
+                ]
+            )
+
+        within = distance_on_tire(history(_OLD), current_odometer=Decimal("150000"))
+        assert within.status is DistanceStatus.COMPLETE
+        assert within.all_time_value == _EXACT - Decimal("130000")
+        beyond = distance_on_tire(
+            history(_EXACT - Decimal("0.45")), current_odometer=Decimal("150000")
+        )
+        assert beyond.status is DistanceStatus.ODOMETER_ROLLBACK
+        assert beyond.blocking_period_ids == [2]
+
+    def test_an_open_period_mounted_within_the_band_above_the_latest_odometer(self):
+        """Mounted at the exact mile on a day whose vehicle record still holds
+        the pre-upgrade figure: the tire has rolled nothing yet."""
+        result = distance_on_tire(
+            _tire(
+                [
+                    _period(
+                        id=1,
+                        mounted_on=dt.date(2026, 6, 21),
+                        mounted_odometer_km=_EXACT,
+                    )
+                ]
+            ),
+            current_odometer=_OLD,
+        )
+        assert result.status is DistanceStatus.COMPLETE
+        assert result.all_time_value == Decimal("0")
+
+
 class TestEveryStatusIsReachable:
     """Guards the guard.
 

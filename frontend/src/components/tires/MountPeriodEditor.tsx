@@ -1,0 +1,164 @@
+import { useState } from 'react'
+import { Gauge } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
+
+import { useUpdateMountPeriod } from '../../hooks/queries/useTires'
+import { useUnitFormat } from '../../hooks/useUnitFormat'
+import type { MountedPosition, Tire, TireMountPeriod, TirePosition } from '../../types/tire'
+import { getActionErrorMessage } from '../../utils/httpErrorHandler'
+import { canonicalFromUnitField, seedUnitField } from '../../utils/unitFormat'
+import { Button, Drawer, Field, Input } from '../ui'
+import MountEventFields, { type OdometerFieldValue } from './MountEventFields'
+
+interface MountPeriodEditorProps {
+  vin: string
+  tire: Tire
+  period: TireMountPeriod
+  open: boolean
+  onClose: () => void
+  labelFor: (position: TirePosition) => string
+}
+
+interface EditorState {
+  mounted_on: string
+  mounted_odometer_km: OdometerFieldValue
+  dismounted_on: string
+  dismounted_odometer_km: OdometerFieldValue
+  notes: string
+}
+
+/**
+ * Correct one mount period. A nested drawer, because it opens from the
+ * history drawer and a modal opened from a drawer is inert in this app.
+ *
+ * Every rendered field is seeded from the period and every rendered field
+ * is sent, so clearing one is a deliberate act and an unrendered field can
+ * never submit as null. The dismount pair renders only for a closed period:
+ * the server refuses a dismount key on an open one, even as null, because
+ * closing a period is what Dismount is. Render this with `key={period.id}`
+ * so the state seeds once per period rather than through an effect.
+ */
+export default function MountPeriodEditor({
+  vin,
+  tire,
+  period,
+  open,
+  onClose,
+  labelFor,
+}: MountPeriodEditorProps) {
+  const { t } = useTranslation('vehicles')
+  const u = useUnitFormat()
+  const update = useUpdateMountPeriod(vin)
+  const closed = period.dismounted_on != null
+  const num = (v: number | string | null | undefined): number | null =>
+    v === null || v === undefined || v === '' ? null : Number(v)
+
+  const [form, setForm] = useState<EditorState>(() => {
+    const mount = seedUnitField(num(period.mounted_odometer_km), u.distance)
+    const dismount = seedUnitField(num(period.dismounted_odometer_km), u.distance)
+    return {
+      mounted_on: period.mounted_on ?? '',
+      mounted_odometer_km: { typed: mount.display, origin: mount },
+      dismounted_on: period.dismounted_on ?? '',
+      dismounted_odometer_km: { typed: dismount.display, origin: dismount },
+      notes: period.notes ?? '',
+    }
+  })
+
+  const odometerLabel = t('tireList.odometerWithUnit', { unit: u.distance.label })
+
+  const save = () => {
+    if (closed && form.dismounted_on === '') {
+      toast.error(t('tireList.periodDismountDateRequired'))
+      return
+    }
+    const payload = {
+      tireId: tire.id,
+      periodId: period.id,
+      mounted_on: form.mounted_on || null,
+      mounted_odometer_km: canonicalFromUnitField(
+        form.mounted_odometer_km.typed,
+        form.mounted_odometer_km.origin,
+        u.distance
+      ),
+      notes: form.notes.trim() || null,
+      ...(closed
+        ? {
+            dismounted_on: form.dismounted_on,
+            dismounted_odometer_km: canonicalFromUnitField(
+              form.dismounted_odometer_km.typed,
+              form.dismounted_odometer_km.origin,
+              u.distance
+            ),
+          }
+        : {}),
+    }
+    update.mutate(payload, {
+      onSuccess: () => {
+        toast.success(t('tireList.periodSaved'))
+        onClose()
+      },
+      onError: (err: unknown) =>
+        toast.error(getActionErrorMessage(err, t('tireList.periodSaveAction'))),
+    })
+  }
+
+  return (
+    <Drawer
+      nested
+      open={open}
+      onClose={onClose}
+      /* `MountPeriodResponse.position` is generated as plain `string` (the
+         backend schema has no Literal there), but a period is always mounted
+         at one of the five corners. Same pre-approved cast as the history
+         drawer. */
+      title={t('tireList.editPeriodTitle', { position: labelFor(period.position as MountedPosition) })}
+      icon={Gauge}
+      width="sm"
+      closeLabel={t('common:close')}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            {t('common:cancel')}
+          </Button>
+          <Button variant="primary" disabled={update.isPending} onClick={save}>
+            {t('common:save')}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <MountEventFields
+          vin={vin}
+          idPrefix="period-mount"
+          dateLabel={t('tireList.periodMount')}
+          date={form.mounted_on}
+          onDateChange={(next) => setForm({ ...form, mounted_on: next })}
+          odometerLabel={odometerLabel}
+          odometer={form.mounted_odometer_km}
+          onOdometerChange={(next) => setForm({ ...form, mounted_odometer_km: next })}
+        />
+        {closed && (
+          <MountEventFields
+            vin={vin}
+            idPrefix="period-dismount"
+            dateLabel={t('tireList.periodDismount')}
+            date={form.dismounted_on}
+            onDateChange={(next) => setForm({ ...form, dismounted_on: next })}
+            odometerLabel={odometerLabel}
+            odometer={form.dismounted_odometer_km}
+            onOdometerChange={(next) => setForm({ ...form, dismounted_odometer_km: next })}
+          />
+        )}
+        <Field id="period-notes" label={t('tireList.notes')}>
+          <Input
+            id="period-notes"
+            value={form.notes}
+            onChange={(e) => setForm({ ...form, notes: e.target.value })}
+          />
+        </Field>
+      </div>
+    </Drawer>
+  )
+}

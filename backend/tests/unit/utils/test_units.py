@@ -311,7 +311,7 @@ class TestDecimalPrecision:
         # Result should be rounded to 2 decimal places
         assert isinstance(result, float)
         # But the calculation should use full precision internally
-        expected = float(value * Decimal("3.78541"))
+        expected = float(value * Decimal("3.785411784"))
         assert result == pytest.approx(expected, rel=0.001)
 
     def test_float_input_precision(self):
@@ -330,8 +330,11 @@ class TestGoldenConversions:
     """
 
     def test_psi_canonicalises_to_kpa_not_bar(self) -> None:
-        # 1 PSI == 6.89476 kPa. Returning 0.0689476 means bar was emitted.
-        assert UnitConverter.to_canonical_decimal(1, "PSI") == Decimal("6.89476")
+        # 1 PSI == 6.894757293168361336722673445 kPa (0.45359237 * 9.80665 /
+        # 0.0254**2 / 1000). Returning the /100 value means bar was emitted.
+        assert UnitConverter.to_canonical_decimal(1, "PSI") == Decimal(
+            "6.894757293168361336722673445"
+        )
 
     def test_psi_canonical_matches_the_psi_to_kpa_helper(self) -> None:
         canonical_result = float(UnitConverter.to_canonical_decimal(31.9, "PSI"))
@@ -342,10 +345,10 @@ class TestGoldenConversions:
     @pytest.mark.parametrize(
         ("value", "from_unit", "expected"),
         [
-            (1, "mi", Decimal("1.60934")),
+            (1, "mi", Decimal("1.609344")),
             (1, "ft", Decimal("0.3048")),
             (1, "lb", Decimal("0.45359237")),
-            (1, "lbft", Decimal("1.35582")),
+            (1, "lbft", Decimal("1.3558179483314004")),
             (32, "F", Decimal("0")),
             (1, "kPa", Decimal("1")),
         ],
@@ -424,3 +427,50 @@ class TestGallonFlavour:
         assert not hasattr(UnitConverter, "MPG_TO_L100KM_NUMERATOR")
         assert not hasattr(UnitConverter, "set_gallon_standard")
         assert not hasattr(UnitConverter, "get_gallon_standard")
+
+
+class TestExactFactors:
+    """Each factor against its legal definition, written out by hand here.
+
+    Base factors are exact decimals and must be EQUAL. Derived factors whose
+    exact value does not terminate are compared within 1e-24, far below any
+    stored precision, so the test does not pin Decimal's 28-digit rounding.
+    """
+
+    def test_base_factors_are_the_definitions(self) -> None:
+        assert UnitConverter.MILES_TO_KM == Decimal("1.609344")
+        assert UnitConverter.FEET_TO_METERS == Decimal("0.3048")
+        assert UnitConverter.INCH_TO_METERS == Decimal("0.0254")
+        assert UnitConverter.US_GALLONS_TO_LITERS == Decimal("3.785411784")
+        assert UnitConverter.UK_GALLONS_TO_LITERS == Decimal("4.54609")
+        assert UnitConverter.LBS_TO_KG == Decimal("0.45359237")
+        assert UnitConverter.STANDARD_GRAVITY == Decimal("9.80665")
+
+    def test_terminating_derived_factors_are_exact(self) -> None:
+        assert UnitConverter.LBF_TO_N == Decimal("4.4482216152605")
+        assert UnitConverter.LBFT_TO_NM == Decimal("1.3558179483314004")
+
+    def test_non_terminating_derived_factors_are_within_1e24(self) -> None:
+        tolerance = Decimal("1e-24")
+        # 4.4482216152605 / 0.00064516 / 1000
+        assert (
+            abs(UnitConverter.PSI_TO_KPA - Decimal("6.89475729316836133672267344535")) < tolerance
+        )
+        assert (
+            abs(UnitConverter.PSI_TO_BAR - Decimal("0.0689475729316836133672267344535")) < tolerance
+        )
+        # 378.5411784 / 1.609344 and 454.609 / 1.609344
+        assert (
+            abs(
+                UnitConverter.US_MPG_TO_L100KM_NUMERATOR
+                - Decimal("235.214583333333333333333333333")
+            )
+            < tolerance
+        )
+        assert (
+            abs(
+                UnitConverter.UK_MPG_TO_L100KM_NUMERATOR
+                - Decimal("282.480936331822158593812137119")
+            )
+            < tolerance
+        )

@@ -710,7 +710,12 @@ class SessionService:
         # racer raises, which is the only way to tell this apart from the
         # version that merely looked correct.
         #
-        # No-op on SQLite, whose single writer serialises anyway.
+        # Skipped on SQLite, where FOR UPDATE compiles to nothing. SQLite's
+        # single writer serialises the WRITES, not the read that precedes them,
+        # so this check-then-create still races there; the partial unique
+        # index is what protects the data. See app/services/vehicle_lock.py
+        # for the mechanism that would serialise it, deliberately not applied
+        # to the ingest path without a race test of its own.
         if self.db.bind is not None and self.db.bind.dialect.name == "postgresql":
             claimed = (
                 await self.db.execute(

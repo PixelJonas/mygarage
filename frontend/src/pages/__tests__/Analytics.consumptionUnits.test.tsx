@@ -140,7 +140,7 @@ const LITRES_MPG: UnitSet = { ...METRIC_UNITS, consumption: 'mpg_us' }
  * One distinct canonical L/100km per rendering, so each assertion names one site.
  *
  * Two decimals in `l_100km`, one in `mpg_us`. The MPG column is hand-computed as
- * 235.214 / value and is what the mirror block asserts.
+ * 235.2145833... / value and is what the mirror block asserts.
  *
  *   6.11 -> 38.5 MPG   6.22 -> 37.8   6.33 -> 37.2   6.44 -> 36.5
  *   6.55 -> 35.9       6.66 -> 35.3   6.77 -> 34.7   6.88 -> 34.2
@@ -369,7 +369,7 @@ describe('Analytics — every consumption rendering reads units.consumption', ()
   it('★ the fuel-rate chart labels its axis, its line and its tooltip in gal/hr', async () => {
     await mountWith(GALLONS_L100KM)
 
-    // 3.80 L/hr / 3.78541 = 1.00 gal/hr.
+    // 3.80 L/hr / 3.785411784 = 1.0039, 1.00 gal/hr.
     expect(axisLabels()).toContain('gal/hr')
     expect(lineNames()).toContain('vehicle.fuelRateUnitLabel (gal/hr)')
     expect(tooltipTexts().some((text) => text.includes('1.00 gal/hr'))).toBe(true)
@@ -398,7 +398,7 @@ describe('Analytics — every consumption rendering reads units.consumption', ()
     // answers L/100km, which is what the metric leg of the retired formatter did.
     await mountWith(LITRES_MPG)
 
-    // 235.214 / 6.11 = 38.5, / 6.22 = 37.8, / 6.33 = 37.2, / 6.44 = 36.5,
+    // 235.2145833... / 6.11 = 38.5, / 6.22 = 37.8, / 6.33 = 37.2, / 6.44 = 36.5,
     // / 6.66 = 35.3, / 6.77 = 34.7.
     expect(screen.getByText('vehicle.recentBaseline (38.5 MPG | 37.8 MPG)')).toBeInTheDocument()
     expect(screen.getAllByText('37.2 MPG')).toHaveLength(2)

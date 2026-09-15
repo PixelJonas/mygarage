@@ -205,8 +205,15 @@ Custom controls set per account.
 
 | Flavour | Litres | MPG factor |
 |---|---|---|
-| US | 3.78541 | 235.214 |
-| UK | 4.54609 | 282.481 |
+| US | 3.785411784 | 235.2145833... |
+| UK | 4.54609 | 282.4809363... |
+
+Both gallons are exact by definition. The MPG factor is derived from them, not
+written down: 100 x litres per gallon / 1.609344 km per mile, so `L/100km =
+factor / MPG`. `UnitConverter` in `backend/app/utils/units.py` computes every
+derived factor (PSI, lb-ft and both MPG factors) from the exact bases, and
+`frontend/src/utils/units.ts` mirrors that table; a cross-layer test fails when
+the two disagree.
 
 ## Adding a unit
 

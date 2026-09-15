@@ -6,9 +6,10 @@ import logging
 from dataclasses import dataclass, field
 from datetime import date as date_type
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
-from sqlalchemy import delete, func, select, text
+from sqlalchemy import and_, delete, func, not_, or_, select, text
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -479,9 +480,15 @@ class TelemetryService:
                 if not should_store:
                     continue
 
-            # Store to historical table
-            try:
-                telemetry = VehicleTelemetry(
+            # Store to historical table. INSERT ... ON CONFLICT DO NOTHING on
+            # the (device_id, param_key, timestamp) unique index, the same
+            # dedup `bulk_backfill` and `store_torque_telemetry` already use
+            # for this table: a replayed duplicate is a routine outcome here,
+            # not an exceptional one, and rowcount says whether the row
+            # actually landed.
+            stmt = (
+                dialect_insert(VehicleTelemetry)
+                .values(
                     vin=vin,
                     device_id=device_id,
                     param_key=param_key,
@@ -489,11 +496,10 @@ class TelemetryService:
                     timestamp=timestamp,
                     received_at=received_at,
                 )
-                self.db.add(telemetry)
-                stored_count += 1
-            except IntegrityError:
-                # Duplicate (same device_id, param_key, timestamp) - skip
-                pass
+                .on_conflict_do_nothing(index_elements=["device_id", "param_key", "timestamp"])
+            )
+            result = await self.db.execute(stmt)
+            stored_count += cast(CursorResult[Any], result).rowcount or 0
 
         # Decide what this batch means for the device's drive session.
         #
@@ -575,6 +581,20 @@ class TelemetryService:
 
         Open sessions are excluded — `end_session` computes those on close.
         """
+        # `_refresh_sessions_in_span` below selects on `ended_at IS NOT NULL`.
+        # `end_session` sets `ended_at` as a plain ORM attribute, no flush, so
+        # a session this same unit of work already closed -- the HTTPS route
+        # calling `handle_ecu_offline` (grace period 0) ahead of this same
+        # payload's `store_telemetry`, both on one request's session -- is
+        # invisible to that SELECT until something flushes it, and the very
+        # readings that arrived alongside the close are excluded from the
+        # session they just closed. `_open_session_for_movement` does not
+        # need this: it flushes inside its own savepoint and only ever
+        # creates an OPEN session, which this SELECT already excludes.
+        # `refresh_aggregates` never reads `OdometerRecord` either, so an
+        # odometer sync earlier in this batch is not a reason for this flush.
+        await self.db.flush()
+
         reading_at = timestamp.replace(tzinfo=None) if timestamp.tzinfo else timestamp
         await self._refresh_sessions_in_span(vin, device_id, reading_at, reading_at)
 
@@ -586,8 +606,10 @@ class TelemetryService:
     ) -> None:
         """Sync odometer record from telemetry if odometer PID is present.
 
-        Only creates one record per day to avoid spamming the odometer table.
-        Records are marked with source='livelink'.
+        Keeps at most one LiveLink record per day, to avoid spamming the
+        odometer table, marked with source='livelink'. It updates that record
+        or creates it beside the day's other readings, and never modifies a
+        record of another source.
         """
         # Find odometer value in telemetry
         odometer_value: float | None = None
@@ -658,20 +680,29 @@ class TelemetryService:
         today = date_type.today()
         record_date = min(timestamp.date(), today) if timestamp else today
 
+        # LiveLink owns only its own rows. A day can hold several odometer rows
+        # (a service visit and the tire mount it did, a tread reading above
+        # this device's earlier one), so "the" row of the day is not a thing to
+        # look up: asking for exactly one raised on every odometer-bearing
+        # message of such a day and rolled the whole message back. The day's
+        # own LiveLink row is updated; otherwise one is created beside whatever
+        # the day holds, and no other source's row is ever modified. The guard
+        # above admits only a reading above every stored one, so a created row
+        # is always the day's highest.
         result = await self.db.execute(
-            select(OdometerRecord).where(
+            select(OdometerRecord)
+            .where(
                 OdometerRecord.vin == vin,
                 OdometerRecord.date == record_date,
+                OdometerRecord.source == "livelink",
             )
+            .order_by(OdometerRecord.id.desc())
         )
-        existing = result.scalar_one_or_none()
+        existing = result.scalars().first()
 
-        if existing:
-            # Only update if this is a LiveLink record (don't overwrite manual entries)
-            if existing.source == "livelink":
-                existing.odometer_km = odometer_km
-                existing.notes = f"Auto-updated from LiveLink ({odometer_key})"
-            # else: manual entry, don't overwrite
+        if existing is not None:
+            existing.odometer_km = odometer_km
+            existing.notes = f"Auto-updated from LiveLink ({odometer_key})"
         else:
             # Create new odometer record
             odometer_record = OdometerRecord(
@@ -818,7 +849,7 @@ class TelemetryService:
             )
             result = await self.db.execute(stmt)
             # rowcount is 1 on insert, 0 when the conflict clause fires
-            row_inserted = result.rowcount or 0
+            row_inserted = cast(CursorResult[Any], result).rowcount or 0
             inserted += row_inserted
             await self._update_latest_if_newer(vin, r.param_key, value, ts)
 
@@ -912,22 +943,68 @@ class TelemetryService:
             return 0
 
         changed = 0
-        for drive in drives:
-            overlapping = list(
-                (
-                    await self.db.execute(
-                        select(DriveSession)
-                        .where(DriveSession.device_id == device_id)
-                        .where(DriveSession.external_session_id.is_(None))
-                        .where(DriveSession.started_at <= drive.movement_ended_at)
-                        .where(
-                            func.coalesce(DriveSession.ended_at, DriveSession.started_at)
-                            >= drive.started_at
+        for index, drive in enumerate(drives):
+            session_end = func.coalesce(DriveSession.ended_at, DriveSession.started_at)
+
+            # Inclusive at both bounds by default: a session matches this drive
+            # when each one's start is at or before the other's end. A
+            # single-instant touch with a session from the live path or from
+            # another SD file is most plausibly the same physical drive seen by
+            # two sources (a device reconnecting mid-drive, or one reading both
+            # logged to SD and sent over HTTPS), so it matches.
+            #
+            # The two exclusions below apply only at an instant this drive
+            # shares with the adjacent drive of this same `group_drives` call,
+            # which gives that instant to the earlier drive. The ownership is a
+            # property of one call, where both drives were cut from the same
+            # evidence; it says nothing about a session from anywhere else.
+            # Neither exclusion can remove a genuine overlap (a positive shared
+            # duration), because both require the two windows to meet at
+            # exactly one point.
+            conditions = [
+                DriveSession.device_id == device_id,
+                DriveSession.external_session_id.is_(None),
+                DriveSession.started_at <= drive.movement_ended_at,
+                session_end >= drive.started_at,
+            ]
+
+            if index + 1 < len(drives) and drives[index + 1].started_at == drive.movement_ended_at:
+                # Right: the next drive in this batch starts exactly at this
+                # drive's movement_ended_at, which is always this drive's own
+                # movement sample. A session that starts there and runs on past
+                # it is the next drive's. An open session starting there counts
+                # as running on past it, since it is still going. A closed
+                # session that starts and ends at that instant keeps matching
+                # this drive.
+                conditions.append(
+                    not_(
+                        and_(
+                            DriveSession.started_at == drive.movement_ended_at,
+                            or_(
+                                DriveSession.ended_at.is_(None),
+                                session_end > drive.movement_ended_at,
+                            ),
                         )
                     )
                 )
-                .scalars()
-                .all()
+
+            if index > 0 and drives[index - 1].movement_ended_at == drive.started_at:
+                # Left: the previous drive in this batch ends exactly at this
+                # drive's started_at, so a closed session ending there is the
+                # previous drive's. Closed sessions only: an open session
+                # collapses to a point at its own started_at and must keep
+                # matching, so the open-session branch below still protects it.
+                conditions.append(
+                    not_(
+                        and_(
+                            DriveSession.ended_at.is_not(None),
+                            session_end == drive.started_at,
+                        )
+                    )
+                )
+
+            overlapping = list(
+                (await self.db.execute(select(DriveSession).where(*conditions))).scalars().all()
             )
 
             if len(overlapping) > 1:
@@ -970,6 +1047,13 @@ class TelemetryService:
                     effective_gap_minutes=gap,
                 )
                 self.db.add(session)
+                # Flushed (not just added), not committed: production sessions
+                # are autoflush=False, so without this the next drive's own
+                # overlap query -- issued in the same loop, same transaction --
+                # cannot see a session this loop just created. A commit stays
+                # the caller's: bulk_backfill commits once after every drive
+                # in the batch is done.
+                await self.db.flush()
                 logger.info(
                     "SD reconstruction: created session for %s over %s..%s",
                     device_id,
@@ -1065,7 +1149,7 @@ class TelemetryService:
                 .on_conflict_do_nothing(index_elements=["device_id", "param_key", "timestamp"])
             )
             result = await self.db.execute(stmt)
-            inserted += result.rowcount or 0
+            inserted += cast(CursorResult[Any], result).rowcount or 0
             await self._update_latest_if_newer(vin, param_key, float(value), ts)
         return inserted
 
@@ -1075,32 +1159,34 @@ class TelemetryService:
         """Update vehicle_telemetry_latest only when ts is strictly newer.
 
         Never clobbers a fresher live reading with a backfilled historical row.
-        VehicleTelemetryLatest has no device_id column — do not pass one.
+        VehicleTelemetryLatest has no device_id column -- do not pass one.
         Caller must pass ts as naive UTC (tzinfo=None).
-        """
-        existing = (
-            await self.db.execute(
-                select(VehicleTelemetryLatest).where(
-                    VehicleTelemetryLatest.vin == vin,
-                    VehicleTelemetryLatest.param_key == param_key,
-                )
-            )
-        ).scalar_one_or_none()
 
-        if existing is None:
-            self.db.add(
-                VehicleTelemetryLatest(
-                    vin=vin,
-                    param_key=param_key,
-                    value=value,
-                    timestamp=ts,
-                    received_at=utc_now(),
-                )
-            )
-        elif ts > existing.timestamp:
-            existing.value = value
-            existing.timestamp = ts
-            existing.received_at = utc_now()
+        One atomic statement, not a SELECT then an ORM add. Production sessions
+        do not autoflush, so the add was invisible to the next row's SELECT: an
+        SD-card file carrying a param with no latest row yet added it twice and
+        the chunk's commit failed on the unique key, which left the file's
+        watermark unmoved and the device's SD backfill retrying that file
+        forever. The conditional upsert also cannot race live ingest, and it
+        holds no ORM object across `bulk_backfill`'s per-chunk commits.
+        """
+        stmt = dialect_insert(VehicleTelemetryLatest).values(
+            vin=vin,
+            param_key=param_key,
+            value=value,
+            timestamp=ts,
+            received_at=utc_now(),
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["vin", "param_key"],
+            set_={
+                "value": stmt.excluded.value,
+                "timestamp": stmt.excluded.timestamp,
+                "received_at": stmt.excluded.received_at,
+            },
+            where=VehicleTelemetryLatest.timestamp < stmt.excluded.timestamp,
+        )
+        await self.db.execute(stmt)
 
     # =========================================================================
     # Query Methods

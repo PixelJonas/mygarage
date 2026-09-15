@@ -182,18 +182,30 @@ class TestTelemetryWriterSet:
 
     @staticmethod
     def _functions_building_telemetry() -> dict[str, str]:
-        """{function name: module} for every telemetry-model constructor."""
+        """{function name: module} for every telemetry-model constructor.
+
+        Also counts `dialect_insert(Model)` (`sqlalchemy.dialects.*.insert`,
+        this codebase's Core-level upsert idiom) and a plain `insert(Model)`
+        (`sqlalchemy.insert`, the dialect-generic form nothing here uses yet)
+        as building `Model`: the model there is a call argument, never a
+        constructor, so the plain Name-call scan below would otherwise miss
+        every writer that dedups on a unique index instead of using the ORM
+        constructor.
+        """
+        insert_builders = frozenset({"dialect_insert", "insert"})
         found: dict[str, str] = {}
         for module in sorted((APP_DIR / "services").glob("*.py")):
             tree = ast.parse(module.read_text())
             for node in ast.walk(tree):
                 if not isinstance(node, ast.AsyncFunctionDef | ast.FunctionDef):
                     continue
-                built = {
-                    sub.func.id
-                    for sub in ast.walk(node)
-                    if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name)
-                }
+                built: set[str] = set()
+                for sub in ast.walk(node):
+                    if not isinstance(sub, ast.Call) or not isinstance(sub.func, ast.Name):
+                        continue
+                    built.add(sub.func.id)
+                    if sub.func.id in insert_builders:
+                        built.update(arg.id for arg in sub.args if isinstance(arg, ast.Name))
                 if built & TELEMETRY_MODELS:
                     found[node.name] = module.name
         return found

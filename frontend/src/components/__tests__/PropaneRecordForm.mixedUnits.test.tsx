@@ -15,7 +15,7 @@
  * posted body.
  *
  * Expected values are hand-written and derived in comments, never computed
- * through the code under test. `LBS_TO_KG` is 0.453592 (`utils/units.ts`).
+ * through the code under test. `LBS_TO_KG` is 0.45359237 (`utils/units.ts`).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -85,7 +85,7 @@ beforeEach(() => {
 
 describe('PropaneRecordForm — the tank size follows units.mass', () => {
   it('★ a litres-and-pounds client picks tanks in pounds, under a pounds label', () => {
-    // 9.07 / 0.453592 = 19.99593... lb, and the lb adapter carries two
+    // 9.07 / 0.45359237 = 19.9959271802 lb, and the lb adapter carries two
     // decimals, so the option values are the same whole pounds the shipped
     // form offered: 20, 33, 100, 420.
     unitPrefMock.units = LITRES_POUNDS
@@ -127,8 +127,8 @@ describe('PropaneRecordForm — the tank size follows units.mass', () => {
     expect(binarySystemFor(unitPrefMock.units.volume)).toBe('imperial')
   })
 
-  it('★ a pounds client selecting a 20 lb bottle stores its canonical 9.07184 kg', async () => {
-    // 20 lb x 0.453592 = 9.07184 kg. Before this slice the same selection
+  it('★ a pounds client selecting a 20 lb bottle stores its canonical 9.0718474 kg', async () => {
+    // 20 lb x 0.45359237 = 9.0718474 kg. Before this slice the same selection
     // stored the raw 20, because `system` reads 'metric' off the litres: a
     // 20 lb bottle recorded as a 20 kg one.
     unitPrefMock.units = LITRES_POUNDS
@@ -141,7 +141,7 @@ describe('PropaneRecordForm — the tank size follows units.mass', () => {
     fireEvent.change(document.getElementById('tank_quantity') as HTMLInputElement, {
       target: { value: '1' },
     })
-    // 20 lb = 9.07184 kg x 1 x 1.968 L/kg = 17.85338... L, at the volume
+    // 20 lb = 9.0718474 kg x 1 x 1.968 L/kg = 17.8533956832 L, at the volume
     // field's OWN presentation. Task 7 moved the tank auto-calc onto
     // `u.volume.toInputValue`, the same two decimals a seeded value is shown
     // at and the same the read-only hint above the field quotes: it used to
@@ -154,14 +154,14 @@ describe('PropaneRecordForm — the tank size follows units.mass', () => {
     fireEvent.submit(propaneForm())
     await waitFor(() => expect(createMock).toHaveBeenCalled())
     const payload = createMock.mock.calls[0][0] as Record<string, unknown>
-    expect(payload.tank_size_kg).toBe(9.07184)
+    expect(payload.tank_size_kg).toBe(9.0718474)
     expect(payload.tank_size_kg).not.toBe(20)
   })
 
   it('★ EDIT: a stored 9.07 kg tank reads back as the 20 lb option and an untouched save leaves it at 9.07', async () => {
     // The origin is what makes this exact. 9.07 kg seeds a pound field as
     // '20.00'; a <select> can only hand back '20', and converting that gives
-    // 9.07184, so an account that opened a propane record and saved it would
+    // 9.0718474, so an account that opened a propane record and saved it would
     // have moved a tank size it never touched.
     unitPrefMock.units = LITRES_POUNDS
     render(
@@ -185,7 +185,7 @@ describe('PropaneRecordForm — the tank size follows units.mass', () => {
     await waitFor(() => expect(updateMock).toHaveBeenCalled())
     const payload = updateMock.mock.calls[0][0] as Record<string, unknown>
     expect(payload.tank_size_kg).toBe(9.07)
-    expect(payload.tank_size_kg).not.toBe(9.07184)
+    expect(payload.tank_size_kg).not.toBe(9.0718474)
   })
 
   it('★ the volume and price EXAMPLES name the reader\'s OWN gallon', async () => {

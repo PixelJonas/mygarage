@@ -84,7 +84,7 @@ describe('VehicleLiveLinkWidget keyboard activation (I12 a11y fix)', () => {
     getVehicleStatus.mockResolvedValue(RUNNING)
     render(<VehicleLiveLinkWidget vin={VIN} />)
     // No account and no stored choice, so `useUnitPreference` lands on the
-    // imperial preset. 100 km/h / 1.60934 = 62.13..., at the mph adapter's 0 dp.
+    // imperial preset. 100 km/h / 1.609344 = 62.13..., at the mph adapter's 0 dp.
     expect(await screen.findByText('62')).toBeInTheDocument()
     expect(screen.getByText('MPH')).toBeInTheDocument()
     // 90 C x 9/5 + 32 = 194, at the f adapter's 1 dp. It read "194\u00b0F" before,

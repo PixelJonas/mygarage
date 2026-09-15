@@ -200,9 +200,9 @@ describe('VehicleStatisticsCard', () => {
       />
     )
 
-    // 5000 / 1.60934 = 3106.86, at the mi adapter's zero decimals.
+    // 5000 / 1.609344 = 3106.86, at the mi adapter's zero decimals.
     expect(screen.getByText('3,107 mi')).toBeInTheDocument()
-    // 235.214 / 9.4160546 = 24.98, at the mpg_us adapter's one.
+    // 235.2145833... / 9.4160546 = 24.98, at the mpg_us adapter's one.
     expect(screen.getByText('vehicleStatisticsCardExtra.averageFuelEconomy (MPG)')).toBeInTheDocument()
     expect(screen.getByText('25.0 MPG')).toBeInTheDocument()
     expect(screen.queryByText('9.4 L/100km')).not.toBeInTheDocument()

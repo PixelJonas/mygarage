@@ -22,23 +22,23 @@ def _make_fuel_record(**kwargs):
     if "mileage" in kwargs:
         miles = kwargs.pop("mileage")
         kwargs["odometer_km"] = (
-            None if miles is None else Decimal(str(round(float(miles) * 1.60934, 2)))
+            None if miles is None else Decimal(str(round(float(miles) * 1.609344, 2)))
         )
     if "gallons" in kwargs:
         gallons = kwargs.pop("gallons")
         kwargs["liters"] = (
-            None if gallons is None else Decimal(str(round(float(gallons) * 3.78541, 2)))
+            None if gallons is None else Decimal(str(round(float(gallons) * 3.785411784, 2)))
         )
     if "propane_gallons" in kwargs:
         pg = kwargs.pop("propane_gallons")
         kwargs["propane_liters"] = (
-            None if pg is None else Decimal(str(round(float(pg) * 3.78541, 2)))
+            None if pg is None else Decimal(str(round(float(pg) * 3.785411784, 2)))
         )
     if "tank_size_lb" in kwargs:
         lb = kwargs.pop("tank_size_lb")
         # 30 lb tank ≈ 13.61 kg; we want the int-bucketed key to work,
         # so round to whole kg here.
-        kwargs["tank_size_kg"] = None if lb is None else Decimal(str(round(float(lb) * 0.453592)))
+        kwargs["tank_size_kg"] = None if lb is None else Decimal(str(round(float(lb) * 0.45359237)))
 
     defaults = {
         "id": 1,
@@ -957,7 +957,7 @@ def _make_service_visit(**kwargs):
     if "mileage" in kwargs:
         miles = kwargs.pop("mileage")
         kwargs["odometer_km"] = (
-            None if miles is None else Decimal(str(round(float(miles) * 1.60934, 2)))
+            None if miles is None else Decimal(str(round(float(miles) * 1.609344, 2)))
         )
     defaults = {
         "id": 1,
@@ -995,12 +995,12 @@ def _make_def_record(**kwargs):
     if "mileage" in kwargs:
         miles = kwargs.pop("mileage")
         kwargs["odometer_km"] = (
-            None if miles is None else Decimal(str(round(float(miles) * 1.60934, 2)))
+            None if miles is None else Decimal(str(round(float(miles) * 1.609344, 2)))
         )
     if "gallons" in kwargs:
         gallons = kwargs.pop("gallons")
         kwargs["liters"] = (
-            None if gallons is None else Decimal(str(round(float(gallons) * 3.78541, 2)))
+            None if gallons is None else Decimal(str(round(float(gallons) * 3.785411784, 2)))
         )
     defaults = {
         "id": 1,

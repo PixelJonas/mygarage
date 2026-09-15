@@ -18,16 +18,22 @@ vi.mock('../../hooks/queries/useTires', () => ({
   useUpdateTire: () => useUpsertTireMock(),
   useMountTire: () => useUpsertTireMock(),
   useDismountTire: () => useUpsertTireMock(),
+  useRestoreTire: () => useUpsertTireMock(),
   useRetireTire: () => useUpsertTireMock(),
   useRotateTires: () => useUpsertTireMock(),
   useAddTireReading: () => useAddTireReadingMock(),
   useDeleteTire: () => useDeleteTireMock(),
+  useDeleteTireReading: () => ({ mutate: vi.fn(), isPending: false }),
   // Sets are not this file's subject; it just has to render past them.
   useTireSets: () => ({ data: { sets: [], total: 0 }, isLoading: false, error: null }),
   useCreateTireSet: () => useUpsertTireMock(),
   useUpdateTireSet: () => useUpsertTireMock(),
   useDeleteTireSet: () => useUpsertTireMock(),
   useMountTireSet: () => useUpsertTireMock(),
+}))
+
+vi.mock('../../hooks/queries/useOdometerRecords', () => ({
+  useNearestOdometer: () => ({ data: undefined, isSuccess: false }),
 }))
 
 vi.mock('@tanstack/react-query', () => ({
@@ -159,12 +165,12 @@ describe('TireList', () => {
     })
     fireEvent.click(screen.getByText('common:save'))
 
-    // 100 mi x 1.60934 = 160.934 km. The adapter does not round a canonical
+    // 100 mi x 1.609344 = 160.9344 km. The adapter does not round a canonical
     // write to two decimals the way `UnitConverter.milesToKm` did; it keeps the
     // exact conversion, as `UnitConverter.toCanonicalMetricString` already does
     // for every other form. The column is Numeric(10,2), so the server stores
     // 160.93 either way.
-    expect(mutate.mock.calls[0][0].odometer_km).toBe(160.934)
+    expect(mutate.mock.calls[0][0].odometer_km).toBe(160.9344)
   })
 
   it('sends null, not undefined, when pressure is cleared', () => {
@@ -187,7 +193,7 @@ describe('TireList', () => {
     render(<TireList vin="1HGCM82633A004352" />)
     fireEvent.click(screen.getByLabelText('tireList.edit'))
 
-    // 240 kPa / 6.89476 = 34.809..., and PSI renders at one decimal.
+    // 240 kPa / 6.894757... = 34.809..., and PSI renders at one decimal.
     const input = screen.getByLabelText('tireList.pressureWithUnit') as HTMLInputElement
     expect(input.value).toBe('34.8')
   })
@@ -387,8 +393,8 @@ describe('TireList', () => {
       // user never touched. This is the reading path's own seed and submit,
       // separate from Add and Edit, which is how it was missed.
       expect(payload.tread_depth_mm).toBe(7.5)
-      // 36 PSI x 6.89476 = 248.21136 kPa, the field that WAS edited.
-      expect(payload.pressure_kpa).toBe(248.21136)
+      // 36 PSI x 6.894757293168361 = 248.211262554 kPa, the field that WAS edited.
+      expect(payload.pressure_kpa).toBe(248.211262554)
     })
 
     it('reads the card tread in the same unit the form accepts', () => {
@@ -478,10 +484,10 @@ describe('TireList', () => {
       // missing key would leave the reader unable to tell "not measured" from
       // "the client forgot the field".
       expect(payload).toHaveProperty('tread_depth_mm', null)
-      // 36 PSI x 6.89476 = 248.21136 kPa
-      expect(payload.pressure_kpa).toBe(248.21136)
-      // 100 mi x 1.60934 = 160.934 km, carried through as context.
-      expect(payload.odometer_km).toBe(160.934)
+      // 36 PSI x 6.894757293168361 = 248.211262554 kPa
+      expect(payload.pressure_kpa).toBe(248.211262554)
+      // 100 mi x 1.609344 = 160.9344 km, carried through as context.
+      expect(payload.odometer_km).toBe(160.9344)
     })
 
     it('steps the tread inputs by whole thirty-seconds', () => {
@@ -558,6 +564,98 @@ describe('TireList', () => {
       expect(screen.queryByText('tireList.historyEmpty')).not.toBeInTheDocument()
       expect(screen.getByText('tireList.editTitleNamed')).toBeInTheDocument()
     })
+  })
+
+  it('offers Fix only when a period blocks a figure, and Fix opens the history', () => {
+    useTiresMock.mockReturnValue({
+      data: { tires: [{ ...STORED_FL_TIRE, blocking_period_ids: [3], mount_periods: [] }], total: 1 },
+      isLoading: false,
+      error: null,
+    })
+    render(<TireList vin="1HGCM82633A004352" />)
+    fireEvent.click(screen.getByText('tireList.fix'))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('has no Fix control when nothing blocks', () => {
+    render(<TireList vin="1HGCM82633A004352" />)
+    expect(screen.queryByText('tireList.fix')).toBeNull()
+  })
+
+  it('offers Fix when history holds a contradiction even though nothing is blocked', () => {
+    useTiresMock.mockReturnValue({
+      data: {
+        tires: [
+          {
+            ...STORED_FL_TIRE,
+            blocking_period_ids: [],
+            history_faults: [{ period_id: 3, code: 'overlapping_dates', counterpart_id: 4, message: 'M' }],
+            mount_periods: [],
+          },
+        ],
+        total: 1,
+      },
+      isLoading: false,
+      error: null,
+    })
+    render(<TireList vin="1HGCM82633A004352" />)
+    expect(screen.getByText('tireList.fix')).toBeInTheDocument()
+  })
+
+  it('offers Fix on a stored tire whose history holds a contradiction', () => {
+    useTiresMock.mockReturnValue({
+      data: {
+        tires: [
+          {
+            ...STORED_FL_TIRE,
+            position: null,
+            blocking_period_ids: [],
+            history_faults: [{ period_id: 3, code: 'overlapping_dates', counterpart_id: 4, message: 'M' }],
+            mount_periods: [],
+          },
+        ],
+        total: 1,
+      },
+      isLoading: false,
+      error: null,
+    })
+    render(<TireList vin="1HGCM82633A004352" />)
+    expect(screen.getByText('tireList.fix')).toBeInTheDocument()
+  })
+
+  const OPEN_PERIOD ={ id: 11, position: 'FL', mounted_on: '2026-04-10', dismounted_on: null, mounted_odometer_km: '152159.00', dismounted_odometer_km: null, is_assumed: false, observed_active_on: null, notes: null }
+
+  it('the mounted card names its current mount', () => {
+    useTiresMock.mockReturnValue({ data: { tires: [{ ...STORED_FL_TIRE, mount_periods: [OPEN_PERIOD] }], total: 1 }, isLoading: false, error: null })
+    render(<TireList vin="1HGCM82633A004352" />)
+    expect(screen.getByText('tireList.mountedOn')).toBeInTheDocument()
+    expect(screen.getByText('tireList.mountedLine')).toBeInTheDocument()
+  })
+
+  it('says which half of the mount is unknown', () => {
+    useTiresMock.mockReturnValue({ data: { tires: [{ ...STORED_FL_TIRE, mount_periods: [{ ...OPEN_PERIOD, mounted_on: null }] }], total: 1 }, isLoading: false, error: null })
+    render(<TireList vin="1HGCM82633A004352" />)
+    expect(screen.getByText('tireList.mountedOdometerOnly')).toBeInTheDocument()
+  })
+
+  it('says which half of the mount is unknown, the other way round', () => {
+    useTiresMock.mockReturnValue({ data: { tires: [{ ...STORED_FL_TIRE, mount_periods: [{ ...OPEN_PERIOD, mounted_odometer_km: null }] }], total: 1 }, isLoading: false, error: null })
+    render(<TireList vin="1HGCM82633A004352" />)
+    expect(screen.getByText('tireList.mountedDateOnly')).toBeInTheDocument()
+  })
+
+  it('says both halves of the mount are unknown', () => {
+    useTiresMock.mockReturnValue({ data: { tires: [{ ...STORED_FL_TIRE, mount_periods: [{ ...OPEN_PERIOD, mounted_on: null, mounted_odometer_km: null }] }], total: 1 }, isLoading: false, error: null })
+    render(<TireList vin="1HGCM82633A004352" />)
+    expect(screen.getByText('tireList.mountedUnknown')).toBeInTheDocument()
+  })
+
+  it('the stored card says since when, and where', () => {
+    const stored = { ...STORED_FL_TIRE, position: null, storage_location: 'Garage shelf B', mount_periods: [{ ...OPEN_PERIOD, dismounted_on: '2026-09-01', dismounted_odometer_km: '160000.00' }] }
+    useTiresMock.mockReturnValue({ data: { tires: [stored], total: 1 }, isLoading: false, error: null })
+    render(<TireList vin="1HGCM82633A004352" />)
+    expect(screen.getByText(/tireList\.inStorageSince/)).toBeInTheDocument()
+    expect(screen.getByText(/Garage shelf B/)).toBeInTheDocument()
   })
 })
 

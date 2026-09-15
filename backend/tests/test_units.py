@@ -17,9 +17,9 @@ class TestToCanonicalDecimal:
         assert UnitConverter.to_canonical_decimal(148761, "km") == Decimal("148761")
 
     def test_miles_to_km_decimal_safe(self) -> None:
-        # 92437 mi * 1.60934 = 148762.56158 — full precision retained
+        # 92437 mi * 1.609344 = 148762.931328 -- full precision retained
         result = UnitConverter.to_canonical_decimal(92437, "mi")
-        assert result == Decimal("92437") * Decimal("1.60934")
+        assert result == Decimal("92437") * Decimal("1.609344")
 
     def test_liters_passthrough_preserves_decimal(self) -> None:
         # User types 37.854 → must round-trip exactly (issue #67's repro case)
@@ -28,7 +28,7 @@ class TestToCanonicalDecimal:
 
     def test_gallons_to_liters(self) -> None:
         result = UnitConverter.to_canonical_decimal(10, "gal")
-        assert result == Decimal("10") * Decimal("3.78541")
+        assert result == Decimal("10") * Decimal("3.785411784")
 
     def test_lb_to_kg_uses_full_precision_factor(self) -> None:
         # Migration 053 uses 0.45359237 (not the older 0.453592 truncation).
@@ -45,13 +45,15 @@ class TestToCanonicalDecimal:
         assert UnitConverter.to_canonical_decimal(212, "F") == Decimal("100")
 
     def test_psi_to_kpa(self) -> None:
+        # PSI_TO_KPA = 0.45359237 * 9.80665 / 0.0254**2 / 1000 = 6.894757293168361336722673445
         result = UnitConverter.to_canonical_decimal(30, "PSI")
-        assert result == Decimal("30") * Decimal("6.89476")
+        assert result == Decimal("30") * Decimal("6.894757293168361336722673445")
 
     def test_mpg_to_l_per_100km(self) -> None:
-        # 18 MPG → 235.214 / 18
+        # numerator = 100 * 3.785411784 / 1.609344 = 235.2145833333333333333333333
+        # 18 MPG -> 235.2145833333333333333333333 / 18
         result = UnitConverter.to_canonical_decimal(18, "MPG")
-        assert result == Decimal("235.214") / Decimal("18")
+        assert result == Decimal("235.2145833333333333333333333") / Decimal("18")
 
     def test_mpg_zero_returns_none(self) -> None:
         # Avoid divide-by-zero for unset window-sticker spec values.

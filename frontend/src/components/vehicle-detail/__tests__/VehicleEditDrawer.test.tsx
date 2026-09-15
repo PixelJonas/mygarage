@@ -843,7 +843,7 @@ describe('VehicleEditDrawer — the DEF tank capacity is the eighth gallon write
     //
     // So this case TYPES a value. 5.00 imperial gallons x 4.54609 = 22.73045,
     // which the wire precision rounds to 22.730. Through `u.mass` it would be
-    // 5 x 0.453592 = 2.268, and through the US gallon 18.927.
+    // 5 x 0.45359237 = 2.268, and through the US gallon 18.927.
     UnitConverter.setGallonStandard('us')
     unitPrefMock.system = 'imperial'
     unitPrefMock.units = UK_IMPERIAL_UNITS
