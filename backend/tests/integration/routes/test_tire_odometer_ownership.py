@@ -831,3 +831,79 @@ class TestNonTireSourcesKeepOneReadingPerDay:
             (DAY, Decimal("70300"), auto_sync_marker("fuel", second), "fuel", second)
         ]
         assert not {r.source for r in records} & TIRE_SOURCES
+
+    async def test_a_fill_up_edit_updates_its_own_row_beside_a_newer_manual_one(
+        self, client: AsyncClient, auth_headers, vehicle, db_session
+    ):
+        """A source's own row is found by its marker first: a manual entry added
+        later that day does not stop the fill-up's corrected figure landing."""
+        fuel_id = await _fuel(client, auth_headers, vehicle, DAY, "70000")
+        manual = await client.post(
+            f"/api/vehicles/{vehicle}/odometer",
+            headers=auth_headers,
+            json={"vin": vehicle, "date": DAY.isoformat(), "odometer_km": "70100", "notes": "hand"},
+        )
+        assert manual.status_code == 201, manual.text
+
+        edited = await client.put(
+            f"/api/vehicles/{vehicle}/fuel/{fuel_id}",
+            headers=auth_headers,
+            json={"odometer_km": "70050"},
+        )
+        assert edited.status_code == 200, edited.text
+
+        assert await _rows(db_session, vehicle) == [
+            (DAY, Decimal("70050"), auto_sync_marker("fuel", fuel_id), "fuel"),
+            (DAY, Decimal("70100"), "hand", "manual"),
+        ]
+
+
+@pytest.mark.asyncio
+class TestNonTireSourcesNeverTakeOverATiresRow:
+    """Fuel, DEF and service visits take over the day's automatic row, but not
+    one a tire event wrote: that row is moved and deleted by the tire's own
+    marker, and a service visit that re-marked it removed the tire's reading."""
+
+    async def test_resaving_a_same_day_service_visit_keeps_the_tires_row(
+        self, client: AsyncClient, auth_headers, vehicle, db_session
+    ):
+        visit_id = await _service_visit(client, auth_headers, vehicle, DAY, "50000")
+        tire_id = await _create_and_mount(
+            client,
+            auth_headers,
+            vehicle,
+            "FL",
+            mounted_on=DAY.isoformat(),
+            mounted_odometer_km="50012",
+        )
+        before = await _rows(db_session, vehicle)
+        assert before[0] == _service_row(visit_id, "50000")
+        _own_row(before, "50012", ODOMETER_SOURCE_TIRE_MOUNT)
+
+        saved = await client.put(
+            f"/api/vehicles/{vehicle}/service-visits/{visit_id}",
+            headers=auth_headers,
+            json={"notes": "invoice attached"},
+        )
+        assert saved.status_code == 200, saved.text
+
+        assert await _rows(db_session, vehicle) == before
+        tire = await _tire_json(client, auth_headers, vehicle, tire_id)
+        assert tire["distance_status"] == "complete"
+
+    async def test_a_new_service_visit_beside_a_tires_row_creates_its_own(
+        self, client: AsyncClient, auth_headers, vehicle, db_session
+    ):
+        await _create_and_mount(
+            client,
+            auth_headers,
+            vehicle,
+            "FL",
+            mounted_on=DAY.isoformat(),
+            mounted_odometer_km="50012",
+        )
+        (tire_row,) = await _rows(db_session, vehicle)
+
+        visit_id = await _service_visit(client, auth_headers, vehicle, DAY, "50000")
+
+        assert await _rows(db_session, vehicle) == [tire_row, _service_row(visit_id, "50000")]

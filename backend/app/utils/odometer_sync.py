@@ -17,6 +17,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import OdometerRecord
 from app.utils.odometer_tolerance import odometer_below
 
+#: The start of every marker a tire event writes: `tire` (readings),
+#: `tire_mount`, `tire_dismount`, `tire_rotation` and `tire_set` all begin
+#: with it. Those rows are moved and deleted by the tire's own marker, so no
+#: other source may take one over.
+TIRE_MARKER_PREFIX = "[AUTO-SYNC from tire"
+
+
+def is_tire_marked(record: OdometerRecord) -> bool:
+    """Whether a tire event wrote this odometer record."""
+    return record.notes is not None and record.notes.startswith(TIRE_MARKER_PREFIX)
+
 
 def auto_sync_marker(source_type: str, source_id: int) -> str:
     """The note that marks an odometer row as owned by one source record.
@@ -69,11 +80,16 @@ async def sync_odometer_from_record(
 
     Behavior:
         - Skips sync if odometer_km is None
-        - Checks for existing odometer record on same (vin, date)
-        - If exists and was auto-synced or from livelink: updates odometer_km
-          (user-entered fuel/service data is more authoritative than LiveLink)
-        - If exists and was manual: does not overwrite
-        - If not exists: creates new odometer record with source marker
+        - A record on the same (vin, date) carrying this source's own marker:
+          updates it, whatever else the day holds
+        - Otherwise the newest record of the day that no tire event wrote:
+          if it was auto-synced or from livelink, takes it over (user-entered
+          fuel/service data is more authoritative than LiveLink); if it was
+          manual, does not overwrite
+        - A record a tire event wrote (`is_tire_marked`) is never taken over:
+          the tire moves and deletes it by its own marker, so re-marking it
+          would remove the tire's reading
+        - Otherwise creates a new odometer record with source marker
 
     With `claim_other_records=False` the source never touches a record it did
     not create. A record on that date carrying this source's own marker has
@@ -117,12 +133,15 @@ async def sync_odometer_from_record(
     fk_value = source_id if source_type == "fuel" else None
 
     if claim_other_records:
-        existing = same_day[0] if same_day else None
-        if existing is not None:
-            is_auto_synced = existing.notes and "[AUTO-SYNC from" in existing.notes
-            is_livelink = existing.source == "livelink"
-            if not (is_auto_synced or is_livelink):
-                return None
+        existing = next((row for row in same_day if row.notes == marker), None)
+        if existing is None:
+            candidate = next((row for row in same_day if not is_tire_marked(row)), None)
+            if candidate is not None:
+                is_auto_synced = candidate.notes and "[AUTO-SYNC from" in candidate.notes
+                is_livelink = candidate.source == "livelink"
+                if not (is_auto_synced or is_livelink):
+                    return None
+                existing = candidate
     else:
         # Found by marker, not by being the day's newest: a record added
         # beside this source's own does not stop its figure being corrected.
