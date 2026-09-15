@@ -606,8 +606,10 @@ class TelemetryService:
     ) -> None:
         """Sync odometer record from telemetry if odometer PID is present.
 
-        Only creates one record per day to avoid spamming the odometer table.
-        Records are marked with source='livelink'.
+        Keeps at most one LiveLink record per day, to avoid spamming the
+        odometer table, marked with source='livelink'. It updates that record
+        or creates it beside the day's other readings, and never modifies a
+        record of another source.
         """
         # Find odometer value in telemetry
         odometer_value: float | None = None
@@ -678,20 +680,29 @@ class TelemetryService:
         today = date_type.today()
         record_date = min(timestamp.date(), today) if timestamp else today
 
+        # LiveLink owns only its own rows. A day can hold several odometer rows
+        # (a service visit and the tire mount it did, a tread reading above
+        # this device's earlier one), so "the" row of the day is not a thing to
+        # look up: asking for exactly one raised on every odometer-bearing
+        # message of such a day and rolled the whole message back. The day's
+        # own LiveLink row is updated; otherwise one is created beside whatever
+        # the day holds, and no other source's row is ever modified. The guard
+        # above admits only a reading above every stored one, so a created row
+        # is always the day's highest.
         result = await self.db.execute(
-            select(OdometerRecord).where(
+            select(OdometerRecord)
+            .where(
                 OdometerRecord.vin == vin,
                 OdometerRecord.date == record_date,
+                OdometerRecord.source == "livelink",
             )
+            .order_by(OdometerRecord.id.desc())
         )
-        existing = result.scalar_one_or_none()
+        existing = result.scalars().first()
 
-        if existing:
-            # Only update if this is a LiveLink record (don't overwrite manual entries)
-            if existing.source == "livelink":
-                existing.odometer_km = odometer_km
-                existing.notes = f"Auto-updated from LiveLink ({odometer_key})"
-            # else: manual entry, don't overwrite
+        if existing is not None:
+            existing.odometer_km = odometer_km
+            existing.notes = f"Auto-updated from LiveLink ({odometer_key})"
         else:
             # Create new odometer record
             odometer_record = OdometerRecord(
