@@ -234,9 +234,9 @@ class TestThirdPartyFuelImport:
     async def test_truly_identical_rows_still_dedupe(self, test_engine, test_vehicle):
         """Regression guard, expected to pass before and after this task.
 
-        Uses an explicitly non-autoflushing session because production does
-        (app/database.py:84) while the shared db_session fixture defaults to
-        autoflush=True (tests/conftest.py:68-70).
+        Uses an explicitly non-autoflushing session, pinning production's
+        setting (app/database.py:84) directly over test_engine, independent
+        of conftest's test_sessionmaker.
         """
         from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 

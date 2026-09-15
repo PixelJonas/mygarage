@@ -9,8 +9,9 @@ watermark unmoved, so the device's SD backfill retried the same file
 forever.
 
 These tests build their own `autoflush=False` sessionmaker over `test_engine`
-(the pattern in `tests/integration/routes/test_tire_periods.py`), because the
-shared `test_sessionmaker` still autoflushes and would hide the defect.
+(the pattern in `tests/integration/routes/test_tire_periods.py`), pinning
+production's setting directly rather than depending on conftest's
+`test_sessionmaker`.
 """
 
 from __future__ import annotations

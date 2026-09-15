@@ -189,7 +189,9 @@ class TestLockHelper:
         if impatient is not None:
             configure_sqlite_engine(impatient)
         waiters = (
-            async_sessionmaker(impatient, class_=AsyncSession, expire_on_commit=False)
+            async_sessionmaker(
+                impatient, class_=AsyncSession, expire_on_commit=False, autoflush=False
+            )
             if impatient is not None
             else test_sessionmaker
         )

@@ -38,10 +38,10 @@ from app.models.odometer import OdometerRecord
 async def _production_session(test_engine):
     """Route one request through a session that does not autoflush.
 
-    Production sessions never autoflush (`app/database.py`); the shared
-    `db_session` fixture behind `client` does (`tests/conftest.py`), which
-    lets a same-session duplicate check see an unflushed insert by accident
-    and hides the defect these tests exist to catch.
+    Production sessions never autoflush (`app/database.py`). This builds its
+    own sessionmaker over `test_engine` and pins the same setting directly,
+    independent of conftest's `test_sessionmaker`, so these tests keep
+    exercising production's unit of work even if conftest's setting changes.
     """
     maker = async_sessionmaker(
         test_engine, class_=AsyncSession, expire_on_commit=False, autoflush=False
@@ -73,10 +73,10 @@ class TestOneUploadCannotImportTheSameRowTwice:
     upload both pass the check against a table that does not yet hold either
     of them, so both import despite `skip_duplicates`.
 
-    Uses an explicitly non-autoflushing session, matching production
-    (`app/database.py`): the shared `client` fixture's session autoflushes
-    (`tests/conftest.py`), which would let the second row's duplicate check
-    see the first row's unflushed insert by accident and hide the defect.
+    Uses `_production_session`, an explicitly non-autoflushing session pinned
+    directly over `test_engine` (`app/database.py`), independent of
+    conftest's `client` fixture, so these tests keep exercising production's
+    unit of work even if conftest's setting changes.
     """
 
     async def test_fuel_csv_skips_a_row_repeated_within_one_upload(

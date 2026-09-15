@@ -1025,8 +1025,9 @@ class TestEditorUnderProductionUnitOfWork:
     """The editor's odometer follow on a session that does NOT autoflush.
 
     `app/database.py` builds every request session with `autoflush=False`.
-    The shared test session autoflushes, so every test above runs a unit of
-    work production never does, and this defect was invisible to all of them.
+    This class builds its own sessionmaker pinned to that setting directly,
+    independent of conftest's `test_sessionmaker`, so it keeps exercising
+    production's unit of work even if conftest's setting changes.
 
     The shape: a period mounted and dismounted on one day, owning its mount
     record and no dismount record (dismounted without an odometer). One save

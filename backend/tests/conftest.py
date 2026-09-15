@@ -66,8 +66,16 @@ async def test_engine():
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def test_sessionmaker(test_engine):
-    """Create session maker for tests."""
-    return async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    """Create session maker for tests.
+
+    `autoflush=False`, exactly as `app/database.py` builds production sessions.
+    With the default the suite flushed before every query, so a service that
+    added a row and then queried for it in the same unit of work passed every
+    test and failed in production.
+    """
+    return async_sessionmaker(
+        test_engine, class_=AsyncSession, expire_on_commit=False, autoflush=False
+    )
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")

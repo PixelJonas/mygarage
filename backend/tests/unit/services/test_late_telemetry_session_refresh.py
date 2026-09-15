@@ -142,13 +142,11 @@ class TestLateTelemetrySessionRefresh:
 async def no_autoflush_sessionmaker(test_engine, init_test_db) -> async_sessionmaker[AsyncSession]:
     """A sessionmaker matching production's autoflush=False (`app/database.py`).
 
-    `test_sessionmaker` in `conftest.py` still autoflushes, which is exactly
-    what let `test_replayed_reading_updates_the_closed_session_max_speed`
-    above pass: the SELECT inside `refresh_aggregates` triggered an autoflush
-    of the still-pending reading before it ran, standing in for the flush
-    production never gets. `test_engine` alone never creates the schema, so
-    this depends on `init_test_db` too, to keep this module runnable when it
-    is the only file selected.
+    `test_sessionmaker` in `conftest.py` pins the same setting now, but this
+    maker is built directly over `test_engine` so the class below does not
+    depend on conftest's configuration for it. `test_engine` alone never
+    creates the schema, so this depends on `init_test_db` too, to keep this
+    module runnable when it is the only file selected.
     """
     return async_sessionmaker(
         test_engine, class_=AsyncSession, expire_on_commit=False, autoflush=False
@@ -161,8 +159,8 @@ async def _seed_closed_session_no_autoflush(
     """Build a closed session with a seeded 50 km/h sample, on the given session.
 
     Mirrors `make_closed_session` above, but takes its `AsyncSession` directly
-    instead of the (autoflushing) `db_session` fixture, since
-    `make_closed_drive_session` is bound to that fixture.
+    instead of the `db_session` fixture, since `make_closed_drive_session` is
+    bound to that fixture.
     """
     now = utc_now().replace(tzinfo=None)
 
@@ -322,12 +320,13 @@ async def _cleanup_no_autoflush(
 
 @pytest.mark.asyncio
 class TestLateTelemetrySessionRefreshWithoutAutoflush:
-    """The same repair, proven on a session that does not autoflush for it.
+    """The same repair, proven on a session that does not depend on conftest.
 
-    Production sessions never autoflush (`app/database.py`), so the class
-    above proves nothing about whether `_refresh_closed_session` sees a
-    reading this same call just added. These tests build their own session
-    over `test_engine` to remove that autoflush safety net.
+    `app/database.py` builds every request session with `autoflush=False`.
+    This class builds its own sessionmaker pinned to that setting directly
+    over `test_engine`, independent of conftest's `test_sessionmaker`, so it
+    keeps exercising production's unit of work even if conftest's setting
+    ever changes.
     """
 
     async def test_replayed_reading_raises_the_closed_session_max_speed_without_autoflush(

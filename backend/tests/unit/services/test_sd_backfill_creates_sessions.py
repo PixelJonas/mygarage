@@ -509,10 +509,10 @@ class TestReconstructionAtATouchingBoundary:
     through `_reconstruct_sessions_from_batch` on a session that does not
     autoflush, the way `app/database.py` builds every production session.
 
-    The shared `db_session` fixture autoflushes, which would silently reveal
-    an in-loop, unflushed session to the next drive's overlap query -- a unit
-    of work production never runs. Builds its own session over `test_engine`
-    instead, matching `test_tire_periods.py`'s
+    Builds its own session over `test_engine`, pinning `autoflush=False`
+    directly rather than depending on conftest's `test_sessionmaker`, so this
+    class keeps exercising production's unit of work even if that setting
+    ever changes. Matches `test_tire_periods.py`'s
     `TestEditorUnderProductionUnitOfWork`.
     """
 
