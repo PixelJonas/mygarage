@@ -38,8 +38,9 @@ from typing import Any
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import InstrumentedAttribute
 
 from app.config import settings
 from app.constants.fuel import FuelTypeEnum, normalize_fuel_type
@@ -124,6 +125,40 @@ def _normalized_fuel_type(raw: str | None) -> str | None:
     """A legacy free-text fuel type as its canonical enum value, or None."""
     normalized = normalize_fuel_type(raw)
     return normalized.value if normalized is not None else None
+
+
+#: Odometer columns are NUMERIC(10, 2); volume columns NUMERIC(9, 3).
+_KM_STEP = Decimal("0.01")
+_LITRE_STEP = Decimal("0.001")
+#: The widest relative gap between a figure converted with the exact factors
+#: and the same figure converted before v3.4.0: the old mile (1.60934 km) sat
+#: 2.49 parts per million below the exact one, the old US gallon 0.47 below.
+_FACTOR_DRIFT = Decimal("3e-6")
+
+
+def _converted_value_matches(
+    column: InstrumentedAttribute[Any], value: Decimal | None, step: Decimal
+) -> ColumnElement[bool]:
+    """A duplicate-check condition on a column holding a unit-converted value.
+
+    Values stored before the exact conversion factors differ from the same
+    figure converted today by a few parts per million, on top of the column's
+    rounding to `step`, so an equality match would import a pre-upgrade row a
+    second time. The band allows the two together; an absent value still
+    matches only NULL. More than one stored row can fall inside the band, so a
+    caller treats any match as the duplicate rather than asking for exactly one.
+    """
+    if value is None:
+        return column.is_(None)
+    tolerance = abs(value) * _FACTOR_DRIFT + step
+    return column.between(value - tolerance, value + tolerance)
+
+
+def _odometer_matches(
+    column: InstrumentedAttribute[Any], odometer_km: Decimal | None
+) -> ColumnElement[bool]:
+    """`_converted_value_matches` for an odometer column, in km."""
+    return _converted_value_matches(column, odometer_km, _KM_STEP)
 
 
 router = APIRouter(prefix="/api/import", tags=["import"])
@@ -315,10 +350,10 @@ async def import_service_csv(
                     select(ServiceVisit).where(
                         ServiceVisit.vin == vin,
                         ServiceVisit.date == date,
-                        ServiceVisit.odometer_km == odometer_km,
+                        _odometer_matches(ServiceVisit.odometer_km, odometer_km),
                     )
                 )
-                if existing.scalar_one_or_none():
+                if existing.scalars().first():
                     import_result.add_skip()
                     continue
 
@@ -472,10 +507,10 @@ async def import_fuel_csv(
                     select(FuelRecord).where(
                         FuelRecord.vin == vin,
                         FuelRecord.date == date,
-                        FuelRecord.odometer_km == odometer_km,
+                        _odometer_matches(FuelRecord.odometer_km, odometer_km),
                     )
                 )
-                if existing.scalar_one_or_none():
+                if existing.scalars().first():
                     import_result.add_skip()
                     continue
 
@@ -564,10 +599,10 @@ async def import_def_csv(
                     select(DEFRecord).where(
                         DEFRecord.vin == vin,
                         DEFRecord.date == date,
-                        DEFRecord.odometer_km == odometer_km,
+                        _odometer_matches(DEFRecord.odometer_km, odometer_km),
                     )
                 )
-                if existing.scalar_one_or_none():
+                if existing.scalars().first():
                     import_result.add_skip()
                     continue
 
@@ -644,10 +679,10 @@ async def import_odometer_csv(
                     select(OdometerRecord).where(
                         OdometerRecord.vin == vin,
                         OdometerRecord.date == date,
-                        OdometerRecord.odometer_km == odometer_km,
+                        _odometer_matches(OdometerRecord.odometer_km, odometer_km),
                     )
                 )
-                if existing.scalar_one_or_none():
+                if existing.scalars().first():
                     import_result.add_skip()
                     continue
 
@@ -1124,10 +1159,10 @@ async def import_vehicle_json(
                     select(ServiceVisit).where(
                         ServiceVisit.vin == vin,
                         ServiceVisit.date == date,
-                        ServiceVisit.odometer_km == imported_odometer_km,
+                        _odometer_matches(ServiceVisit.odometer_km, imported_odometer_km),
                     )
                 )
-                if existing.scalar_one_or_none():
+                if existing.scalars().first():
                     results["service_records"]["skipped"] += 1
                     continue
 
@@ -1212,10 +1247,10 @@ async def import_vehicle_json(
                     select(FuelRecord).where(
                         FuelRecord.vin == vin,
                         FuelRecord.date == date,
-                        FuelRecord.odometer_km == imported_odometer_km,
+                        _odometer_matches(FuelRecord.odometer_km, imported_odometer_km),
                     )
                 )
-                if existing.scalar_one_or_none():
+                if existing.scalars().first():
                     results["fuel_records"]["skipped"] += 1
                     continue
 
@@ -1273,10 +1308,10 @@ async def import_vehicle_json(
                     select(DEFRecord).where(
                         DEFRecord.vin == vin,
                         DEFRecord.date == date,
-                        DEFRecord.odometer_km == imported_odometer_km,
+                        _odometer_matches(DEFRecord.odometer_km, imported_odometer_km),
                     )
                 )
-                if existing.scalar_one_or_none():
+                if existing.scalars().first():
                     results["def_records"]["skipped"] += 1
                     continue
 
@@ -1323,10 +1358,10 @@ async def import_vehicle_json(
                     select(OdometerRecord).where(
                         OdometerRecord.vin == vin,
                         OdometerRecord.date == date,
-                        OdometerRecord.odometer_km == imported_odometer_km,
+                        _odometer_matches(OdometerRecord.odometer_km, imported_odometer_km),
                     )
                 )
-                if existing.scalar_one_or_none():
+                if existing.scalars().first():
                     results["odometer_records"]["skipped"] += 1
                     continue
 
@@ -1567,12 +1602,24 @@ async def import_external_fuel_csv(
 # When an export carries no time at all, filled_at is NULL on both rows and two
 # sessions with the same odometer and the same amount are genuinely
 # indistinguishable in the data, so collapsing them is correct.
-_IMPORT_DUPLICATE_FIELDS = (
-    "filled_at",
-    "odometer_km",
-    "liters",
-    "kwh",
-)
+def _third_party_duplicate_conditions(
+    vin: str, row: Mapping[str, Any]
+) -> list[ColumnElement[bool]]:
+    """The natural key above, as the conditions a stored duplicate must meet.
+
+    `filled_at` and `kwh` are never converted and match exactly (`== None`
+    renders as IS NULL). The odometer and the volume may have been converted
+    from miles and gallons, so they match within `_converted_value_matches`'s
+    band.
+    """
+    return [
+        FuelRecord.vin == vin,
+        FuelRecord.date == row.get("date"),
+        FuelRecord.filled_at == row.get("filled_at"),
+        _odometer_matches(FuelRecord.odometer_km, row.get("odometer_km")),
+        _converted_value_matches(FuelRecord.liters, row.get("liters"), _LITRE_STEP),
+        FuelRecord.kwh == row.get("kwh"),
+    ]
 
 
 def _parse_options(odometer_unit: str, decimal_separator: str):
@@ -1623,12 +1670,9 @@ async def _persist_parsed_fuel(
                 continue
             odometer_km = row.get("odometer_km")
             if skip_duplicates:
-                # `== None` renders as IS NULL in SQLAlchemy, so nullable
-                # columns match correctly without a special case.
-                predicates = [FuelRecord.vin == vin, FuelRecord.date == date]
-                for field in _IMPORT_DUPLICATE_FIELDS:
-                    predicates.append(getattr(FuelRecord, field) == row.get(field))
-                existing = await db.execute(select(FuelRecord).where(*predicates))
+                existing = await db.execute(
+                    select(FuelRecord).where(*_third_party_duplicate_conditions(vin, row))
+                )
                 # .first(), not scalar_one_or_none(): pre-existing duplicates in
                 # the table would otherwise raise MultipleResultsFound.
                 if existing.scalars().first():
