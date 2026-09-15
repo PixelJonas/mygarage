@@ -4179,6 +4179,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/vehicles/{vin}/financing-records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Financing Records
+         * @description Get all financing records for a vehicle.
+         */
+        get: operations["list_financing_records_api_vehicles__vin__financing_records_get"];
+        put?: never;
+        /**
+         * Create Financing Record
+         * @description Create a new financing record for a vehicle.
+         */
+        post: operations["create_financing_record_api_vehicles__vin__financing_records_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vehicles/{vin}/financing-records/{record_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Financing Record
+         * @description Get a specific financing record.
+         */
+        get: operations["get_financing_record_api_vehicles__vin__financing_records__record_id__get"];
+        /**
+         * Update Financing Record
+         * @description Update a financing record.
+         */
+        put: operations["update_financing_record_api_vehicles__vin__financing_records__record_id__put"];
+        post?: never;
+        /**
+         * Delete Financing Record
+         * @description Delete a financing record.
+         */
+        delete: operations["delete_financing_record_api_vehicles__vin__financing_records__record_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/vehicles/{vin}/fuel": {
         parameters: {
             query?: never;
@@ -8854,6 +8906,164 @@ export interface components {
             vin: string;
             /** Year */
             year?: number | null;
+        };
+        /**
+         * FinancingRecordCreate
+         * @description Schema for creating a new financing record.
+         * @example {
+         *       "amount": 450,
+         *       "category": "lease_payment",
+         *       "date": "2026-01-01",
+         *       "notes": "Monthly lease payment",
+         *       "vin": "ML32A5HJ9KH009478"
+         *     }
+         */
+        FinancingRecordCreate: {
+            /**
+             * Amount
+             * @description Payment or fee amount
+             */
+            amount: number | string;
+            /**
+             * Category
+             * @description Type of financing cost
+             * @enum {string}
+             */
+            category: "lease_payment" | "loan_payment" | "upfront_fee";
+            /**
+             * Date
+             * Format: date
+             * @description Date of the payment or fee
+             */
+            date: string;
+            /**
+             * Notes
+             * @description Additional notes
+             */
+            notes?: string | null;
+            /**
+             * Tax Amount
+             * @description Net/VAT tax portion, if known
+             */
+            tax_amount?: number | string | null;
+            /**
+             * Vendor Id
+             * @description Associated vendor/lender ID
+             */
+            vendor_id?: number | null;
+            /**
+             * Vin
+             * @description VIN of the vehicle
+             */
+            vin: string;
+        };
+        /**
+         * FinancingRecordListResponse
+         * @description Schema for financing record list response.
+         * @example {
+         *       "financing_records": [],
+         *       "total": 0
+         *     }
+         */
+        FinancingRecordListResponse: {
+            /** Financing Records */
+            financing_records: components["schemas"]["FinancingRecordResponse"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * FinancingRecordResponse
+         * @description Schema for financing record response.
+         * @example {
+         *       "amount": 450,
+         *       "category": "lease_payment",
+         *       "created_at": "2026-01-01T10:00:00",
+         *       "date": "2026-01-01",
+         *       "id": 1,
+         *       "notes": "Monthly lease payment",
+         *       "vin": "ML32A5HJ9KH009478"
+         *     }
+         */
+        FinancingRecordResponse: {
+            /**
+             * Amount
+             * @description Payment or fee amount
+             */
+            amount: string;
+            /**
+             * Category
+             * @description Type of financing cost
+             * @enum {string}
+             */
+            category: "lease_payment" | "loan_payment" | "upfront_fee";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Date
+             * Format: date
+             * @description Date of the payment or fee
+             */
+            date: string;
+            /** Id */
+            id: number;
+            /**
+             * Notes
+             * @description Additional notes
+             */
+            notes?: string | null;
+            /**
+             * Tax Amount
+             * @description Net/VAT tax portion, if known
+             */
+            tax_amount?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+            /**
+             * Vendor Id
+             * @description Associated vendor/lender ID
+             */
+            vendor_id?: number | null;
+            /** Vin */
+            vin: string;
+        };
+        /**
+         * FinancingRecordUpdate
+         * @description Schema for updating an existing financing record.
+         */
+        FinancingRecordUpdate: {
+            /**
+             * Amount
+             * @description Payment or fee amount
+             */
+            amount?: number | string | null;
+            /**
+             * Category
+             * @description Type of financing cost
+             */
+            category?: ("lease_payment" | "loan_payment" | "upfront_fee") | null;
+            /**
+             * Date
+             * @description Date of the payment or fee
+             */
+            date?: string | null;
+            /**
+             * Notes
+             * @description Additional notes
+             */
+            notes?: string | null;
+            /**
+             * Tax Amount
+             * @description Net/VAT tax portion, if known
+             */
+            tax_amount?: number | string | null;
+            /**
+             * Vendor Id
+             * @description Associated vendor/lender ID
+             */
+            vendor_id?: number | null;
         };
         /**
          * FirmwareInfoResponse
@@ -23620,6 +23830,170 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_financing_records_api_vehicles__vin__financing_records_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinancingRecordListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_financing_record_api_vehicles__vin__financing_records_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FinancingRecordCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinancingRecordResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_financing_record_api_vehicles__vin__financing_records__record_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+                record_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinancingRecordResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_financing_record_api_vehicles__vin__financing_records__record_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+                record_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FinancingRecordUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinancingRecordResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_financing_record_api_vehicles__vin__financing_records__record_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+                record_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

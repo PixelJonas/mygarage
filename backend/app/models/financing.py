@@ -17,7 +17,7 @@ from sqlalchemy import (
     String,
     Text,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.database import Base
@@ -41,6 +41,9 @@ class FinancingRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, onupdate=func.now())
 
+    # Relationships
+    vehicle: Mapped[Vehicle] = relationship("Vehicle", back_populates="financing_records")
+
     __table_args__ = (
         CheckConstraint(
             "category IN ('lease_payment', 'loan_payment', 'upfront_fee')",
@@ -50,3 +53,6 @@ class FinancingRecord(Base):
         Index("idx_financing_records_date", "date"),
         Index("idx_financing_records_vendor_id", "vendor_id"),
     )
+
+
+from app.models.vehicle import Vehicle

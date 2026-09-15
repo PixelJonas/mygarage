@@ -26,6 +26,7 @@ from app.database import Base
 if TYPE_CHECKING:
     from app.models.def_record import DEFRecord
     from app.models.document import Document
+    from app.models.financing import FinancingRecord
     from app.models.fuel import FuelRecord
     from app.models.hours import HoursRecord
     from app.models.insurance import InsurancePolicy
@@ -200,6 +201,9 @@ class Vehicle(Base):
     )
     toll_transactions: Mapped[list[TollTransaction]] = relationship(
         "TollTransaction", back_populates="vehicle", cascade="all, delete-orphan"
+    )
+    financing_records: Mapped[list[FinancingRecord]] = relationship(
+        "FinancingRecord", back_populates="vehicle", cascade="all, delete-orphan"
     )
     service_visits: Mapped[list[ServiceVisit]] = relationship(
         "ServiceVisit", back_populates="vehicle", cascade="all, delete-orphan"
