@@ -1,8 +1,8 @@
 """Mount periods: the odometer records they publish, the contradictions the
-writers refuse, and the editor (Task 6 adds that class).
+writers refuse, and the period editor.
 
 Every tire operation that takes an odometer publishes it as a vehicle
-odometer record so the distance calculation can see it. Before this file
+odometer record so the distance calculation can see it. Before v3.4.0
 mount, dismount, retire AND every tread reading published with one marker,
 `[AUTO-SYNC from tire #<tire_id>]`, so nothing could later say which event a
 record came from. Now each period event has its own marker, which is what
@@ -304,7 +304,7 @@ class TestWritersRefuseContradictions:
     async def test_a_tire_with_an_old_fault_elsewhere_can_still_be_dismounted(
         self, client: AsyncClient, auth_headers, vehicle, db_session
     ):
-        """Incremental policy (plan review R1-M2): a legacy fault on another
+        """Incremental policy: a legacy fault on another
         period neither blocks this write nor is silently healed by it."""
         base = f"/api/vehicles/{vehicle}/tires"
         made = await client.post(
@@ -375,7 +375,7 @@ class TestWritersRefuseContradictions:
     async def test_a_set_fit_dated_before_a_displaced_tires_mount_changes_nothing(
         self, client: AsyncClient, auth_headers, vehicle, db_session
     ):
-        """R1-H2: the tires coming OFF are validated too."""
+        """The tires coming OFF are validated too."""
         base = f"/api/vehicles/{vehicle}/tires"
         y = (
             await client.post(
@@ -882,7 +882,7 @@ class TestMountPeriodEditor:
     async def test_a_notes_only_save_leaves_a_same_day_readings_value_alone(
         self, client: AsyncClient, auth_headers, vehicle, db_session
     ):
-        """Plan review R1-H1. The reading took the mount's same-day record over
+        """The reading took the mount's same-day record over
         with a newer value; a save that changes no bound must not republish
         the older one on top of it."""
         base = f"/api/vehicles/{vehicle}/tires"
@@ -922,7 +922,7 @@ class TestMountPeriodEditor:
     async def test_a_legacy_history_with_two_faults_is_repaired_one_at_a_time(
         self, client: AsyncClient, auth_headers, vehicle, db_session
     ):
-        """Plan review R1-M2. Whole-history refusal would reject either repair."""
+        """Whole-history refusal would reject either repair."""
         tire = Tire(vin=vehicle, position=None, brand="Legacy", mount_periods=[], readings=[])
         db_session.add(tire)
         await db_session.flush()
@@ -983,7 +983,7 @@ class TestMountPeriodEditor:
     async def test_the_counterpart_of_a_legacy_overlap_cannot_be_made_worse(
         self, client: AsyncClient, auth_headers, vehicle, db_session
     ):
-        """Plan review R2-M1. The fault is keyed on the intruder (period 2);
+        """The fault is keyed on the intruder (period 2);
         editing period 1 while the overlap persists must still be refused."""
         tire = Tire(vin=vehicle, position="FL", brand="Overlap", mount_periods=[], readings=[])
         db_session.add(tire)

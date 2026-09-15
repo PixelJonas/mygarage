@@ -568,8 +568,8 @@ class TestRestore:
         self, client: AsyncClient, auth_headers, vehicle, db_session
     ):
         base = f"/api/vehicles/{vehicle}/tires"
-        # mounted_on pinned before the reading's date: the brief's verbatim
-        # values default mounted_on to today (utc_now().date()), which in
+        # mounted_on pinned before the reading's date: left out, mounted_on
+        # defaults to today (utc_now().date()), which in
         # this run postdates "2026-02-01" and makes the reading look like it
         # precedes the mount with a HIGHER odometer -- a genuine contradiction
         # (refuse_contradictions correctly 409s "run backwards"), not the

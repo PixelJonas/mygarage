@@ -91,7 +91,7 @@ class TestSingleRules:
         assert _codes(validate_period_history([p, q], [])) == [(2, OVERLAPPING_ODOMETER)]
 
     def test_a_later_remount_below_an_earlier_dismount_is_caught_in_date_order(self):
-        """Plan review R2-H1. A sweep sorted by odometer alone puts the 500 first
+        """A sweep sorted by odometer alone puts the 500 first
         and sees nothing; chronology is what makes this a contradiction."""
         p = _period(1, start=D(2026, 1, 1), end=D(2026, 1, 31), start_odo="1000", end_odo="2000")
         q = _period(2, start=D(2026, 3, 1), end=None, start_odo="500", end_odo=None)
@@ -160,7 +160,7 @@ class TestShapesThatMustPass:
         assert validate_period_history([q, p], []) == []
 
     def test_clearing_a_later_open_periods_mount_date_is_not_an_overlap(self):
-        """Plan review R1-M1. Sorting an unknown date as earliest put the open
+        """Sorting an unknown date as earliest put the open
         period first and made every closed period "start while it is open"."""
         p = _period(1, start=D(2026, 1, 1), end=D(2026, 3, 1), start_odo="1000", end_odo="2000")
         q = _period(2, start=None, end=None, start_odo="2500", end_odo=None)
@@ -189,7 +189,7 @@ class TestShapesThatMustPass:
 
 
 class TestIncrementalPolicy:
-    """Plan review R1-M2 and R2-M1: absent a strict shrink of the full fault-key
+    """Absent a strict shrink of the full fault-key
     set, a write refuses what it introduced, and any persisting fault that one
     of its touched periods participates in."""
 
@@ -211,7 +211,7 @@ class TestIncrementalPolicy:
         assert new_or_touched_faults(before, after, touched=set()) == [self.NEW]
 
     def test_touching_either_participant_of_a_persisting_pair_fault_refuses(self):
-        """R2-M1: touching either participant of a persisting overlap, with
+        """Touching either participant of a persisting overlap, with
         nothing else changing, still refuses it: the key set is unchanged,
         not a strict subset."""
         before = {self.PAIR.key: self.PAIR}

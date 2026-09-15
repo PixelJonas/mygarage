@@ -888,7 +888,7 @@ class TireService:
         mounted_on = data.mounted_on or utc_now().date()
         tire.position = data.position
         # Appended to the relationship rather than `db.add`ed, so the
-        # collection the validator reads (Task 5) is the resulting set; then
+        # collection the history validator reads is the resulting set; then
         # flushed so the period has the id its odometer marker needs.
         period = TireMountPeriod(
             tire_id=tire.id,

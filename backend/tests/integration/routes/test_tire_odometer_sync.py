@@ -104,8 +104,8 @@ class TestTheOdometerIsRecorded:
 
         rows = await _odometer_rows(db_session, vehicle)
         assert [(r.date, r.odometer_km) for r in rows] == [(TODAY, 20000)]
-        # Was "tire" before this file: mount, dismount and retire each now
-        # publish with their own per-period marker so a later editor (Task 6)
+        # Was "tire" before v3.4.0: mount, dismount and retire each now
+        # publish with their own per-period marker so the period editor
         # can move the one record a specific period owns. Readings still
         # publish with the tire-level marker.
         assert rows[0].source == ODOMETER_SOURCE_TIRE_MOUNT

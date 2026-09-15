@@ -438,7 +438,7 @@ class TestFittingASet:
         backfill outrank the corner the tire actually came off.
 
         Seeded directly rather than via `/mount` + `/dismount`, both fully
-        bounded in one insert: since Task 5 (v3.4.0), the write API refuses to
+        bounded in one insert: since v3.4.0 the write API refuses to
         CREATE this shape through two separate calls, because the intermediate
         state -- an open 2024 period while an already-closed 2026 period
         exists -- is itself a contradiction (`OVERLAPPING_DATES`, "period 1
