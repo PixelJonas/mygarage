@@ -36,7 +36,7 @@ describe('UnitConverter.litersToVolumeUnit', () => {
     // rewrite it on save, which is the round-trip corruption the tread work
     // spent a whole task on.
     expect(UnitConverter.litersToVolumeUnit(45.461, METRIC)).toBe(45.461)
-    // 45.461 / 4.54609 = 10 exactly; / 3.785411784 = 12.0095, 12.01 at two decimals.
+    // 45.461 / 4.54609 = 10.00002, 10 at two decimals; / 3.785411784 = 12.0095, 12.01 at two decimals.
     expect(UnitConverter.litersToVolumeUnit(45.461, UK)).toBe(10)
     expect(UnitConverter.litersToVolumeUnit(45.461, US)).toBe(12.01)
     expect(UnitConverter.litersToVolumeUnit(null, UK)).toBeNull()

@@ -149,7 +149,7 @@ describe('LiveLinkTripsTab', () => {
     // tab reads. It used to be unit-ambiguous and this tab marked it unverified;
     // devices now declare an `odometer_unit` and the backend normalises on
     // ingest, so both tabs read one canonical number and convert it the same
-    // way. 20 km / 1.609344 = 12.4, at the mi adapter 0 dp.
+    // way. 20 km / 1.609344 = 12.43, 12 at the mi adapter's 0 dp.
     render(<LiveLinkTripsTab vin="V1" />)
     expect(await screen.findByText('12 mi')).toBeInTheDocument()
     expect(screen.queryByText('(unknown unit)')).not.toBeInTheDocument()
