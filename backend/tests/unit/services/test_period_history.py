@@ -15,6 +15,8 @@ from __future__ import annotations
 import datetime as dt
 from decimal import Decimal
 
+import pytest
+
 from app.models.tire import TireMountPeriod, TireReading
 from app.services.tire_history import (
     CONTRADICTS_READING,
@@ -143,6 +145,158 @@ class TestReadingsContradictPeriods:
     def test_before_dismount_above_dismount_odometer(self):
         assert _codes(validate_period_history([self.P], [_reading(D(2026, 2, 15), "6000")])) == [
             (1, CONTRADICTS_READING)
+        ]
+
+
+#: 89,044 mi, as typed today (the exact mile) and as a service visit saved
+#: before v3.4.0 stored it (the old 1.60934 km mile), each rounded to the
+#: odometer column's 0.01 km. Worked here from the definitions, not read back
+#: from the code under test.
+MILES = Decimal("89044")
+EXACT = (MILES * Decimal("1.609344")).quantize(Decimal("0.01"))
+OLD = (MILES * Decimal("1.60934")).quantize(Decimal("0.01"))
+
+
+def _band(value: Decimal) -> Decimal:
+    """The same-reading band, computed independently: 3 ppm of the figure plus 0.01 km."""
+    return abs(value) * Decimal("3e-6") + Decimal("0.01")
+
+
+BEYOND = EXACT - Decimal("0.45")
+
+
+class TestTheOldMileAtABoundary:
+    """A figure stored before the exact factors is the same reading as itself
+    retyped, for every ordering rule, and nothing further off than the band."""
+
+    def test_the_figures(self):
+        assert (EXACT, OLD) == (Decimal("143302.43"), Decimal("143302.07"))
+        assert EXACT - OLD < _band(EXACT)
+        assert EXACT - BEYOND > _band(EXACT)
+
+    @staticmethod
+    def _rr(end_odo: Decimal) -> TireMountPeriod:
+        return _period(
+            1,
+            start=D(2025, 11, 1),
+            end=D(2026, 6, 21),
+            start_odo="130000",
+            end_odo=str(end_odo),
+            position="RR",
+        )
+
+    @staticmethod
+    def _fl(start_odo: Decimal, *, closed: bool) -> TireMountPeriod:
+        return _period(
+            2,
+            start=D(2026, 6, 21),
+            end=D(2026, 9, 1) if closed else None,
+            start_odo=str(start_odo),
+            end_odo="150000" if closed else None,
+        )
+
+    @pytest.mark.parametrize("closed", [False, True], ids=["open", "closed"])
+    def test_a_mount_at_the_old_mile_after_a_dismount_at_the_exact_one(self, closed: bool):
+        """The refusal found on real data. Open, rule 4a judges the pair in date
+        order; closed, rule 4b also judges the two spans by odometer."""
+        assert validate_period_history([self._rr(EXACT), self._fl(OLD, closed=closed)], []) == []
+
+    @pytest.mark.parametrize("closed", [False, True], ids=["open", "closed"])
+    def test_a_mount_just_beyond_the_band_is_still_below_the_dismount(self, closed: bool):
+        faults = validate_period_history([self._rr(EXACT), self._fl(BEYOND, closed=closed)], [])
+        assert [(f.period_id, f.code, f.counterpart_id) for f in faults] == [
+            (2, OVERLAPPING_ODOMETER, 1)
+        ]
+        assert "is mounted at" in faults[0].message
+
+    def test_a_span_just_beyond_the_band_is_caught_by_odometer_alone(self):
+        """Rule 4b on its own: no mount dates, so 4a cannot see the pair."""
+        rr = _period(1, start=None, end=D(2026, 6, 21), start_odo="130000", end_odo=str(EXACT))
+        within = _period(2, start=None, end=D(2026, 9, 1), start_odo=str(OLD), end_odo="150000")
+        beyond = _period(2, start=None, end=D(2026, 9, 1), start_odo=str(BEYOND), end_odo="150000")
+        assert validate_period_history([rr, within], []) == []
+        faults = validate_period_history([rr, beyond], [])
+        assert [(f.period_id, f.code, f.counterpart_id) for f in faults] == [
+            (2, OVERLAPPING_ODOMETER, 1)
+        ]
+        assert "claims kilometres" in faults[0].message
+
+    def test_a_reversed_odometer_inside_the_band_is_not_a_fault(self):
+        within = _period(
+            1, start=D(2026, 6, 21), end=D(2026, 6, 21), start_odo=str(EXACT), end_odo=str(OLD)
+        )
+        beyond = _period(
+            1, start=D(2026, 6, 21), end=D(2026, 6, 21), start_odo=str(EXACT), end_odo=str(BEYOND)
+        )
+        assert validate_period_history([within], []) == []
+        assert _codes(validate_period_history([beyond], [])) == [(1, REVERSED_ODOMETER)]
+
+    @pytest.mark.parametrize(
+        ("period_bounds", "day", "within", "beyond"),
+        [
+            # After the dismount, below the dismount odometer.
+            ((None, EXACT), D(2026, 7, 1), OLD, BEYOND),
+            # Before the mount, above the mount odometer.
+            ((OLD, None), D(2026, 1, 1), EXACT, OLD + Decimal("0.45")),
+            # After the mount, below the mount odometer.
+            ((EXACT, None), D(2026, 3, 1), OLD, BEYOND),
+            # Before the dismount, above the dismount odometer.
+            ((None, OLD), D(2026, 5, 1), EXACT, OLD + Decimal("0.45")),
+        ],
+        ids=["after_dismount", "before_mount", "after_mount", "before_dismount"],
+    )
+    def test_a_reading_inside_the_band_contradicts_nothing(
+        self,
+        period_bounds: tuple[Decimal | None, Decimal | None],
+        day: D,
+        within: Decimal,
+        beyond: Decimal,
+    ):
+        """Each of the four monotonicity implications, with only the bound it
+        judges known, so no other rule can fire."""
+        start_odo, end_odo = period_bounds
+        p = _period(
+            1,
+            start=D(2026, 2, 1),
+            end=D(2026, 6, 21),
+            start_odo=None if start_odo is None else str(start_odo),
+            end_odo=None if end_odo is None else str(end_odo),
+        )
+        known = start_odo if start_odo is not None else end_odo
+        assert known is not None
+        assert abs(within - known) < _band(max(within, known))
+        assert abs(beyond - known) > _band(max(beyond, known))
+        assert validate_period_history([p], [_reading(day, str(within))]) == []
+        assert _codes(validate_period_history([p], [_reading(day, str(beyond))])) == [
+            (1, CONTRADICTS_READING)
+        ]
+
+    def test_the_covering_maximum_is_the_true_maximum_not_the_banded_one(self):
+        """Rule 4b remembers the highest dismount so far with a plain comparison.
+
+        P2 starts and ends within the band of P1's dismount, so it touches P1
+        and raises the maximum by less than the band. Q starts within the band
+        of P1's dismount too, but 0.70 km below P2's, inside P2's span by more
+        than the band: a genuine overlap. A maximum that only moved when a
+        dismount cleared the band would still hold P1's and wave Q through.
+        No mount dates, so rule 4a stays out of it.
+        """
+        top = Decimal("143302.00")
+        p1 = _period(1, start=None, end=D(2026, 2, 1), start_odo="140000", end_odo=str(top))
+        p2 = _period(
+            2,
+            start=None,
+            end=D(2026, 3, 1),
+            start_odo=str(top - Decimal("0.40")),
+            end_odo=str(top + Decimal("0.40")),
+        )
+        q = _period(
+            3, start=None, end=D(2026, 9, 1), start_odo=str(top - Decimal("0.30")), end_odo="150000"
+        )
+        assert Decimal("0.40") < _band(top) < Decimal("0.70")
+        faults = validate_period_history([p1, p2, q], [])
+        assert [(f.period_id, f.code, f.counterpart_id) for f in faults] == [
+            (3, OVERLAPPING_ODOMETER, 2)
         ]
 
 

@@ -55,6 +55,7 @@ from app.services.vehicle_lock import lock_vehicle_for_write
 from app.utils.datetime_utils import utc_now
 from app.utils.logging_utils import sanitize_for_log
 from app.utils.odometer_sync import auto_sync_marker, sync_odometer_from_record
+from app.utils.odometer_tolerance import odometer_above, odometer_below
 from app.utils.render_context import render_context_for_request
 from app.utils.unit_adapters import adapter_for
 
@@ -263,12 +264,16 @@ def distance_on_tire(tire: Tire, current_odometer: Decimal | None) -> DistanceRe
         if start is None or end is None:
             blocking.append(period.id)
             continue
-        if end < start:
+        if odometer_below(end, start):
             return DistanceResult(
                 status=DistanceStatus.ODOMETER_ROLLBACK,
                 blocking_period_ids=[period.id],
             )
-        known += end - start
+        # Zero, not a few hundred metres below it, when the two bounds are one
+        # reading in two spellings (a figure saved before v3.4.0 and the same
+        # figure typed today): within the band that is a period that rolled
+        # nothing, as `distance_between` counts an interval with no length.
+        known += max(end - start, Decimal("0"))
         contributed += 1
         # Only a period that CONTRIBUTED can date the known figure, and its
         # `mounted_on` may still be null on a migrated assumed period.
@@ -299,18 +304,28 @@ def _overlapping_period_ids(contributions: list[tuple[Decimal, Decimal, int]]) -
     """Ids of contributing spans that claim the same kilometres.
 
     Touching endpoints are not an overlap: a dismount at 12,000 and a
-    remount at 12,000 is what a rotation looks like. Only a strict
-    intersection counts.
+    remount at 12,000 is what a rotation looks like. Neither is an
+    intersection within the same-reading band (`app.utils.odometer_tolerance`):
+    a dismount typed at 89,044 mi today and a remount at a service visit's
+    figure for 89,044 mi saved before v3.4.0 sit 0.36 km apart and are one
+    reading. The history validator accepts that boundary, so counting it here
+    would withhold the distance of every such tire as an overlap. Both
+    contributions are summed as they are, so the total can exceed the span by
+    up to the band at each such boundary. Only an intersection beyond the
+    band counts.
 
     Tracks the running maximum end rather than comparing neighbours, so a
     period nested wholly inside an earlier one is caught even though the
-    span between them in sorted order does not intersect.
+    span between them in sorted order does not intersect. The maximum itself
+    is kept by a plain comparison: one that moved only once an end cleared
+    the band would lag a span ending within the band above it, and miss a
+    later span overlapping that one beyond the band.
     """
     clashing: set[int] = set()
     running_hi: Decimal | None = None
     running_id: int | None = None
     for lo, hi, period_id in sorted(contributions, key=lambda c: c[0]):
-        if running_hi is not None and running_id is not None and lo < running_hi:
+        if running_hi is not None and running_id is not None and odometer_below(lo, running_hi):
             clashing.update({running_id, period_id})
         if running_hi is None or hi > running_hi:
             running_hi, running_id = hi, period_id
@@ -346,8 +361,8 @@ def distance_between(
 
     The intersection is proved from the NEAR bound only (C2): a period whose
     end is at or below the older reading, or whose start is at or above the
-    newer one, contributes nothing and blocks nothing, whatever the bound on
-    its far side is. That single rule is what lets a tire migrated by 097
+    newer one (each judged outside the same-reading band), contributes
+    nothing and blocks nothing, whatever the bound on its far side is. That single rule is what lets a tire migrated by 097
     recover: its assumed period has a null START, and a recorded dismount
     gives it an END that puts it outside the interval.
 
@@ -368,7 +383,11 @@ def distance_between(
         and is exactly the defect this replaces.
     """
     a_odo, b_odo = older.odometer_km, newer.odometer_km
-    if a_odo is None or b_odo is None or a_odo >= b_odo:
+    # Every odometer ordering below is judged outside the same-reading band
+    # (`app.utils.odometer_tolerance`), the one the history validator uses, so
+    # a boundary the validator accepts never withholds a figure here. Two
+    # readings within the band of each other are one odometer, not a distance.
+    if a_odo is None or b_odo is None or not odometer_below(a_odo, b_odo):
         return IntervalResult(status=IntervalStatus.NO_DISTANCE)
 
     periods = list(tire.mount_periods or [])
@@ -404,22 +423,23 @@ def distance_between(
         # faulted. Both bounds must be non-null for "reversed" to mean
         # anything; a period missing one still falls through to C2 and then
         # to the null-bound handling below, unchanged.
-        if start is not None and end is not None and end < start:
+        if start is not None and end is not None and odometer_below(end, start):
             # NOT `max(0, hi - lo)`: clamping contributes a silent zero for a
             # faulted period while another period supplies a positive total,
             # publishing a confident figure over known-corrupt data.
             faulted.append(period.id)
             continue
 
-        # C2. Provable disjointness, from the near bound only.
-        if end is not None and end <= a_odo:
+        # C2. Provable disjointness, from the near bound only. A near bound
+        # within the band of the reading is at the reading.
+        if end is not None and not odometer_above(end, a_odo):
             continue
-        if start is not None and start >= b_odo:
+        if start is not None and not odometer_below(start, b_odo):
             continue
 
         # Past here the period may overlap, so both bounds are load-bearing.
-        # A reversed pair of non-null bounds was already caught above, so
-        # reaching here with both bounds known means end >= start.
+        # A pair reversed beyond the band was already caught above; one
+        # reversed within it gives `hi <= lo` below and contributes nothing.
         if start is None or end is None:
             blocking.append(period.id)
             continue

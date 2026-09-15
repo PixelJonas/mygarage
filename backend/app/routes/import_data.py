@@ -89,6 +89,7 @@ from app.utils.csv_units import (
 from app.utils.def_sync import ensure_def_capable
 from app.utils.file_validation import validate_csv_upload
 from app.utils.logging_utils import sanitize_for_log
+from app.utils.odometer_tolerance import KM_STEP, LITRE_STEP, conversion_tolerance
 from app.utils.units import UnitConverter
 
 logger = logging.getLogger(__name__)
@@ -128,15 +129,6 @@ def _normalized_fuel_type(raw: str | None) -> str | None:
     return normalized.value if normalized is not None else None
 
 
-#: Odometer columns are NUMERIC(10, 2); volume columns NUMERIC(9, 3).
-_KM_STEP = Decimal("0.01")
-_LITRE_STEP = Decimal("0.001")
-#: The widest relative gap between a figure converted with the exact factors
-#: and the same figure converted before v3.4.0: the old mile (1.60934 km) sat
-#: 2.49 parts per million below the exact one, the old US gallon 0.47 below.
-_FACTOR_DRIFT = Decimal("3e-6")
-
-
 def _converted_value_matches(
     column: InstrumentedAttribute[Any], value: Decimal | None, step: Decimal
 ) -> ColumnElement[bool]:
@@ -145,13 +137,14 @@ def _converted_value_matches(
     Values stored before the exact conversion factors differ from the same
     figure converted today by a few parts per million, on top of the column's
     rounding to `step`, so an equality match would import a pre-upgrade row a
-    second time. The band allows the two together; an absent value still
-    matches only NULL. More than one stored row can fall inside the band, so a
-    caller treats any match as the duplicate rather than asking for exactly one.
+    second time. The band (`conversion_tolerance`, shared with tire history)
+    allows the two together; an absent value still matches only NULL. More
+    than one stored row can fall inside the band, so a caller treats any match
+    as the duplicate rather than asking for exactly one.
     """
     if value is None:
         return column.is_(None)
-    tolerance = abs(value) * _FACTOR_DRIFT + step
+    tolerance = conversion_tolerance(value, step)
     return column.between(value - tolerance, value + tolerance)
 
 
@@ -159,7 +152,7 @@ def _odometer_matches(
     column: InstrumentedAttribute[Any], odometer_km: Decimal | None
 ) -> ColumnElement[bool]:
     """`_converted_value_matches` for an odometer column, in km."""
-    return _converted_value_matches(column, odometer_km, _KM_STEP)
+    return _converted_value_matches(column, odometer_km, KM_STEP)
 
 
 router = APIRouter(prefix="/api/import", tags=["import"])
@@ -1671,7 +1664,7 @@ def _third_party_duplicate_conditions(
         FuelRecord.date == row.get("date"),
         FuelRecord.filled_at == row.get("filled_at"),
         _odometer_matches(FuelRecord.odometer_km, row.get("odometer_km")),
-        _converted_value_matches(FuelRecord.liters, row.get("liters"), _LITRE_STEP),
+        _converted_value_matches(FuelRecord.liters, row.get("liters"), LITRE_STEP),
         FuelRecord.kwh == row.get("kwh"),
     ]
 

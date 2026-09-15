@@ -1790,3 +1790,83 @@ class TestAddingAPastPeriod:
         assert recs[date_type(2026, 1, 1)].notes == "hand"
         mount_marker = auto_sync_marker(ODOMETER_SOURCE_TIRE_MOUNT, new_period["id"])
         assert not [r for r in recs.values() if r.notes == mount_marker]
+
+
+#: 89,044 mi typed today (the exact mile) and as a service visit saved before
+#: v3.4.0 stored it (the old 1.60934 km mile), rounded to the column's 0.01 km.
+#: Worked from the definitions here, not read back from the code under test.
+_EXACT_MILE_KM = (Decimal("89044") * Decimal("1.609344")).quantize(Decimal("0.01"))
+_OLD_MILE_KM = (Decimal("89044") * Decimal("1.60934")).quantize(Decimal("0.01"))
+
+
+@pytest.mark.asyncio
+class TestTheOldMileAtABoundary:
+    """The shape found on real data: FL mounted at a service visit's
+    pre-upgrade 143,302.07 km, and the RR period before it added afterwards,
+    dismounted at 89,044 mi typed today, 143,302.43 km."""
+
+    async def _swapped_tire(self, client: AsyncClient, headers, vin: str) -> tuple[int, int]:
+        assert (_EXACT_MILE_KM, _OLD_MILE_KM) == (Decimal("143302.43"), Decimal("143302.07"))
+        base = f"/api/vehicles/{vin}/tires"
+        made = await client.post(
+            f"{base}/create-and-mount",
+            headers=headers,
+            json={
+                "vin": vin,
+                "position": "FL",
+                "min_tread_mm": "2.0",
+                "mounted_on": "2026-06-21",
+                "mounted_odometer_km": str(_OLD_MILE_KM),
+            },
+        )
+        assert made.status_code == 201, made.text
+        tire_id = made.json()["id"]
+        added = await client.post(
+            f"{base}/{tire_id}/mount-periods",
+            headers=headers,
+            json={
+                "position": "RR",
+                "mounted_on": "2025-11-01",
+                "mounted_odometer_km": "130000",
+                "dismounted_on": "2026-06-21",
+                "dismounted_odometer_km": str(_EXACT_MILE_KM),
+            },
+        )
+        return tire_id, added.status_code
+
+    async def test_the_past_period_is_recorded(
+        self, client: AsyncClient, auth_headers, vehicle, db_session
+    ):
+        tire_id, status = await self._swapped_tire(client, auth_headers, vehicle)
+        assert status == 201
+        periods = await _periods(db_session, tire_id)
+        assert [(p.position, p.dismounted_odometer_km) for p in periods] == [
+            ("FL", None),
+            ("RR", _EXACT_MILE_KM),
+        ]
+
+    async def test_the_tire_keeps_its_distance_and_projection(
+        self, client: AsyncClient, auth_headers, vehicle
+    ):
+        tire_id, status = await self._swapped_tire(client, auth_headers, vehicle)
+        assert status == 201
+        base = f"/api/vehicles/{vehicle}/tires"
+        for day, odometer, tread in (
+            ("2026-03-01", "136000", "7.0"),
+            ("2026-08-01", "150000", "6.0"),
+        ):
+            logged = await client.post(
+                f"{base}/{tire_id}/readings",
+                headers=auth_headers,
+                json={"recorded_at": day, "odometer_km": odometer, "tread_depth_mm": tread},
+            )
+            assert logged.status_code == 201, logged.text
+
+        listed = await client.get(base, headers=auth_headers)
+        assert listed.status_code == 200, listed.text
+        tire = next(t for t in listed.json()["tires"] if t["id"] == tire_id)
+        assert tire["history_faults"] == []
+        assert tire["distance_status"] == "complete"
+        assert tire["wear_status"] == "projected"
+        assert tire["projected_km_remaining"] is not None
+        assert tire["blocking_period_ids"] == []

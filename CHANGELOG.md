@@ -40,6 +40,8 @@ Back up first. Migration 100 adds one nullable column to `tires`; it is additive
 - Running an SD-card backfill again over two drives where one ended as the next began left both unchanged instead of extending them.
 - Fuel, DEF, hours and vehicle JSON imports brought in the same row twice when it appeared twice in one file, despite skip duplicates, and one invalid row could discard the whole upload.
 - Two tire mount periods that contradict each other can now be corrected one at a time.
+- Tire operations overwrote, and could later move or delete, an odometer reading a service visit, fuel-up or LiveLink had already recorded that day.
+- A tire odometer retyped from a reading saved before the exact mile was refused as slightly below itself.
 
 ## [3.3.1] - 2026-09-10
 

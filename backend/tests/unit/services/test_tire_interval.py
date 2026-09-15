@@ -25,8 +25,8 @@ from decimal import Decimal
 import pytest
 
 from app.models.tire import Tire, TireMountPeriod, TireReading
-from app.services.tire_results import IntervalStatus
-from app.services.tire_service import distance_between
+from app.services.tire_results import DistanceStatus, IntervalStatus, WearStatus
+from app.services.tire_service import distance_between, distance_on_tire, project_wear
 
 
 def _period(
@@ -1110,3 +1110,218 @@ class TestEveryStatusIsReachable:
             f"can emit it and no caller test can be written against it"
         )
         assert self.PRODUCERS[status]().status is status
+
+
+#: 89,044 mi typed today (the exact mile) and as a record saved before v3.4.0
+#: stored it (the old 1.60934 km mile), each rounded to the column's 0.01 km.
+#: Worked from the definitions here, not read back from the code under test.
+_MILES = Decimal("89044")
+_EXACT = (_MILES * Decimal("1.609344")).quantize(Decimal("0.01"))
+_OLD = (_MILES * Decimal("1.60934")).quantize(Decimal("0.01"))
+_SWAP = dt.date(2026, 6, 21)
+
+
+def _band(value: Decimal) -> Decimal:
+    """The same-reading band, computed independently: 3 ppm of the figure plus 0.01 km."""
+    return abs(value) * Decimal("3e-6") + Decimal("0.01")
+
+
+class TestTheOldMileAtABoundary:
+    """A boundary odometer stored before the exact factors and the same figure
+    typed today are one reading for the distance calculation too. The
+    validator accepts them, so a distance or projection that still counted
+    the 0.36 km as a contradiction would silently vanish from every such tire.
+    """
+
+    def test_the_figures(self):
+        assert (_EXACT, _OLD) == (Decimal("143302.43"), Decimal("143302.07"))
+        assert _EXACT - _OLD < _band(_EXACT)
+
+    @staticmethod
+    def _swapped_tire() -> Tire:
+        """RR until the swap, dismounted at the exact mile; FL from the swap,
+        mounted at the service visit's pre-upgrade figure. Readings in both."""
+        tire = _tire(
+            [
+                _period(
+                    1,
+                    start_odo="130000",
+                    end_odo=str(_EXACT),
+                    start_day=dt.date(2025, 11, 1),
+                    end_day=_SWAP,
+                    position="RR",
+                ),
+                _open_period(2, start_odo=str(_OLD), start_day=_SWAP),
+            ]
+        )
+        tire.min_tread_mm = Decimal("2.0")
+        tire.tread_depth_mm = Decimal("6.0")
+        return tire
+
+    def test_touching_periods_within_the_band_keep_the_distance_and_the_projection(self):
+        tire = self._swapped_tire()
+        older = TireReading(
+            recorded_at=dt.date(2026, 3, 1),
+            odometer_km=Decimal("136000"),
+            tread_depth_mm=Decimal("7.0"),
+        )
+        newer = TireReading(
+            recorded_at=dt.date(2026, 8, 1),
+            odometer_km=Decimal("150000"),
+            tread_depth_mm=Decimal("6.0"),
+        )
+
+        interval = distance_between(tire, older, newer, Decimal("150000"))
+        assert interval.status is IntervalStatus.COMPLETE
+        # Both contributions, unclamped: the span plus the 0.36 km the two
+        # periods share, which is inside the band.
+        expected = (_EXACT - Decimal("136000")) + (Decimal("150000") - _OLD)
+        assert interval.km == expected
+        assert expected - (Decimal("150000") - Decimal("136000")) <= _band(_EXACT)
+
+        assert distance_on_tire(tire, Decimal("150000")).status is DistanceStatus.COMPLETE
+        wear = project_wear(tire, Decimal("150000"), [older, newer])
+        assert wear.status is WearStatus.PROJECTED
+        assert wear.km_remaining is not None
+
+    def test_a_period_reversed_within_the_band_is_not_a_rollback(self):
+        """Mounted and dismounted on one day at the two spellings of one
+        odometer. It contributes nothing and faults nothing; beyond the band
+        the same shape is still a rollback."""
+
+        def history(dismount: Decimal) -> Tire:
+            return _tire(
+                [
+                    _period(
+                        1,
+                        start_odo="130000",
+                        end_odo=str(_EXACT),
+                        start_day=dt.date(2025, 11, 1),
+                        end_day=_SWAP,
+                    ),
+                    _period(
+                        2,
+                        start_odo=str(_EXACT),
+                        end_odo=str(dismount),
+                        start_day=_SWAP,
+                        end_day=_SWAP,
+                        position="FR",
+                    ),
+                    _open_period(3, start_odo=str(_EXACT), start_day=_SWAP),
+                ]
+            )
+
+        older = _reading(dt.date(2026, 3, 1), "136000")
+        newer = _reading(dt.date(2026, 8, 1), "150000")
+        within = distance_between(history(_OLD), older, newer, Decimal("150000"))
+        assert within.status is IntervalStatus.COMPLETE
+        assert within.km == Decimal("14000")
+        beyond = distance_between(
+            history(_EXACT - Decimal("0.45")), older, newer, Decimal("150000")
+        )
+        assert beyond.status is IntervalStatus.ODOMETER_ROLLBACK
+        assert beyond.blocking_period_ids == [2]
+
+    def test_a_period_ending_within_the_band_above_the_older_reading_is_disjoint(self):
+        """The migrated shape: no mount odometer, dismounted at the exact mile.
+        The older reading is the day's pre-upgrade figure, so the period ends
+        at that reading and its unknown start cannot matter."""
+        tire = _tire(
+            [
+                _period(1, start_odo=None, end_odo=str(_EXACT), start_day=None, end_day=_SWAP),
+                _open_period(2, start_odo=str(_EXACT), start_day=_SWAP),
+            ]
+        )
+        result = distance_between(
+            tire,
+            _reading(dt.date(2026, 6, 22), str(_OLD)),
+            _reading(dt.date(2026, 8, 1), "150000"),
+            Decimal("150000"),
+        )
+        assert result.status is IntervalStatus.COMPLETE
+        assert result.km == Decimal("150000") - _EXACT
+
+    def test_a_period_starting_within_the_band_below_the_newer_reading_is_disjoint(self):
+        """A closed period with no dismount odometer, mounted at the day's
+        pre-upgrade figure, after a newer reading typed at the exact mile."""
+        tire = _tire(
+            [
+                _period(
+                    1,
+                    start_odo="130000",
+                    end_odo=str(_EXACT),
+                    start_day=dt.date(2025, 11, 1),
+                    end_day=_SWAP,
+                ),
+                _period(
+                    2,
+                    start_odo=str(_OLD),
+                    end_odo=None,
+                    start_day=_SWAP,
+                    end_day=dt.date(2026, 9, 1),
+                    position="FR",
+                ),
+            ]
+        )
+        result = distance_between(
+            tire,
+            _reading(dt.date(2026, 3, 1), "136000"),
+            _reading(_SWAP, str(_EXACT)),
+            Decimal("150000"),
+        )
+        assert result.status is IntervalStatus.COMPLETE
+        assert result.km == _EXACT - Decimal("136000")
+
+    def test_two_readings_within_the_band_have_no_distance_between_them(self):
+        """The same odometer in two spellings is not 0.36 km driven. A rate
+        over it would put the whole tread change on a few hundred metres."""
+        tire = _tire([_open_period(1, start_odo="130000", start_day=dt.date(2025, 11, 1))])
+        result = distance_between(
+            tire,
+            _reading(dt.date(2026, 6, 20), str(_OLD)),
+            _reading(dt.date(2026, 6, 22), str(_EXACT)),
+            Decimal("150000"),
+        )
+        assert result.status is IntervalStatus.NO_DISTANCE
+
+    def test_the_overlap_sweep_keeps_the_true_maximum_end(self):
+        """P2 starts and ends within the band of P1's end, so it touches P1
+        and raises the running maximum by less than the band. P3 starts within
+        the band of P1's end too, but 0.70 km below P2's: a real overlap. A
+        maximum that only moved once an end cleared the band would still hold
+        P1's and miss it."""
+        top = Decimal("143302.00")
+        tire = _tire(
+            [
+                _period(
+                    1,
+                    start_odo="140000",
+                    end_odo=str(top),
+                    start_day=dt.date(2026, 1, 1),
+                    end_day=dt.date(2026, 2, 1),
+                ),
+                _period(
+                    2,
+                    start_odo=str(top - Decimal("0.40")),
+                    end_odo=str(top + Decimal("0.40")),
+                    start_day=dt.date(2026, 2, 1),
+                    end_day=dt.date(2026, 3, 1),
+                ),
+                _period(
+                    3,
+                    start_odo=str(top - Decimal("0.30")),
+                    end_odo="150000",
+                    start_day=dt.date(2026, 3, 1),
+                    end_day=dt.date(2026, 9, 30),
+                ),
+            ]
+        )
+        assert Decimal("0.40") < _band(top) < Decimal("0.70")
+        result = distance_between(
+            tire,
+            _reading(dt.date(2026, 1, 2), "140000"),
+            _reading(dt.date(2026, 9, 29), "150000"),
+            Decimal("150000"),
+        )
+        assert result.status is IntervalStatus.OVERLAPPING_HISTORY
+        assert result.blocking_period_ids == [2, 3]

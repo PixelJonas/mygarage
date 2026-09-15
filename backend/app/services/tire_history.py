@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from app.models.tire import TireMountPeriod, TireReading
+from app.utils.odometer_tolerance import odometer_above, odometer_below
 from app.utils.unit_adapters import ADAPTERS, UnitAdapter
 
 DistanceFormatter = Callable[[Decimal], str]
@@ -142,6 +143,11 @@ def odometer_contradictions(
     Only bounds that are actually known take part. A null is unknown, not
     wrong, which is what keeps the migrated assumed period out of this.
 
+    The odometer comparisons use the same-reading band
+    (`app.utils.odometer_tolerance`): a reading within a few parts per million
+    of a bound is that bound, as a figure saved before v3.4.0 is the same
+    figure retyped today. Only a reading beyond the band runs backwards.
+
     Pairs, not period ids, and here rather than in `tire_service`: the
     projection needs only which periods to withhold a figure over (its
     `_odometer_goes_backwards` reduces these pairs to ids), while a write-time
@@ -158,15 +164,17 @@ def odometer_contradictions(
                 continue
             day = reading.recorded_at
             backwards = False
-            if period.dismounted_on is not None and period.dismounted_odometer_km is not None:
-                if day > period.dismounted_on and odometer < period.dismounted_odometer_km:
+            dismounted_on, dismounted_at = period.dismounted_on, period.dismounted_odometer_km
+            if dismounted_on is not None and dismounted_at is not None:
+                if day > dismounted_on and odometer_below(odometer, dismounted_at):
                     backwards = True
-                if day < period.dismounted_on and odometer > period.dismounted_odometer_km:
+                if day < dismounted_on and odometer_above(odometer, dismounted_at):
                     backwards = True
-            if period.mounted_on is not None and period.mounted_odometer_km is not None:
-                if day < period.mounted_on and odometer > period.mounted_odometer_km:
+            mounted_on, mounted_at = period.mounted_on, period.mounted_odometer_km
+            if mounted_on is not None and mounted_at is not None:
+                if day < mounted_on and odometer_above(odometer, mounted_at):
                     backwards = True
-                if day > period.mounted_on and odometer < period.mounted_odometer_km:
+                if day > mounted_on and odometer_below(odometer, mounted_at):
                     backwards = True
             if backwards:
                 pairs.append((period, reading))
@@ -183,7 +191,10 @@ def validate_period_history(
 
     Every comparison is STRICT, so a same-day dismount and remount, and a
     remount at exactly the last dismount odometer, pass: that is what a
-    rotation looks like. An unknown bound is a gap, never a fault; the
+    rotation looks like. Odometers are compared outside the same-reading band
+    (`app.utils.odometer_tolerance`), so a remount at a figure saved before
+    v3.4.0, a few parts per million below the same dismount odometer typed
+    today, also passes. An unknown bound is a gap, never a fault; the
     migrated assumed period has two of them.
 
     Rules 1, 2 and 5 look at every period. Rules 3 and 4 are orderings, and
@@ -233,7 +244,7 @@ def validate_period_history(
         if (
             p.mounted_odometer_km is not None
             and p.dismounted_odometer_km is not None
-            and p.dismounted_odometer_km < p.mounted_odometer_km
+            and odometer_below(p.dismounted_odometer_km, p.mounted_odometer_km)
         ):
             add(
                 p,
@@ -283,7 +294,7 @@ def validate_period_history(
             if (
                 q.mounted_odometer_km is not None
                 and earlier.dismounted_odometer_km is not None
-                and q.mounted_odometer_km < earlier.dismounted_odometer_km
+                and odometer_below(q.mounted_odometer_km, earlier.dismounted_odometer_km)
             ):
                 add(
                     q,
@@ -295,10 +306,11 @@ def validate_period_history(
                     counterpart=earlier,
                 )
 
-    # 4b: order-free. Two fully bounded spans that strictly intersect are a
-    # contradiction whatever their dates say: a tire cannot be in two places
-    # at once. Sorted by mount odometer; the later-by-odometer span is the
-    # intruder. Where 4a already named the same pair, `add` deduplicates.
+    # 4b: order-free. Two fully bounded spans that intersect by more than the
+    # same-reading band are a contradiction whatever their dates say: a tire
+    # cannot be in two places at once. Sorted by mount odometer; the
+    # later-by-odometer span is the intruder. Where 4a already named the same
+    # pair, `add` deduplicates.
     #
     # A running maximum works HERE, unlike in 3 and 4a, because every span is
     # both judged and a possible counterpart. An earlier span P that a later
@@ -323,15 +335,23 @@ def validate_period_history(
     )
     covered: tuple[Decimal, TireMountPeriod] | None = None
     for q in spans:
-        if covered is not None and q.mounted_odometer_km < covered[0]:
+        # Narrowed for pyright, which cannot see the filter that built `spans`.
+        start = q.mounted_odometer_km
+        assert start is not None
+        if covered is not None and odometer_below(start, covered[0]):
             add(
                 q,
                 OVERLAPPING_ODOMETER,
                 f"{_label(q, capital=True)} claims kilometres {_label(covered[1])} already "
-                f"covers: it starts at {format_distance(q.mounted_odometer_km)}, before that "
+                f"covers: it starts at {format_distance(start)}, before that "
                 f"period ended at {format_distance(covered[0])}.",
                 counterpart=covered[1],
             )
+        # The TRUE maximum, by a plain comparison and not outside the band. A
+        # maximum that moved only when a dismount cleared the band could lag
+        # a span ending within the band above it, and a later span starting
+        # beyond the band below that span's end, a genuine overlap, would be
+        # judged against the lower figure and pass.
         if covered is None or q.dismounted_odometer_km > covered[0]:
             # `spans` is filtered to periods with a known dismount odometer;
             # this asserts that invariant for pyright, which cannot see
