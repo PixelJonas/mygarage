@@ -43,7 +43,7 @@ import {
 } from './ui'
 import MountEventFields, { EMPTY_ODOMETER, type OdometerFieldValue } from './tires/MountEventFields'
 import MountPeriodEditor from './tires/MountPeriodEditor'
-import TireHistoryDrawer from './tires/TireHistoryDrawer'
+import TireHistoryDrawer, { needsFix } from './tires/TireHistoryDrawer'
 
 const POSITIONS: MountedPosition[] = ['FL', 'FR', 'RL', 'RR', 'SPARE']
 
@@ -1044,7 +1044,7 @@ export default function TireList({ vin }: TireListProps) {
                 <span>{distanceSummary(tire)}</span>
                 {/* "Add an odometer to this tire's mount" was an instruction
                     with no control behind it until v3.4.0. This is the control. */}
-                {(tire.blocking_period_ids?.length ?? 0) > 0 && (
+                {needsFix(tire) && (
                   <Button
                     size="sm"
                     variant="ghost"
@@ -1139,7 +1139,7 @@ export default function TireList({ vin }: TireListProps) {
                   <dt className="text-text-mute">{t('tireList.distanceOnTire')}</dt>
                   <dd className="flex items-center gap-2 font-mono">
                     <span>{distanceSummary(tire)}</span>
-                    {(tire.blocking_period_ids?.length ?? 0) > 0 && (
+                    {needsFix(tire) && (
                       <Button
                         size="sm"
                         variant="ghost"

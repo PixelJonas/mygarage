@@ -41,7 +41,7 @@ vi.mock('../../../hooks/useUnitPreference', () => ({
   }),
 }))
 
-import TireHistoryDrawer, { needsOdometer } from '../TireHistoryDrawer'
+import TireHistoryDrawer, { needsFix, needsOdometer } from '../TireHistoryDrawer'
 
 const VIN = '1HGCM82633A004352'
 const labelFor = (p: string | null | undefined) => (p == null ? 'stored' : `pos-${p}`)
@@ -204,6 +204,56 @@ describe('TireHistoryDrawer', () => {
       expect(getActionErrorMessageMock).toHaveBeenCalledWith(failure, 'tireList.readingDeleteAction')
       expect(toastError).toHaveBeenCalledWith('the sentence the user reads')
     })
+  })
+
+  it('badges both periods of a contradiction and shows the reason beneath each', () => {
+    const fault = { period_id: 1, code: 'overlapping_dates', counterpart_id: 2, message: 'M' }
+    render(
+      <TireHistoryDrawer
+        tire={tire({ blocking_period_ids: [], history_faults: [fault] }) as never}
+        open
+        onClose={vi.fn()}
+        onEditPeriod={vi.fn()}
+        labelFor={labelFor}
+        vin={VIN}
+      />
+    )
+    const first = within(drawer().getByTestId('period-1'))
+    const second = within(drawer().getByTestId('period-2'))
+    expect(first.getByText('tireList.periodCheck')).toBeInTheDocument()
+    expect(second.getByText('tireList.periodCheck')).toBeInTheDocument()
+    expect(first.getByTestId('period-1-fault')).toHaveTextContent('M')
+    expect(second.getByTestId('period-2-fault')).toHaveTextContent('M')
+  })
+
+  it('a period that is both blocking and needs an odometer still shows periodNeedsOdometer, not periodCheck', () => {
+    const fault = { period_id: 1, code: 'overlapping_dates', counterpart_id: 2, message: 'M' }
+    render(
+      <TireHistoryDrawer
+        tire={tire({ blocking_period_ids: [1], history_faults: [fault] }) as never}
+        open
+        onClose={vi.fn()}
+        onEditPeriod={vi.fn()}
+        labelFor={labelFor}
+        vin={VIN}
+      />
+    )
+    const first = within(drawer().getByTestId('period-1'))
+    expect(first.getByText('tireList.periodNeedsOdometer')).toBeInTheDocument()
+    expect(first.queryByText('tireList.periodCheck')).toBeNull()
+  })
+
+  it('needsFix is true from history_faults alone, true from blocking alone, false from neither', () => {
+    expect(
+      needsFix(
+        tire({
+          blocking_period_ids: [],
+          history_faults: [{ period_id: 1, code: 'x', counterpart_id: null, message: 'M' }],
+        }) as never
+      )
+    ).toBe(true)
+    expect(needsFix(tire({ blocking_period_ids: [1], history_faults: [] }) as never)).toBe(true)
+    expect(needsFix(tire({ blocking_period_ids: [], history_faults: [] }) as never)).toBe(false)
   })
 
   it('is empty when there is nothing to show', () => {

@@ -47,6 +47,7 @@
 
 import { useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import { useUnitPreference } from '@/hooks/useUnitPreference'
@@ -113,6 +114,7 @@ function unitsBodyFor(
 export default function UnitPreferencesCard(): React.ReactElement {
   const { t } = useTranslation('settings')
   const { isAuthenticated, user: currentUser, refreshUser } = useAuth()
+  const queryClient = useQueryClient()
   const { units: resolvedUnits, showBoth } = useUnitPreference()
   const storedPrefs = useSyncExternalStore(
     subscribeToUnitPrefs,
@@ -182,6 +184,9 @@ export default function UnitPreferencesCard(): React.ReactElement {
         // when this reloads it. Without it the card saves and the screen does
         // not move.
         await refreshUser()
+        // Tire history messages are worded by the server in the caller's units,
+        // so a cached tire list would keep the previous unit's sentences.
+        await queryClient.invalidateQueries({ queryKey: ['tires'] })
       } else {
         setUnitPrefs({
           // A preset expands to the set the ROUTE would resolve it to, so the
@@ -209,6 +214,9 @@ export default function UnitPreferencesCard(): React.ReactElement {
       if (isAuthenticated) {
         await api.put('/auth/me/units', unitsBodyFor(preference, editorUnits, next))
         await refreshUser()
+        // Tire history messages are worded by the server in the caller's units,
+        // so a cached tire list would keep the previous unit's sentences.
+        await queryClient.invalidateQueries({ queryKey: ['tires'] })
       } else {
         // ★ The store owns what happens to `units` here, and the card must
         // not pass a set through. A client that has never chosen holds

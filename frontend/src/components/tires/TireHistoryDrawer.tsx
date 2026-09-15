@@ -4,7 +4,14 @@ import { toast } from 'sonner'
 
 import { useDeleteTireReading } from '../../hooks/queries/useTires'
 import { useUnitFormat } from '../../hooks/useUnitFormat'
-import type { MountedPosition, Tire, TireMountPeriod, TirePosition, TireReading } from '../../types/tire'
+import type {
+  HistoryFault,
+  MountedPosition,
+  Tire,
+  TireMountPeriod,
+  TirePosition,
+  TireReading,
+} from '../../types/tire'
 import { formatDateForDisplay } from '../../utils/dateUtils'
 import { getActionErrorMessage } from '../../utils/httpErrorHandler'
 import { Badge, Button, Drawer, EmptyState, ListRow } from '../ui'
@@ -31,6 +38,16 @@ interface TireHistoryDrawerProps {
 export function needsOdometer(period: TireMountPeriod): boolean {
   if (period.mounted_odometer_km == null) return true
   return period.dismounted_on != null && period.dismounted_odometer_km == null
+}
+
+/**
+ * Whether the card should offer Fix: a figure is blocked, or the history holds
+ * a contradiction that would refuse edits. The second is the case the card
+ * could not see before v3.4.0: a period no figure depends on can still refuse
+ * every write that touches it.
+ */
+export function needsFix(tire: Tire): boolean {
+  return (tire.blocking_period_ids?.length ?? 0) > 0 || (tire.history_faults?.length ?? 0) > 0
 }
 
 /**
@@ -62,6 +79,16 @@ export default function TireHistoryDrawer({
   /* `readings` arrives newest-first, likewise. */
   const readings: TireReading[] = tire?.readings ?? []
   const blocking = new Set(tire?.blocking_period_ids ?? [])
+  /* Each contradiction is shown on BOTH of its periods: an overlap is as much
+     the earlier period's problem as the later one's, and the repair may be on
+     either side. */
+  const faultsByPeriod = new Map<number, HistoryFault[]>()
+  for (const fault of tire?.history_faults ?? []) {
+    for (const id of [fault.period_id, fault.counterpart_id]) {
+      if (id == null) continue
+      faultsByPeriod.set(id, [...(faultsByPeriod.get(id) ?? []), fault])
+    }
+  }
   const first = periods[0]
 
   const odometer = (v: number | string | null | undefined): string =>
@@ -123,52 +150,60 @@ export default function TireHistoryDrawer({
               <p className="text-sm text-text-mute">{t('tireList.historyNoPeriods')}</p>
             ) : (
               <ul className="space-y-2">
-                {periods.map((period) => (
-                  <li
-                    key={period.id}
-                    data-testid={`period-${period.id}`}
-                    className="space-y-1 rounded-card border border-border p-3"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      {/* `MountPeriodResponse.position` is generated as plain `string`
-                          (the backend schema has no Literal there), but a period is
-                          always mounted at one of the five corners. */}
-                      <div className="font-semibold">{labelFor(period.position as MountedPosition)}</div>
-                      <Button size="sm" variant="ghost" onClick={() => onEditPeriod(period)}>
-                        {t('tireList.periodEdit')}
-                      </Button>
-                    </div>
-                    <div className="font-mono text-xs">
-                      {period.dismounted_on == null
-                        ? t('tireList.periodSince', {
-                            from: bound(period.mounted_on, period.mounted_odometer_km),
-                          })
-                        : t('tireList.periodRange', {
-                            from: bound(period.mounted_on, period.mounted_odometer_km),
-                            to: bound(period.dismounted_on, period.dismounted_odometer_km),
-                          })}
-                    </div>
-                    {(period.is_assumed || blocking.has(period.id)) && (
-                      <div className="flex flex-wrap gap-2">
-                        {period.is_assumed && <Badge tone="info">{t('tireList.periodAssumed')}</Badge>}
-                        {blocking.has(period.id) &&
-                          (needsOdometer(period) ? (
-                            <Badge tone="warning">{t('tireList.periodNeedsOdometer')}</Badge>
-                          ) : (
-                            <Badge tone="danger">{t('tireList.periodCheck')}</Badge>
-                          ))}
+                {periods.map((period) => {
+                  const flagged = blocking.has(period.id) || faultsByPeriod.has(period.id)
+                  return (
+                    <li
+                      key={period.id}
+                      data-testid={`period-${period.id}`}
+                      className="space-y-1 rounded-card border border-border p-3"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        {/* `MountPeriodResponse.position` is generated as plain `string`
+                            (the backend schema has no Literal there), but a period is
+                            always mounted at one of the five corners. */}
+                        <div className="font-semibold">{labelFor(period.position as MountedPosition)}</div>
+                        <Button size="sm" variant="ghost" onClick={() => onEditPeriod(period)}>
+                          {t('tireList.periodEdit')}
+                        </Button>
                       </div>
-                    )}
-                    {period.is_assumed && period.observed_active_on ? (
-                      <p className="text-sm text-text-mute">
-                        {t('tireList.periodAssumedHint', {
-                          date: formatDateForDisplay(period.observed_active_on),
-                        })}
-                      </p>
-                    ) : null}
-                    {period.notes ? <p className="text-sm text-text-mute">{period.notes}</p> : null}
-                  </li>
-                ))}
+                      <div className="font-mono text-xs">
+                        {period.dismounted_on == null
+                          ? t('tireList.periodSince', {
+                              from: bound(period.mounted_on, period.mounted_odometer_km),
+                            })
+                          : t('tireList.periodRange', {
+                              from: bound(period.mounted_on, period.mounted_odometer_km),
+                              to: bound(period.dismounted_on, period.dismounted_odometer_km),
+                            })}
+                      </div>
+                      {(period.is_assumed || flagged) && (
+                        <div className="flex flex-wrap gap-2">
+                          {period.is_assumed && <Badge tone="info">{t('tireList.periodAssumed')}</Badge>}
+                          {flagged &&
+                            (blocking.has(period.id) && needsOdometer(period) ? (
+                              <Badge tone="warning">{t('tireList.periodNeedsOdometer')}</Badge>
+                            ) : (
+                              <Badge tone="danger">{t('tireList.periodCheck')}</Badge>
+                            ))}
+                        </div>
+                      )}
+                      {faultsByPeriod.get(period.id)?.[0] ? (
+                        <p data-testid={`period-${period.id}-fault`} className="text-sm text-text-mute">
+                          {faultsByPeriod.get(period.id)?.[0]?.message}
+                        </p>
+                      ) : null}
+                      {period.is_assumed && period.observed_active_on ? (
+                        <p className="text-sm text-text-mute">
+                          {t('tireList.periodAssumedHint', {
+                            date: formatDateForDisplay(period.observed_active_on),
+                          })}
+                        </p>
+                      ) : null}
+                      {period.notes ? <p className="text-sm text-text-mute">{period.notes}</p> : null}
+                    </li>
+                  )
+                })}
               </ul>
             )}
           </section>

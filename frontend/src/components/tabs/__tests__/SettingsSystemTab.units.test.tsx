@@ -69,6 +69,7 @@ import { useEffect } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { SettingsProvider, useSettings } from '@/contexts/SettingsContext'
 import {
   IMPERIAL_UNITS,
@@ -167,10 +168,13 @@ function ActiveSystemTab(): React.ReactElement {
 }
 
 function renderTab(): void {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
-    <SettingsProvider>
-      <ActiveSystemTab />
-    </SettingsProvider>,
+    <QueryClientProvider client={queryClient}>
+      <SettingsProvider>
+        <ActiveSystemTab />
+      </SettingsProvider>
+    </QueryClientProvider>,
   )
 }
 

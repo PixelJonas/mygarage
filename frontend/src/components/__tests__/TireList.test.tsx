@@ -582,6 +582,26 @@ describe('TireList', () => {
     expect(screen.queryByText('tireList.fix')).toBeNull()
   })
 
+  it('offers Fix when history holds a contradiction even though nothing is blocked', () => {
+    useTiresMock.mockReturnValue({
+      data: {
+        tires: [
+          {
+            ...STORED_FL_TIRE,
+            blocking_period_ids: [],
+            history_faults: [{ period_id: 3, code: 'overlapping_dates', counterpart_id: 4, message: 'M' }],
+            mount_periods: [],
+          },
+        ],
+        total: 1,
+      },
+      isLoading: false,
+      error: null,
+    })
+    render(<TireList vin="1HGCM82633A004352" />)
+    expect(screen.getByText('tireList.fix')).toBeInTheDocument()
+  })
+
   const OPEN_PERIOD = { id: 11, position: 'FL', mounted_on: '2026-04-10', dismounted_on: null, mounted_odometer_km: '152159.00', dismounted_odometer_km: null, is_assumed: false, observed_active_on: null, notes: null }
 
   it('the mounted card names its current mount', () => {
