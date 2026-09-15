@@ -337,6 +337,7 @@ from app.routes import (
     documents_router,
     export_router,
     external_vehicles_router,
+    financing_router,
     fuel_router,
     garage_assistant_router,
     hours_router,
@@ -403,6 +404,7 @@ app.include_router(dashboard_router)
 app.include_router(external_vehicles_router)
 app.include_router(export_router)
 app.include_router(import_router)
+app.include_router(financing_router)
 app.include_router(analytics_router)
 app.include_router(warranty_router)
 app.include_router(insurance_router)
