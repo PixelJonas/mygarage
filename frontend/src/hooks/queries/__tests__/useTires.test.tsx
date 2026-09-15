@@ -14,6 +14,7 @@ import type { ReactNode } from 'react'
 
 import api from '@/services/api'
 import {
+  useCreateMountPeriod,
   useDeleteTire,
   useDeleteTireReading,
   useMountTire,
@@ -69,6 +70,42 @@ describe('tire mutations invalidate the odometer caches', () => {
     expect(vi.mocked(api.put)).toHaveBeenCalledWith('/vehicles/' + VIN + '/tires/1/mount-periods/2', { notes: 'x' })
     expect(invalidated(queryClient, LIST_KEY)).toBe(true)
     expect(invalidated(queryClient, NEAREST_KEY)).toBe(true)
+  })
+
+  it('recording a past period posts to the tire and invalidates every prefix invalidateTireViews covers', async () => {
+    const { queryClient, wrapper } = harness()
+    const keys = {
+      tires: ['tires', VIN, false],
+      reminders: ['reminders', VIN],
+      sets: ['tire-sets', VIN],
+      odometer: LIST_KEY,
+    }
+    for (const key of Object.values(keys)) queryClient.setQueryData(key, {})
+
+    const { result } = renderHook(() => useCreateMountPeriod(VIN), { wrapper })
+    await act(async () => {
+      await result.current.mutateAsync({
+        tireId: 3,
+        position: 'FR',
+        mounted_on: '2025-09-15',
+        dismounted_on: '2025-12-15',
+        mounted_odometer_km: 1610.148672,
+        dismounted_odometer_km: 19868.3172864,
+        notes: null,
+      })
+    })
+    expect(vi.mocked(api.post)).toHaveBeenCalledWith('/vehicles/' + VIN + '/tires/3/mount-periods', {
+      position: 'FR',
+      mounted_on: '2025-09-15',
+      dismounted_on: '2025-12-15',
+      mounted_odometer_km: 1610.148672,
+      dismounted_odometer_km: 19868.3172864,
+      notes: null,
+    })
+    expect(invalidated(queryClient, keys.tires)).toBe(true)
+    expect(invalidated(queryClient, keys.reminders)).toBe(true)
+    expect(invalidated(queryClient, keys.sets)).toBe(true)
+    expect(invalidated(queryClient, keys.odometer)).toBe(true)
   })
 
   it('a delete invalidates them', async () => {

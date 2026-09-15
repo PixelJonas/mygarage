@@ -374,7 +374,15 @@ test.describe('Tires', () => {
       return drawer
     }
     const refusedDrawer = await dismount()
-    await expect(page.getByText(/contradicts the reading dated 2026-03-01 at 150,000 km/)).toBeVisible({
+    // The reading's odometer was seeded directly in km through the API, so the
+    // refusal names it in whichever unit the account is currently resolved to
+    // -- the same ambiguity `/100000|62137/` above already hedges for. The
+    // server's own message formatter (`distance_formatter` in
+    // tire_history.py) keeps one decimal place, unlike the frontend's
+    // whole-mile display, so imperial reads 93,205.7 mi rather than 93,206.
+    await expect(
+      page.getByText(/contradicts the reading dated 2026-03-01 at (150,000 km|93,205\.7 mi)/)
+    ).toBeVisible({
       timeout: 10000,
     })
     await refusedDrawer.getByRole('button', { name: 'Cancel' }).click()
@@ -406,6 +414,127 @@ test.describe('Tires', () => {
     expect(tire.position).toBeNull()
     expect(tire.mount_periods).toHaveLength(1)
     expect(tire.mount_periods[0].dismounted_on).not.toBeNull()
+  })
+
+  test('a past period is recorded from the history drawer, closed, and does not move the current mount', async ({
+    page,
+    request,
+  }) => {
+    const vin = await tireVehicle(request, 'past-period')
+    const admin = await adminSession()
+    // Mounted at FL today. The past period records this SAME tire on a
+    // different corner before that, which is legal as long as the two date
+    // ranges do not overlap.
+    const created = await request.post(`${API_BASE}/vehicles/${vin}/tires/create-and-mount`, {
+      headers: admin.headers,
+      data: { vin, position: 'FL', brand: 'E2E PastPeriod', tread_depth_mm: 8 },
+    })
+    expect([201, 409], `seed failed: ${await created.text()}`).toContain(created.status())
+    test.skip(created.status() === 409, 'FL already occupied by a previous run')
+    const tireId = (await created.json()).id
+
+    const monthsAgo = (months: number): string => {
+      const date = new Date()
+      date.setMonth(date.getMonth() - months)
+      return date.toISOString().slice(0, 10)
+    }
+    const mountedOn = monthsAgo(12)
+    const dismountedOn = monthsAgo(11)
+
+    await openTires(page, vin)
+    const card = page.locator('.rounded-card', { hasText: 'E2E PastPeriod' }).first()
+    await expect(card).toBeVisible({ timeout: 10000 })
+    await card.getByRole('button', { name: /View reading history/ }).click()
+    const history = page.getByRole('dialog').first()
+    await expect(history).toBeVisible({ timeout: 5000 })
+
+    await history.getByRole('button', { name: 'Add past period' }).click()
+    const addDrawer = page.getByRole('dialog', { name: 'Add a past period' })
+    await expect(addDrawer).toBeVisible({ timeout: 5000 })
+    await addDrawer.getByRole('button', { name: 'Front Right', exact: true }).click()
+    await addDrawer.locator('#past-mount-date').fill(mountedOn)
+    await addDrawer.locator('#past-dismount-date').fill(dismountedOn)
+    await addDrawer.locator('#past-mount-odometer').fill('5000')
+    await addDrawer.locator('#past-dismount-odometer').fill('8000')
+    await addDrawer.getByRole('button', { name: 'Save', exact: true }).click()
+    await expect(addDrawer).toBeHidden({ timeout: 10000 })
+
+    // The new period is on the history list, labelled by its OWN corner
+    // rather than the tire's current one.
+    await expect(history.getByText('Front Right')).toBeVisible({ timeout: 10000 })
+
+    const listed = await request.get(`${API_BASE}/vehicles/${vin}/tires`, { headers: admin.headers })
+    const tire = (await listed.json()).tires.find((t: { id: number }) => t.id === tireId)
+    const pastPeriod = tire.mount_periods.find((p: { position: string }) => p.position === 'FR')
+    expect(pastPeriod, JSON.stringify(tire.mount_periods)).toBeTruthy()
+    expect(pastPeriod.mounted_on).toBe(mountedOn)
+    expect(pastPeriod.dismounted_on).toBe(dismountedOn)
+    // The past period is closed and the tire's CURRENT mount is untouched.
+    expect(tire.position).toBe('FL')
+  })
+
+  test('a contradiction is badged and explained, and clears when the reading is deleted', async ({
+    page,
+    request,
+  }) => {
+    const vin = await tireVehicle(request, 'contradiction-ui')
+    const admin = await adminSession()
+    const created = await request.post(`${API_BASE}/vehicles/${vin}/tires/create-and-mount`, {
+      headers: admin.headers,
+      data: {
+        vin,
+        position: 'RR',
+        brand: 'E2E Contradiction',
+        tread_depth_mm: 8,
+        mounted_on: '2026-01-01',
+        mounted_odometer_km: 10000,
+      },
+    })
+    expect([201, 409], `seed failed: ${await created.text()}`).toContain(created.status())
+    test.skip(created.status() === 409, 'RR already occupied by a previous run')
+    const tireId = (await created.json()).id
+
+    const dismounted = await request.post(`${API_BASE}/vehicles/${vin}/tires/${tireId}/dismount`, {
+      headers: admin.headers,
+      data: { dismounted_on: '2026-03-02', dismounted_odometer_km: 15000 },
+    })
+    expect(dismounted.status(), await dismounted.text()).toBe(200)
+
+    // Between the mount and the dismount, at an odometer ABOVE the dismount:
+    // a real contradiction (the vehicle's odometer would have to run
+    // backwards), which the reading endpoint does not refuse -- only the
+    // writers that change the mount history do.
+    const reading = await request.post(`${API_BASE}/vehicles/${vin}/tires/${tireId}/readings`, {
+      headers: admin.headers,
+      data: { recorded_at: '2026-02-01', tread_depth_mm: 7, odometer_km: 20000 },
+    })
+    expect(reading.status(), await reading.text()).toBe(201)
+
+    await openTires(page, vin)
+    const card = page.locator('.rounded-card', { hasText: 'E2E Contradiction' }).first()
+    await expect(card).toBeVisible({ timeout: 10000 })
+    await card.getByRole('button', { name: 'History', exact: true }).click()
+    const history = page.getByRole('dialog')
+    await expect(history).toBeVisible({ timeout: 5000 })
+
+    await expect(history.getByText('Check this period')).toBeVisible({ timeout: 10000 })
+    // The message is in whichever unit the account is resolved to, so this
+    // only pins the part every unit system agrees on: which reading.
+    await expect(history.getByText(/contradicts the reading dated 2026-02-01/)).toBeVisible()
+
+    const confirmed = new Promise<string>((resolve) => {
+      page.once('dialog', async (dialog) => {
+        const message = dialog.message()
+        await dialog.accept()
+        resolve(message)
+      })
+    })
+    await history.getByRole('button', { name: /^Delete the reading of / }).click()
+    expect(await confirmed).toMatch(/^Delete the reading of /)
+
+    await expect(history.getByText('No readings logged yet')).toBeVisible({ timeout: 10000 })
+    await expect(history.getByText('Check this period')).toHaveCount(0)
+    await expect(history.getByText(/contradicts the reading dated/)).toHaveCount(0)
   })
 })
 

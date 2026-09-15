@@ -98,7 +98,7 @@ afterEach(() => {
 
 describe('TireHistoryDrawer', () => {
   it('lists periods oldest first with the badges each one earns', () => {
-    render(<TireHistoryDrawer tire={tire() as never} open onClose={vi.fn()} onEditPeriod={vi.fn()} labelFor={labelFor} vin={VIN} />)
+    render(<TireHistoryDrawer tire={tire() as never} open onClose={vi.fn()} onEditPeriod={vi.fn()} onAddPeriod={vi.fn()} labelFor={labelFor} vin={VIN} />)
     expect(drawer().getByText('tireList.firstInstalledUnknown')).toBeInTheDocument()
     const rows = drawer().getAllByTestId(/^period-/)
     expect(rows.map((r) => r.getAttribute('data-testid'))).toEqual(['period-1', 'period-2'])
@@ -115,7 +115,7 @@ describe('TireHistoryDrawer', () => {
 
   it('a fully bounded blocking period is a fault, not a gap', () => {
     const faulted = { ...OPEN, id: 3, dismounted_on: '2026-02-01', dismounted_odometer_km: '2500.00' }
-    render(<TireHistoryDrawer tire={tire({ mount_periods: [faulted], blocking_period_ids: [3] }) as never} open onClose={vi.fn()} onEditPeriod={vi.fn()} labelFor={labelFor} vin={VIN} />)
+    render(<TireHistoryDrawer tire={tire({ mount_periods: [faulted], blocking_period_ids: [3] }) as never} open onClose={vi.fn()} onEditPeriod={vi.fn()} onAddPeriod={vi.fn()} labelFor={labelFor} vin={VIN} />)
     expect(drawer().getByText('tireList.periodCheck')).toBeInTheDocument()
     expect(needsOdometer(faulted as never)).toBe(false)
     expect(needsOdometer(ASSUMED as never)).toBe(true)
@@ -144,15 +144,22 @@ describe('TireHistoryDrawer', () => {
   })
 
   it('names the first installation when it is known', () => {
-    render(<TireHistoryDrawer tire={tire({ installed_date: '2024-11-02', mount_periods: [{ ...OPEN, mounted_on: '2024-11-02' }] }) as never} open onClose={vi.fn()} onEditPeriod={vi.fn()} labelFor={labelFor} vin={VIN} />)
+    render(<TireHistoryDrawer tire={tire({ installed_date: '2024-11-02', mount_periods: [{ ...OPEN, mounted_on: '2024-11-02' }] }) as never} open onClose={vi.fn()} onEditPeriod={vi.fn()} onAddPeriod={vi.fn()} labelFor={labelFor} vin={VIN} />)
     expect(drawer().getByText('tireList.firstInstalled')).toBeInTheDocument()
   })
 
   it('Edit hands the row\'s period to the caller', () => {
     const onEditPeriod = vi.fn()
-    render(<TireHistoryDrawer tire={tire() as never} open onClose={vi.fn()} onEditPeriod={onEditPeriod} labelFor={labelFor} vin={VIN} />)
+    render(<TireHistoryDrawer tire={tire() as never} open onClose={vi.fn()} onEditPeriod={onEditPeriod} onAddPeriod={vi.fn()} labelFor={labelFor} vin={VIN} />)
     fireEvent.click(within(drawer().getByTestId('period-2')).getByText('tireList.periodEdit'))
     expect(onEditPeriod).toHaveBeenCalledWith(expect.objectContaining({ id: 2 }))
+  })
+
+  it('Add past period calls the caller', () => {
+    const onAddPeriod = vi.fn()
+    render(<TireHistoryDrawer tire={tire() as never} open onClose={vi.fn()} onEditPeriod={vi.fn()} onAddPeriod={onAddPeriod} labelFor={labelFor} vin={VIN} />)
+    fireEvent.click(drawer().getByText('tireList.addPastPeriod'))
+    expect(onAddPeriod).toHaveBeenCalledTimes(1)
   })
 
   describe('deleting a reading', () => {
@@ -162,7 +169,7 @@ describe('TireHistoryDrawer', () => {
       { id: 30, tire_id: 9, recorded_at: '2026-01-10', odometer_km: '10500.00', tread_depth_mm: '8.00', pressure_kpa: null, notes: null },
     ]
     const renderWithReadings = () =>
-      render(<TireHistoryDrawer tire={tire({ readings: READINGS }) as never} open onClose={vi.fn()} onEditPeriod={vi.fn()} labelFor={labelFor} vin={VIN} />)
+      render(<TireHistoryDrawer tire={tire({ readings: READINGS }) as never} open onClose={vi.fn()} onEditPeriod={vi.fn()} onAddPeriod={vi.fn()} labelFor={labelFor} vin={VIN} />)
     const deleteIn = (readingId: number) =>
       within(drawer().getByTestId(`reading-${readingId}`)).getByRole('button', { name: 'tireList.readingDeleteLabel' })
 
@@ -214,6 +221,7 @@ describe('TireHistoryDrawer', () => {
         open
         onClose={vi.fn()}
         onEditPeriod={vi.fn()}
+        onAddPeriod={vi.fn()}
         labelFor={labelFor}
         vin={VIN}
       />
@@ -236,6 +244,7 @@ describe('TireHistoryDrawer', () => {
         open
         onClose={vi.fn()}
         onEditPeriod={vi.fn()}
+        onAddPeriod={vi.fn()}
         labelFor={labelFor}
         vin={VIN}
       />
@@ -251,6 +260,7 @@ describe('TireHistoryDrawer', () => {
         open
         onClose={vi.fn()}
         onEditPeriod={vi.fn()}
+        onAddPeriod={vi.fn()}
         labelFor={labelFor}
         vin={VIN}
       />
@@ -271,6 +281,7 @@ describe('TireHistoryDrawer', () => {
         open
         onClose={vi.fn()}
         onEditPeriod={vi.fn()}
+        onAddPeriod={vi.fn()}
         labelFor={labelFor}
         vin={VIN}
       />
@@ -293,7 +304,7 @@ describe('TireHistoryDrawer', () => {
   })
 
   it('is empty when there is nothing to show', () => {
-    render(<TireHistoryDrawer tire={tire({ mount_periods: [], blocking_period_ids: [] }) as never} open onClose={vi.fn()} onEditPeriod={vi.fn()} labelFor={labelFor} vin={VIN} />)
+    render(<TireHistoryDrawer tire={tire({ mount_periods: [], blocking_period_ids: [] }) as never} open onClose={vi.fn()} onEditPeriod={vi.fn()} onAddPeriod={vi.fn()} labelFor={labelFor} vin={VIN} />)
     expect(drawer().getByText('tireList.historyEmpty')).toBeInTheDocument()
   })
 })

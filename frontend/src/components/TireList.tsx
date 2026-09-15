@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, Gauge, AlertTriangle, Pencil, RotateCw, Layers } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatDateForDisplay, formatDateForInput } from '../utils/dateUtils'
+import { POSITIONS } from '../types/tire'
 import type { MountedPosition, Tire, TireMountPeriod, TirePosition, TireSet } from '../types/tire'
 import {
   useTires,
@@ -41,11 +42,10 @@ import {
   ListRow,
   Toggle,
 } from './ui'
+import AddPastPeriodDrawer from './tires/AddPastPeriodDrawer'
 import MountEventFields, { EMPTY_ODOMETER, type OdometerFieldValue } from './tires/MountEventFields'
 import MountPeriodEditor from './tires/MountPeriodEditor'
 import TireHistoryDrawer, { needsFix } from './tires/TireHistoryDrawer'
-
-const POSITIONS: MountedPosition[] = ['FL', 'FR', 'RL', 'RR', 'SPARE']
 
 /**
  * The corners a rotation moves.
@@ -293,6 +293,7 @@ export default function TireList({ vin }: TireListProps) {
   const [readingTireId, setReadingTireId] = useState<number | null>(null)
   const [historyTireId, setHistoryTireId] = useState<number | null>(null)
   const [editingPeriod, setEditingPeriod] = useState<TireMountPeriod | null>(null)
+  const [addingPeriod, setAddingPeriod] = useState(false)
   const [form, setForm] = useState<TireFormState>(() => seedTireForm(null, 'FL'))
   const [readingForm, setReadingForm] = useState<ReadingFormState>(emptyReadingForm)
 
@@ -1956,9 +1957,11 @@ export default function TireList({ vin }: TireListProps) {
         open={historyTire !== null}
         onClose={() => {
           setEditingPeriod(null)
+          setAddingPeriod(false)
           setHistoryTireId(null)
         }}
         onEditPeriod={setEditingPeriod}
+        onAddPeriod={() => setAddingPeriod(true)}
         labelFor={labelFor}
       />
 
@@ -1970,6 +1973,17 @@ export default function TireList({ vin }: TireListProps) {
           period={editingPeriod}
           open
           onClose={() => setEditingPeriod(null)}
+          labelFor={labelFor}
+        />
+      )}
+
+      {historyTire && addingPeriod && (
+        <AddPastPeriodDrawer
+          key={historyTire.id}
+          vin={vin}
+          tire={historyTire}
+          open
+          onClose={() => setAddingPeriod(false)}
           labelFor={labelFor}
         />
       )}

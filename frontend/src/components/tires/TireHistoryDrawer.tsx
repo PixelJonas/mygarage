@@ -22,6 +22,7 @@ interface TireHistoryDrawerProps {
   open: boolean
   onClose: () => void
   onEditPeriod: (period: TireMountPeriod) => void
+  onAddPeriod: () => void
   /** The card's position label, passed in so the five t() calls stay in one place. */
   labelFor: (position: TirePosition) => string
 }
@@ -64,6 +65,7 @@ export default function TireHistoryDrawer({
   open,
   onClose,
   onEditPeriod,
+  onAddPeriod,
   labelFor,
 }: TireHistoryDrawerProps) {
   const { t } = useTranslation('vehicles')
@@ -137,7 +139,12 @@ export default function TireHistoryDrawer({
       ) : (
         <div className="space-y-6">
           <section className="space-y-2">
-            <h3 className="text-sm font-semibold text-text-mute">{t('tireList.mountHistory')}</h3>
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-text-mute">{t('tireList.mountHistory')}</h3>
+              <Button size="sm" variant="ghost" onClick={onAddPeriod}>
+                {t('tireList.addPastPeriod')}
+              </Button>
+            </div>
             <p className="text-sm">
               {tire?.installed_date && first
                 ? t('tireList.firstInstalled', {

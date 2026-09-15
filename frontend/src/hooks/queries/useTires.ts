@@ -7,6 +7,7 @@ import {
 } from '@tanstack/react-query'
 import api from '@/services/api'
 import type {
+  MountPeriodCreate,
   MountPeriodUpdate,
   Tire,
   TireCreate,
@@ -193,6 +194,23 @@ export function useUpdateMountPeriod(vin: string) {
         `/vehicles/${vin}/tires/${tireId}/mount-periods/${periodId}`,
         payload
       )
+      return data
+    },
+    onSuccess: () => invalidateTireViews(queryClient, vin),
+  })
+}
+
+/**
+ * Record a closed period the tire spent on a corner in the past.
+ *
+ * The server refuses one that contradicts the tire's other periods or its
+ * readings, and answers with the whole tire.
+ */
+export function useCreateMountPeriod(vin: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ tireId, ...payload }: MountPeriodCreate & { tireId: number }) => {
+      const { data } = await api.post<Tire>(`/vehicles/${vin}/tires/${tireId}/mount-periods`, payload)
       return data
     },
     onSuccess: () => invalidateTireViews(queryClient, vin),
