@@ -7832,6 +7832,11 @@ export interface components {
              */
             total_def_cost: string;
             /**
+             * Total Financing Cost
+             * @default 0.00
+             */
+            total_financing_cost: string;
+            /**
              * Total Fuel Cost
              * @default 0.00
              */
@@ -9919,6 +9924,11 @@ export interface components {
              * @default 0.00
              */
             total_detailing: string;
+            /**
+             * Total Financing
+             * @default 0.00
+             */
+            total_financing: string;
             /**
              * Total Fuel
              * @default 0.00
