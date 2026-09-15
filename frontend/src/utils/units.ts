@@ -268,7 +268,8 @@ export class UnitConverter {
   // ========== FUEL ECONOMY CONVERSIONS ==========
 
   /**
-   * Convert MPG to L/100km (US 235.214 or UK 282.481 per active gallon standard).
+   * Convert MPG to L/100km (US 235.2145833... or UK 282.4809363..., the numerators
+   * derived above, per active gallon standard).
    */
   static mpgToL100km(mpg: Numeric): number | null {
     if (mpg === null || mpg === undefined || mpg === 0) {
@@ -278,7 +279,8 @@ export class UnitConverter {
   }
 
   /**
-   * Convert L/100km to MPG (US 235.214 or UK 282.481 per active gallon standard).
+   * Convert L/100km to MPG (US 235.2145833... or UK 282.4809363..., the numerators
+   * derived above, per active gallon standard).
    */
   static l100kmToMpg(l100km: Numeric): number | null {
     if (l100km === null || l100km === undefined || l100km === 0) {

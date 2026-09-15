@@ -646,7 +646,7 @@ class TestHistoricalShapes:
             body = (
                 "units_version,unit_system,Date,Mileage,Gallons,Price Per Gallon,"
                 "Outside Temp (F),OBC MPG,OBC Avg Speed (mph)\n"
-                "5,imperial,2026-04-16,100,10,3.78541,68,23.5214,100\n"
+                "5,imperial,2026-04-16,100,10,3.785411784,68,23.5214,100\n"
             )
             resp = await _post(client, auth_headers, vin, "fuel", body)
             assert resp.status_code == 200, resp.text
@@ -699,7 +699,7 @@ class TestHistoricalShapes:
     ):
         """`Price/Gal` is a third-party spelling the importer has always taken."""
         async with _vehicle(db_session, test_user["id"], "V6PRICESLASH0001") as vin:
-            body = "Date,Mileage,Gallons,Price/Gal\n2026-04-19,100,10,3.78541\n"
+            body = "Date,Mileage,Gallons,Price/Gal\n2026-04-19,100,10,3.785411784\n"
             resp = await _post(client, auth_headers, vin, "fuel", body)
             assert resp.status_code == 200, resp.text
             record = await _one(db_session, FuelRecord, vin)
@@ -787,7 +787,7 @@ class TestImporterIgnoresPreferences:
     # this rule exists for actually happened.
     SENTINEL_CSV = (
         "units_version,unit_system,Date,Mileage,Gallons,Price Per Gallon,Outside Temp (F)\n"
-        "5,imperial,2026-05-01,100,10,3.78541,68\n"
+        "5,imperial,2026-05-01,100,10,3.785411784,68\n"
     )
 
     async def test_the_same_file_imports_identically_under_opposing_preferences(

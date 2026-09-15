@@ -38,7 +38,7 @@ def _make_fuel_record(**kwargs):
         lb = kwargs.pop("tank_size_lb")
         # 30 lb tank ≈ 13.61 kg; we want the int-bucketed key to work,
         # so round to whole kg here.
-        kwargs["tank_size_kg"] = None if lb is None else Decimal(str(round(float(lb) * 0.453592)))
+        kwargs["tank_size_kg"] = None if lb is None else Decimal(str(round(float(lb) * 0.45359237)))
 
     defaults = {
         "id": 1,

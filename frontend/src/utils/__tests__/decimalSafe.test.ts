@@ -83,7 +83,7 @@ beforeEach(() => {
 
 describe('an entered volume, through the adapter and the wire precision', () => {
   it('converts on the resolved volume token, not the instance gallon standard', () => {
-    // 10 x 3.78541 = 37.8541 -> 37.854 at the API contract's 3 decimal places.
+    // 10 x 3.785411784 = 37.85411784 -> 37.854 at the API contract's 3 decimal places.
     expect(enteredVolume(10, US)).toBe(37.854)
     // 10 x 4.54609 = 45.4609 -> 45.461. The instance standard is `us`, so a
     // path reading the global would answer 37.854 here.
@@ -133,7 +133,7 @@ describe('an entered volume, through the adapter and the wire precision', () => 
 describe('price display and entry — per_volume', () => {
   it('scales the canonical $/L by the resolved set\'s litres-per-unit', () => {
     // Real bug repro: stored $1.136/L reads $4.30/gal on US gallons and
-    // $5.16/gal on imperial ones. 1.136 x 3.78541 = 4.30022576 -> 4.300;
+    // $5.16/gal on imperial ones. 1.136 x 3.785411784 = 4.300227787 -> 4.300;
     // 1.136 x 4.54609 = 5.16435824 -> 5.164.
     expect(priceToDisplay(1.136, US, 'per_volume')).toBe(4.3)
     expect(priceToDisplay(1.136, UK, 'per_volume')).toBe(5.164)

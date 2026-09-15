@@ -70,7 +70,7 @@ beforeEach(() => {
 
 describe('OdometerRecordForm — the reading follows units.distance', () => {
   it('★ EDIT: a litres-and-miles client reads miles, under a miles label, with a miles example', () => {
-    // 72420.5 km / 1.60934 = 45000.1242745... mi, shown at the mi adapter's
+    // 72420.5 km / 1.609344 = 45000.0124... mi, shown at the mi adapter's
     // zero decimals as 45000.
     unitPrefMock.units = LITRES_MILES
     render(<OdometerRecordForm {...DEFAULT_PROPS} record={RECORD} />)

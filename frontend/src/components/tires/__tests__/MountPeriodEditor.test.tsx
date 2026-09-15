@@ -99,7 +99,7 @@ describe('MountPeriodEditor', () => {
     // from the offered reading (100000 km), so a bug that keeps the OLD
     // origin while the typed string changes to the NEW suggestion cannot
     // coincidentally pass. 100000 km does not survive mile rounding
-    // (100000 / 1.60934 -> 62137 mi, and back -> 99999.55958 km), which is
+    // (100000 / 1.609344 -> 62137 mi, and back -> 99999.808128 km), which is
     // the exact shape of the defect this pins.
     const period = { ...CLOSED, id: 7, mounted_odometer_km: '50000.00' }
     nearestData = { date: '2026-01-05', odometer_km: '100000.00', source: 'manual', days_away: -5 }

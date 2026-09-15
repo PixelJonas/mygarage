@@ -59,7 +59,7 @@ describe('format', () => {
     const u = makeUnitFormat(IMPERIAL)
     // 7.5 mm is 9.4488... thirty-seconds, and in32 renders at 0 decimals.
     expect(u.tread.format(7.5)).toBe('9/32 in')
-    // 240 kPa / 6.89476 = 34.809043..., at 1 decimal.
+    // 240 kPa / 6.894757... = 34.809057..., at 1 decimal.
     expect(u.pressure.format(240)).toBe('34.8 PSI')
   })
 
@@ -69,8 +69,8 @@ describe('format', () => {
   })
 
   it('groups thousands in the active locale', () => {
-    // 1,609.34 km / 1.60934 = 1000 mi
-    expect(makeUnitFormat(IMPERIAL).distance.format(1609.34)).toBe('1,000 mi')
+    // 1,609.344 km / 1.609344 = 1000 mi
+    expect(makeUnitFormat(IMPERIAL).distance.format(1609.344)).toBe('1,000 mi')
   })
 
   it('appends the counterpart in parentheses when show-both is on', () => {
@@ -115,9 +115,9 @@ describe('formatPrimary', () => {
     // would start rendering a counterpart nobody asked for at that site. This
     // is the capability that would otherwise have been silently dropped.
     const both = makeUnitFormat(IMPERIAL, true)
-    // 1,609.34 km / 1.60934 = 1000 mi, counterpart km at 0 decimals.
-    expect(both.distance.format(1609.34)).toBe('1,000 mi (1,609 km)')
-    expect(both.distance.formatPrimary(1609.34)).toBe('1,000 mi')
+    // 1,609.344 km / 1.609344 = 1000 mi, counterpart km at 0 decimals.
+    expect(both.distance.format(1609.344)).toBe('1,000 mi (1,609 km)')
+    expect(both.distance.formatPrimary(1609.344)).toBe('1,000 mi')
   })
 
   it('is the same string as format when show-both is off', () => {
@@ -149,13 +149,13 @@ describe('volume per distance', () => {
     // the fix is a different bug rather than a fix.
     expect(formatVolumePerDistance(METRIC, 3.4)).toBe('3.4')
     expect(volumePerDistanceLabel(METRIC)).toBe('L/1,000 km')
-    // 3.78541 L is one US gallon; per 1,000 km is 1.60934 per 1,000 mi.
-    expect(formatVolumePerDistance(IMPERIAL, 3.78541)).toBe('1.6')
+    // 3.785411784 L is one US gallon; per 1,000 km is 1.609344 per 1,000 mi.
+    expect(formatVolumePerDistance(IMPERIAL, 3.785411784)).toBe('1.6')
     expect(volumePerDistanceLabel(IMPERIAL)).toBe('gal/1,000 mi')
   })
 
   it('★ a litres-and-miles set reads litres per 1,000 MILES', () => {
-    // 3.4 L/1,000 km x 1.60934 km/mi = 5.471756, one decimal 5.5. The retired
+    // 3.4 L/1,000 km x 1.609344 km/mi = 5.4717696, one decimal 5.5. The retired
     // helper answered '3.4' under an 'L/1,000 km' label, because both halves
     // read the volume token.
     expect(formatVolumePerDistance(LITRES_MILES, 3.4)).toBe('5.5')
@@ -166,20 +166,21 @@ describe('volume per distance', () => {
   it('★ a gallons-and-kilometres set reads gallons per 1,000 KILOMETRES', () => {
     // The mirror, so nothing above is satisfied by an inverted branch. One US
     // gallon per 1,000 km stays one gallon per 1,000 km; the retired helper
-    // multiplied by 1.60934 anyway and answered '1.6' under 'gal/1,000 mi'.
-    expect(formatVolumePerDistance(GALLONS_KM, 3.78541)).toBe('1.0')
-    expect(formatVolumePerDistance(GALLONS_KM, 3.78541)).not.toBe('1.6')
+    // multiplied by the mile factor anyway and answered '1.6' under
+    // 'gal/1,000 mi'.
+    expect(formatVolumePerDistance(GALLONS_KM, 3.785411784)).toBe('1.0')
+    expect(formatVolumePerDistance(GALLONS_KM, 3.785411784)).not.toBe('1.6')
     expect(volumePerDistanceLabel(GALLONS_KM)).toBe('gal/1,000 km')
   })
 
   it('takes the gallon flavour from the resolved token, not from an assumption', () => {
-    // 4.54609 L is one IMPERIAL gallon; per 1,000 km is 1.60934 per 1,000 mi.
+    // 4.54609 L is one IMPERIAL gallon; per 1,000 km is 1.609344 per 1,000 mi.
     const uk = presetUnitsFor('imperial', 'uk')
     expect(formatVolumePerDistance(uk, 4.54609)).toBe('1.6')
     expect(volumePerDistanceLabel(uk)).toBe('gal/1,000 mi')
     // The three expectations `unitsSummaryHelpers.test.ts` held before these
     // functions moved, carried over unchanged so the move cannot lose them.
-    // 4.7 / 3.78541 x 1.60934 = 1.998; 4.7 / 4.54609 x 1.60934 = 1.664.
+    // 4.7 / 3.785411784 x 1.609344 = 1.998; 4.7 / 4.54609 x 1.609344 = 1.664.
     expect(formatVolumePerDistance(METRIC, 4.7)).toBe('4.7')
     expect(formatVolumePerDistance(IMPERIAL, 4.7)).toBe('2.0')
     expect(formatVolumePerDistance(uk, 4.7)).toBe('1.7')
@@ -205,7 +206,7 @@ describe('cost per distance', () => {
     // $0.10/km x 100 = $10.00 per 100 km.
     expect(formatCostPerDistance(METRIC, 0.1)).toBe('$10.00')
     expect(costPerDistanceUnitLabel(METRIC)).toBe('100 km')
-    // $0.10/km x 1.60934 x 1000 = $160.93 per 1,000 mi.
+    // $0.10/km x 1.609344 x 1000 = $160.93 per 1,000 mi.
     expect(formatCostPerDistance(IMPERIAL, 0.1)).toBe('$160.93')
     expect(costPerDistanceUnitLabel(IMPERIAL)).toBe('1,000 mi')
   })

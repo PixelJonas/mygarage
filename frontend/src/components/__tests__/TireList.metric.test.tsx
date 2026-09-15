@@ -148,7 +148,7 @@ describe('TireList under a metric set', () => {
     expect(tread.step).toBe('0.01')
   })
 
-  it('stores kPa unconverted, where the imperial path multiplies by 6.89476', () => {
+  it('stores kPa unconverted, where the imperial path multiplies by 6.894757...', () => {
     const mutate = vi.fn()
     useUpsertTireMock.mockReturnValue({ mutate, isPending: false })
 

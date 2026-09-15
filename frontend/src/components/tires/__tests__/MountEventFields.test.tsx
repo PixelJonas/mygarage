@@ -11,7 +11,7 @@ vi.mock('../../../hooks/queries/useOdometerRecords', () => ({
 }))
 
 // Imperial, the default for every new account: 100000 km does not survive
-// mile rounding (100000 / 1.60934 -> 62137 mi, and back -> 99999.55958 km),
+// mile rounding (100000 / 1.609344 -> 62137 mi, and back -> 99999.808128 km),
 // which is exactly the shape of the defect this file pins.
 vi.mock('../../../hooks/useUnitPreference', () => ({
   useUnitPreference: () => ({

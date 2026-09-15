@@ -143,8 +143,9 @@ describe('FuelRecordForm — the gallon comes from the user, not the instance', 
     const payload = postedPayload()
     // 10 x 4.54609 = 45.4609 -> 45.461 at the schema's three decimal places.
     expect(payload.liters).toBe(45.461)
-    // 6 / 4.54609 = 1.31981548979. The shipped bug stored 6 / 3.78541 = 1.585,
-    // 20.1 percent high, against a volume converted on the OTHER gallon.
+    // 6 / 4.54609 = 1.31981548979. The shipped bug divided by the US gallon,
+    // 6 / 3.785411784 = 1.585, 20.1 percent high, against a volume converted
+    // on the OTHER gallon.
     expect(payload.price_per_unit).toBe(1.31981548979)
     // The instance really is on US gallons; nothing above consulted it.
     expect(UnitConverter.getGallonStandard()).toBe('us')
@@ -170,7 +171,7 @@ describe('FuelRecordForm — the gallon comes from the user, not the instance', 
     // This is what "atomically" buys, and what a half-migration destroys. The
     // form computes cost in DISPLAY units, so price x volume comes back to the
     // gross total only when both conversions used the same gallon. Convert one
-    // half and not the other and this ratio lands on 4.54609 / 3.78541.
+    // half and not the other and this ratio lands on 4.54609 / 3.785411784.
     UnitConverter.setGallonStandard('us')
     unitPrefMock.units = UK_IMPERIAL_UNITS
 

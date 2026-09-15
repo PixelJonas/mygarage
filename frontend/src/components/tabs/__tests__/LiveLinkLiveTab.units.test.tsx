@@ -87,7 +87,7 @@ describe('LiveLinkLiveTab gauges', () => {
       ]),
     )
     render(<LiveLinkLiveTab vin="V1" />)
-    // 1000 / 1.60934 = 621.37..., at the mi adapter's 0 dp.
+    // 1000 / 1.609344 = 621.37..., at the mi adapter's 0 dp.
     expect(await screen.findByText('621')).toBeInTheDocument()
     expect(screen.getByText('mi')).toBeInTheDocument()
   })

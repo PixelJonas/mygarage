@@ -119,8 +119,8 @@ describe('AddPastPeriodDrawer', () => {
     fireEvent.click(drawer().getByText('pos-FR'))
     fireEvent.change(input('past-mount-date'), { target: { value: '2025-06-01' } })
     fireEvent.change(input('past-dismount-date'), { target: { value: '2025-09-01' } })
-    // 100000 km does not survive mile rounding (100000 / 1.60934 -> 62137 mi,
-    // and back -> 99999.55958 km), which is the exact shape of the defect
+    // 100000 km does not survive mile rounding (100000 / 1.609344 -> 62137 mi,
+    // and back -> 99999.808128 km), which is the exact shape of the defect
     // MountEventFields's Use control exists to avoid.
     fireEvent.click(within(screen.getByTestId('past-mount-suggestion')).getByText('tireList.suggestionUse'))
     fireEvent.click(drawer().getByText('common:save'))

@@ -411,7 +411,7 @@ describe('SettingsSystemTab — the show-both example demonstrates the reader\'s
   })
 
   it('★ shows the UK gallon\'s MPG to a UK account, not the US one', async () => {
-    // 282.481 / 9.40856 = 30.0. The retired sentence said 25 MPG to everyone,
+    // 282.4809363... / 9.40856 = 30.02, one decimal 30.0. The retired sentence said 25 MPG to everyone,
     // which is not even the right number for this reader.
     const sentence = await sentenceFor(
       makeUser({ unit_preference: 'custom', resolved_units: UK_IMPERIAL_UNITS }),

@@ -118,7 +118,7 @@ describe('ShopFinder radius options', () => {
 })
 
 describe('ShopFinder search radius in metres', () => {
-  it('sends the default mile radius as metres (5 x 1.60934 km = 8046.7 m)', async () => {
+  it('sends the default mile radius as metres (5 x 1.609344 km = 8046.72 m)', async () => {
     render(<ShopFinder />)
     ;(await screen.findByText('shopFinder.enableLocationBtn')).click()
     await waitFor(() => expect(apiPost).toHaveBeenCalled())
@@ -194,7 +194,7 @@ describe('ShopFinder result distances', () => {
     apiPost.mockResolvedValue({ data: { results: [AT_ZERO_ONE_DEGREE], source: 'osm' } })
     render(<ShopFinder />)
     ;(await screen.findByText('shopFinder.enableLocationBtn')).click()
-    // 11.119492 km / 1.60934 = 6.9093..., at one decimal.
+    // 11.119492 km / 1.609344 = 6.9093..., at one decimal.
     expect(await screen.findByText('shopFinder.distanceAway|6.9 mi')).toBeInTheDocument()
   })
 })

@@ -127,7 +127,7 @@ describe('classifyTelemetryParam', () => {
 })
 
 describe('convertTelemetryValue', () => {
-  it('converts speed through the adapter (100 / 1.60934 = 62.137... at 0 dp)', () => {
+  it('converts speed through the adapter (100 / 1.609344 = 62.137... at 0 dp)', () => {
     expect(convertTelemetryValue(100, '0D-VehicleSpeed', 'km/h', IMPERIAL)).toStrictEqual({
       text: '62',
       unit: 'mph',
@@ -141,7 +141,7 @@ describe('convertTelemetryValue', () => {
     })
   })
 
-  it('converts kPa through the adapter (240 / 6.89476 = 34.809... at 1 dp)', () => {
+  it('converts kPa through the adapter (240 / 6.894757... = 34.809... at 1 dp)', () => {
     expect(convertTelemetryValue(240, 'MANIFOLD_PRESSURE', 'kPa', IMPERIAL)).toStrictEqual({
       text: '34.8',
       unit: 'PSI',
@@ -149,7 +149,7 @@ describe('convertTelemetryValue', () => {
   })
 
   it('canonicalises a bar reading to kPa first, so no bar-to-PSI factor is needed', () => {
-    // 2.4 bar = 240 kPa exactly, then 240 / 6.89476 = 34.809...
+    // 2.4 bar = 240 kPa exactly, then 240 / 6.894757... = 34.809...
     expect(convertTelemetryValue(2.4, 'MANIFOLD_PRESSURE', 'bar', IMPERIAL)).toStrictEqual({
       text: '34.8',
       unit: 'PSI',
@@ -164,14 +164,14 @@ describe('convertTelemetryValue', () => {
   })
 
   it('converts a device-stated kilometre reading whose key names nothing', () => {
-    // 8 km / 1.60934 = 4.97..., at the mi adapter's 0 dp.
+    // 8 km / 1.609344 = 4.97..., at the mi adapter's 0 dp.
     expect(convertTelemetryValue(8, 'TRIP_A', 'km', IMPERIAL)).toStrictEqual({
       text: '5',
       unit: 'mi',
     })
   })
 
-  it('converts a standard odometer (1000 / 1.60934 = 621.37... at 0 dp)', () => {
+  it('converts a standard odometer (1000 / 1.609344 = 621.37... at 0 dp)', () => {
     expect(convertTelemetryValue(1000, 'A6-Odometer', null, IMPERIAL)).toStrictEqual({
       text: '621',
       unit: 'mi',

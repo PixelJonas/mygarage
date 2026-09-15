@@ -121,7 +121,7 @@ describe('VehicleOverviewTab — the three EPA fuel-economy figures', () => {
 
     renderTab(rated)
 
-    // 235.214 / 11.2 = 21.0, / 8.4 = 28.0, / 9.4160546 = 25.0.
+    // 235.2145833... / 11.2 = 21.0, / 8.4 = 28.0, / 9.4160546 = 25.0.
     expect(screen.getByText('21.0 MPG')).toBeInTheDocument()
     expect(screen.getByText('28.0 MPG')).toBeInTheDocument()
     expect(screen.getByText('25.0 MPG')).toBeInTheDocument()

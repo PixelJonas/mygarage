@@ -8,7 +8,7 @@
  *
  *     price_per_unit x volume = gross_cost x (volumeFactor / priceFactor)
  *
- * and the ratio reads 1.0000 when the two factors agree and 4.54609 / 3.78541 =
+ * and the ratio reads 1.0000 when the two factors agree and 4.54609 / 3.785411784 =
  * 1.20095 when the price took the US gallon and the volume the imperial one.
  *
  * ★ It is a DETECTOR WITH A PRECONDITION, not an invariant, and calling it
@@ -42,7 +42,7 @@ import { describe, expect, it } from 'vitest'
 
 /** The ratio a row with one factor on both sides reads. */
 const CLEAN_RATIO = 1
-/** 4.54609 / 3.78541: an imperial-gallon volume against a US-gallon price. */
+/** 4.54609 / 3.785411784: an imperial-gallon volume against a US-gallon price. */
 const CORRUPT_RATIO = 1.20095
 /** Relative slack for the 2-3 decimal places the columns are stored at. */
 const TOLERANCE = 0.005

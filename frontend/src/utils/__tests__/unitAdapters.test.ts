@@ -288,7 +288,7 @@ const QUANTITY_OF: Record<UnitToken, UnitQuantity> = {
 
 describe('radiusToMeters', () => {
   it('reads the radius in the set own distance unit, not in a binary system', () => {
-    // 5 mi x 1.60934 = 8.0467 km = 8046.7 m.
+    // 5 mi x 1.609344 = 8.04672 km = 8046.72 m.
     expect(radiusToMeters(presetUnitsFor('imperial', 'us'), 5)).toBe(8047)
     expect(radiusToMeters(presetUnitsFor('metric', 'us'), 10)).toBe(10000)
   })

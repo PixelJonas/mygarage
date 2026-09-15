@@ -12,7 +12,7 @@
  *
  * - **Consumption** is one of the ten `UnitSet` quantities, so it is a plain
  *   `QuantityFormat` off `makeUnitFormat`. Its imperial tokens are RECIPROCAL
- *   (`mpg_us` is 235.214 / (L/100km)), so a canonical zero has no finite MPG
+ *   (`mpg_us` is 235.2145833... / (L/100km)), so a canonical zero has no finite MPG
  *   and renders `'N/A'`; `l_100km` is linear, so the same zero is a real
  *   `'0.00 L/100km'`.
  * - **Fuel rate** is DERIVED: litres per a dimensionless engine hour. It
@@ -61,8 +61,8 @@ describe('formatFuelRate', () => {
   })
 
   it('renders a US-gallon set in US gallons per hour', () => {
-    // 3.78541 L is one US gallon.
-    expect(formatFuelRate(IMPERIAL, 3.78541)).toBe('1.00 gal/hr')
+    // 3.785411784 L is one US gallon.
+    expect(formatFuelRate(IMPERIAL, 3.785411784)).toBe('1.00 gal/hr')
     expect(formatFuelRate(IMPERIAL, 12)).toBe('3.17 gal/hr')
   })
 
@@ -77,9 +77,9 @@ describe('formatFuelRate', () => {
   })
 
   it('appends the counterpart under show-both, in the D4b gallon flavour', () => {
-    expect(formatFuelRate(METRIC, 3.78541, true)).toBe('3.79 L/hr (1.00 gal/hr)')
+    expect(formatFuelRate(METRIC, 3.785411784, true)).toBe('3.79 L/hr (1.00 gal/hr)')
     expect(formatFuelRate(METRIC_UK_PAIR, 4.54609, true)).toBe('4.55 L/hr (1.00 gal/hr)')
-    expect(formatFuelRate(IMPERIAL, 3.78541, true)).toBe('1.00 gal/hr (3.79 L/hr)')
+    expect(formatFuelRate(IMPERIAL, 3.785411784, true)).toBe('1.00 gal/hr (3.79 L/hr)')
   })
 
   it('★ suffixes each representation, never the composed string', () => {
@@ -87,14 +87,14 @@ describe('formatFuelRate', () => {
     // neither rate correctly. Asserted as a shape, so a naive
     // `${format(...)}/hr` reimplementation fails here rather than passing the
     // equality above by luck.
-    const both = formatFuelRate(METRIC, 3.78541, true)
+    const both = formatFuelRate(METRIC, 3.785411784, true)
     expect(both).not.toBe('3.79 L (1.00 gal)/hr')
     expect(both.split('/hr')).toHaveLength(3)
   })
 
   it('omits the counterpart when show-both is off, which is the default', () => {
-    expect(formatFuelRate(METRIC, 3.78541)).toBe('3.79 L/hr')
-    expect(formatFuelRate(METRIC, 3.78541, false)).toBe('3.79 L/hr')
+    expect(formatFuelRate(METRIC, 3.785411784)).toBe('3.79 L/hr')
+    expect(formatFuelRate(METRIC, 3.785411784, false)).toBe('3.79 L/hr')
   })
 
   it('returns N/A for an absent or unreadable value, with no suffix', () => {
@@ -118,12 +118,12 @@ describe('formatFuelRate', () => {
 describe('consumption, through the resolved token', () => {
   it('renders each preset in the unit that preset names', () => {
     expect(makeUnitFormat(METRIC).consumption.formatPrimary(9.4160546)).toBe('9.42 L/100km')
-    // 235.214 / 9.4160546 = 24.9800..., one decimal.
+    // 235.2145833... / 9.4160546 = 24.9802..., one decimal.
     expect(makeUnitFormat(IMPERIAL).consumption.formatPrimary(9.4160546)).toBe('25.0 MPG')
   })
 
   it('★ takes the MPG flavour from the token, so a UK account reads UK MPG', () => {
-    // 282.481 / 9.4160546 = 29.9999..., one decimal. The retired
+    // 282.4809363... / 9.4160546 = 29.9999..., one decimal. The retired
     // `formatFuelEconomy` read the same instance-wide static the fuel rate
     // did, so this account saw 25.0 beside a 10.00 gal volume column: a figure
     // that did not divide into its own row.
@@ -160,7 +160,7 @@ describe('consumption, through the resolved token', () => {
   })
 
   it('★ has no finite MPG for a canonical zero, and a real zero in L/100km', () => {
-    // MPG is reciprocal (235.214 / x), so zero is undefined in both directions
+    // MPG is reciprocal (235.2145833... / x), so zero is undefined in both directions
     // by construction and there is no sentinel to invent. L/100km is linear,
     // so the same canonical value is a real reading.
     expect(makeUnitFormat(IMPERIAL).consumption.formatPrimary(0)).toBe('N/A')

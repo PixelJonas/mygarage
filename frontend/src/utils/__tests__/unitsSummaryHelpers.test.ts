@@ -36,7 +36,7 @@ describe('UnitConverter.litersToVolumeUnit', () => {
     // rewrite it on save, which is the round-trip corruption the tread work
     // spent a whole task on.
     expect(UnitConverter.litersToVolumeUnit(45.461, METRIC)).toBe(45.461)
-    // 45.461 / 4.54609 = 10 exactly; / 3.78541 = 12.01.
+    // 45.461 / 4.54609 = 10 exactly; / 3.785411784 = 12.0095, 12.01 at two decimals.
     expect(UnitConverter.litersToVolumeUnit(45.461, UK)).toBe(10)
     expect(UnitConverter.litersToVolumeUnit(45.461, US)).toBe(12.01)
     expect(UnitConverter.litersToVolumeUnit(null, UK)).toBeNull()
@@ -96,7 +96,7 @@ describe('UnitFormatter summary card helpers', () => {
   describe('formatCostPerVolume', () => {
     it('scales $/L by the resolved set\'s litres-per-unit', () => {
       expect(UnitFormatter.formatCostPerVolume(1.0, METRIC)).toBe('$1.00')
-      // $1/L x 3.78541 = $3.79/gal; x 4.54609 = $4.55/gal. The card and the
+      // $1/L x 3.785411784 = $3.79/gal; x 4.54609 = $4.55/gal. The card and the
       // row below it now agree, because both read the same resolved token.
       expect(UnitFormatter.formatCostPerVolume(1.0, US)).toBe('$3.79')
       expect(UnitFormatter.formatCostPerVolume(1.0, UK)).toBe('$4.55')

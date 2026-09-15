@@ -62,13 +62,14 @@ const MORE_DETAILS_KEY = 'fuel_form:more_details_expanded'
  * which is 20 percent larger. `Record` over the token means a volume unit added
  * later cannot compile without its own example.
  *
- * All three describe the same 47.318 L at $0.924/L: 47.318 / 3.78541 = 12.500
- * US gallons at 0.924 x 3.78541 = $3.498, and / 4.54609 = 10.409 imperial
- * gallons at 0.924 x 4.54609 = $4.200. They are placeholders, not converted
- * quantities (ruling R5's exempt class), which is why they are written out
- * rather than computed. PropaneRecordForm and VehicleEditDrawer carry sibling
- * tables for their own examples; one shared table would have to describe a fuel
- * fill, a propane bottle and a DEF tank at once.
+ * All three describe the same 47.318 L at $0.924/L, each to within a thousandth:
+ * 47.318 / 3.785411784 = 12.5001 US gallons at 0.924 x 3.785411784 = $3.4977, and
+ * / 4.54609 = 10.4085 imperial gallons at 0.924 x 4.54609 = $4.2006. They are
+ * placeholders, not converted quantities (ruling R5's exempt class), which is
+ * why they are written out rather than computed. PropaneRecordForm and
+ * VehicleEditDrawer carry sibling tables for their own examples; one shared
+ * table would have to describe a fuel fill, a propane bottle and a DEF tank at
+ * once.
  */
 const VOLUME_EXAMPLES: Readonly<Record<UnitSet['volume'], { volume: string; price: string }>> = {
   L: { volume: '47.318', price: '0.924' },

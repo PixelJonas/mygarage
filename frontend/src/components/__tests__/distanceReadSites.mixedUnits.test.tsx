@@ -135,8 +135,9 @@ import ReminderList from '../ReminderList'
 import DEFRecordList from '../DEFRecordList'
 
 /**
- * 80467 km is EXACTLY 50000 mi (50000 x 1.60934), so both readings are whole
- * numbers and neither can be mistaken for the other by rounding.
+ * 80467 km is 49999.88 mi (80467 / 1.609344), which every mile reader shows as
+ * 50,000: both readings are whole numbers at their adapters' zero decimals,
+ * and too far apart for either to be mistaken for the other by rounding.
  */
 const CANONICAL_KM = '80467'
 const AS_MILES = '50,000 mi'
@@ -267,7 +268,7 @@ describe('the sites that render a unit label of their own', () => {
     // was CALL-SITE IDENTICAL to the correct `formatVolume(units)` and derived
     // its DISTANCE half from `units.volume`. For this account it answered
     // '3.4' under an 'L/1,000 km' label while the odometer column beside it
-    // read miles. 3.4 x 1.60934 = 5.471756, one decimal 5.5.
+    // read miles. 3.4 x 1.609344 = 5.4717696, one decimal 5.5.
     unitPrefMock.units = LITRES_MILES
     render(<DEFRecordList vin="V1" />)
     expect(screen.getByText('5.5')).toBeInTheDocument()
@@ -276,8 +277,9 @@ describe('the sites that render a unit label of their own', () => {
   })
 
   it('and the mirror: a gallons-and-kilometres account gets gal per 1,000 km', () => {
-    // 3.4 L / 3.78541 = 0.898 US gal per 1,000 km, one decimal 0.9. The retired
-    // helper multiplied by 1.60934 anyway and answered 1.4 under 'gal/1,000 mi'.
+    // 3.4 L / 3.785411784 = 0.898 US gal per 1,000 km, one decimal 0.9. The
+    // retired helper multiplied by the mile factor anyway and answered 1.4
+    // under 'gal/1,000 mi'.
     unitPrefMock.units = GALLONS_KM
     render(<DEFRecordList vin="V1" />)
     expect(screen.getByText('0.9')).toBeInTheDocument()

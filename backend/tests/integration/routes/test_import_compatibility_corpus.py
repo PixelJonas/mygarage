@@ -599,7 +599,7 @@ CORPUS: Mapping[str, Shape] = {
         header=_DEF_MARKER_IMPERIAL,
         # 290 mi * 1.609344 = 466.70976 km; 11 US gal * 3.785411784 = 41.63953 L;
         # 3.785411784 / 3.785411784 = 1 per litre.
-        row="5,imperial,2026-03-07,290,11,3.78541,41.64,0.50,Pump,BlueDEF,",
+        row="5,imperial,2026-03-07,290,11,3.785411784,41.64,0.50,Pump,BlueDEF,",
         expected={
             "odometer_km": "466.71",
             "liters": "41.640",
@@ -666,7 +666,7 @@ CORPUS: Mapping[str, Shape] = {
         # 3.785411784 / 3.785411784 = 1 per litre. The bare `MPG` column was a
         # DERIVED figure and has never been imported: it must stay ignored,
         # not be mistaken for the `OBC MPG` consumption column.
-        row="2026-04-01,330,10,3.78541,37.85,25.5,Yes,No,v2.14.0 fuel",
+        row="2026-04-01,330,10,3.785411784,37.85,25.5,Yes,No,v2.14.0 fuel",
         expected={
             "odometer_km": "531.08",
             "liters": "37.854",

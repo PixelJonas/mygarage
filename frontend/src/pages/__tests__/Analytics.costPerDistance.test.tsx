@@ -126,7 +126,7 @@ const GALLONS_KM: UnitSet = { ...IMPERIAL_UNITS, distance: 'km', speed: 'kmh' }
  * $0.02 per canonical kilometre, chosen so the two answers cannot be confused.
  *
  *   metric   0.02 x 1 x 100    = $2.00 per 100 km
- *   imperial 0.02 x 1.60934 x 1000 = $32.19 per 1,000 mi
+ *   imperial 0.02 x 1.609344 x 1000 = $32.19 per 1,000 mi
  */
 const COST_PER_KM = '0.02'
 
@@ -309,7 +309,7 @@ describe('Analytics — the DEF-analysis avg-cost caption names the reader\'s vo
     mockAnalyticsResponse(baseAnalytics({ def_analysis: asDict }))
     const imperial = renderAnalytics()
     expect(await screen.findByText('vehicle.avgCostPerVolume (gal)')).toBeInTheDocument()
-    // $1.00/L x 3.78541 = $3.79/gal, so the caption and the figure below it
+    // $1.00/L x 3.785411784 = $3.79/gal, so the caption and the figure below it
     // name the same unit.
     expect(screen.getByText('$3.79')).toBeInTheDocument()
     imperial.unmount()

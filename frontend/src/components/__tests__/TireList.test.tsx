@@ -193,7 +193,7 @@ describe('TireList', () => {
     render(<TireList vin="1HGCM82633A004352" />)
     fireEvent.click(screen.getByLabelText('tireList.edit'))
 
-    // 240 kPa / 6.89476 = 34.809..., and PSI renders at one decimal.
+    // 240 kPa / 6.894757... = 34.809..., and PSI renders at one decimal.
     const input = screen.getByLabelText('tireList.pressureWithUnit') as HTMLInputElement
     expect(input.value).toBe('34.8')
   })
