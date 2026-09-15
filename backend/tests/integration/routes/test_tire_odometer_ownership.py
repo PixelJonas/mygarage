@@ -623,10 +623,9 @@ class TestTheVehiclesLatestReadingKeepsUpWithTheTire:
         self, client: AsyncClient, auth_headers, vehicle, db_session
     ):
         """The target day holds a lower record entered after the period's own.
-        Moved in place, the period's record would keep its older id and the
-        lower record would win the same-day tie-break as the vehicle's latest
-        reading, below the open period's mount odometer. It is created again
-        instead, newest on its day; the lower record is untouched."""
+        The period's record is created there again under its marker; being the
+        day's highest reading, it is the vehicle's current one, so the open
+        period's distance is not a rollback. The lower record is untouched."""
         tire_id = await _create_and_mount(
             client,
             auth_headers,
@@ -679,8 +678,8 @@ class TestTheVehiclesLatestReadingKeepsUpWithTheTire:
     ):
         """Same day, no move: a lower manual entry was added after the mount, and
         the mount odometer is then corrected upwards. The period's record is
-        created again rather than updated, so it stays newest on the day and
-        the vehicle's latest reading follows the correction."""
+        created again under its marker, and the vehicle's current reading, the
+        day's highest, follows the correction."""
         tire_id = await _create_and_mount(
             client,
             auth_headers,

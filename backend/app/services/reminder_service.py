@@ -96,7 +96,11 @@ async def get_current_mileage(vin: str, db: AsyncSession) -> Decimal | None:
     result = await db.execute(
         select(OdometerRecord.odometer_km)
         .where(OdometerRecord.vin == vin)
-        .order_by(OdometerRecord.date.desc(), OdometerRecord.id.desc())
+        .order_by(
+            OdometerRecord.date.desc(),
+            OdometerRecord.odometer_km.desc(),
+            OdometerRecord.id.desc(),
+        )
         .limit(1)
     )
     row = result.scalar_one_or_none()

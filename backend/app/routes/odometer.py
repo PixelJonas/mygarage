@@ -69,11 +69,16 @@ async def list_odometer_records(
         )
         total = count_result.scalar()
 
-        # Get latest odometer_km
+        # The current odometer: the highest reading on the latest date. The
+        # listing above keeps date, then id; this picks a value.
         latest_result = await db.execute(
             select(OdometerRecord.odometer_km)
             .where(OdometerRecord.vin == vin)
-            .order_by(OdometerRecord.date.desc(), OdometerRecord.id.desc())
+            .order_by(
+                OdometerRecord.date.desc(),
+                OdometerRecord.odometer_km.desc(),
+                OdometerRecord.id.desc(),
+            )
             .limit(1)
         )
         latest_odometer_km = latest_result.scalar_one_or_none()

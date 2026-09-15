@@ -97,7 +97,7 @@ async def calculate_vehicle_stats(
     )
 
     # Latest odometer reading (km) + its date — one deterministic fetch shared
-    # with detail-stats (date DESC, id DESC tie-break; odometer_service). R2-B1.
+    # with detail-stats (date DESC, odometer_km DESC, id DESC; odometer_service). R2-B1.
     latest_odometer_km, latest_odometer_date = await latest_odometer_km_and_date(db, vehicle.vin)
 
     # Canonical latest engine-hours reading (§1 helper) — NEVER vehicle.current_hours

@@ -686,7 +686,11 @@ async def get_maintenance_predictions(
         odometer_result = await db.execute(
             select(OdometerRecord.odometer_km)
             .where(OdometerRecord.vin == vin)
-            .order_by(OdometerRecord.date.desc(), OdometerRecord.id.desc())
+            .order_by(
+                OdometerRecord.date.desc(),
+                OdometerRecord.odometer_km.desc(),
+                OdometerRecord.id.desc(),
+            )
             .limit(1)
         )
         current_odometer_km = odometer_result.scalar_one_or_none()
@@ -869,11 +873,14 @@ async def get_vehicle_analytics(
     # Get service history timeline
     service_history = await get_service_history_timeline(db, vin)
 
-    # Calculate summary stats - get odometer records first to get current odometer_km
+    # Calculate summary stats - get odometer records first to get current odometer_km.
+    # Ascending, and within a day by odometer: the last row is the highest reading
+    # on the latest date (the current odometer) and the first is the lowest on the
+    # earliest, since an odometer does not run backwards within a day.
     odometer_result = await db.execute(
         select(OdometerRecord.odometer_km, OdometerRecord.date)
         .where(OdometerRecord.vin == vin)
-        .order_by(OdometerRecord.date)
+        .order_by(OdometerRecord.date, OdometerRecord.odometer_km, OdometerRecord.id)
     )
     odometer_records = list(odometer_result.all())
 

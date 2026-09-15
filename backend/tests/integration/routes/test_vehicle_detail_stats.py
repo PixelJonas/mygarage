@@ -385,12 +385,12 @@ class TestVehicleDetailStats:
     async def test_same_date_readings_use_id_tiebreak_for_display_and_mileage(
         self, client: AsyncClient, non_admin_headers, non_admin_user, db_session: AsyncSession
     ):
-        """Two odometer readings on the SAME date: the id-desc tie-break picks the
-        later-inserted row deterministically on SQLite AND PG (B2). The SAME row
-        drives both the displayed reading and the mileage-reminder evaluation —
-        one fetch, reused — so they can never disagree. Seed 50000 then 50100 on
-        today; the 50100 row (higher id) must win, and a reminder due at 50050
-        must be OVERDUE (would be upcoming if the 50000 row leaked in)."""
+        """Two odometer readings on the SAME date: the highest reading of the day is
+        the current one, deterministically on SQLite AND PG (B2). The SAME row
+        drives both the displayed reading and the mileage-reminder evaluation,
+        one fetch reused, so they can never disagree. Seed 50000 then 50100 on
+        today; the 50100 row must win, and a reminder due at 50050 must be
+        OVERDUE (would be upcoming if the 50000 row leaked in)."""
         vin = await _seed_vehicle(db_session, non_admin_user["id"], "5NPE24AF0FH100007")
         today = date.today()
         first = OdometerRecord(vin=vin, date=today, odometer_km=Decimal("50000.00"))
@@ -408,7 +408,7 @@ class TestVehicleDetailStats:
                 status="pending",
             )
         )
-        await db_session.commit()  # higher id -> the id-desc tie-break winner
+        await db_session.commit()  # the day's highest reading, and the newer row
         body = (
             await client.get(f"/api/vehicles/{vin}/detail-stats", headers=non_admin_headers)
         ).json()
@@ -468,7 +468,7 @@ class TestVehicleDetailStats:
                 status="pending",
             )
         )
-        await db_session.commit()  # higher id -> the id-desc tie-break winner
+        await db_session.commit()  # the day's highest reading, and the newer row
 
         detail = (
             await client.get(f"/api/vehicles/{vin}/detail-stats", headers=non_admin_headers)

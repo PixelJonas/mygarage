@@ -81,8 +81,9 @@ async def sync_odometer_from_record(
     LiveLink, or another source's automatic one) reads at or above the figure
     (`reads_at_or_above`), nothing is written: the day already has a reading
     at least as high. Otherwise, with no record on the date or only lower
-    ones, a record with this source's marker is created; its newer id makes
-    it the day's latest wherever the latest reading is read by date, then id.
+    ones, a record with this source's marker is created; being the day's
+    highest reading, it is the vehicle's current reading for that day (the
+    highest reading on the latest date).
     The tire paths publish this way: a tire event's record is later moved or
     deleted by marker, so a record it had re-marked would take another
     source's reading with it.

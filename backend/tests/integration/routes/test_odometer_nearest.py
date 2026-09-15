@@ -86,14 +86,26 @@ class TestNearest:
         r = await _nearest(client, auth_headers, vehicle, "2026-04-06")
         assert r.json()["date"] == "2026-04-01"
 
-    async def test_same_day_duplicates_resolve_to_the_newest_row(
+    async def test_same_day_duplicates_resolve_to_the_highest_reading(
         self, client: AsyncClient, auth_headers, vehicle
     ):
+        """The higher reading is entered first, so the newest row is the lower
+        one: an odometer does not run backwards within a day, and the day's
+        highest reading is the one a suggestion offers."""
         await _seed(
-            client, auth_headers, vehicle, ("2026-04-10", "100000"), ("2026-04-10", "100010")
+            client, auth_headers, vehicle, ("2026-04-10", "100010"), ("2026-04-10", "100000")
         )
         r = await _nearest(client, auth_headers, vehicle, "2026-04-10")
         assert r.json()["odometer_km"] == "100010.00" and r.json()["days_away"] == 0
+
+    async def test_same_day_duplicates_after_the_date_resolve_to_the_highest_reading(
+        self, client: AsyncClient, auth_headers, vehicle
+    ):
+        await _seed(
+            client, auth_headers, vehicle, ("2026-04-20", "100610"), ("2026-04-20", "100600")
+        )
+        r = await _nearest(client, auth_headers, vehicle, "2026-04-18")
+        assert r.json()["odometer_km"] == "100610.00" and r.json()["days_away"] == 2
 
     async def test_a_date_after_every_reading_returns_the_latest(
         self, client: AsyncClient, auth_headers, vehicle

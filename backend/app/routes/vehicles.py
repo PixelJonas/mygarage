@@ -158,11 +158,12 @@ async def _vehicle_detail_stats(db: AsyncSession, vin: str) -> VehicleDetailStat
     latest_hours, _latest_hours_date = await latest_engine_hours_and_date(db, vin)
     average_l_per_hr, average_cost_per_hr = await calculate_average_hours_economy(db, vin)
 
-    # Latest odometer reading (km) + its date — ONE deterministic fetch via the
-    # SHARED helper (date DESC, id DESC), the SAME selection the dashboard's
-    # calculate_vehicle_stats now uses (R2-B1/B2), so the two routes agree on a
-    # same-date-reading vehicle. The model has no VIN/date uniqueness
-    # (app/models/odometer.py:21), hence the id.desc() tie-break inside the helper.
+    # Latest odometer reading (km) + its date: ONE deterministic fetch via the
+    # SHARED helper (date DESC, odometer_km DESC, id DESC: the highest reading on
+    # the latest date), the SAME selection the dashboard's calculate_vehicle_stats
+    # uses (R2-B1/B2), so the two routes agree on a same-date-reading vehicle. The
+    # model has no VIN/date uniqueness (app/models/odometer.py:21), hence the
+    # odometer and id ordering inside the helper.
     # current_odometer_km for the mileage-reminder evaluation is derived from THIS
     # SAME returned row (reused, not a second query) so the displayed reading and
     # the mileage-eval reading can never disagree.

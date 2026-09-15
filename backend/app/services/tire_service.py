@@ -111,9 +111,11 @@ async def publish_tire_odometer(
        tire's odometer stays on its period or reading row.
     3. Otherwise a record with the event's marker is created, beside any
        lower ones. A service visit at 50,000 km and the mount it did at
-       50,012 km on one day leave both, and the mount's newer id makes it
-       the vehicle's latest reading, so the new tire's distance starts at
-       zero instead of reading as the odometer running backwards.
+       50,012 km on one day leave both, and the mount's figure, being the
+       day's highest, is the vehicle's current reading (the highest reading
+       on the latest date, `odometer_service.latest_odometer_km_and_date`),
+       so the new tire's distance starts at zero instead of reading as the
+       odometer running backwards.
 
     Why not the synchroniser's same-day policy that fuel and service visits
     use: a tire event's record is later moved by the period editor and
@@ -688,7 +690,11 @@ class TireService:
         result = await self.db.execute(
             select(OdometerRecord.odometer_km)
             .where(OdometerRecord.vin == vin)
-            .order_by(OdometerRecord.date.desc(), OdometerRecord.id.desc())
+            .order_by(
+                OdometerRecord.date.desc(),
+                OdometerRecord.odometer_km.desc(),
+                OdometerRecord.id.desc(),
+            )
             .limit(1)
         )
         return result.scalar_one_or_none()
@@ -1619,11 +1625,13 @@ class TireService:
         the day already has a reading at least as high, and a period moving
         off its old day must not leave its record behind. When the target day
         holds only lower records but one of them has a newer id, the owned
-        record is deleted and created again under the same marker: moved in
-        place it would keep its older id and lose the same-day tie-break to
-        the lower record wherever the latest reading is read by date, then id.
-        Otherwise the owned record is moved or updated in place. The other
-        records on either day are never touched.
+        record is deleted and created again under the same marker rather than
+        moved. Either leaves the right current reading, which is the day's
+        highest whatever the ids (`odometer_service.latest_odometer_km_and_date`);
+        created again, the record is also the newest row on its day, so a
+        listing ordered by date, then id, shows the day's rows in the order
+        they were last recorded. Otherwise the owned record is moved or
+        updated in place. The other records on either day are never touched.
 
         Both the move and the delete are flushed before returning. Request
         sessions do not autoflush (`app/database.py`), and the dismount pair's
@@ -1659,7 +1667,8 @@ class TireService:
                 ):
                     # Deleted, then published afresh under the same marker:
                     # nothing when the day already reads at least as high,
-                    # otherwise a new record whose id is the day's newest.
+                    # otherwise a new record, the day's highest reading and
+                    # its newest row.
                     await self.db.delete(owned)
                     await self.db.flush()
                     await self._publish_odometer(vin, when, odometer_km, source_type, period_id)
