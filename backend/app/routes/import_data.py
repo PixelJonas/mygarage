@@ -33,7 +33,7 @@ from collections.abc import Mapping, Sequence
 from datetime import date as date_type
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from slowapi import Limiter
@@ -65,6 +65,7 @@ from app.services.fuel_side_effects import (
     apply_fuel_record_side_effects,
     invalidate_cache_for_vehicle,
 )
+from app.services.vehicle_lock import lock_vehicle_for_write
 from app.utils.csv_units import (
     CONSUMPTION,
     DEF_PRICE,
@@ -162,6 +163,16 @@ def _odometer_matches(
 
 
 router = APIRouter(prefix="/api/import", tags=["import"])
+
+#: The record lists a vehicle JSON backup may carry, in the order they import.
+_JSON_IMPORT_SECTIONS = (
+    "service_records",
+    "fuel_records",
+    "def_records",
+    "odometer_records",
+    "reminders",
+    "notes",
+)
 
 # Valid service categories matching the ServiceVisit check constraint
 VALID_SERVICE_CATEGORIES = {"Maintenance", "Inspection", "Collision", "Upgrades", "Detailing"}
@@ -305,6 +316,13 @@ async def import_service_csv(
     csv_data = await validate_csv_upload(file)
     rows, units = _read_csv_with_units(csv_data, (ODOMETER_DISTANCE,))
 
+    # The vehicle write lock, taken before the first read of stored rows and
+    # before any write. On SQLite it opens the one transaction that every
+    # row's savepoint nests in; without it each savepoint commits its row on
+    # release (see `app.database`), and a failure later in the upload would
+    # leave the rows before it behind. Every import route takes it the same way.
+    await lock_vehicle_for_write(db, vin)
+
     import_result = ImportResult()
 
     for row_num, row in enumerate(rows, start=2):  # Start at 2 (header is row 1)
@@ -440,6 +458,8 @@ async def import_fuel_csv(
         ),
     )
 
+    await lock_vehicle_for_write(db, vin)
+
     import_result = ImportResult()
 
     for row_num, row in enumerate(rows, start=2):
@@ -571,6 +591,8 @@ async def import_def_csv(
     csv_data = await validate_csv_upload(file)
     rows, units = _read_csv_with_units(csv_data, (ODOMETER_DISTANCE, FUEL_VOLUME, DEF_PRICE))
 
+    await lock_vehicle_for_write(db, vin)
+
     import_result = ImportResult()
 
     for row_num, row in enumerate(rows, start=2):
@@ -653,6 +675,8 @@ async def import_odometer_csv(
     csv_data = await validate_csv_upload(file)
     rows, units = _read_csv_with_units(csv_data, (READING_DISTANCE,))
 
+    await lock_vehicle_for_write(db, vin)
+
     import_result = ImportResult()
 
     for row_num, row in enumerate(rows, start=2):
@@ -734,6 +758,8 @@ async def import_hours_csv(
     csv_data = await validate_csv_upload(file)
     csv_reader = csv.DictReader(io.StringIO(csv_data))
 
+    await lock_vehicle_for_write(db, vin)
+
     import_result = ImportResult()
 
     for row_num, row in enumerate(csv_reader, start=2):
@@ -810,6 +836,8 @@ async def import_warranties_csv(
     # see a tokenised header at all, and would silently store miles as km.
     csv_data = await validate_csv_upload(file)
     rows, units = _read_csv_with_units(csv_data, (MILEAGE_LIMIT_DISTANCE,))
+
+    await lock_vehicle_for_write(db, vin)
 
     import_result = ImportResult()
 
@@ -888,6 +916,8 @@ async def import_insurance_csv(
     csv_data = await validate_csv_upload(file)
     csv_reader = csv.DictReader(io.StringIO(csv_data))
 
+    await lock_vehicle_for_write(db, vin)
+
     import_result = ImportResult()
 
     for row_num, row in enumerate(csv_reader, start=2):
@@ -963,6 +993,8 @@ async def import_tax_csv(
     csv_data = await validate_csv_upload(file)
     csv_reader = csv.DictReader(io.StringIO(csv_data))
 
+    await lock_vehicle_for_write(db, vin)
+
     import_result = ImportResult()
 
     for row_num, row in enumerate(csv_reader, start=2):
@@ -1037,6 +1069,8 @@ async def import_notes_csv(
     csv_data = await validate_csv_upload(file)
     csv_reader = csv.DictReader(io.StringIO(csv_data))
 
+    await lock_vehicle_for_write(db, vin)
+
     import_result = ImportResult()
 
     for row_num, row in enumerate(csv_reader, start=2):
@@ -1103,11 +1137,28 @@ async def import_vehicle_json(
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=400, detail=f"Invalid JSON: {str(e)}")
 
+    # Every section is settled here, before the lock and before any write. A
+    # missing or null section is empty; anything else that is not a list
+    # refuses the whole file, instead of raising halfway through the loops
+    # below with the sections before it already written.
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=400, detail="The import file must be a JSON object")
+    backup = cast(dict[str, Any], data)
+    sections: dict[str, list[Any]] = {}
+    for section in _JSON_IMPORT_SECTIONS:
+        value = backup.get(section)
+        if value is None:
+            sections[section] = []
+        elif isinstance(value, list):
+            sections[section] = cast(list[Any], value)
+        else:
+            raise HTTPException(status_code=400, detail=f"{section} must be a list of records")
+
     # Detect schema version. v3+ exports include `"export_version": "3"` and
     # `"units": "metric"`. Pre-v3 backups omit both — treat as legacy v2 and
     # convert imperial values to metric on ingest.
-    export_version = str(data.get("export_version") or "").strip()
-    units = str(data.get("units") or "").strip().lower()
+    export_version = str(backup.get("export_version") or "").strip()
+    units = str(backup.get("units") or "").strip().lower()
     is_legacy_v2 = export_version != "3" and units != "metric"
     if is_legacy_v2:
         logger.warning(
@@ -1134,6 +1185,8 @@ async def import_vehicle_json(
         d = Decimal(str(val))
         return d / UnitConverter.US_GALLONS_TO_LITERS if is_legacy_v2 else d
 
+    await lock_vehicle_for_write(db, vin)
+
     results = {
         "service_records": {"success": 0, "errors": 0, "skipped": 0},
         "fuel_records": {"success": 0, "errors": 0, "skipped": 0},
@@ -1145,7 +1198,7 @@ async def import_vehicle_json(
     }
 
     # Import service records (creates ServiceVisit + ServiceLineItem + Vendor)
-    for idx, record_data in enumerate(data.get("service_records", [])):
+    for idx, record_data in enumerate(sections["service_records"]):
         try:
             date = datetime.fromisoformat(record_data["date"]).date()
 
@@ -1228,7 +1281,7 @@ async def import_vehicle_json(
             results["errors"].append(f"Service record {idx}: could not be imported")
 
     # Import fuel records
-    for idx, record_data in enumerate(data.get("fuel_records", [])):
+    for idx, record_data in enumerate(sections["fuel_records"]):
         try:
             date = datetime.fromisoformat(record_data["date"]).date()
 
@@ -1290,7 +1343,7 @@ async def import_vehicle_json(
     # has since changed (or never was diesel per current data) — refusing to
     # restore data the user already had would be a data-loss bug, not a
     # safety feature.
-    for idx, record_data in enumerate(data.get("def_records", [])):
+    for idx, record_data in enumerate(sections["def_records"]):
         try:
             date = datetime.fromisoformat(record_data["date"]).date()
 
@@ -1344,7 +1397,7 @@ async def import_vehicle_json(
             results["errors"].append(f"DEF record {idx}: could not be imported")
 
     # Import odometer records
-    for idx, record_data in enumerate(data.get("odometer_records", [])):
+    for idx, record_data in enumerate(sections["odometer_records"]):
         try:
             date = datetime.fromisoformat(record_data["date"]).date()
 
@@ -1384,7 +1437,7 @@ async def import_vehicle_json(
             results["errors"].append(f"Odometer record {idx}: could not be imported")
 
     # Import reminders → map to vehicle_reminders
-    for idx, reminder_data in enumerate(data.get("reminders", [])):
+    for idx, reminder_data in enumerate(sections["reminders"]):
         try:
             # Determine reminder type from recurrence fields
             is_recurring = reminder_data.get("is_recurring", False)
@@ -1436,7 +1489,7 @@ async def import_vehicle_json(
             results["errors"].append(f"Reminder {idx}: could not be imported")
 
     # Import notes
-    for idx, note_data in enumerate(data.get("notes", [])):
+    for idx, note_data in enumerate(sections["notes"]):
         try:
             date = datetime.fromisoformat(note_data["date"]).date()
 
@@ -1586,6 +1639,7 @@ async def import_external_fuel_csv(
     # Re-wrap for the shared helper (it re-reads the upload); parse inline instead.
     await get_vehicle_or_403(vin, current_user, db, require_write=True)
     parsed = PARSERS[fmt](csv_data, _parse_options(odometer_unit, decimal_separator))
+    await lock_vehicle_for_write(db, vin)
     return await _persist_parsed_fuel(vin, parsed, skip_duplicates, db)
 
 
@@ -1647,6 +1701,7 @@ async def _import_third_party_fuel(
     await get_vehicle_or_403(vin, current_user, db, require_write=True)
     csv_data = await validate_csv_upload(file)
     parsed = PARSERS[format_name](csv_data, opts)
+    await lock_vehicle_for_write(db, vin)
     return await _persist_parsed_fuel(vin, parsed, skip_duplicates, db)
 
 
