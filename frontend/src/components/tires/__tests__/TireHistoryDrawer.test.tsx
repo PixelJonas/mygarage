@@ -303,8 +303,19 @@ describe('TireHistoryDrawer', () => {
     expect(needsFix(tire({ blocking_period_ids: [], history_faults: [] }) as never)).toBe(false)
   })
 
-  it('is empty when there is nothing to show', () => {
-    render(<TireHistoryDrawer tire={tire({ mount_periods: [], blocking_period_ids: [] }) as never} open onClose={vi.fn()} onEditPeriod={vi.fn()} onAddPeriod={vi.fn()} labelFor={labelFor} vin={VIN} />)
+  it('still shows the mount history section, with Add past period, when there is nothing recorded yet', () => {
+    // A tire never mounted in MyGarage is the feature's main user: no periods
+    // and no readings must not hide the one control that can add either.
+    render(<TireHistoryDrawer tire={tire({ mount_periods: [], readings: [], blocking_period_ids: [] }) as never} open onClose={vi.fn()} onEditPeriod={vi.fn()} onAddPeriod={vi.fn()} labelFor={labelFor} vin={VIN} />)
+    expect(drawer().getByText('tireList.addPastPeriod')).toBeInTheDocument()
+    expect(drawer().getByText('tireList.historyNoPeriods')).toBeInTheDocument()
     expect(drawer().getByText('tireList.historyEmpty')).toBeInTheDocument()
+  })
+
+  it('Add past period is reachable even with no history at all', () => {
+    const onAddPeriod = vi.fn()
+    render(<TireHistoryDrawer tire={tire({ mount_periods: [], readings: [], blocking_period_ids: [] }) as never} open onClose={vi.fn()} onEditPeriod={vi.fn()} onAddPeriod={onAddPeriod} labelFor={labelFor} vin={VIN} />)
+    fireEvent.click(drawer().getByText('tireList.addPastPeriod'))
+    expect(onAddPeriod).toHaveBeenCalledTimes(1)
   })
 })

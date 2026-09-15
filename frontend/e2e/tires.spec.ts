@@ -339,6 +339,15 @@ test.describe('Tires', () => {
   }) => {
     const vin = await tireVehicle(request, 'reading-delete')
     const admin = await adminSession()
+    // Pinned rather than assumed: the refusal names the reading's odometer in
+    // the account's resolved unit, and imperial is this suite's steady state
+    // (settings.spec.ts restores it there), so nothing needs restoring after.
+    const units = await request.put(`${API_BASE}/auth/me/units`, {
+      data: { unit_preference: 'imperial' },
+      headers: admin.headers,
+    })
+    expect(units.ok(), `pin to imperial failed: ${units.status()} ${await units.text()}`).toBeTruthy()
+
     const created = await request.post(`${API_BASE}/vehicles/${vin}/tires/create-and-mount`, {
       headers: admin.headers,
       data: {
@@ -364,8 +373,9 @@ test.describe('Tires', () => {
     const card = page.locator('.rounded-card', { hasText: 'E2E Typo' }).first()
     await expect(card).toBeVisible({ timeout: 10000 })
 
-    // An honest dismount, today, at an odometer between the mount and the typo
-    // in either unit system. Refused, and the sentence says which reading.
+    // An honest dismount, today, at an odometer (in miles, the pinned unit)
+    // between the mount and the typo. Refused, and the sentence says which
+    // reading.
     const dismount = async () => {
       await card.getByRole('button', { name: 'Dismount' }).click()
       const drawer = page.getByRole('dialog')
@@ -374,14 +384,13 @@ test.describe('Tires', () => {
       return drawer
     }
     const refusedDrawer = await dismount()
-    // The reading's odometer was seeded directly in km through the API, so the
-    // refusal names it in whichever unit the account is currently resolved to
-    // -- the same ambiguity `/100000|62137/` above already hedges for. The
-    // server's own message formatter (`distance_formatter` in
-    // tire_history.py) keeps one decimal place, unlike the frontend's
-    // whole-mile display, so imperial reads 93,205.7 mi rather than 93,206.
+    // The reading's odometer was seeded directly in km through the API
+    // (150,000), so the refusal names it in the account's pinned unit. The
+    // server's message formatter (`distance_formatter` in tire_history.py)
+    // keeps one decimal place, unlike the frontend's whole-mile display:
+    // 150000 / 1.609344 = 93205.678..., quantized to 93,205.7 mi.
     await expect(
-      page.getByText(/contradicts the reading dated 2026-03-01 at (150,000 km|93,205\.7 mi)/)
+      page.getByText('contradicts the reading dated 2026-03-01 at 93,205.7 mi')
     ).toBeVisible({
       timeout: 10000,
     })
@@ -479,6 +488,15 @@ test.describe('Tires', () => {
   }) => {
     const vin = await tireVehicle(request, 'contradiction-ui')
     const admin = await adminSession()
+    // Pinned rather than assumed: the fault names the reading's odometer in
+    // the account's resolved unit, and imperial is this suite's steady state
+    // (settings.spec.ts restores it there), so nothing needs restoring after.
+    const units = await request.put(`${API_BASE}/auth/me/units`, {
+      data: { unit_preference: 'imperial' },
+      headers: admin.headers,
+    })
+    expect(units.ok(), `pin to imperial failed: ${units.status()} ${await units.text()}`).toBeTruthy()
+
     const created = await request.post(`${API_BASE}/vehicles/${vin}/tires/create-and-mount`, {
       headers: admin.headers,
       data: {
@@ -518,9 +536,14 @@ test.describe('Tires', () => {
     await expect(history).toBeVisible({ timeout: 5000 })
 
     await expect(history.getByText('Check this period')).toBeVisible({ timeout: 10000 })
-    // The message is in whichever unit the account is resolved to, so this
-    // only pins the part every unit system agrees on: which reading.
-    await expect(history.getByText(/contradicts the reading dated 2026-02-01/)).toBeVisible()
+    // The reading's odometer was seeded directly in km through the API
+    // (20,000), so the fault names it in the account's pinned unit. The
+    // server's message formatter keeps one decimal place, unlike the
+    // frontend's whole-mile display: 20000 / 1.609344 = 12427.423...,
+    // quantized to 12,427.4 mi.
+    await expect(
+      history.getByText('contradicts the reading dated 2026-02-01 at 12,427.4 mi')
+    ).toBeVisible({ timeout: 10000 })
 
     const confirmed = new Promise<string>((resolve) => {
       page.once('dialog', async (dialog) => {

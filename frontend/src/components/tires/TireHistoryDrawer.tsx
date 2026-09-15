@@ -129,167 +129,157 @@ export default function TireHistoryDrawer({
       width="sm"
       closeLabel={t('common:close')}
     >
-      {periods.length === 0 && readings.length === 0 ? (
-        <EmptyState
-          icon={Gauge}
-          size="sm"
-          title={t('tireList.historyEmpty')}
-          description={t('tireList.historyEmptyHint')}
-        />
-      ) : (
-        <div className="space-y-6">
-          <section className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold text-text-mute">{t('tireList.mountHistory')}</h3>
-              <Button size="sm" variant="ghost" onClick={onAddPeriod}>
-                {t('tireList.addPastPeriod')}
-              </Button>
-            </div>
-            <p className="text-sm">
-              {tire?.installed_date && first
-                ? t('tireList.firstInstalled', {
-                    date: formatDateForDisplay(tire.installed_date),
-                    odometer: odometer(first.mounted_odometer_km),
-                  })
-                : t('tireList.firstInstalledUnknown')}
-            </p>
-            {periods.length === 0 ? (
-              <p className="text-sm text-text-mute">{t('tireList.historyNoPeriods')}</p>
-            ) : (
-              <ul className="space-y-2">
-                {periods.map((period) => {
-                  const flagged = blocking.has(period.id) || faultsByPeriod.has(period.id)
-                  return (
-                    <li
-                      key={period.id}
-                      data-testid={`period-${period.id}`}
-                      className="space-y-1 rounded-card border border-border p-3"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        {/* `MountPeriodResponse.position` is generated as plain `string`
-                            (the backend schema has no Literal there), but a period is
-                            always mounted at one of the five corners. */}
-                        <div className="font-semibold">{labelFor(period.position as MountedPosition)}</div>
-                        <Button size="sm" variant="ghost" onClick={() => onEditPeriod(period)}>
-                          {t('tireList.periodEdit')}
-                        </Button>
-                      </div>
-                      <div className="font-mono text-xs">
-                        {period.dismounted_on == null
-                          ? t('tireList.periodSince', {
-                              from: bound(period.mounted_on, period.mounted_odometer_km),
-                            })
-                          : t('tireList.periodRange', {
-                              from: bound(period.mounted_on, period.mounted_odometer_km),
-                              to: bound(period.dismounted_on, period.dismounted_odometer_km),
-                            })}
-                      </div>
-                      {(period.is_assumed || flagged) && (
-                        <div className="flex flex-wrap gap-2">
-                          {period.is_assumed && <Badge tone="info">{t('tireList.periodAssumed')}</Badge>}
-                          {flagged &&
-                            (blocking.has(period.id) && needsOdometer(period) ? (
-                              <Badge tone="warning">{t('tireList.periodNeedsOdometer')}</Badge>
-                            ) : (
-                              <Badge tone="danger">{t('tireList.periodCheck')}</Badge>
-                            ))}
-                        </div>
-                      )}
-                      {faultsByPeriod.get(period.id)?.[0] ? (
-                        <p data-testid={`period-${period.id}-fault`} className="text-sm text-text-mute">
-                          {faultsByPeriod.get(period.id)?.[0]?.message}
-                        </p>
-                      ) : null}
-                      {period.is_assumed && period.observed_active_on ? (
-                        <p className="text-sm text-text-mute">
-                          {t('tireList.periodAssumedHint', {
-                            date: formatDateForDisplay(period.observed_active_on),
-                          })}
-                        </p>
-                      ) : null}
-                      {period.notes ? <p className="text-sm text-text-mute">{period.notes}</p> : null}
-                    </li>
-                  )
-                })}
-              </ul>
-            )}
-          </section>
-
-          <section className="space-y-2">
-            <h3 className="text-sm font-semibold text-text-mute">{t('tireList.readingsHeading')}</h3>
-            {/* `readings` arrives newest-first: TireService sorts descending by
-                recorded_at before building the response, and the projection reads
-                [0] and [1] as the two most recent. Re-sorting here would be a
-                second, drifting source of truth for the same order. */}
-            {readings.length > 0 ? (
-              <ul className="space-y-2">
-                {readings.map((reading: TireReading) => (
+      {/* Always the Mount history section first, Add past period included: a
+          tire never mounted in MyGarage (no periods, no readings) is the
+          feature's main user, and a fully-empty special case here made the
+          one control that could add either unreachable from a stored tire's
+          unconditional History button. The periods list has its own "No
+          mount history yet" text, and the readings section keeps its own
+          inner empty state below. */}
+      <div className="space-y-6">
+        <section className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-text-mute">{t('tireList.mountHistory')}</h3>
+            <Button size="sm" variant="ghost" onClick={onAddPeriod}>
+              {t('tireList.addPastPeriod')}
+            </Button>
+          </div>
+          <p className="text-sm">
+            {tire?.installed_date && first
+              ? t('tireList.firstInstalled', {
+                  date: formatDateForDisplay(tire.installed_date),
+                  odometer: odometer(first.mounted_odometer_km),
+                })
+              : t('tireList.firstInstalledUnknown')}
+          </p>
+          {periods.length === 0 ? (
+            <p className="text-sm text-text-mute">{t('tireList.historyNoPeriods')}</p>
+          ) : (
+            <ul className="space-y-2">
+              {periods.map((period) => {
+                const flagged = blocking.has(period.id) || faultsByPeriod.has(period.id)
+                return (
                   <li
-                    key={reading.id}
-                    data-testid={`reading-${reading.id}`}
+                    key={period.id}
+                    data-testid={`period-${period.id}`}
                     className="space-y-1 rounded-card border border-border p-3"
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <div className="font-semibold">{formatDateForDisplay(reading.recorded_at)}</div>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        aria-label={t('tireList.readingDeleteLabel', {
-                          date: formatDateForDisplay(reading.recorded_at),
-                        })}
-                        disabled={removeReading.isPending}
-                        onClick={() => deleteReading(reading)}
-                      >
-                        {t('common:delete')}
+                      {/* `MountPeriodResponse.position` is generated as plain `string`
+                          (the backend schema has no Literal there), but a period is
+                          always mounted at one of the five corners. */}
+                      <div className="font-semibold">{labelFor(period.position as MountedPosition)}</div>
+                      <Button size="sm" variant="ghost" onClick={() => onEditPeriod(period)}>
+                        {t('tireList.periodEdit')}
                       </Button>
                     </div>
-                    {/* Every value through the same adapters the card uses, so a
-                        history row can never disagree with the card above it. The
-                        ternaries stay spelled out per row rather than folding into
-                        a shared cell() helper: validate-units.ts matches lexical
-                        expression shapes, and a helper that converts INTERNALLY is
-                        exactly the form its manifest notes it cannot see. */}
-                    <ListRow
-                      label={t('tireList.tread')}
-                      value={
-                        reading.tread_depth_mm != null
-                          ? u.tread.format(num(reading.tread_depth_mm))
-                          : '—'
-                      }
-                    />
-                    <ListRow
-                      label={t('tireList.pressure')}
-                      value={
-                        reading.pressure_kpa != null
-                          ? u.pressure.format(num(reading.pressure_kpa))
-                          : '—'
-                      }
-                    />
-                    <ListRow
-                      label={t('tireList.odometer')}
-                      value={
-                        reading.odometer_km != null
-                          ? u.distance.format(num(reading.odometer_km))
-                          : '—'
-                      }
-                    />
-                    {reading.notes ? (
-                      <p className="text-sm text-text-mute">{reading.notes}</p>
+                    <div className="font-mono text-xs">
+                      {period.dismounted_on == null
+                        ? t('tireList.periodSince', {
+                            from: bound(period.mounted_on, period.mounted_odometer_km),
+                          })
+                        : t('tireList.periodRange', {
+                            from: bound(period.mounted_on, period.mounted_odometer_km),
+                            to: bound(period.dismounted_on, period.dismounted_odometer_km),
+                          })}
+                    </div>
+                    {(period.is_assumed || flagged) && (
+                      <div className="flex flex-wrap gap-2">
+                        {period.is_assumed && <Badge tone="info">{t('tireList.periodAssumed')}</Badge>}
+                        {flagged &&
+                          (blocking.has(period.id) && needsOdometer(period) ? (
+                            <Badge tone="warning">{t('tireList.periodNeedsOdometer')}</Badge>
+                          ) : (
+                            <Badge tone="danger">{t('tireList.periodCheck')}</Badge>
+                          ))}
+                      </div>
+                    )}
+                    {faultsByPeriod.get(period.id)?.[0] ? (
+                      <p data-testid={`period-${period.id}-fault`} className="text-sm text-text-mute">
+                        {faultsByPeriod.get(period.id)?.[0]?.message}
+                      </p>
                     ) : null}
+                    {period.is_assumed && period.observed_active_on ? (
+                      <p className="text-sm text-text-mute">
+                        {t('tireList.periodAssumedHint', {
+                          date: formatDateForDisplay(period.observed_active_on),
+                        })}
+                      </p>
+                    ) : null}
+                    {period.notes ? <p className="text-sm text-text-mute">{period.notes}</p> : null}
                   </li>
-                ))}
-              </ul>
-            ) : (
-              <EmptyState
-                icon={Gauge}
-                size="sm"
-                title={t('tireList.historyEmpty')}
-                description={t('tireList.historyEmptyHint')}
-              />
-            )}
-          </section>
-        </div>
-      )}
+                )
+              })}
+            </ul>
+          )}
+        </section>
+
+        <section className="space-y-2">
+          <h3 className="text-sm font-semibold text-text-mute">{t('tireList.readingsHeading')}</h3>
+          {/* `readings` arrives newest-first: TireService sorts descending by
+              recorded_at before building the response, and the projection reads
+              [0] and [1] as the two most recent. Re-sorting here would be a
+              second, drifting source of truth for the same order. */}
+          {readings.length > 0 ? (
+            <ul className="space-y-2">
+              {readings.map((reading: TireReading) => (
+                <li
+                  key={reading.id}
+                  data-testid={`reading-${reading.id}`}
+                  className="space-y-1 rounded-card border border-border p-3"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="font-semibold">{formatDateForDisplay(reading.recorded_at)}</div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      aria-label={t('tireList.readingDeleteLabel', {
+                        date: formatDateForDisplay(reading.recorded_at),
+                      })}
+                      disabled={removeReading.isPending}
+                      onClick={() => deleteReading(reading)}
+                    >
+                      {t('common:delete')}
+                    </Button>
+                  </div>
+                  {/* Every value through the same adapters the card uses, so a
+                      history row can never disagree with the card above it. The
+                      ternaries stay spelled out per row rather than folding into
+                      a shared cell() helper: validate-units.ts matches lexical
+                      expression shapes, and a helper that converts INTERNALLY is
+                      exactly the form its manifest notes it cannot see. */}
+                  <ListRow
+                    label={t('tireList.tread')}
+                    value={
+                      reading.tread_depth_mm != null ? u.tread.format(num(reading.tread_depth_mm)) : '—'
+                    }
+                  />
+                  <ListRow
+                    label={t('tireList.pressure')}
+                    value={
+                      reading.pressure_kpa != null ? u.pressure.format(num(reading.pressure_kpa)) : '—'
+                    }
+                  />
+                  <ListRow
+                    label={t('tireList.odometer')}
+                    value={
+                      reading.odometer_km != null ? u.distance.format(num(reading.odometer_km)) : '—'
+                    }
+                  />
+                  {reading.notes ? <p className="text-sm text-text-mute">{reading.notes}</p> : null}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <EmptyState
+              icon={Gauge}
+              size="sm"
+              title={t('tireList.historyEmpty')}
+              description={t('tireList.historyEmptyHint')}
+            />
+          )}
+        </section>
+      </div>
     </Drawer>
   )
 }
