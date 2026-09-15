@@ -13,8 +13,8 @@ marker. It updates a record carrying that marker; otherwise it publishes
 nothing onto a day that already has a reading at or above its figure (within
 the same-reading tolerance), and creates its own record when the day has no
 record or only lower ones, so the vehicle's latest reading never falls behind
-the tire's. Fuel, DEF and service visits keep the one-reading-per-day policy
-they have always had.
+the tire's. Fuel, DEF and service visits update their own record first and
+otherwise keep their same-day take-over, which never claims a tire's record.
 """
 
 from __future__ import annotations

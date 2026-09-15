@@ -382,21 +382,22 @@ class TestVehicleDetailStats:
         assert body["latest_odometer_km"] == "160000.00"
         assert body["latest_odometer_date"] == today.isoformat()
 
-    async def test_same_date_readings_use_id_tiebreak_for_display_and_mileage(
+    async def test_same_date_readings_use_the_highest_for_display_and_mileage(
         self, client: AsyncClient, non_admin_headers, non_admin_user, db_session: AsyncSession
     ):
         """Two odometer readings on the SAME date: the highest reading of the day is
         the current one, deterministically on SQLite AND PG (B2). The SAME row
         drives both the displayed reading and the mileage-reminder evaluation,
-        one fetch reused, so they can never disagree. Seed 50000 then 50100 on
-        today; the 50100 row must win, and a reminder due at 50050 must be
-        OVERDUE (would be upcoming if the 50000 row leaked in)."""
+        one fetch reused, so they can never disagree. Seed 50100 then 50000 on
+        today, so the higher reading is the OLDER row; the 50100 row must win,
+        and a reminder due at 50050 must be OVERDUE (would be upcoming if the
+        50000 row leaked in)."""
         vin = await _seed_vehicle(db_session, non_admin_user["id"], "5NPE24AF0FH100007")
         today = date.today()
-        first = OdometerRecord(vin=vin, date=today, odometer_km=Decimal("50000.00"))
+        first = OdometerRecord(vin=vin, date=today, odometer_km=Decimal("50100.00"))
         db_session.add(first)
-        await db_session.commit()  # lower id
-        second = OdometerRecord(vin=vin, date=today, odometer_km=Decimal("50100.00"))
+        await db_session.commit()  # the day's highest reading, the lower id
+        second = OdometerRecord(vin=vin, date=today, odometer_km=Decimal("50000.00"))
         db_session.add(second)
         db_session.add(
             Reminder(
@@ -408,11 +409,11 @@ class TestVehicleDetailStats:
                 status="pending",
             )
         )
-        await db_session.commit()  # the day's highest reading, and the newer row
+        await db_session.commit()  # a lower reading in the newer row
         body = (
             await client.get(f"/api/vehicles/{vin}/detail-stats", headers=non_admin_headers)
         ).json()
-        assert body["latest_odometer_km"] == "50100.00"  # display picks the higher-id same-date row
+        assert body["latest_odometer_km"] == "50100.00"  # display picks the day's highest reading
         assert body["overdue_count"] == 1  # mileage-eval used the SAME 50100 row
         assert body["upcoming_count"] == 0
 
@@ -427,7 +428,7 @@ class TestVehicleDetailStats:
         """R2-B1 / R3-B1 (cross-route): the locked decision — SAME vehicle => SAME
         overdue/upcoming on the dashboard card AND the detail hero. Both routes MUST
         derive the latest odometer from the ONE shared helper
-        (`odometer_service.latest_odometer_km_and_date`, date DESC, id DESC).
+        (`odometer_service.latest_odometer_km_and_date`, date DESC, odometer DESC, id DESC).
 
         R3-B1 — a data-only assertion is NOT discriminating: on the default SQLite
         test schema the `(vin, date)` index reverse-scan returns the higher-id row

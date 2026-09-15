@@ -19,8 +19,9 @@ from app.utils.odometer_tolerance import odometer_below
 
 #: The start of every marker a tire event writes: `tire` (readings),
 #: `tire_mount`, `tire_dismount`, `tire_rotation` and `tire_set` all begin
-#: with it. Those rows are moved and deleted by the tire's own marker, so no
-#: other source may take one over.
+#: with it. Each belongs to the tire event that wrote it (the period editor
+#: moves and `delete_tire` removes the mount and dismount ones), so no other
+#: source may take one over.
 TIRE_MARKER_PREFIX = "[AUTO-SYNC from tire"
 
 

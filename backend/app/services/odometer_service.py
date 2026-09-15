@@ -49,10 +49,11 @@ async def nearest_odometer(db: AsyncSession, vin: str, on: date) -> OdometerReco
     Two indexed queries, the latest on-or-before and the earliest after, then
     the smaller distance. A tie goes to the earlier one: an installation at
     date D happened at or after the last reading before D. Each side picks
-    one reading of its day, and several readings of one day resolve to the
-    highest, the rule `latest_odometer_km_and_date` documents (an odometer does
-    not run backwards within a day), then to the newest row, so repeated calls
-    pick the same record on both dialects.
+    one reading of its day, the one nearest `on` in odometer terms: before it,
+    a day's highest reading (an odometer does not run backwards within a day,
+    the rule `latest_odometer_km_and_date` documents); after it, a day's lowest.
+    Ties then resolve by row id, so repeated calls pick the same record on both
+    dialects.
     """
     before = (
         await db.execute(
@@ -72,8 +73,8 @@ async def nearest_odometer(db: AsyncSession, vin: str, on: date) -> OdometerReco
             .where(OdometerRecord.vin == vin, OdometerRecord.date > on)
             .order_by(
                 OdometerRecord.date.asc(),
-                OdometerRecord.odometer_km.desc(),
-                OdometerRecord.id.desc(),
+                OdometerRecord.odometer_km.asc(),
+                OdometerRecord.id.asc(),
             )
             .limit(1)
         )

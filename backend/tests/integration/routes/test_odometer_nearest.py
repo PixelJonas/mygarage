@@ -98,14 +98,18 @@ class TestNearest:
         r = await _nearest(client, auth_headers, vehicle, "2026-04-10")
         assert r.json()["odometer_km"] == "100010.00" and r.json()["days_away"] == 0
 
-    async def test_same_day_duplicates_after_the_date_resolve_to_the_highest_reading(
+    async def test_same_day_duplicates_after_the_date_resolve_to_the_lowest_reading(
         self, client: AsyncClient, auth_headers, vehicle
     ):
+        """After the date, the day's LOWEST reading is the tighter bound: the
+        vehicle cannot have read more than it on an earlier day. The lower
+        reading is entered first, so neither the newest row nor the highest
+        reading would pick it."""
         await _seed(
-            client, auth_headers, vehicle, ("2026-04-20", "100610"), ("2026-04-20", "100600")
+            client, auth_headers, vehicle, ("2026-04-20", "100600"), ("2026-04-20", "100610")
         )
         r = await _nearest(client, auth_headers, vehicle, "2026-04-18")
-        assert r.json()["odometer_km"] == "100610.00" and r.json()["days_away"] == 2
+        assert r.json()["odometer_km"] == "100600.00" and r.json()["days_away"] == 2
 
     async def test_a_date_after_every_reading_returns_the_latest(
         self, client: AsyncClient, auth_headers, vehicle

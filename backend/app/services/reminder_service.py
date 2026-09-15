@@ -92,7 +92,7 @@ async def calculate_driving_rate(vin: str, db: AsyncSession) -> float | None:
 
 
 async def get_current_mileage(vin: str, db: AsyncSession) -> Decimal | None:
-    """Get the most recent odometer reading (km) for a vehicle."""
+    """The vehicle's current odometer (km): the highest reading of its latest day."""
     result = await db.execute(
         select(OdometerRecord.odometer_km)
         .where(OdometerRecord.vin == vin)
