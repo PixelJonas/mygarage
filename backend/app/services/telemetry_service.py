@@ -8,7 +8,7 @@ from datetime import date as date_type
 from datetime import datetime, timedelta
 from typing import Any, cast
 
-from sqlalchemy import delete, func, select, text
+from sqlalchemy import and_, delete, func, not_, or_, select, text
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -932,30 +932,68 @@ class TelemetryService:
             return 0
 
         changed = 0
-        for drive in drives:
-            overlapping = list(
-                (
-                    await self.db.execute(
-                        select(DriveSession)
-                        .where(DriveSession.device_id == device_id)
-                        .where(DriveSession.external_session_id.is_(None))
-                        # Strict, not `<=`: `group_drives` gives a shared boundary
-                        # instant to the EARLIER drive as its own `movement_ended_at`,
-                        # so a later drive's clamped `started_at` there is not this
-                        # session's evidence and must not count as overlap.
-                        .where(DriveSession.started_at < drive.movement_ended_at)
-                        .where(
-                            # Strict, not `>=`, for the same reason from the other
-                            # side: an earlier session's `ended_at` sitting exactly at
-                            # a later drive's clamped `started_at` is the shared
-                            # instant the earlier drive owns, not this drive's.
-                            func.coalesce(DriveSession.ended_at, DriveSession.started_at)
-                            > drive.started_at
+        for index, drive in enumerate(drives):
+            session_end = func.coalesce(DriveSession.ended_at, DriveSession.started_at)
+
+            # Inclusive at both bounds by default: a session matches this drive
+            # when each one's start is at or before the other's end. A
+            # single-instant touch with a session from the live path or from
+            # another SD file is most plausibly the same physical drive seen by
+            # two sources (a device reconnecting mid-drive, or one reading both
+            # logged to SD and sent over HTTPS), so it matches.
+            #
+            # The two exclusions below apply only at an instant this drive
+            # shares with the adjacent drive of this same `group_drives` call,
+            # which gives that instant to the earlier drive. The ownership is a
+            # property of one call, where both drives were cut from the same
+            # evidence; it says nothing about a session from anywhere else.
+            # Neither exclusion can remove a genuine overlap (a positive shared
+            # duration), because both require the two windows to meet at
+            # exactly one point.
+            conditions = [
+                DriveSession.device_id == device_id,
+                DriveSession.external_session_id.is_(None),
+                DriveSession.started_at <= drive.movement_ended_at,
+                session_end >= drive.started_at,
+            ]
+
+            if index + 1 < len(drives) and drives[index + 1].started_at == drive.movement_ended_at:
+                # Right: the next drive in this batch starts exactly at this
+                # drive's movement_ended_at, which is always this drive's own
+                # movement sample. A session that starts there and runs on past
+                # it is the next drive's. An open session starting there counts
+                # as running on past it, since it is still going. A closed
+                # session that starts and ends at that instant keeps matching
+                # this drive.
+                conditions.append(
+                    not_(
+                        and_(
+                            DriveSession.started_at == drive.movement_ended_at,
+                            or_(
+                                DriveSession.ended_at.is_(None),
+                                session_end > drive.movement_ended_at,
+                            ),
                         )
                     )
                 )
-                .scalars()
-                .all()
+
+            if index > 0 and drives[index - 1].movement_ended_at == drive.started_at:
+                # Left: the previous drive in this batch ends exactly at this
+                # drive's started_at, so a closed session ending there is the
+                # previous drive's. Closed sessions only: an open session
+                # collapses to a point at its own started_at and must keep
+                # matching, so the open-session branch below still protects it.
+                conditions.append(
+                    not_(
+                        and_(
+                            DriveSession.ended_at.is_not(None),
+                            session_end == drive.started_at,
+                        )
+                    )
+                )
+
+            overlapping = list(
+                (await self.db.execute(select(DriveSession).where(*conditions))).scalars().all()
             )
 
             if len(overlapping) > 1:
@@ -998,6 +1036,13 @@ class TelemetryService:
                     effective_gap_minutes=gap,
                 )
                 self.db.add(session)
+                # Flushed (not just added), not committed: production sessions
+                # are autoflush=False, so without this the next drive's own
+                # overlap query -- issued in the same loop, same transaction --
+                # cannot see a session this loop just created. A commit stays
+                # the caller's: bulk_backfill commits once after every drive
+                # in the batch is done.
+                await self.db.flush()
                 logger.info(
                     "SD reconstruction: created session for %s over %s..%s",
                     device_id,
