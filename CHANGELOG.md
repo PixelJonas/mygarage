@@ -46,6 +46,7 @@ Back up first. Migration 100 adds one nullable column to `tires`; it is additive
 - LiveLink recorded no odometer reading on a day that already held one from a service visit, fuel-up or manual entry.
 - Re-saving a fuel, DEF or service record could overwrite a tire's odometer reading from the same day.
 - An import that failed partway could leave some of its rows saved.
+- CSV imports longer than about ten rows were refused with "Could not determine delimiter" (#163).
 
 ## [3.3.1] - 2026-09-10
 

@@ -4,14 +4,91 @@ Unit tests for file validation utilities.
 Tests magic byte verification, MIME type validation, and file size checks.
 """
 
+from io import BytesIO
+
 import pytest
+from fastapi import HTTPException
+from starlette.datastructures import Headers, UploadFile
 
 from app.utils.file_validation import (
     MAGIC_AVAILABLE,
     MAGIC_BYTES,
+    validate_csv_upload,
     validate_file_magic_bytes,
     verify_file_content_type,
 )
+
+
+def _csv_upload(content: bytes, content_type: str = "text/csv") -> UploadFile:
+    return UploadFile(
+        file=BytesIO(content),
+        filename="upload.csv",
+        headers=Headers({"content-type": content_type}),
+    )
+
+
+def _export_shaped_fuel_csv(rows: int) -> str:
+    """A fuel file as MyGarage exports it: about thirty columns, most empty."""
+    header = (
+        "units_version,unit_system,Date,Filled At,Odometer (mi),Engine Hours,Gallons,"
+        "Price Per Gallon,Rebate,Total Cost,Full Tank,Missed Fill-up,Is Hauling,"
+        "Fuel Type Used,Station ID,Station,Driver ID,Driver,Payment Method,Trip Type,"
+        "Outside Temp (F),OBC MPG,OBC Avg Speed (mph),OBC Trip Duration (s),"
+        "SOC Start (%),SOC End (%),Charge Level,Charge Location,Battery SOH (%),Notes"
+    )
+    lines = [header]
+    for i in range(rows):
+        lines.append(
+            f"6,imperial,2028-01-{i + 1:02d},,{87000 + i * 300},,10.1,3.49,,{35.25 + i:.2f},"
+            "Yes,No,No,Regular,,Shell,,,,,,,,,,,,,,"
+        )
+    return "\n".join(lines) + "\n"
+
+
+@pytest.mark.unit
+class TestCsvUploadValidation:
+    """A CSV upload is judged by the shape every importer reads.
+
+    Every importer reads the comma format with a header row. The check used to
+    run `csv.Sniffer` over the first 1,024 characters, which for an export about
+    thirty columns wide is a header, four or five rows and one row cut in half,
+    and the sniffer's line-to-line consistency test rejected it (#163).
+    """
+
+    async def test_an_export_longer_than_the_old_sample_is_accepted(self):
+        data = _export_shaped_fuel_csv(20)
+        assert len(data) > 1024
+        assert await validate_csv_upload(_csv_upload(data.encode())) == data
+
+    async def test_a_semicolon_file_is_refused_as_not_comma_separated(self):
+        data = "Date;Odometer (km);Liters\n2028-01-01;1000;40\n"
+        with pytest.raises(HTTPException) as refused:
+            await validate_csv_upload(_csv_upload(data.encode()))
+        assert refused.value.status_code == 400
+        assert "comma-separated" in refused.value.detail
+
+    async def test_plain_text_is_refused(self):
+        with pytest.raises(HTTPException) as refused:
+            await validate_csv_upload(_csv_upload(b"just a sentence with no table in it\n"))
+        assert refused.value.status_code == 400
+        assert "comma-separated" in refused.value.detail
+
+    async def test_an_empty_file_is_reported_as_empty(self):
+        with pytest.raises(HTTPException) as refused:
+            await validate_csv_upload(_csv_upload(b"  \n"))
+        assert refused.value.status_code == 400
+        assert refused.value.detail == "CSV file is empty"
+
+    async def test_a_spreadsheet_byte_order_mark_is_not_part_of_the_first_column(self):
+        data = await validate_csv_upload(
+            _csv_upload(b"\xef\xbb\xbfDate,Odometer (km)\n2028-01-01,1000\n")
+        )
+        assert data.startswith("Date,")
+
+    async def test_a_non_csv_content_type_is_still_refused(self):
+        with pytest.raises(HTTPException) as refused:
+            await validate_csv_upload(_csv_upload(b"Date,Odometer\n", "application/pdf"))
+        assert refused.value.status_code == 400
 
 
 @pytest.mark.unit
