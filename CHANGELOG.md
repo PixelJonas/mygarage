@@ -26,6 +26,7 @@ Back up first. Migration 100 adds one nullable column to `tires`; it is additive
 ### Changed
 
 - Tire history refusal messages give odometers in your own distance unit.
+- A vehicle's current odometer is the highest reading of its latest day, whichever record entered it last.
 
 ### Fixed
 
@@ -42,6 +43,9 @@ Back up first. Migration 100 adds one nullable column to `tires`; it is additive
 - Two tire mount periods that contradict each other can now be corrected one at a time.
 - Tire operations overwrote, and could later move or delete, an odometer reading a service visit, fuel-up or LiveLink had already recorded that day.
 - A tire odometer retyped from a reading saved before the exact mile was refused as slightly below itself.
+- LiveLink recorded no odometer reading on a day that already held one from a service visit, fuel-up or manual entry.
+- Re-saving a fuel, DEF or service record could overwrite a tire's odometer reading from the same day.
+- An import that failed partway could leave some of its rows saved.
 
 ## [3.3.1] - 2026-09-10
 
