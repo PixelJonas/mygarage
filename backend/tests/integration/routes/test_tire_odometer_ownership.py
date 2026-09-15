@@ -907,3 +907,81 @@ class TestNonTireSourcesNeverTakeOverATiresRow:
         visit_id = await _service_visit(client, auth_headers, vehicle, DAY, "50000")
 
         assert await _rows(db_session, vehicle) == [tire_row, _service_row(visit_id, "50000")]
+
+
+@pytest.mark.asyncio
+class TestTheOwnedMoveOntoAnOlderHigherRecord:
+    async def test_a_period_moved_onto_an_older_higher_record_drops_its_own(
+        self, client: AsyncClient, auth_headers, vehicle, db_session
+    ):
+        """The LiveLink record on D+1 is older than the mount's own record, so
+        only its higher figure, not a newer id, says the day already reads at
+        least as high: the owned record is deleted, the LiveLink record kept."""
+        next_day = DAY + timedelta(days=1)
+        livelink = (
+            next_day,
+            Decimal("50100"),
+            "Auto-recorded from LiveLink (A6-Odometer)",
+            "livelink",
+        )
+        db_session.add(
+            OdometerRecord(
+                vin=vehicle,
+                date=next_day,
+                odometer_km=Decimal("50100"),
+                source="livelink",
+                notes="Auto-recorded from LiveLink (A6-Odometer)",
+            )
+        )
+        await db_session.commit()
+        tire_id = await _create_and_mount(
+            client,
+            auth_headers,
+            vehicle,
+            "FL",
+            mounted_on=DAY.isoformat(),
+            mounted_odometer_km="50012",
+        )
+        (period_id,) = (
+            (
+                await db_session.execute(
+                    select(TireMountPeriod.id).where(TireMountPeriod.tire_id == tire_id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        moved = await client.put(
+            f"/api/vehicles/{vehicle}/tires/{tire_id}/mount-periods/{period_id}",
+            headers=auth_headers,
+            json={"mounted_on": next_day.isoformat(), "mounted_odometer_km": "50012"},
+        )
+        assert moved.status_code == 200, moved.text
+
+        assert await _rows(db_session, vehicle) == [livelink]
+
+
+@pytest.mark.asyncio
+class TestAZeroDistanceKeepsItsScale:
+    async def test_a_mount_within_the_tolerance_above_the_days_reading_reads_zero_point_zero_zero(
+        self, client: AsyncClient, auth_headers, vehicle, db_session
+    ):
+        """89,044 mi as a service visit saved before the exact mile stored it,
+        and the mount typed today: one reading, so no tire row, and the clamp
+        inside the tolerance is the tire's only contribution. It serialises
+        like every other distance, to the hundredth."""
+        visit_id = await _service_visit(client, auth_headers, vehicle, DAY, "143302.07")
+        tire_id = await _create_and_mount(
+            client,
+            auth_headers,
+            vehicle,
+            "FL",
+            mounted_on=DAY.isoformat(),
+            mounted_odometer_km="143302.43",
+        )
+        assert await _rows(db_session, vehicle) == [_service_row(visit_id, "143302.07")]
+
+        tire = await _tire_json(client, auth_headers, vehicle, tire_id)
+        assert tire["distance_status"] == "complete"
+        assert tire["distance_km"] == "0.00"

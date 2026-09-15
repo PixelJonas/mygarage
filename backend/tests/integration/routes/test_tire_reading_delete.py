@@ -400,10 +400,10 @@ _SESSION_DAY = date(2026, 3, 1)
 
 @pytest.mark.asyncio
 class TestTheDaysRecordOtherReadingsStillSupport:
-    """A reading publishes the vehicle's odometer only onto a day with no
-    record, so after a Log Reading session the day's one record carries the
-    FIRST reading's marker and value while every other reading of that day
-    stands behind the same kilometres. Deleting the reading whose marker it
+    """A reading publishes the vehicle's odometer only when no record on its day
+    reads at or above it, so after a Log Reading session at one odometer the
+    day's one record carries the FIRST reading's marker and value while every
+    other reading of that day stands behind the same kilometres. Deleting the reading whose marker it
     carries must leave the day with a record, or the vehicle's latest odometer
     falls back to an older day and every mounted tire reads a confident
     too-low distance.

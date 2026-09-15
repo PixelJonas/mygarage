@@ -288,7 +288,9 @@ def distance_on_tire(tire: Tire, current_odometer: Decimal | None) -> DistanceRe
         # reading in two spellings (a figure saved before v3.4.0 and the same
         # figure typed today): within the band that is a period that rolled
         # nothing, as `distance_between` counts an interval with no length.
-        known += max(end - start, Decimal("0"))
+        # The zero carries the odometer columns' scale, so a figure made of it
+        # alone serialises like every other distance ("0.00", not "0").
+        known += max(end - start, Decimal("0.00"))
         contributed += 1
         # Only a period that CONTRIBUTED can date the known figure, and its
         # `mounted_on` may still be null on a migrated assumed period.

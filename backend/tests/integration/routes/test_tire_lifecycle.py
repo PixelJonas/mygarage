@@ -141,9 +141,8 @@ class TestMountAndDismount:
         """The seasonal-swap case the whole model exists for: a tire comes off
         in autumn and goes back on in spring, keeping its history.
 
-        Dated a season apart. Each event publishes the vehicle's odometer only
-        onto a day with no record, so three events on one day would leave the
-        mount's 1,000 km as the latest reading beneath a remount at 12,000."""
+        Dated a season apart, as a seasonal swap is: each event then publishes
+        the vehicle's odometer onto a day of its own."""
         tire = await _mount(
             client,
             auth_headers,
