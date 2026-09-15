@@ -11,18 +11,23 @@ forever.
 These tests build their own `autoflush=False` sessionmaker over `test_engine`
 (the pattern in `tests/integration/routes/test_tire_periods.py`), pinning
 production's setting directly rather than depending on conftest's
-`test_sessionmaker`.
+`test_sessionmaker`. Every vehicle and device they commit is removed again by
+the `seed` fixture, with the telemetry, latest values and drive sessions
+written under it.
 """
 
 from __future__ import annotations
 
 import uuid
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import datetime, timedelta
 
 import pytest
-from sqlalchemy import select
+import pytest_asyncio
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.models.drive_session import DriveSession
 from app.models.livelink_device import LiveLinkDevice
 from app.models.vehicle import Vehicle
 from app.models.vehicle_telemetry import VehicleTelemetry, VehicleTelemetryLatest
@@ -53,6 +58,34 @@ async def _seed_vehicle(maker: async_sessionmaker[AsyncSession], suffix: str) ->
     return vin, device_id
 
 
+Seed = Callable[[str], Awaitable[tuple[str, str]]]
+
+
+@pytest_asyncio.fixture
+async def seed(test_engine, db_session) -> AsyncIterator[Seed]:
+    """`_seed_vehicle`, with everything committed under each vehicle deleted afterwards.
+
+    Depends on `db_session` only for the schema it guarantees.
+    """
+    maker = _maker(test_engine)
+    created: list[tuple[str, str]] = []
+
+    async def _seed(suffix: str) -> tuple[str, str]:
+        vin, device_id = await _seed_vehicle(maker, suffix)
+        created.append((vin, device_id))
+        return vin, device_id
+
+    yield _seed
+
+    async with maker() as db:
+        for vin, device_id in created:
+            await db.execute(delete(LiveLinkDevice).where(LiveLinkDevice.device_id == device_id))
+            for model in (VehicleTelemetryLatest, VehicleTelemetry, DriveSession):
+                await db.execute(delete(model).where(model.vin == vin))
+            await db.execute(delete(Vehicle).where(Vehicle.vin == vin))
+        await db.commit()
+
+
 async def _latest_row(maker: async_sessionmaker[AsyncSession], vin: str) -> VehicleTelemetryLatest:
     async with maker() as db:
         return (
@@ -63,11 +96,9 @@ async def _latest_row(maker: async_sessionmaker[AsyncSession], vin: str) -> Vehi
 
 
 class TestRepeatedParamInOneBatch:
-    async def test_a_param_seen_twice_in_one_batch_keeps_the_newer_value(
-        self, test_engine, db_session
-    ):
+    async def test_a_param_seen_twice_in_one_batch_keeps_the_newer_value(self, test_engine, seed):
         maker = _maker(test_engine)
-        vin, _device_id = await _seed_vehicle(maker, "A")
+        vin, _device_id = await seed("A")
 
         async with maker() as db:
             service = TelemetryService(db)
@@ -91,9 +122,9 @@ class TestRepeatedParamInOneBatch:
 
 
 class TestOrderingGuards:
-    async def test_an_older_row_never_replaces_a_newer_stored_value(self, test_engine, db_session):
+    async def test_an_older_row_never_replaces_a_newer_stored_value(self, test_engine, seed):
         maker = _maker(test_engine)
-        vin, _device_id = await _seed_vehicle(maker, "B")
+        vin, _device_id = await seed("B")
 
         async with maker() as db:
             await TelemetryService(db)._update_latest_if_newer(vin, "SPEED", 99.0, T0)
@@ -110,7 +141,7 @@ class TestOrderingGuards:
         assert row.timestamp == T0
 
     async def test_a_live_value_written_between_commits_survives_older_history(
-        self, test_engine, db_session
+        self, test_engine, seed
     ):
         """Two independent sessions interleave commits around one row.
 
@@ -125,7 +156,7 @@ class TestOrderingGuards:
         whatever session A last saw in its own memory.
         """
         maker = _maker(test_engine)
-        vin, _device_id = await _seed_vehicle(maker, "C")
+        vin, _device_id = await seed("C")
 
         session_a = maker()
         service_a = TelemetryService(session_a)
@@ -148,11 +179,9 @@ class TestOrderingGuards:
 
 
 class TestBulkBackfillWithARepeatedNewParam:
-    async def test_bulk_backfill_imports_a_file_whose_new_param_repeats(
-        self, test_engine, db_session
-    ):
+    async def test_bulk_backfill_imports_a_file_whose_new_param_repeats(self, test_engine, seed):
         maker = _maker(test_engine)
-        vin, device_id = await _seed_vehicle(maker, "D")
+        vin, device_id = await seed("D")
 
         rows = [
             SdRow(param_key="SPEED", value=45.0, timestamp=T0),
@@ -182,3 +211,75 @@ class TestBulkBackfillWithARepeatedNewParam:
         row = await _latest_row(maker, vin)
         assert row.value == 55.0
         assert row.timestamp == T0 + timedelta(minutes=2)
+
+
+class TestBulkBackfillAcrossAChunkCommit:
+    async def test_a_live_value_written_between_chunk_commits_survives_the_rest_of_the_file(
+        self, test_engine, seed, monkeypatch
+    ):
+        """More rows than one commit chunk, all older than a live reading taken mid-file.
+
+        `bulk_backfill` commits every 500 rows on the session it was given.
+        Right after its first chunk commits, a separate session writes a live
+        coolant reading stamped later than every row in the file, the way an
+        MQTT message would land between chunks. The remaining 100 rows are
+        still older than that reading, so `vehicle_telemetry_latest` must end
+        holding the live value. Coolant, not speed, so the file describes no
+        drive and the test is about the latest value alone.
+        """
+        maker = _maker(test_engine)
+        vin, device_id = await seed("E")
+        file_start = T0 - timedelta(hours=1)
+        rows = [
+            SdRow(
+                param_key="COOLANT_TEMP",
+                value=80.0 + i / 100,
+                timestamp=file_start + timedelta(seconds=i),
+            )
+            for i in range(600)
+        ]
+        assert max(r.timestamp for r in rows) < T0
+
+        latest_after_first_chunk: list[tuple[float, datetime]] = []
+        async with maker() as backfill_db:
+            real_commit = backfill_db.commit
+
+            async def commit_then_live_write() -> None:
+                await real_commit()
+                if latest_after_first_chunk:
+                    return
+                async with maker() as live_db:
+                    stored = (
+                        await live_db.execute(
+                            select(VehicleTelemetryLatest).where(
+                                VehicleTelemetryLatest.vin == vin,
+                                VehicleTelemetryLatest.param_key == "COOLANT_TEMP",
+                            )
+                        )
+                    ).scalar_one()
+                    latest_after_first_chunk.append((stored.value, stored.timestamp))
+                    await TelemetryService(live_db)._upsert_latest_value(
+                        vin, "COOLANT_TEMP", 91.5, T0, T0
+                    )
+                    await live_db.commit()
+
+            monkeypatch.setattr(backfill_db, "commit", commit_then_live_write)
+            inserted = await TelemetryService(backfill_db).bulk_backfill(vin, device_id, rows)
+
+        assert inserted == 600
+        # The hook ran at the chunk boundary: the first 500 rows had committed
+        # and the latest value was the 500th row's when the live write landed.
+        assert latest_after_first_chunk == [(rows[499].value, rows[499].timestamp)]
+
+        async with maker() as db:
+            latest = (
+                await db.execute(
+                    select(VehicleTelemetryLatest).where(
+                        VehicleTelemetryLatest.vin == vin,
+                        VehicleTelemetryLatest.param_key == "COOLANT_TEMP",
+                    )
+                )
+            ).scalar_one()
+        assert (latest.value, latest.timestamp) == (91.5, T0), (
+            "a backfilled row older than the live reading replaced it after a chunk commit"
+        )
