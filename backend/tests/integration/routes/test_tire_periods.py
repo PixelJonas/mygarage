@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from datetime import date as date_type
 from decimal import Decimal
 
@@ -50,6 +50,29 @@ async def vehicle(db_session, test_user):
             year=2020,
             make="Honda",
             model="Fit",
+        )
+    )
+    await db_session.commit()
+    yield vin
+    await db_session.execute(delete(OdometerRecord).where(OdometerRecord.vin == vin))
+    await db_session.execute(delete(Vehicle).where(Vehicle.vin == vin))
+    await db_session.commit()
+
+
+@pytest.fixture
+async def other_vehicle(db_session, test_user):
+    """A second vehicle, for the cross-VIN refusal. Same pattern as
+    `test_tire_sets.py`'s fixture of the same name."""
+    vin = f"TIREPERB{uuid.uuid4().hex[:9].upper()}"[:17]
+    db_session.add(
+        Vehicle(
+            vin=vin,
+            user_id=test_user["id"],
+            nickname="Periods B",
+            vehicle_type="Car",
+            year=2021,
+            make="Toyota",
+            model="Yaris",
         )
     )
     await db_session.commit()
@@ -1430,3 +1453,333 @@ class TestMessagesInTheUsersUnits:
             elif row is not None:
                 row.value = original
             await db_session.commit()
+
+
+@pytest.mark.asyncio
+class TestAddingAPastPeriod:
+    """`POST /mount-periods`: a closed period recorded after the fact, for
+    history the user never entered at the time."""
+
+    async def test_a_past_period_before_the_first_mount_is_recorded(
+        self, client: AsyncClient, auth_headers, vehicle, db_session
+    ):
+        base = f"/api/vehicles/{vehicle}/tires"
+        made = await client.post(
+            f"{base}/create-and-mount",
+            headers=auth_headers,
+            json={
+                "vin": vehicle,
+                "position": "FL",
+                "mounted_on": "2026-06-01",
+                "mounted_odometer_km": "20000",
+            },
+        )
+        assert made.status_code == 201, made.text
+        tire_id = made.json()["id"]
+        (open_period,) = await _periods(db_session, tire_id)
+        open_period_id = open_period.id
+
+        added = await client.post(
+            f"{base}/{tire_id}/mount-periods",
+            headers=auth_headers,
+            json={
+                "position": "FR",
+                "mounted_on": "2026-01-01",
+                "mounted_odometer_km": "5000",
+                "dismounted_on": "2026-03-01",
+                "dismounted_odometer_km": "9000",
+            },
+        )
+        assert added.status_code == 201, added.text
+        body = added.json()
+        assert body["position"] == "FL"
+        new_period = next(p for p in body["mount_periods"] if p["position"] == "FR")
+        assert new_period["mounted_on"] == "2026-01-01"
+        assert new_period["dismounted_on"] == "2026-03-01"
+        assert Decimal(str(new_period["mounted_odometer_km"])) == Decimal("5000")
+        assert Decimal(str(new_period["dismounted_odometer_km"])) == Decimal("9000")
+        still_open = next(p for p in body["mount_periods"] if p["id"] == open_period_id)
+        assert still_open["position"] == "FL" and still_open["dismounted_on"] is None
+
+        new_period_id = new_period["id"]
+        recs = {r.notes: r for r in await _records(db_session, vehicle)}
+        mount_marker = auto_sync_marker(ODOMETER_SOURCE_TIRE_MOUNT, new_period_id)
+        dismount_marker = auto_sync_marker(ODOMETER_SOURCE_TIRE_DISMOUNT, new_period_id)
+        assert recs[mount_marker].date == date_type(2026, 1, 1)
+        assert recs[mount_marker].odometer_km == Decimal("5000")
+        assert recs[dismount_marker].date == date_type(2026, 3, 1)
+        assert recs[dismount_marker].odometer_km == Decimal("9000")
+
+    async def test_a_past_period_without_odometers_publishes_nothing(
+        self, client: AsyncClient, auth_headers, vehicle, db_session
+    ):
+        base = f"/api/vehicles/{vehicle}/tires"
+        made = await client.post(
+            f"{base}/create-and-mount",
+            headers=auth_headers,
+            json={
+                "vin": vehicle,
+                "position": "FL",
+                "mounted_on": "2026-06-01",
+                "mounted_odometer_km": "20000",
+            },
+        )
+        assert made.status_code == 201, made.text
+        tire_id = made.json()["id"]
+        records_before = len(await _records(db_session, vehicle))
+
+        added = await client.post(
+            f"{base}/{tire_id}/mount-periods",
+            headers=auth_headers,
+            json={"position": "FR", "mounted_on": "2026-01-01", "dismounted_on": "2026-03-01"},
+        )
+        assert added.status_code == 201, added.text
+        new_period = next(p for p in added.json()["mount_periods"] if p["position"] == "FR")
+        assert new_period["mounted_odometer_km"] is None
+        assert new_period["dismounted_odometer_km"] is None
+        assert len(await _records(db_session, vehicle)) == records_before
+        markers = {
+            auto_sync_marker(ODOMETER_SOURCE_TIRE_MOUNT, new_period["id"]),
+            auto_sync_marker(ODOMETER_SOURCE_TIRE_DISMOUNT, new_period["id"]),
+        }
+        assert not [r for r in await _records(db_session, vehicle) if r.notes in markers]
+
+    async def test_a_past_period_overlapping_an_existing_one_is_refused(
+        self, client: AsyncClient, auth_headers, vehicle, db_session
+    ):
+        base = f"/api/vehicles/{vehicle}/tires"
+        made = await client.post(
+            f"{base}/create-and-mount",
+            headers=auth_headers,
+            json={
+                "vin": vehicle,
+                "position": "FL",
+                "mounted_on": "2026-06-01",
+                "mounted_odometer_km": "20000",
+            },
+        )
+        assert made.status_code == 201, made.text
+        tire_id = made.json()["id"]
+        periods_before = len(await _periods(db_session, tire_id))
+        records_before = len(await _records(db_session, vehicle))
+
+        overlapping = await client.post(
+            f"{base}/{tire_id}/mount-periods",
+            headers=auth_headers,
+            json={
+                "position": "FR",
+                "mounted_on": "2026-05-01",
+                "mounted_odometer_km": "18000",
+                "dismounted_on": "2026-07-01",
+                "dismounted_odometer_km": "21000",
+            },
+        )
+        assert overlapping.status_code == 409, overlapping.text
+        # Re-read rather than trust the stale in-memory tire: the 409 rolled
+        # the request back, and these helpers `expire_all()` before querying.
+        assert len(await _periods(db_session, tire_id)) == periods_before
+        assert len(await _records(db_session, vehicle)) == records_before
+
+    async def test_a_past_period_ending_after_tomorrow_is_422(
+        self, client: AsyncClient, auth_headers, vehicle
+    ):
+        base = f"/api/vehicles/{vehicle}/tires"
+        made = await client.post(
+            f"{base}/create-and-mount",
+            headers=auth_headers,
+            json={"vin": vehicle, "position": "FL"},
+        )
+        assert made.status_code == 201, made.text
+        tire_id = made.json()["id"]
+        too_late = (date_type.today() + timedelta(days=2)).isoformat()
+        added = await client.post(
+            f"{base}/{tire_id}/mount-periods",
+            headers=auth_headers,
+            json={"position": "FR", "mounted_on": "2026-01-01", "dismounted_on": too_late},
+        )
+        assert added.status_code == 422, added.text
+
+    async def test_a_past_period_dismounted_tomorrow_is_recorded(
+        self, client: AsyncClient, auth_headers, vehicle
+    ):
+        """A day of slack for a user whose calendar is ahead of the server's.
+
+        The tire is in storage, so no open period can overlap the new one and
+        refuse it for a reason other than its date.
+        """
+        base = f"/api/vehicles/{vehicle}/tires"
+        made = await client.post(base, headers=auth_headers, json={"vin": vehicle})
+        assert made.status_code == 201, made.text
+        mounted = (date_type.today() - timedelta(days=30)).isoformat()
+        tomorrow = (date_type.today() + timedelta(days=1)).isoformat()
+        added = await client.post(
+            f"{base}/{made.json()['id']}/mount-periods",
+            headers=auth_headers,
+            json={"position": "FR", "mounted_on": mounted, "dismounted_on": tomorrow},
+        )
+        assert added.status_code == 201, added.text
+        (period,) = added.json()["mount_periods"]
+        assert period["dismounted_on"] == tomorrow
+
+    async def test_a_same_day_past_period_is_recorded(
+        self, client: AsyncClient, auth_headers, vehicle
+    ):
+        """On and off the car on one day, as a swap that was undone the same
+        afternoon would be."""
+        base = f"/api/vehicles/{vehicle}/tires"
+        made = await client.post(base, headers=auth_headers, json={"vin": vehicle})
+        assert made.status_code == 201, made.text
+        day = (date_type.today() - timedelta(days=30)).isoformat()
+        added = await client.post(
+            f"{base}/{made.json()['id']}/mount-periods",
+            headers=auth_headers,
+            json={"position": "RL", "mounted_on": day, "dismounted_on": day},
+        )
+        assert added.status_code == 201, added.text
+        (period,) = added.json()["mount_periods"]
+        assert period["mounted_on"] == day and period["dismounted_on"] == day
+
+    async def test_a_past_period_dismounted_before_it_mounted_is_422(
+        self, client: AsyncClient, auth_headers, vehicle
+    ):
+        base = f"/api/vehicles/{vehicle}/tires"
+        made = await client.post(
+            f"{base}/create-and-mount",
+            headers=auth_headers,
+            json={"vin": vehicle, "position": "FL"},
+        )
+        assert made.status_code == 201, made.text
+        tire_id = made.json()["id"]
+        added = await client.post(
+            f"{base}/{tire_id}/mount-periods",
+            headers=auth_headers,
+            json={"position": "FR", "mounted_on": "2026-03-01", "dismounted_on": "2026-01-01"},
+        )
+        assert added.status_code == 422, added.text
+
+    async def test_a_retired_tire_can_have_a_past_period_added(
+        self, client: AsyncClient, auth_headers, vehicle
+    ):
+        base = f"/api/vehicles/{vehicle}/tires"
+        made = await client.post(
+            f"{base}/create-and-mount",
+            headers=auth_headers,
+            json={
+                "vin": vehicle,
+                "position": "FL",
+                "mounted_on": "2026-06-01",
+                "mounted_odometer_km": "20000",
+            },
+        )
+        assert made.status_code == 201, made.text
+        tire_id = made.json()["id"]
+        retired = await client.post(
+            f"{base}/{tire_id}/retire",
+            headers=auth_headers,
+            json={"dismounted_on": "2026-08-01", "dismounted_odometer_km": "25000"},
+        )
+        assert retired.status_code == 200, retired.text
+        retired_on = retired.json()["retired_on"]
+
+        added = await client.post(
+            f"{base}/{tire_id}/mount-periods",
+            headers=auth_headers,
+            json={
+                "position": "FR",
+                "mounted_on": "2026-01-01",
+                "mounted_odometer_km": "5000",
+                "dismounted_on": "2026-03-01",
+                "dismounted_odometer_km": "9000",
+            },
+        )
+        assert added.status_code == 201, added.text
+        assert added.json()["retired_on"] == retired_on
+
+    async def test_a_past_period_needs_write_access(
+        self, client: AsyncClient, owned_vehicle, owner_headers, reader_headers, db_session
+    ):
+        vin = owned_vehicle.vin
+        made = await client.post(
+            f"/api/vehicles/{vin}/tires/create-and-mount",
+            headers=owner_headers,
+            json={"vin": vin, "position": "FL", "mounted_on": "2026-06-01"},
+        )
+        assert made.status_code == 201, made.text
+        tire_id = made.json()["id"]
+        try:
+            refused = await client.post(
+                f"/api/vehicles/{vin}/tires/{tire_id}/mount-periods",
+                headers=reader_headers,
+                json={"position": "FR", "mounted_on": "2026-01-01", "dismounted_on": "2026-03-01"},
+            )
+            assert refused.status_code == 403, refused.text
+            (only_period,) = await _periods(db_session, tire_id)
+            assert only_period.position == "FL"
+        finally:
+            await db_session.execute(delete(Tire).where(Tire.id == tire_id))
+            await db_session.commit()
+
+    async def test_a_past_period_on_another_vehicles_tire_is_404(
+        self, client: AsyncClient, auth_headers, vehicle, other_vehicle
+    ):
+        base = f"/api/vehicles/{vehicle}/tires"
+        made = await client.post(
+            f"{base}/create-and-mount",
+            headers=auth_headers,
+            json={"vin": vehicle, "position": "FL", "mounted_on": "2026-06-01"},
+        )
+        assert made.status_code == 201, made.text
+        tire_id = made.json()["id"]
+        wrong_vin = await client.post(
+            f"/api/vehicles/{other_vehicle}/tires/{tire_id}/mount-periods",
+            headers=auth_headers,
+            json={"position": "FR", "mounted_on": "2026-01-01", "dismounted_on": "2026-03-01"},
+        )
+        assert wrong_vin.status_code == 404, wrong_vin.text
+
+    async def test_a_pre_existing_manual_record_on_the_mount_date_is_untouched(
+        self, client: AsyncClient, auth_headers, vehicle, db_session
+    ):
+        """`_publish_odometer` never overwrites a manual record (existing
+        `sync_odometer_from_record` behaviour, shared with Mount and the
+        period editor). A past period follows the same rule: the manual entry
+        survives untouched and the period simply publishes no record of its
+        own on that day."""
+        base = f"/api/vehicles/{vehicle}/tires"
+        made = await client.post(
+            f"{base}/create-and-mount",
+            headers=auth_headers,
+            json={
+                "vin": vehicle,
+                "position": "FL",
+                "mounted_on": "2026-06-01",
+                "mounted_odometer_km": "20000",
+            },
+        )
+        assert made.status_code == 201, made.text
+        tire_id = made.json()["id"]
+        manual = await client.post(
+            f"/api/vehicles/{vehicle}/odometer",
+            headers=auth_headers,
+            json={"vin": vehicle, "date": "2026-01-01", "odometer_km": "4800", "notes": "hand"},
+        )
+        assert manual.status_code == 201, manual.text
+
+        added = await client.post(
+            f"{base}/{tire_id}/mount-periods",
+            headers=auth_headers,
+            json={
+                "position": "FR",
+                "mounted_on": "2026-01-01",
+                "mounted_odometer_km": "5000",
+                "dismounted_on": "2026-03-01",
+                "dismounted_odometer_km": "9000",
+            },
+        )
+        assert added.status_code == 201, added.text
+        new_period = next(p for p in added.json()["mount_periods"] if p["position"] == "FR")
+        recs = {r.date: r for r in await _records(db_session, vehicle)}
+        assert recs[date_type(2026, 1, 1)].odometer_km == Decimal("4800")
+        assert recs[date_type(2026, 1, 1)].notes == "hand"
+        mount_marker = auto_sync_marker(ODOMETER_SOURCE_TIRE_MOUNT, new_period["id"])
+        assert not [r for r in recs.values() if r.notes == mount_marker]

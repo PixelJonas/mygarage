@@ -9687,6 +9687,83 @@
         "title": "MonthlyCostSummary",
         "type": "object"
       },
+      "MountPeriodCreate": {
+        "additionalProperties": false,
+        "description": "A closed period the tire spent on a corner, recorded after the fact.\n\nClosed only: an open period is what Mount creates, and it is the one whose\ncorner `tires.position` holds. Odometers optional, dates required, the\ndismount no later than tomorrow (a day of slack for a user whose calendar\nis ahead of the server's).",
+        "properties": {
+          "dismounted_odometer_km": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dismounted Odometer Km"
+          },
+          "dismounted_on": {
+            "format": "date",
+            "title": "Dismounted On",
+            "type": "string"
+          },
+          "mounted_odometer_km": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mounted Odometer Km"
+          },
+          "mounted_on": {
+            "format": "date",
+            "title": "Mounted On",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "position": {
+            "enum": [
+              "FL",
+              "FR",
+              "RL",
+              "RR",
+              "SPARE"
+            ],
+            "title": "Position",
+            "type": "string"
+          }
+        },
+        "required": [
+          "position",
+          "mounted_on",
+          "dismounted_on"
+        ],
+        "title": "MountPeriodCreate",
+        "type": "object"
+      },
       "MountPeriodResponse": {
         "description": "One interval a tire spent mounted at one position.",
         "properties": {
@@ -42597,6 +42674,73 @@
           }
         ],
         "summary": "Mount Tire",
+        "tags": [
+          "tires"
+        ]
+      }
+    },
+    "/api/vehicles/{vin}/tires/{tire_id}/mount-periods": {
+      "post": {
+        "description": "Record a closed period the tire spent on a corner in the past.\n\n409 when it contradicts the tire's other periods or its readings. Returns\nthe whole tire.",
+        "operationId": "create_mount_period_api_vehicles__vin__tires__tire_id__mount_periods_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vin",
+            "required": true,
+            "schema": {
+              "title": "Vin",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tire_id",
+            "required": true,
+            "schema": {
+              "title": "Tire Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MountPeriodCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TireResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Mount Period",
         "tags": [
           "tires"
         ]

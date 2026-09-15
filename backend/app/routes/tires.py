@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.user import User
 from app.schemas.tire import (
+    MountPeriodCreate,
     MountPeriodUpdate,
     TireCreate,
     TireCreateAndMountRequest,
@@ -137,6 +138,22 @@ async def restore_tire(
 ) -> TireResponse:
     """Un-retire a tire: back to storage, history intact. 409 if it is not retired."""
     return await TireService(db).restore_tire(vin, tire_id, current_user)
+
+
+@router.post("/{vin}/tires/{tire_id}/mount-periods", response_model=TireResponse, status_code=201)
+async def create_mount_period(
+    vin: str,
+    tire_id: int,
+    data: MountPeriodCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_auth),
+) -> TireResponse:
+    """Record a closed period the tire spent on a corner in the past.
+
+    409 when it contradicts the tire's other periods or its readings. Returns
+    the whole tire.
+    """
+    return await TireService(db).create_mount_period(vin, tire_id, data, current_user)
 
 
 @router.put("/{vin}/tires/{tire_id}/mount-periods/{period_id}", response_model=TireResponse)

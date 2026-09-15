@@ -6192,6 +6192,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/vehicles/{vin}/tires/{tire_id}/mount-periods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Mount Period
+         * @description Record a closed period the tire spent on a corner in the past.
+         *
+         *     409 when it contradicts the tire's other periods or its readings. Returns
+         *     the whole tire.
+         */
+        post: operations["create_mount_period_api_vehicles__vin__tires__tire_id__mount_periods_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/vehicles/{vin}/tires/{tire_id}/mount-periods/{period_id}": {
         parameters: {
             query?: never;
@@ -11133,6 +11156,38 @@ export interface components {
             total_spot_rental_cost: string;
             /** Year */
             year: number;
+        };
+        /**
+         * MountPeriodCreate
+         * @description A closed period the tire spent on a corner, recorded after the fact.
+         *
+         *     Closed only: an open period is what Mount creates, and it is the one whose
+         *     corner `tires.position` holds. Odometers optional, dates required, the
+         *     dismount no later than tomorrow (a day of slack for a user whose calendar
+         *     is ahead of the server's).
+         */
+        MountPeriodCreate: {
+            /** Dismounted Odometer Km */
+            dismounted_odometer_km?: number | string | null;
+            /**
+             * Dismounted On
+             * Format: date
+             */
+            dismounted_on: string;
+            /** Mounted Odometer Km */
+            mounted_odometer_km?: number | string | null;
+            /**
+             * Mounted On
+             * Format: date
+             */
+            mounted_on: string;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Position
+             * @enum {string}
+             */
+            position: "FL" | "FR" | "RL" | "RR" | "SPARE";
         };
         /**
          * MountPeriodResponse
@@ -27429,6 +27484,42 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TireResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_mount_period_api_vehicles__vin__tires__tire_id__mount_periods_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+                tire_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MountPeriodCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };

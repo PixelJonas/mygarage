@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date as date_type
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Literal
 
@@ -252,6 +252,33 @@ class MountPeriodUpdate(BaseModel):
     dismounted_on: date_type | None = None
     dismounted_odometer_km: Decimal | None = Field(None, ge=0)
     notes: str | None = None
+
+
+class MountPeriodCreate(BaseModel):
+    """A closed period the tire spent on a corner, recorded after the fact.
+
+    Closed only: an open period is what Mount creates, and it is the one whose
+    corner `tires.position` holds. Odometers optional, dates required, the
+    dismount no later than tomorrow (a day of slack for a user whose calendar
+    is ahead of the server's).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    position: TirePosition
+    mounted_on: date_type
+    mounted_odometer_km: Decimal | None = Field(None, ge=0)
+    dismounted_on: date_type
+    dismounted_odometer_km: Decimal | None = Field(None, ge=0)
+    notes: str | None = None
+
+    @model_validator(mode="after")
+    def _a_closed_period_in_the_past(self) -> MountPeriodCreate:
+        if self.dismounted_on < self.mounted_on:
+            raise ValueError("dismounted_on cannot be before mounted_on")
+        if self.dismounted_on > date_type.today() + timedelta(days=1):
+            raise ValueError("dismounted_on cannot be in the future")
+        return self
 
 
 class HistoryFaultResponse(BaseModel):

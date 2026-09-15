@@ -20,6 +20,7 @@ from app.models.tire import Tire, TireMountPeriod, TireReading, TireSet
 from app.models.user import User
 from app.schemas.tire import (
     HistoryFaultResponse,
+    MountPeriodCreate,
     MountPeriodResponse,
     MountPeriodUpdate,
     TireCreate,
@@ -1372,6 +1373,66 @@ class TireService:
         else:
             await self._publish_odometer(
                 vin, retired_on, data.dismounted_odometer_km, ODOMETER_SOURCE_TIRE, tire.id
+            )
+        await self.db.commit()
+        return await self._reload_response(tire.id, vin, format_distance)
+
+    async def create_mount_period(
+        self, vin: str, tire_id: int, data: MountPeriodCreate, current_user: User
+    ) -> TireResponse:
+        """Record a closed period the tire spent on a corner in the past.
+
+        For history the user never recorded at the time, such as the seasons a
+        set was on the car before MyGarage. Under the vehicle write lock and
+        judged like any other write, with only the new period touched, so it
+        is refused when it contradicts the tire's existing periods or readings.
+        It never changes where the tire is now, and it is allowed on a retired
+        tire: that tire's history is still its history.
+        """
+        from app.services.auth import get_vehicle_or_403
+
+        vin = vin.upper().strip()
+        await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
+        await lock_vehicle_for_write(self.db, vin)
+        format_distance = await self.request_distance_formatter(current_user)
+        tire = await self._get_tire_for_update(vin, tire_id)
+
+        before = fault_map(tire.mount_periods or [], tire.readings or [])
+        period = TireMountPeriod(
+            tire_id=tire.id,
+            position=data.position,
+            mounted_on=data.mounted_on,
+            mounted_odometer_km=data.mounted_odometer_km,
+            dismounted_on=data.dismounted_on,
+            dismounted_odometer_km=data.dismounted_odometer_km,
+            is_assumed=False,
+            notes=data.notes,
+        )
+        tire.mount_periods.append(period)
+        await self.db.flush()
+        self.refuse_contradictions(tire, before, {period.id}, format_distance)
+        # Refreshed for the same reason `mount_tire` refreshes its new period:
+        # appended rather than `db.add`ed, so the reload below will not
+        # re-read this row from the identity map, and the column's quantized
+        # precision (`Numeric(10, 2)`) has to come from somewhere before the
+        # response is built.
+        await self.db.refresh(period)
+
+        if data.mounted_odometer_km is not None:
+            await self._publish_odometer(
+                vin,
+                data.mounted_on,
+                data.mounted_odometer_km,
+                ODOMETER_SOURCE_TIRE_MOUNT,
+                period.id,
+            )
+        if data.dismounted_odometer_km is not None:
+            await self._publish_odometer(
+                vin,
+                data.dismounted_on,
+                data.dismounted_odometer_km,
+                ODOMETER_SOURCE_TIRE_DISMOUNT,
+                period.id,
             )
         await self.db.commit()
         return await self._reload_response(tire.id, vin, format_distance)
