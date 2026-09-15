@@ -8,7 +8,7 @@ vehicle write lock the loser waits, re-reads under the lock, and gets the
 
 Lives in `tests/integration/` so CI runs it under PostgreSQL as well as SQLite,
 and it means something under both: on SQLite the lock is `BEGIN IMMEDIATE`,
-on PostgreSQL it is `SELECT ... FOR UPDATE` on the vehicle row. Two real
+on PostgreSQL it is `SELECT ... FOR NO KEY UPDATE` on the vehicle row. Two real
 connections, so it builds its own sessions rather than using `client`, which
 hands ONE session to every request and therefore cannot race.
 """
@@ -177,7 +177,7 @@ class TestLockHelper:
 
         SQLite: a second engine whose connections wait 100 ms for the write
         lock rather than the default. PostgreSQL: `lock_timeout` on the waiting
-        transaction, which turns a FOR UPDATE wait into SQLSTATE 55P03. asyncpg
+        transaction, which turns a row lock wait into SQLSTATE 55P03. asyncpg
         surfaces that through SQLAlchemy as a plain DBAPIError, not an
         OperationalError, so a handler catching only the latter never saw it.
         """
@@ -212,6 +212,30 @@ class TestLockHelper:
                 await impatient.dispose()
         assert refused.value.status_code == 503
         assert refused.value.detail == LOCK_BUSY_DETAIL
+
+    async def test_a_held_lock_does_not_stall_inserts_that_reference_the_vehicle(
+        self, db_session, test_engine, test_sessionmaker
+    ):
+        """The lock serialises its holders, not every writer touching the vehicle.
+
+        PostgreSQL only: SQLite's write lock is database-wide by design. A
+        `FOR UPDATE` row lock would also conflict with the key-share lock an
+        insert referencing the vehicle takes, so telemetry and records for the
+        vehicle would wait out a whole import.
+        """
+        if test_engine.dialect.name == "sqlite":
+            pytest.skip("SQLite's write lock is database-wide by design")
+        vin, _user, _a, _b = await _seed(db_session)
+        async with test_sessionmaker() as holder:
+            await lock_vehicle_for_write(holder, vin)
+            try:
+                async with test_sessionmaker() as writer:
+                    await writer.execute(text("SET LOCAL lock_timeout = '100ms'"))
+                    writer.add(Tire(vin=vin, brand="inserted while the vehicle is locked"))
+                    await writer.flush()
+                    await writer.rollback()
+            finally:
+                await holder.rollback()
 
     @pytest.mark.parametrize(
         "orig",

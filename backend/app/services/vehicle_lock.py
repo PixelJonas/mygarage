@@ -1,4 +1,8 @@
-"""Serialise the writers that change where a vehicle's tires are.
+"""Serialise the writers that change where a vehicle's tires are, and imports.
+
+Imports take the same lock for a different reason: on SQLite it opens the one
+transaction every per-row savepoint nests in, so a failed import rolls back
+whole instead of leaving the rows its released savepoints already committed.
 
 The rule "one open mount period per corner per vehicle" cannot be a database
 constraint: `tire_mount_periods` carries no `vin`. It is enforced by a
@@ -36,14 +40,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 logger = logging.getLogger(__name__)
 
 LOCK_CONTRACT = (
-    "lock_vehicle_for_write must be the first statement of a tire write: call it "
-    "once, immediately after get_vehicle_or_403(require_write=True), and before "
-    "any tire or period read"
+    "lock_vehicle_for_write must precede every write of a tire change or an "
+    "import: call it once, after the route's authorization check, and before any "
+    "write or any tire or period read"
 )
 
 LOCK_BUSY_DETAIL = "Another change to this vehicle is in progress. Try again."
 
-#: lock_not_available (a FOR UPDATE that outlived `lock_timeout`) and
+#: lock_not_available (a row lock wait that outlived `lock_timeout`) and
 #: deadlock_detected.
 _PG_CONTENTION_SQLSTATES = frozenset({"55P03", "40P01"})
 #: Primary result codes; the extended BUSY_* and LOCKED_* codes share them.
@@ -91,8 +95,12 @@ async def lock_vehicle_for_write(db: AsyncSession, vin: str) -> None:
     than letting the driver's "cannot start a transaction within a
     transaction" surface as a 503.
 
-    Anything else: `SELECT ... FOR UPDATE` on the vehicle row, which waits for
-    a concurrent holder's commit.
+    Anything else: `SELECT ... FOR NO KEY UPDATE` on the vehicle row, which
+    waits for a concurrent holder's commit. Not `FOR UPDATE`: that also
+    conflicts with the key-share lock every insert referencing the vehicle
+    takes, so telemetry ingest and other records for the vehicle would wait
+    out a whole import. `FOR NO KEY UPDATE` still conflicts with itself and
+    with a delete of the vehicle.
 
     A lock that cannot be taken in time is a 503 with a sentence the user can
     act on. Before this helper the same condition was a generic 500. Only
@@ -109,7 +117,7 @@ async def lock_vehicle_for_write(db: AsyncSession, vin: str) -> None:
             await db.execute(text("BEGIN IMMEDIATE"))
         else:
             await db.execute(
-                text("SELECT vin FROM vehicles WHERE vin = :vin FOR UPDATE"),
+                text("SELECT vin FROM vehicles WHERE vin = :vin FOR NO KEY UPDATE"),
                 {"vin": vin},
             )
     except DBAPIError as exc:
