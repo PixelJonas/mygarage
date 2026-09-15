@@ -15,6 +15,7 @@ from app.schemas.financing import (
     FinancingRecordResponse,
     FinancingRecordUpdate,
 )
+from app.utils.cache import invalidate_cache_for_vehicle
 from app.utils.logging_utils import sanitize_for_log
 
 logger = logging.getLogger(__name__)
@@ -132,6 +133,8 @@ class FinancingService:
                 sanitize_for_log(vin),
             )
 
+            await invalidate_cache_for_vehicle(vin)
+
             return FinancingRecordResponse.model_validate(db_record)
 
         except HTTPException:
@@ -189,6 +192,8 @@ class FinancingService:
                 record_id,
                 sanitize_for_log(vin),
             )
+
+            await invalidate_cache_for_vehicle(vin)
 
             return FinancingRecordResponse.model_validate(record)
 
@@ -248,6 +253,8 @@ class FinancingService:
                 record_id,
                 sanitize_for_log(vin),
             )
+
+            await invalidate_cache_for_vehicle(vin)
 
         except HTTPException:
             raise

@@ -187,6 +187,7 @@ class CostAnalysis(BaseModel):
     total_service_cost: Decimal = Field(default=Decimal("0.00"))
     total_fuel_cost: Decimal = Field(default=Decimal("0.00"))
     total_def_cost: Decimal = Field(default=Decimal("0.00"))
+    total_financing_cost: Decimal = Field(default=Decimal("0.00"))
     total_cost: Decimal = Field(default=Decimal("0.00"))
     average_monthly_cost: Decimal = Field(default=Decimal("0.00"))
     service_count: int = 0
@@ -301,6 +302,7 @@ class GarageCostTotals(BaseModel):
     total_def: Decimal = Field(default=Decimal("0.00"))
     total_insurance: Decimal = Field(default=Decimal("0.00"))
     total_taxes: Decimal = Field(default=Decimal("0.00"))
+    total_financing: Decimal = Field(default=Decimal("0.00"))
 
     model_config = {"from_attributes": True}
 
