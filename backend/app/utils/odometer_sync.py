@@ -36,6 +36,7 @@ async def sync_odometer_from_record(
     source_id: int,
     *,
     commit: bool = True,
+    claim_other_records: bool = True,
 ) -> OdometerRecord | None:
     """Create or update an odometer record from a service/fuel record.
 
@@ -47,12 +48,23 @@ async def sync_odometer_from_record(
         - If exists and was manual: does not overwrite
         - If not exists: creates new odometer record with source marker
 
+    With `claim_other_records=False` the source never takes over a record it
+    did not create. A record on that date carrying this source's own marker
+    has its value updated; otherwise any record at all on that date (manual,
+    LiveLink, or another source's automatic one) means nothing is written;
+    and only a date with no record gets a new one. The tire paths publish
+    this way: a tire event's record is later moved or deleted by marker, so
+    a record it had re-marked would take another source's reading with it.
+
     Args:
         commit: When True (default) the helper commits and refreshes within
             its own unit of work. When False the caller is responsible for
             committing — the helper still flushes so the row gets an id and
             any FK side effects are visible to subsequent queries inside the
             same transaction.
+        claim_other_records: When True (default) the one-reading-per-day
+            policy above applies, and an automatic or LiveLink record on the
+            date becomes this source's. When False, see above.
     """
     if odometer_km is None:
         return None
@@ -60,15 +72,15 @@ async def sync_odometer_from_record(
     # idx_odometer_vin_date is NOT unique, and multiple readings on one date are
     # legitimate (a manual entry plus a device reading, start/end of a trip day).
     # scalar_one_or_none() therefore raised MultipleResultsFound and surfaced as
-    # a 500 on any fuel/service record sharing that date. Take the newest row and
-    # order deterministically so repeated syncs pick the same target.
+    # a 500 on any fuel/service record sharing that date. Newest first, ordered
+    # deterministically so repeated syncs pick the same target.
     result = await db.execute(
         select(OdometerRecord)
         .where(OdometerRecord.vin == vin)
         .where(OdometerRecord.date == date)
         .order_by(OdometerRecord.id.desc())
     )
-    existing = result.scalars().first()
+    same_day = result.scalars().all()
 
     marker = auto_sync_marker(source_type, source_id)
 
@@ -78,22 +90,31 @@ async def sync_odometer_from_record(
     # service/livelink the FK stays NULL (no fuel parent to cascade from).
     fk_value = source_id if source_type == "fuel" else None
 
-    if existing:
-        is_auto_synced = existing.notes and "[AUTO-SYNC from" in existing.notes
-        is_livelink = existing.source == "livelink"
+    if claim_other_records:
+        existing = same_day[0] if same_day else None
+        if existing is not None:
+            is_auto_synced = existing.notes and "[AUTO-SYNC from" in existing.notes
+            is_livelink = existing.source == "livelink"
+            if not (is_auto_synced or is_livelink):
+                return None
+    else:
+        # Found by marker, not by being the day's newest: a record added
+        # beside this source's own does not stop its figure being corrected.
+        existing = next((row for row in same_day if row.notes == marker), None)
+        if existing is None and same_day:
+            return None
 
-        if is_auto_synced or is_livelink:
-            existing.odometer_km = odometer_km
-            existing.notes = marker
-            existing.source = source_type
-            existing.fuel_record_id = fk_value
-            if commit:
-                await db.commit()
-                await db.refresh(existing)
-            else:
-                await db.flush()
-            return existing
-        return None
+    if existing is not None:
+        existing.odometer_km = odometer_km
+        existing.notes = marker
+        existing.source = source_type
+        existing.fuel_record_id = fk_value
+        if commit:
+            await db.commit()
+            await db.refresh(existing)
+        else:
+            await db.flush()
+        return existing
 
     odometer_record = OdometerRecord(
         vin=vin,

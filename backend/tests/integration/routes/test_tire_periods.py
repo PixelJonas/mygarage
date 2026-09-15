@@ -748,12 +748,12 @@ class TestMountPeriodEditor:
             "the old owned record moved, it was not copied"
         )
 
-    async def test_a_reading_on_the_mount_day_keeps_its_own_record(
+    async def test_a_reading_on_the_mount_day_leaves_the_mount_its_record(
         self, client: AsyncClient, auth_headers, vehicle, db_session
     ):
-        """Same-day rule: the reading took the mount's record over (existing
-        behaviour), so the editor no longer owns anything on that day and must
-        publish a NEW record rather than move the reading's."""
+        """A reading on a day the mount already recorded publishes nothing: the
+        record stays the period's own, so the editor moves it, and the reading's
+        odometer stays on the reading."""
         base = f"/api/vehicles/{vehicle}/tires"
         made = await client.post(
             f"{base}/create-and-mount",
@@ -769,23 +769,25 @@ class TestMountPeriodEditor:
         (period,) = await _periods(db_session, tire_id)
         # Captured immediately: `_records` below calls `expire_all()`.
         period_id = period.id
-        await client.post(
+        mount_marker = auto_sync_marker(ODOMETER_SOURCE_TIRE_MOUNT, period_id)
+        read = await client.post(
             f"{base}/{tire_id}/readings",
             headers=auth_headers,
-            json={"recorded_at": "2026-01-10", "tread_depth_mm": "8.0", "odometer_km": "10000"},
+            json={"recorded_at": "2026-01-10", "tread_depth_mm": "8.0", "odometer_km": "10020"},
         )
+        assert read.status_code == 201, read.text
+        assert [(r.date, r.odometer_km, r.notes) for r in await _records(db_session, vehicle)] == [
+            (date_type(2026, 1, 10), Decimal("10000"), mount_marker)
+        ]
         moved = await client.put(
             f"{base}/{tire_id}/mount-periods/{period_id}",
             headers=auth_headers,
             json={"mounted_on": "2026-01-12", "mounted_odometer_km": "10050"},
         )
         assert moved.status_code == 200, moved.text
-        recs = {r.date: r for r in await _records(db_session, vehicle)}
-        assert recs[date_type(2026, 1, 10)].notes == auto_sync_marker(ODOMETER_SOURCE_TIRE, tire_id)
-        assert recs[date_type(2026, 1, 10)].odometer_km == Decimal("10000")
-        assert recs[date_type(2026, 1, 12)].notes == auto_sync_marker(
-            ODOMETER_SOURCE_TIRE_MOUNT, period_id
-        )
+        assert [(r.date, r.odometer_km, r.notes) for r in await _records(db_session, vehicle)] == [
+            (date_type(2026, 1, 12), Decimal("10050"), mount_marker)
+        ]
 
     async def test_a_legacy_tire_marked_record_is_never_moved(
         self, client: AsyncClient, auth_headers, vehicle, db_session
@@ -879,12 +881,12 @@ class TestMountPeriodEditor:
             ODOMETER_SOURCE_TIRE_MOUNT, new_period_id
         )
 
-    async def test_a_notes_only_save_leaves_a_same_day_readings_value_alone(
+    async def test_a_notes_only_save_leaves_a_corrected_owned_record_alone(
         self, client: AsyncClient, auth_headers, vehicle, db_session
     ):
-        """The reading took the mount's same-day record over
-        with a newer value; a save that changes no bound must not republish
-        the older one on top of it."""
+        """The user corrected the mount's published record on the odometer
+        page, which keeps its marker; a save that changes no bound must not
+        republish the period's older figure on top of it."""
         base = f"/api/vehicles/{vehicle}/tires"
         made = await client.post(
             f"{base}/create-and-mount",
@@ -898,13 +900,16 @@ class TestMountPeriodEditor:
         )
         tire_id = made.json()["id"]
         (period,) = await _periods(db_session, tire_id)
-        await client.post(
-            f"{base}/{tire_id}/readings",
+        period_id = period.id
+        (published,) = await _records(db_session, vehicle)
+        corrected = await client.put(
+            f"/api/vehicles/{vehicle}/odometer/{published.id}",
             headers=auth_headers,
-            json={"recorded_at": "2026-01-10", "tread_depth_mm": "8.0", "odometer_km": "10500"},
+            json={"odometer_km": "10500"},
         )
+        assert corrected.status_code == 200, corrected.text
         saved = await client.put(
-            f"{base}/{tire_id}/mount-periods/{period.id}",
+            f"{base}/{tire_id}/mount-periods/{period_id}",
             headers=auth_headers,
             json={
                 "mounted_on": "2026-01-10",
@@ -913,11 +918,13 @@ class TestMountPeriodEditor:
             },
         )
         assert saved.status_code == 200, saved.text
-        (rec,) = [
-            r for r in await _records(db_session, vehicle) if r.date == date_type(2026, 1, 10)
+        assert [(r.date, r.odometer_km, r.notes) for r in await _records(db_session, vehicle)] == [
+            (
+                date_type(2026, 1, 10),
+                Decimal("10500"),
+                auto_sync_marker(ODOMETER_SOURCE_TIRE_MOUNT, period_id),
+            )
         ]
-        assert rec.odometer_km == Decimal("10500")
-        assert rec.notes == auto_sync_marker(ODOMETER_SOURCE_TIRE, tire_id)
 
     async def test_a_legacy_history_with_two_faults_is_repaired_one_at_a_time(
         self, client: AsyncClient, auth_headers, vehicle, db_session

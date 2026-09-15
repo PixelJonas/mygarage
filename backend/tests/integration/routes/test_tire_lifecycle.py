@@ -139,17 +139,29 @@ class TestMountAndDismount:
         self, client: AsyncClient, auth_headers, vehicle, db_session
     ):
         """The seasonal-swap case the whole model exists for: a tire comes off
-        in autumn and goes back on in spring, keeping its history."""
-        tire = await _mount(client, auth_headers, vehicle, "FL", mounted_odometer_km="1000")
-        await client.post(
+        in autumn and goes back on in spring, keeping its history.
+
+        Dated a season apart. Each event publishes the vehicle's odometer only
+        onto a day with no record, so three events on one day would leave the
+        mount's 1,000 km as the latest reading beneath a remount at 12,000."""
+        tire = await _mount(
+            client,
+            auth_headers,
+            vehicle,
+            "FL",
+            mounted_on="2025-04-01",
+            mounted_odometer_km="1000",
+        )
+        dismounted = await client.post(
             f"/api/vehicles/{vehicle}/tires/{tire['id']}/dismount",
             headers=auth_headers,
-            json={"dismounted_odometer_km": "9000"},
+            json={"dismounted_on": "2025-10-01", "dismounted_odometer_km": "9000"},
         )
+        assert dismounted.status_code == 200, dismounted.text
         response = await client.post(
             f"/api/vehicles/{vehicle}/tires/{tire['id']}/mount",
             headers=auth_headers,
-            json={"position": "FR", "mounted_odometer_km": "12000"},
+            json={"position": "FR", "mounted_on": "2026-04-01", "mounted_odometer_km": "12000"},
         )
         assert response.status_code == 200, response.text
         assert response.json()["position"] == "FR"
@@ -170,6 +182,7 @@ class TestMountAndDismount:
         # this tire was in storage is NOT credited to it -- that is the whole
         # defect this release fixes.
         assert response.json()["distance_status"] == "complete"
+        assert Decimal(response.json()["distance_km"]) == Decimal("8000")
 
 
 @pytest.mark.asyncio

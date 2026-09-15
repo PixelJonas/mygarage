@@ -126,6 +126,14 @@ async def _records(db_session, vin: str) -> list[tuple[date, Decimal, str | None
     return [(r.date, r.odometer_km, r.notes) for r in rows]
 
 
+async def _record_ids(db_session, vin: str) -> list[int]:
+    db_session.expire_all()
+    rows = await db_session.execute(
+        select(OdometerRecord.id).where(OdometerRecord.vin == vin).order_by(OdometerRecord.id)
+    )
+    return list(rows.scalars().all())
+
+
 @pytest.mark.asyncio
 class TestTheWayOutOfAMistypedReading:
     async def test_a_dismount_refused_by_a_typo_succeeds_once_the_reading_is_deleted(
@@ -354,20 +362,37 @@ class TestTheOdometerRecordTheReadingPublished:
         assert gone.status_code == 204, gone.text
         assert await _records(db_session, vehicle) == [(self.DAY, Decimal("11050"), marker)]
 
-    async def test_a_record_another_tire_took_over_survives(
+    async def test_a_record_another_tires_reading_published_survives(
         self, client: AsyncClient, auth_headers, vehicle, db_session
     ):
+        """The second tire read that day found a record and published nothing,
+        so the day's record is the first tire's, at the same date and
+        odometer as the reading being deleted, and not that reading's to take."""
         mine = await _tire(client, auth_headers, vehicle, None)
         theirs = await _tire(client, auth_headers, vehicle, None)
         body = {"recorded_at": "2026-02-01", "odometer_km": "11000", "tread_depth_mm": "7.0"}
-        reading = await _reading(client, auth_headers, vehicle, mine, **body)
         await _reading(client, auth_headers, vehicle, theirs, **body)
+        reading = await _reading(client, auth_headers, vehicle, mine, **body)
         theirs_marker = auto_sync_marker(ODOMETER_SOURCE_TIRE, theirs)
         assert await _records(db_session, vehicle) == [(self.DAY, Decimal("11000"), theirs_marker)]
+        # A later row on another day, so a delete and republish of the day's
+        # record cannot hand the new row the old id (SQLite reuses the highest).
+        later = await client.post(
+            f"/api/vehicles/{vehicle}/odometer",
+            headers=auth_headers,
+            json={"vin": vehicle, "date": "2026-02-20", "odometer_km": "11800", "notes": "hand"},
+        )
+        assert later.status_code == 201, later.text
+        ids_before = await _record_ids(db_session, vehicle)
 
         gone = await client.delete(_url(vehicle, mine, reading), headers=auth_headers)
         assert gone.status_code == 204, gone.text
-        assert await _records(db_session, vehicle) == [(self.DAY, Decimal("11000"), theirs_marker)]
+        assert await _records(db_session, vehicle) == [
+            (self.DAY, Decimal("11000"), theirs_marker),
+            (date(2026, 2, 20), Decimal("11800"), "hand"),
+        ]
+        # The same row, not a delete followed by a republish that looks alike.
+        assert await _record_ids(db_session, vehicle) == ids_before
 
 
 _SESSION_DAY = date(2026, 3, 1)
@@ -375,9 +400,9 @@ _SESSION_DAY = date(2026, 3, 1)
 
 @pytest.mark.asyncio
 class TestTheDaysRecordOtherReadingsStillSupport:
-    """The vehicle keeps one automatic odometer record per day, rewritten by
-    each publish on that day, so after a Log Reading session it carries the
-    LAST reading's marker and value while every other reading of that day
+    """A reading publishes the vehicle's odometer only onto a day with no
+    record, so after a Log Reading session the day's one record carries the
+    FIRST reading's marker and value while every other reading of that day
     stands behind the same kilometres. Deleting the reading whose marker it
     carries must leave the day with a record, or the vehicle's latest odometer
     falls back to an older day and every mounted tire reads a confident
@@ -421,7 +446,7 @@ class TestTheDaysRecordOtherReadingsStillSupport:
             )
         return max(r.id for r in logged.readings)
 
-    async def test_four_tires_read_on_one_day_keep_the_days_record_when_the_last_is_deleted(
+    async def test_four_tires_read_on_one_day_keep_the_days_record_when_the_first_is_deleted(
         self, test_engine, vehicle
     ):
         maker = self._maker(test_engine)
@@ -458,17 +483,17 @@ class TestTheDaysRecordOtherReadingsStillSupport:
             return next(t for t in listed.tires if t.id == ids["FL"]).distance_km
 
         assert await self._day(maker, vehicle, _SESSION_DAY) == [
-            (Decimal("15000"), auto_sync_marker(ODOMETER_SOURCE_TIRE, ids["RR"]))
+            (Decimal("15000"), auto_sync_marker(ODOMETER_SOURCE_TIRE, ids["FL"]))
         ]
         assert await fl_distance() == Decimal("5000")
 
         async with maker() as db:
-            await TireService(db).delete_reading(vehicle, ids["RR"], readings["RR"], None)
+            await TireService(db).delete_reading(vehicle, ids["FL"], readings["FL"], None)
 
         (only,) = await self._day(maker, vehicle, _SESSION_DAY)
         assert only[0] == Decimal("15000")
         assert only[1] in {
-            auto_sync_marker(ODOMETER_SOURCE_TIRE, ids[position]) for position in ("FL", "FR", "RL")
+            auto_sync_marker(ODOMETER_SOURCE_TIRE, ids[position]) for position in ("FR", "RL", "RR")
         }
         assert await fl_distance() == Decimal("5000")
 

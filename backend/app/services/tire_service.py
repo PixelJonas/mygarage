@@ -81,6 +81,49 @@ ODOMETER_SOURCE_TIRE_MOUNT = "tire_mount"
 ODOMETER_SOURCE_TIRE_DISMOUNT = "tire_dismount"
 
 
+async def publish_tire_odometer(
+    db: AsyncSession,
+    vin: str,
+    when: dt.date,
+    odometer_km: Decimal | None,
+    source_type: str,
+    source_id: int,
+) -> None:
+    """Record a tire event's odometer as a reading of the VEHICLE, owning only its own.
+
+    The one door every tire path publishes through: mount, create and mount,
+    dismount, retire, rotation, set fit, the period editor, add past period
+    and tread readings. A tire event only ever creates, updates or deletes a
+    record carrying its own marker, `auto_sync_marker(source_type,
+    source_id)`. On `when`, a record with that marker has its value updated;
+    otherwise any record at all (manual, a service visit's, a fuel-up's,
+    LiveLink's, another tire event's) means nothing is published, because
+    the vehicle already has a reading for that day and the tire's odometer
+    stays on its period or reading row; and a day with no record gets one.
+
+    Why not the synchroniser's same-day policy that fuel and service visits
+    use: a tire event's record is later moved by the period editor and
+    deleted with the tire, both by marker. A service visit's reading that a
+    mount had re-marked moved with the period to another date, leaving the
+    vehicle's odometer history running backwards, and would have gone with
+    the tire on delete.
+
+    Composed into the caller's transaction (`commit=False`): a commit in the
+    middle of a mount, a rotation or a retire splits the operation in half.
+    A null odometer is a no-op.
+    """
+    await sync_odometer_from_record(
+        db,
+        vin,
+        when,
+        odometer_km,
+        source_type,
+        source_id,
+        commit=False,
+        claim_other_records=False,
+    )
+
+
 def normalise_storage_location(value: str | None) -> str | None:
     """A storage location as stored: stripped, and blank is no location.
 
@@ -634,15 +677,14 @@ class TireService:
         odometer left the distance `incomplete`, and the only way out was to go
         and log the same reading a second time somewhere else.
 
-        Always composed into the caller's transaction: `commit=False` is fixed
-        here rather than passed at each call site, because a commit
-        in the middle of a mount, a rotation or a retire splits the operation in
-        half. The shared helper's refusals come with it -- a manual reading on
-        the same date is never overwritten, and a null odometer is a no-op.
+        Through `publish_tire_odometer`, so it owns only its own record: a
+        record on `when` carrying this event's marker is updated, any other
+        record on that day (manual, a service visit's, a fuel-up's, LiveLink's,
+        another tire event's) means nothing is published, and only a day with
+        no record gets a new one. Always composed into the caller's
+        transaction, and a null odometer is a no-op.
         """
-        await sync_odometer_from_record(
-            self.db, vin, when, odometer_km, source_type, source_id, commit=False
-        )
+        await publish_tire_odometer(self.db, vin, when, odometer_km, source_type, source_id)
 
     async def request_distance_formatter(self, current_user: User | None) -> DistanceFormatter:
         """The distance formatter for this request's messages.
@@ -1483,8 +1525,8 @@ class TireService:
         # The pairs as persisted, so the published records move only when a
         # VALUE changed. The editor sends every rendered field, so "the key
         # was in the body" says nothing, and a notes-only save that republished
-        # an unchanged mount odometer would overwrite a same-day reading's
-        # newer value under the synchroniser's same-day rule.
+        # an unchanged mount odometer would put the period's figure back over
+        # a value the user corrected on the owned record itself.
         old_mount = (period.mounted_on, period.mounted_odometer_km)
         old_dismount = (period.dismounted_on, period.dismounted_odometer_km)
         for key, value in fields.items():
@@ -1528,27 +1570,27 @@ class TireService:
         """Keep the vehicle odometer record a period event published in step.
 
         By OWNERSHIP: only a record carrying this period's own marker is ever
-        moved or deleted. A record the reading path took over on the same day,
-        a legacy tire-marked record, a rotation's or a set fit's record: none
-        of those is this event's to move. A record is published only when both
-        the date and the odometer are known, because `odometer_records.date`
-        is not nullable and "I know the odometer but not the day" is the
-        common migrated-tire case.
+        moved or deleted. A service visit's, a fuel-up's or LiveLink's record,
+        a manual one, a reading's, a legacy tire-marked record, a rotation's or
+        a set fit's record: none of those is this event's to move. A record is
+        published only when both the date and the odometer are known, because
+        `odometer_records.date` is not nullable and "I know the odometer but
+        not the day" is the common migrated-tire case.
 
         The two branches do not behave alike on the target day. When this
-        period owns NO record, publishing goes through the synchroniser, so a
-        manual record on that day is never overwritten and an automatic one is
-        replaced under the standing same-day rule, exactly as a new mount
-        does. When it owns one, the owned record is edited in place and the
-        synchroniser is bypassed: a moved record can land beside a manual
-        record on its new day, and both then stand: whichever has the higher id
-        wins the same-day tie-break when the vehicle's latest reading is read.
+        period owns NO record, publishing goes through `_publish_odometer`, so
+        it creates one only on a day that has no record at all; a day that
+        already has any record keeps it untouched and gains nothing, exactly
+        as a new mount does. When it owns one, the owned record is edited in
+        place: a moved record can land beside another record on its new day,
+        and both then stand: whichever has the higher id wins the same-day
+        tie-break when the vehicle's latest reading is read.
 
         Both the move and the delete are flushed before returning. Request
         sessions do not autoflush (`app/database.py`), and the dismount pair's
-        follow runs next in the same save: its synchroniser looks up same-day
-        rows by SQL, and an unflushed move or delete would still show it the
-        mount record at its old state, which it would then take over.
+        follow runs next in the same save: its publish looks up same-day rows
+        by SQL, and an unflushed move or delete would still show it the mount
+        record on its old day, and it would then publish nothing there.
 
         Why: a stale synced record becomes the vehicle's latest reading and
         poisons every mileage reminder, which is the reason `delete_tire`
@@ -1637,8 +1679,12 @@ class TireService:
         # the typo behind as the vehicle's latest reading, where it poisons
         # every mileage reminder the vehicle has. Marker-exact, so a manual row
         # is never touched: the tire-level marker its readings carry, and the
-        # per-period markers its mounts and dismounts carry. Collected before
-        # the cascade removes the periods.
+        # per-period markers its mounts and dismounts carry. A tire event
+        # never takes over another record (`publish_tire_odometer`), so a row
+        # carrying one of these markers is one this tire created; the
+        # exception is a tire-marked row written before v3.4.0, when a tire
+        # publish could re-mark a same-day automatic record as its own.
+        # Collected before the cascade removes the periods.
         markers = [auto_sync_marker(ODOMETER_SOURCE_TIRE, tire_id)]
         for period in tire.mount_periods or []:
             markers.append(auto_sync_marker(ODOMETER_SOURCE_TIRE_MOUNT, period.id))
@@ -1840,28 +1886,30 @@ class TireService:
         """Withdraw the vehicle odometer record a reading published, if it is still that.
 
         `add_reading` publishes with `ODOMETER_SOURCE_TIRE` keyed by the TIRE,
-        so the marker alone does not say which reading a record came from, and
-        the synchroniser keeps one automatic row per day, updated in place by
-        the next publish on that day. A record is this reading's only when it
-        carries this tire's marker, sits on the reading's date, still holds
-        the reading's odometer, and no remaining reading of this tire has that
-        same date and odometer to keep it true. Anything else (a manual row,
-        another tire's or a rotation's takeover, a row on another day) is left
-        alone, and nothing is done when no such record exists. At most one
-        record goes.
+        so the marker alone does not say which reading a record came from: the
+        first reading of a day creates the tire's record only when that day has
+        no record, and a later reading of the same tire on that day updates it
+        in place. A record is this reading's only when it carries this tire's
+        marker, sits on the reading's date, still holds the reading's
+        odometer, and no remaining reading of this tire has that same date and
+        odometer to keep it true. Anything else (a manual row, another tire's,
+        a rotation's or a service visit's record, a legacy row another tire
+        had taken over, a row on another day) is left alone, and nothing is
+        done when no such record exists. At most one record goes.
 
         That one row is also the day's record for every OTHER reading logged
         on that day: a Log Reading session for four tires leaves one record,
-        carrying the last tire's marker, that all four stand behind. Removing
-        it alone would drop the vehicle's latest odometer back to an older day
-        and make every mounted tire's distance confidently too low. So when a
-        record is deleted, the newest remaining reading of this VEHICLE on that
-        date that carries an odometer (by id, the order they were published
-        in) is published again, through the synchroniser and under its own
-        tire's marker; a later same-day reading of the same tire at another
-        odometer is covered the same way. The delete is flushed first: request
-        sessions do not autoflush, and the synchroniser looks for a same-day
-        row by SQL, where an unflushed delete would still show it this one.
+        carrying the first tire's marker, that all four stand behind, because
+        the other three found a record on the day and published nothing.
+        Removing it alone would drop the vehicle's latest odometer back to an
+        older day and make every mounted tire's distance confidently too low.
+        So when a record is deleted, the newest remaining reading of this
+        VEHICLE on that date that carries an odometer (by id, the order they
+        were published in) is published again, under its own tire's marker;
+        a later same-day reading of the same tire at another odometer is
+        covered the same way. The delete is flushed first: request sessions do
+        not autoflush, and the publish looks for a same-day row by SQL, where
+        an unflushed delete would still show it this one.
         """
         odometer = reading.odometer_km
         if odometer is None:

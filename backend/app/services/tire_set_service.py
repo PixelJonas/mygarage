@@ -35,11 +35,11 @@ from app.services.tire_service import (
     ODOMETER_SOURCE_SET,
     TireService,
     apply_mount_moves,
+    publish_tire_odometer,
 )
 from app.services.vehicle_lock import lock_vehicle_for_write
 from app.utils.datetime_utils import utc_now
 from app.utils.logging_utils import sanitize_for_log
-from app.utils.odometer_sync import sync_odometer_from_record
 
 logger = logging.getLogger(__name__)
 
@@ -315,15 +315,10 @@ class TireSetService:
             )
         # ONE reading for the whole swap. Marked as a set fit rather than as a
         # per-tire operation, so deleting any one tire in the set does not take
-        # the vehicle's odometer reading with it.
-        await sync_odometer_from_record(
-            self.db,
-            vin,
-            when,
-            data.odometer_km,
-            ODOMETER_SOURCE_SET,
-            tire_set.id,
-            commit=False,
+        # the vehicle's odometer reading with it. Published like every other
+        # tire event: a day that already has a record keeps it untouched.
+        await publish_tire_odometer(
+            self.db, vin, when, data.odometer_km, ODOMETER_SOURCE_SET, tire_set.id
         )
         await self.db.commit()
         logger.info(
