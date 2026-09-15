@@ -7,6 +7,7 @@ extended fuel-tracking flow) can compose this into a single outer
 transaction with other side effects.
 """
 
+from collections.abc import Iterable, Sequence
 from datetime import date as date_type
 from decimal import Decimal
 
@@ -14,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import OdometerRecord
+from app.utils.odometer_tolerance import odometer_below
 
 
 def auto_sync_marker(source_type: str, source_id: int) -> str:
@@ -25,6 +27,31 @@ def auto_sync_marker(source_type: str, source_id: int) -> str:
     and a mismatch does not fail loudly, it just orphans the row.
     """
     return f"[AUTO-SYNC from {source_type} #{source_id}]"
+
+
+async def same_day_records(db: AsyncSession, vin: str, date: date_type) -> Sequence[OdometerRecord]:
+    """Every odometer record of `vin` on `date`, newest first.
+
+    By SQL, so a caller on a session that does not autoflush must flush a
+    pending move or delete before asking.
+    """
+    result = await db.execute(
+        select(OdometerRecord)
+        .where(OdometerRecord.vin == vin)
+        .where(OdometerRecord.date == date)
+        .order_by(OdometerRecord.id.desc())
+    )
+    return result.scalars().all()
+
+
+def reads_at_or_above(records: Iterable[OdometerRecord], odometer_km: Decimal) -> bool:
+    """Whether any of `records` reads at or above `odometer_km`.
+
+    Within the same-reading tolerance (`app.utils.odometer_tolerance`): a record
+    a few parts per million below counts as the same figure, so only records
+    below by more than the tolerance leave the figure higher than the day's.
+    """
+    return any(not odometer_below(record.odometer_km, odometer_km) for record in records)
 
 
 async def sync_odometer_from_record(
@@ -48,13 +75,17 @@ async def sync_odometer_from_record(
         - If exists and was manual: does not overwrite
         - If not exists: creates new odometer record with source marker
 
-    With `claim_other_records=False` the source never takes over a record it
-    did not create. A record on that date carrying this source's own marker
-    has its value updated; otherwise any record at all on that date (manual,
-    LiveLink, or another source's automatic one) means nothing is written;
-    and only a date with no record gets a new one. The tire paths publish
-    this way: a tire event's record is later moved or deleted by marker, so
-    a record it had re-marked would take another source's reading with it.
+    With `claim_other_records=False` the source never touches a record it did
+    not create. A record on that date carrying this source's own marker has
+    its value updated. Otherwise, when any other record on that date (manual,
+    LiveLink, or another source's automatic one) reads at or above the figure
+    (`reads_at_or_above`), nothing is written: the day already has a reading
+    at least as high. Otherwise, with no record on the date or only lower
+    ones, a record with this source's marker is created; its newer id makes
+    it the day's latest wherever the latest reading is read by date, then id.
+    The tire paths publish this way: a tire event's record is later moved or
+    deleted by marker, so a record it had re-marked would take another
+    source's reading with it.
 
     Args:
         commit: When True (default) the helper commits and refreshes within
@@ -74,13 +105,7 @@ async def sync_odometer_from_record(
     # scalar_one_or_none() therefore raised MultipleResultsFound and surfaced as
     # a 500 on any fuel/service record sharing that date. Newest first, ordered
     # deterministically so repeated syncs pick the same target.
-    result = await db.execute(
-        select(OdometerRecord)
-        .where(OdometerRecord.vin == vin)
-        .where(OdometerRecord.date == date)
-        .order_by(OdometerRecord.id.desc())
-    )
-    same_day = result.scalars().all()
+    same_day = await same_day_records(db, vin, date)
 
     marker = auto_sync_marker(source_type, source_id)
 
@@ -101,7 +126,7 @@ async def sync_odometer_from_record(
         # Found by marker, not by being the day's newest: a record added
         # beside this source's own does not stop its figure being corrected.
         existing = next((row for row in same_day if row.notes == marker), None)
-        if existing is None and same_day:
+        if existing is None and reads_at_or_above(same_day, odometer_km):
             return None
 
     if existing is not None:

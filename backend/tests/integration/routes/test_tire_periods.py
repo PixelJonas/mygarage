@@ -751,9 +751,9 @@ class TestMountPeriodEditor:
     async def test_a_reading_on_the_mount_day_leaves_the_mount_its_record(
         self, client: AsyncClient, auth_headers, vehicle, db_session
     ):
-        """A reading on a day the mount already recorded publishes nothing: the
-        record stays the period's own, so the editor moves it, and the reading's
-        odometer stays on the reading."""
+        """A reading at the odometer the mount already recorded that day
+        publishes nothing: the record stays the period's own, so the editor
+        moves it, and the reading's odometer stays on the reading."""
         base = f"/api/vehicles/{vehicle}/tires"
         made = await client.post(
             f"{base}/create-and-mount",
@@ -773,7 +773,7 @@ class TestMountPeriodEditor:
         read = await client.post(
             f"{base}/{tire_id}/readings",
             headers=auth_headers,
-            json={"recorded_at": "2026-01-10", "tread_depth_mm": "8.0", "odometer_km": "10020"},
+            json={"recorded_at": "2026-01-10", "tread_depth_mm": "8.0", "odometer_km": "10000"},
         )
         assert read.status_code == 201, read.text
         assert [(r.date, r.odometer_km, r.notes) for r in await _records(db_session, vehicle)] == [
@@ -1160,9 +1160,10 @@ class TestEditorUnderProductionUnitOfWork:
     record and no dismount record (dismounted without an odometer). One save
     that moves or clears the mount pair AND supplies the dismount odometer.
     The mount follow changes the owned record in memory; the dismount follow
-    then asks the synchroniser for a same-day row by SQL. Without a flush in
-    between, that query still sees the mount record on its old date and takes
-    it over, so the vehicle ends up with one wrong record, or none.
+    then looks for same-day rows by SQL. The dismount odometer equals the
+    mount's, so without a flush in between that query still sees the mount
+    record on its old date reading as high as the dismount, publishes
+    nothing, and the vehicle ends up with no record on that day.
 
     Builds its own session over the test engine on purpose, and seeds through
     the real writers on it too.
@@ -1228,7 +1229,7 @@ class TestEditorUnderProductionUnitOfWork:
                     mounted_on=_EARLIER,
                     mounted_odometer_km=Decimal("10000"),
                     dismounted_on=_SAME_DAY,
-                    dismounted_odometer_km=Decimal("10500"),
+                    dismounted_odometer_km=Decimal("10000"),
                 ),
                 None,
             )
@@ -1237,7 +1238,7 @@ class TestEditorUnderProductionUnitOfWork:
             (_EARLIER, Decimal("10000"), auto_sync_marker(ODOMETER_SOURCE_TIRE_MOUNT, period_id)),
             (
                 _SAME_DAY,
-                Decimal("10500"),
+                Decimal("10000"),
                 auto_sync_marker(ODOMETER_SOURCE_TIRE_DISMOUNT, period_id),
             ),
         ]
@@ -1257,7 +1258,7 @@ class TestEditorUnderProductionUnitOfWork:
                     mounted_on=_SAME_DAY,
                     mounted_odometer_km=None,
                     dismounted_on=_SAME_DAY,
-                    dismounted_odometer_km=Decimal("10500"),
+                    dismounted_odometer_km=Decimal("10000"),
                 ),
                 None,
             )
@@ -1265,7 +1266,7 @@ class TestEditorUnderProductionUnitOfWork:
         assert await self._records(maker, vehicle) == [
             (
                 _SAME_DAY,
-                Decimal("10500"),
+                Decimal("10000"),
                 auto_sync_marker(ODOMETER_SOURCE_TIRE_DISMOUNT, period_id),
             )
         ]
@@ -1747,11 +1748,10 @@ class TestAddingAPastPeriod:
     async def test_a_pre_existing_manual_record_on_the_mount_date_is_untouched(
         self, client: AsyncClient, auth_headers, vehicle, db_session
     ):
-        """`_publish_odometer` never overwrites a manual record (existing
-        `sync_odometer_from_record` behaviour, shared with Mount and the
-        period editor). A past period follows the same rule: the manual entry
-        survives untouched and the period simply publishes no record of its
-        own on that day."""
+        """`_publish_odometer` never touches a record it did not create, the
+        rule it shares with Mount and the period editor. A past period follows
+        it: the manual entry survives untouched, and because the mount's figure
+        is higher, the period's own record stands beside it on that day."""
         base = f"/api/vehicles/{vehicle}/tires"
         made = await client.post(
             f"{base}/create-and-mount",
@@ -1785,11 +1785,16 @@ class TestAddingAPastPeriod:
         )
         assert added.status_code == 201, added.text
         new_period = next(p for p in added.json()["mount_periods"] if p["position"] == "FR")
-        recs = {r.date: r for r in await _records(db_session, vehicle)}
-        assert recs[date_type(2026, 1, 1)].odometer_km == Decimal("4800")
-        assert recs[date_type(2026, 1, 1)].notes == "hand"
         mount_marker = auto_sync_marker(ODOMETER_SOURCE_TIRE_MOUNT, new_period["id"])
-        assert not [r for r in recs.values() if r.notes == mount_marker]
+        on_the_day = [
+            (r.odometer_km, r.notes, r.source)
+            for r in await _records(db_session, vehicle)
+            if r.date == date_type(2026, 1, 1)
+        ]
+        assert on_the_day == [
+            (Decimal("4800"), "hand", "manual"),
+            (Decimal("5000"), mount_marker, ODOMETER_SOURCE_TIRE_MOUNT),
+        ]
 
 
 #: 89,044 mi typed today (the exact mile) and as a service visit saved before

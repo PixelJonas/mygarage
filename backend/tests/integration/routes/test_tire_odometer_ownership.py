@@ -8,10 +8,13 @@ period editor moved it and a tire delete removed it. A service visit's reading
 could end up two days later than the visit, and the vehicle's odometer history
 then ran backwards.
 
-The rule these tests pin: a tire event updates a record carrying its own
-marker, publishes nothing onto a day that already has any other record, and
-creates its own record only on a day with none. Fuel, DEF and service visits
-keep the one-reading-per-day policy they have always had.
+The rule these tests pin: a tire event never touches a record without its own
+marker. It updates a record carrying that marker; otherwise it publishes
+nothing onto a day that already has a reading at or above its figure (within
+the same-reading tolerance), and creates its own record when the day has no
+record or only lower ones, so the vehicle's latest reading never falls behind
+the tire's. Fuel, DEF and service visits keep the one-reading-per-day policy
+they have always had.
 """
 
 from __future__ import annotations
@@ -28,6 +31,7 @@ from sqlalchemy import delete, select
 from app.models.odometer import OdometerRecord
 from app.models.tire import Tire, TireMountPeriod
 from app.models.vehicle import Vehicle
+from app.services.odometer_service import latest_odometer_km_and_date
 from app.services.tire_service import (
     ODOMETER_SOURCE_ROTATION,
     ODOMETER_SOURCE_SET,
@@ -137,44 +141,48 @@ def _service_row(visit_id: int, km: str) -> Row:
     return (DAY, Decimal(km), marker, "service_visit")
 
 
-async def _mount_on_day(client: AsyncClient, headers, vin: str) -> None:
+async def _mount_on_day(client: AsyncClient, headers, vin: str, km: str) -> str:
     await _create_and_mount(
-        client, headers, vin, "FL", mounted_on=DAY.isoformat(), mounted_odometer_km="50012"
+        client, headers, vin, "FL", mounted_on=DAY.isoformat(), mounted_odometer_km=km
     )
+    return ODOMETER_SOURCE_TIRE_MOUNT
 
 
-async def _mount_existing_on_day(client: AsyncClient, headers, vin: str) -> None:
+async def _mount_existing_on_day(client: AsyncClient, headers, vin: str, km: str) -> str:
     made = await client.post(f"/api/vehicles/{vin}/tires", headers=headers, json={"vin": vin})
     assert made.status_code == 201, made.text
     mounted = await client.post(
         f"/api/vehicles/{vin}/tires/{made.json()['id']}/mount",
         headers=headers,
-        json={"position": "FR", "mounted_on": DAY.isoformat(), "mounted_odometer_km": "50012"},
+        json={"position": "FR", "mounted_on": DAY.isoformat(), "mounted_odometer_km": km},
     )
     assert mounted.status_code == 200, mounted.text
+    return ODOMETER_SOURCE_TIRE_MOUNT
 
 
-async def _dismount_on_day(client: AsyncClient, headers, vin: str) -> None:
+async def _dismount_on_day(client: AsyncClient, headers, vin: str, km: str) -> str:
     tire_id = await _create_and_mount(client, headers, vin, "RL", mounted_on=EARLIER.isoformat())
     off = await client.post(
         f"/api/vehicles/{vin}/tires/{tire_id}/dismount",
         headers=headers,
-        json={"dismounted_on": DAY.isoformat(), "dismounted_odometer_km": "50012"},
+        json={"dismounted_on": DAY.isoformat(), "dismounted_odometer_km": km},
     )
     assert off.status_code == 200, off.text
+    return ODOMETER_SOURCE_TIRE_DISMOUNT
 
 
-async def _retire_on_day(client: AsyncClient, headers, vin: str) -> None:
+async def _retire_on_day(client: AsyncClient, headers, vin: str, km: str) -> str:
     tire_id = await _create_and_mount(client, headers, vin, "RR", mounted_on=EARLIER.isoformat())
     retired = await client.post(
         f"/api/vehicles/{vin}/tires/{tire_id}/retire",
         headers=headers,
-        json={"dismounted_on": DAY.isoformat(), "dismounted_odometer_km": "50012"},
+        json={"dismounted_on": DAY.isoformat(), "dismounted_odometer_km": km},
     )
     assert retired.status_code == 200, retired.text
+    return ODOMETER_SOURCE_TIRE_DISMOUNT
 
 
-async def _rotate_on_day(client: AsyncClient, headers, vin: str) -> None:
+async def _rotate_on_day(client: AsyncClient, headers, vin: str, km: str) -> str:
     left = await _create_and_mount(client, headers, vin, "FL", mounted_on=EARLIER.isoformat())
     right = await _create_and_mount(client, headers, vin, "FR", mounted_on=EARLIER.isoformat())
     rotated = await client.post(
@@ -182,7 +190,7 @@ async def _rotate_on_day(client: AsyncClient, headers, vin: str) -> None:
         headers=headers,
         json={
             "rotated_on": DAY.isoformat(),
-            "odometer_km": "50012",
+            "odometer_km": km,
             "moves": [
                 {"tire_id": left, "position": "FR"},
                 {"tire_id": right, "position": "FL"},
@@ -190,6 +198,14 @@ async def _rotate_on_day(client: AsyncClient, headers, vin: str) -> None:
         },
     )
     assert rotated.status_code == 200, rotated.text
+    return ODOMETER_SOURCE_ROTATION
+
+
+def _own_row(rows: list[Row], km: str, source: str) -> None:
+    """Assert `rows` ends with one record the tire event created for itself."""
+    (day, odometer, notes, row_source) = rows[-1]
+    assert (day, odometer, row_source) == (DAY, Decimal(km), source)
+    assert notes is not None and notes.startswith(f"[AUTO-SYNC from {source} #")
 
 
 @pytest.mark.asyncio
@@ -209,12 +225,37 @@ class TestAnotherSourcesReadingIsNeverTakenOver:
         self, client: AsyncClient, auth_headers, vehicle, db_session, writer
     ):
         """The service visit that replaced the tires recorded the odometer that
-        day. Mounting them at a slightly different figure used to overwrite the
-        visit's value and re-mark the record as the mount's own."""
+        day. Mounting them at a higher figure used to overwrite the visit's
+        value and re-mark the record as the mount's own. The visit's record now
+        stays as it was, and the tire event's figure, being higher, is recorded
+        beside it as the event's own."""
         visit_id = await _service_visit(client, auth_headers, vehicle, DAY, "50000")
         assert await _rows(db_session, vehicle) == [_service_row(visit_id, "50000")]
 
-        await writer(client, auth_headers, vehicle)
+        source = await writer(client, auth_headers, vehicle, "50012")
+
+        rows = await _rows(db_session, vehicle)
+        assert rows[0] == _service_row(visit_id, "50000")
+        assert len(rows) == 2
+        _own_row(rows, "50012", source)
+
+    @pytest.mark.parametrize(
+        "writer",
+        [
+            _mount_on_day,
+            _mount_existing_on_day,
+            _dismount_on_day,
+            _retire_on_day,
+            _rotate_on_day,
+        ],
+        ids=["create_and_mount", "mount", "dismount", "retire", "rotate"],
+    )
+    async def test_a_tire_write_at_the_days_figure_publishes_nothing(
+        self, client: AsyncClient, auth_headers, vehicle, db_session, writer
+    ):
+        visit_id = await _service_visit(client, auth_headers, vehicle, DAY, "50000")
+
+        await writer(client, auth_headers, vehicle, "50000")
 
         assert await _rows(db_session, vehicle) == [_service_row(visit_id, "50000")]
 
@@ -271,7 +312,8 @@ class TestAnotherSourcesReadingIsNeverTakenOver:
     async def test_a_past_period_leaves_a_fuel_ups_reading_alone(
         self, client: AsyncClient, auth_headers, vehicle, db_session
     ):
-        """Add past period with a mount date that matches an older fill-up."""
+        """Add past period with a mount date that matches an older fill-up. The
+        mount's figure is higher, so it is recorded beside the fill-up's."""
         tire_id = await _create_and_mount(
             client, auth_headers, vehicle, "FL", mounted_on=DAY.isoformat()
         )
@@ -313,6 +355,13 @@ class TestAnotherSourcesReadingIsNeverTakenOver:
         assert [(r.date, r.odometer_km, r.notes, r.source, r.fuel_record_id) for r in records] == [
             fuel_row,
             (
+                fuel_day,
+                Decimal("31020"),
+                auto_sync_marker(ODOMETER_SOURCE_TIRE_MOUNT, new_period_id),
+                ODOMETER_SOURCE_TIRE_MOUNT,
+                None,
+            ),
+            (
                 date(2026, 3, 1),
                 Decimal("36000"),
                 auto_sync_marker(ODOMETER_SOURCE_TIRE_DISMOUNT, new_period_id),
@@ -347,7 +396,13 @@ class TestAnotherSourcesReadingIsNeverTakenOver:
         assert read.status_code == 201, read.text
 
         assert await _rows(db_session, vehicle) == [
-            (DAY, Decimal("61000.40"), "Auto-recorded from LiveLink (A6-Odometer)", "livelink")
+            (DAY, Decimal("61000.40"), "Auto-recorded from LiveLink (A6-Odometer)", "livelink"),
+            (
+                DAY,
+                Decimal("61050"),
+                auto_sync_marker(ODOMETER_SOURCE_TIRE, stored.json()["id"]),
+                ODOMETER_SOURCE_TIRE,
+            ),
         ]
 
     async def test_a_set_fit_leaves_a_service_visits_reading_alone(
@@ -382,7 +437,15 @@ class TestAnotherSourcesReadingIsNeverTakenOver:
         )
         assert fitted.status_code == 200, fitted.text
 
-        assert await _rows(db_session, vehicle) == [_service_row(visit_id, "50000")]
+        assert await _rows(db_session, vehicle) == [
+            _service_row(visit_id, "50000"),
+            (
+                DAY,
+                Decimal("50012"),
+                auto_sync_marker(ODOMETER_SOURCE_SET, set_id),
+                ODOMETER_SOURCE_SET,
+            ),
+        ]
 
     async def test_a_tire_delete_leaves_the_reading_it_did_not_create(
         self, client: AsyncClient, auth_headers, vehicle, db_session
@@ -403,6 +466,259 @@ class TestAnotherSourcesReadingIsNeverTakenOver:
         assert gone.status_code == 204, gone.text
 
         assert await _rows(db_session, vehicle) == [_service_row(visit_id, "50000")]
+
+
+async def _tire_json(client: AsyncClient, headers, vin: str, tire_id: int) -> dict:
+    listed = await client.get(f"/api/vehicles/{vin}/tires", headers=headers)
+    assert listed.status_code == 200, listed.text
+    return next(t for t in listed.json()["tires"] if t["id"] == tire_id)
+
+
+@pytest.mark.asyncio
+class TestTheVehiclesLatestReadingKeepsUpWithTheTire:
+    """A service visit and the mount it did, on one day: the vehicle's latest
+    reading must not stay below the mount odometer, or the new tire's distance
+    reads as the odometer running backwards until some later reading."""
+
+    async def test_a_mount_above_the_days_reading_is_recorded_beside_it(
+        self, client: AsyncClient, auth_headers, vehicle, db_session
+    ):
+        visit_id = await _service_visit(client, auth_headers, vehicle, DAY, "50000")
+        tire_id = await _create_and_mount(
+            client,
+            auth_headers,
+            vehicle,
+            "FL",
+            mounted_on=DAY.isoformat(),
+            mounted_odometer_km="50012",
+        )
+        (period_id,) = (
+            (
+                await db_session.execute(
+                    select(TireMountPeriod.id).where(TireMountPeriod.tire_id == tire_id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        assert await _rows(db_session, vehicle) == [
+            _service_row(visit_id, "50000"),
+            (
+                DAY,
+                Decimal("50012"),
+                auto_sync_marker(ODOMETER_SOURCE_TIRE_MOUNT, period_id),
+                ODOMETER_SOURCE_TIRE_MOUNT,
+            ),
+        ]
+        tire = await _tire_json(client, auth_headers, vehicle, tire_id)
+        assert tire["distance_status"] == "complete"
+        assert Decimal(tire["distance_km"]) == Decimal("0")
+
+    async def test_a_mount_within_the_tolerance_of_the_days_reading_publishes_nothing(
+        self, client: AsyncClient, auth_headers, vehicle, db_session
+    ):
+        """50,000.1 km is within 3 ppm plus 0.01 km of 50,000: the same reading,
+        so no near-duplicate record, and the distance is not a rollback."""
+        assert Decimal("0.1") < Decimal("50000") * Decimal("3e-6") + Decimal("0.01")
+        visit_id = await _service_visit(client, auth_headers, vehicle, DAY, "50000")
+        tire_id = await _create_and_mount(
+            client,
+            auth_headers,
+            vehicle,
+            "FL",
+            mounted_on=DAY.isoformat(),
+            mounted_odometer_km="50000.1",
+        )
+
+        assert await _rows(db_session, vehicle) == [_service_row(visit_id, "50000")]
+        tire = await _tire_json(client, auth_headers, vehicle, tire_id)
+        assert tire["distance_status"] == "complete"
+
+    async def test_a_mount_below_the_days_reading_publishes_nothing(
+        self, client: AsyncClient, auth_headers, vehicle, db_session
+    ):
+        visit_id = await _service_visit(client, auth_headers, vehicle, DAY, "50000")
+        await _create_and_mount(
+            client,
+            auth_headers,
+            vehicle,
+            "FL",
+            mounted_on=DAY.isoformat(),
+            mounted_odometer_km="49990",
+        )
+
+        assert await _rows(db_session, vehicle) == [_service_row(visit_id, "50000")]
+        assert await latest_odometer_km_and_date(db_session, vehicle) == (Decimal("50000"), DAY)
+
+    async def test_a_moved_period_drops_its_record_on_a_day_that_already_reads_higher(
+        self, client: AsyncClient, auth_headers, vehicle, db_session
+    ):
+        """The period owns its mount record on D. Moved to D+1, where LiveLink
+        already read higher, the record is deleted rather than carried there;
+        the LiveLink record is untouched. Moved again to D+2, a day with no
+        record, the period owns nothing any more, so a new record is created
+        there."""
+        tire_id = await _create_and_mount(
+            client,
+            auth_headers,
+            vehicle,
+            "FL",
+            mounted_on=DAY.isoformat(),
+            mounted_odometer_km="50012",
+        )
+        (owned,) = await _records(db_session, vehicle)
+        owned_id, marker = owned.id, owned.notes
+        assert marker is not None and marker.startswith("[AUTO-SYNC from tire_mount #")
+        next_day, day_after = DAY + timedelta(days=1), DAY + timedelta(days=2)
+        livelink = (
+            next_day,
+            Decimal("50100"),
+            "Auto-recorded from LiveLink (A6-Odometer)",
+            "livelink",
+        )
+        db_session.add(
+            OdometerRecord(
+                vin=vehicle,
+                date=next_day,
+                odometer_km=Decimal("50100"),
+                source="livelink",
+                notes="Auto-recorded from LiveLink (A6-Odometer)",
+            )
+        )
+        await db_session.commit()
+        (period,) = (
+            (
+                await db_session.execute(
+                    select(TireMountPeriod).where(TireMountPeriod.tire_id == tire_id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        url = f"/api/vehicles/{vehicle}/tires/{tire_id}/mount-periods/{period.id}"
+
+        moved = await client.put(
+            url,
+            headers=auth_headers,
+            json={"mounted_on": next_day.isoformat(), "mounted_odometer_km": "50012"},
+        )
+        assert moved.status_code == 200, moved.text
+        assert await _rows(db_session, vehicle) == [livelink]
+
+        again = await client.put(
+            url,
+            headers=auth_headers,
+            json={"mounted_on": day_after.isoformat(), "mounted_odometer_km": "50012"},
+        )
+        assert again.status_code == 200, again.text
+        records = await _records(db_session, vehicle)
+        assert [(r.date, r.odometer_km, r.notes, r.source) for r in records] == [
+            livelink,
+            (day_after, Decimal("50012"), marker, ODOMETER_SOURCE_TIRE_MOUNT),
+        ]
+        assert records[1].id != owned_id
+
+    async def test_a_moved_period_is_the_latest_reading_beside_a_newer_lower_record(
+        self, client: AsyncClient, auth_headers, vehicle, db_session
+    ):
+        """The target day holds a lower record entered after the period's own.
+        Moved in place, the period's record would keep its older id and the
+        lower record would win the same-day tie-break as the vehicle's latest
+        reading, below the open period's mount odometer. It is created again
+        instead, newest on its day; the lower record is untouched."""
+        tire_id = await _create_and_mount(
+            client,
+            auth_headers,
+            vehicle,
+            "FL",
+            mounted_on=DAY.isoformat(),
+            mounted_odometer_km="50012",
+        )
+        (owned,) = await _records(db_session, vehicle)
+        owned_id, marker = owned.id, owned.notes
+        next_day = DAY + timedelta(days=1)
+        visit_id = await _service_visit(client, auth_headers, vehicle, next_day, "50000")
+        (period,) = (
+            (
+                await db_session.execute(
+                    select(TireMountPeriod).where(TireMountPeriod.tire_id == tire_id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        moved = await client.put(
+            f"/api/vehicles/{vehicle}/tires/{tire_id}/mount-periods/{period.id}",
+            headers=auth_headers,
+            json={"mounted_on": next_day.isoformat(), "mounted_odometer_km": "50012"},
+        )
+        assert moved.status_code == 200, moved.text
+
+        records = await _records(db_session, vehicle)
+        assert [(r.date, r.odometer_km, r.notes, r.source) for r in records] == [
+            (
+                next_day,
+                Decimal("50000"),
+                auto_sync_marker("service_visit", visit_id),
+                "service_visit",
+            ),
+            (next_day, Decimal("50012"), marker, ODOMETER_SOURCE_TIRE_MOUNT),
+        ]
+        assert records[1].id != owned_id
+        assert await latest_odometer_km_and_date(db_session, vehicle) == (
+            Decimal("50012"),
+            next_day,
+        )
+        tire = await _tire_json(client, auth_headers, vehicle, tire_id)
+        assert tire["distance_status"] == "complete"
+
+    async def test_an_edited_mount_stays_the_days_latest_beside_a_newer_lower_record(
+        self, client: AsyncClient, auth_headers, vehicle, db_session
+    ):
+        """Same day, no move: a lower manual entry was added after the mount, and
+        the mount odometer is then corrected upwards. The period's record is
+        created again rather than updated, so it stays newest on the day and
+        the vehicle's latest reading follows the correction."""
+        tire_id = await _create_and_mount(
+            client,
+            auth_headers,
+            vehicle,
+            "FL",
+            mounted_on=DAY.isoformat(),
+            mounted_odometer_km="50012",
+        )
+        (owned,) = await _records(db_session, vehicle)
+        marker = owned.notes
+        manual = await client.post(
+            f"/api/vehicles/{vehicle}/odometer",
+            headers=auth_headers,
+            json={"vin": vehicle, "date": DAY.isoformat(), "odometer_km": "50000", "notes": "hand"},
+        )
+        assert manual.status_code == 201, manual.text
+        (period_id,) = (
+            (
+                await db_session.execute(
+                    select(TireMountPeriod.id).where(TireMountPeriod.tire_id == tire_id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        edited = await client.put(
+            f"/api/vehicles/{vehicle}/tires/{tire_id}/mount-periods/{period_id}",
+            headers=auth_headers,
+            json={"mounted_on": DAY.isoformat(), "mounted_odometer_km": "50020"},
+        )
+        assert edited.status_code == 200, edited.text
+
+        assert await _rows(db_session, vehicle) == [
+            (DAY, Decimal("50000"), "hand", "manual"),
+            (DAY, Decimal("50020"), marker, ODOMETER_SOURCE_TIRE_MOUNT),
+        ]
+        assert await latest_odometer_km_and_date(db_session, vehicle) == (Decimal("50020"), DAY)
 
 
 @pytest.mark.asyncio
