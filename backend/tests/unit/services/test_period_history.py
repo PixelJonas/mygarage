@@ -23,10 +23,13 @@ from app.services.tire_history import (
     REVERSED_DATES,
     REVERSED_ODOMETER,
     PeriodFault,
+    distance_formatter,
     fault_map,
+    format_km,
     new_or_touched_faults,
     validate_period_history,
 )
+from app.utils.unit_adapters import ADAPTERS
 
 D = dt.date
 
@@ -186,8 +189,9 @@ class TestShapesThatMustPass:
 
 
 class TestIncrementalPolicy:
-    """Plan review R1-M2 and R2-M1: a write refuses what it introduced, and any
-    persisting fault that one of its touched periods participates in."""
+    """Plan review R1-M2 and R2-M1: absent a strict shrink of the full fault-key
+    set, a write refuses what it introduced, and any persisting fault that one
+    of its touched periods participates in."""
 
     OLD = PeriodFault(1, REVERSED_ODOMETER, "old")
     NEW = PeriodFault(2, OVERLAPPING_DATES, "new")
@@ -207,7 +211,9 @@ class TestIncrementalPolicy:
         assert new_or_touched_faults(before, after, touched=set()) == [self.NEW]
 
     def test_touching_either_participant_of_a_persisting_pair_fault_refuses(self):
-        """R2-M1: the counterpart of an overlap cannot be edited while it persists."""
+        """R2-M1: touching either participant of a persisting overlap, with
+        nothing else changing, still refuses it: the key set is unchanged,
+        not a strict subset."""
         before = {self.PAIR.key: self.PAIR}
         assert new_or_touched_faults(before, dict(before), touched={1}) == [self.PAIR]
         assert new_or_touched_faults(before, dict(before), touched={2}) == [self.PAIR]
@@ -217,6 +223,29 @@ class TestIncrementalPolicy:
         p = _period(1, start=D(2026, 4, 1), end=D(2026, 3, 1), start_odo="5000", end_odo="4000")
         assert set(fault_map([p], [])) == {(1, REVERSED_DATES, None), (1, REVERSED_ODOMETER, None)}
 
+    def test_a_write_that_resolves_three_keys_but_adds_one_is_still_refused(self):
+        """Kills a length-based stand-in for the strict-subset check
+        (`len(after) < len(before)`): C moves from 3,000 to 9,000, resolving
+        its contradiction against both A and B and A's own contradiction
+        against B (three keys gone), but C's dismount date also moves to
+        before its own mount, opening a REVERSED_DATES fault the write must
+        still refuse, even though the key COUNT still went down."""
+
+        def history(c_start: str, c_end: D) -> list[TireMountPeriod]:
+            return [
+                _period(1, start=D(2024, 1, 1), end=D(2024, 3, 1), start_odo="0", end_odo="9000"),
+                _period(
+                    2, start=D(2024, 3, 1), end=D(2024, 6, 1), start_odo="4000", end_odo="8000"
+                ),
+                _period(3, start=D(2024, 6, 1), end=c_end, start_odo=c_start, end_odo="12000"),
+            ]
+
+        before = fault_map(history("3000", D(2024, 9, 1)), [])
+        after = fault_map(history("9000", D(2024, 5, 1)), [])
+        assert len(after) < len(before)  # the shape a length-based check sees as safe
+        refused = new_or_touched_faults(before, after, touched={3})
+        assert [f.key for f in refused] == [(3, REVERSED_DATES, None)]
+
 
 class TestRepairingAShadowedCounterpart:
     """Counterparts are running maxima, so a repair can re-label an untouched fault.
@@ -225,10 +254,12 @@ class TestRepairingAShadowedCounterpart:
     to 8,000, C 8,000 to 12,000. Stored: A's dismount typed as 9,000 and C's
     mount typed as 7,000. Both B and C are reported against A, the period
     holding the highest dismount. Fixing A hands that maximum to B, so C's
-    untouched fault is now reported against B. Keyed by counterpart, that
-    read as a NEW fault and refused the honest repair; C first is refused
-    too, since C still participates in its fault against A. Neither order
-    was accepted.
+    untouched fault is now reported against B: keyed by counterpart, that
+    read as a NEW fault under the (period, code)-plus-participants check and
+    refused the honest repair. Fixing C first instead resolves C's fault
+    against B and adds no fault key, so the strict-improvement rule accepts it
+    even though C is still contradicted against A afterward; A can then be
+    fixed on its own turn.
     """
 
     @staticmethod
@@ -261,14 +292,14 @@ class TestRepairingAShadowedCounterpart:
         assert new_or_touched_faults(a_fixed, fault_map(both_fixed, []), touched={3}) == []
         assert validate_period_history(both_fixed, []) == []
 
-    def test_fixing_the_other_period_first_is_still_refused(self):
-        """C still sits below A's 9,000, and C is the period being edited."""
+    def test_fixing_the_other_period_first_is_accepted_because_it_resolves_one(self):
+        """C still sits below A's stored 9,000. But repairing C removes the fault
+        C carried against B, (3, overlapping_odometer, 2), and introduces
+        nothing: the full fault-key set shrinks, so the write is accepted even
+        though C is still contradicted (against A) after the edit."""
         legacy = fault_map(self._history("9000", "7000"), [])
         c_fixed = fault_map(self._history("9000", "8000"), [])
-        refused = new_or_touched_faults(legacy, c_fixed, touched={3})
-        assert [(f.period_id, f.code, f.counterpart_id) for f in refused] == [
-            (3, OVERLAPPING_ODOMETER, 1)
-        ]
+        assert new_or_touched_faults(legacy, c_fixed, touched={3}) == []
 
     def test_one_intruder_keeps_a_fault_per_counterpart(self):
         """Deduplication is by the full triple, never by (period, code).
@@ -290,6 +321,50 @@ class TestRepairingAShadowedCounterpart:
         before = fault_map([x, q, y], [])
         refused = new_or_touched_faults(before, dict(before), touched={3})
         assert [(f.period_id, f.counterpart_id) for f in refused] == [(2, 3)]
+
+
+class TestRepairingMutuallyContradictingPeriods:
+    """Two legacy typos that contradict each other.
+
+    Truth: A 0 to 4,000 km, B 4,000 to 8,000, C 8,000 to 12,000, dated in that
+    order at FL. Stored: A's dismount typed 9,000 and C's mount typed 3,000,
+    below A's TRUE dismount as well. Either single repair leaves the touched
+    period still contradicted, so refusing every write a touched period
+    participates in refused both orders. Each repair resolves one contradiction
+    and adds no fault key, which the strict-improvement rule accepts.
+    """
+
+    @staticmethod
+    def _history(a_end: str, c_start: str) -> list[TireMountPeriod]:
+        return [
+            _period(1, start=D(2024, 1, 1), end=D(2024, 3, 1), start_odo="0", end_odo=a_end),
+            _period(2, start=D(2024, 3, 1), end=D(2024, 6, 1), start_odo="4000", end_odo="8000"),
+            _period(3, start=D(2024, 6, 1), end=D(2024, 9, 1), start_odo=c_start, end_odo="12000"),
+        ]
+
+    def test_fixing_a_first_then_c(self) -> None:
+        legacy = fault_map(self._history("9000", "3000"), [])
+        a_fixed = fault_map(self._history("4000", "3000"), [])
+        assert a_fixed, "C still contradicts A and B after A alone is fixed"
+        assert new_or_touched_faults(legacy, a_fixed, touched={1}) == []
+        both = fault_map(self._history("4000", "8000"), [])
+        assert new_or_touched_faults(a_fixed, both, touched={3}) == []
+        assert both == {}
+
+    def test_fixing_c_first_then_a(self) -> None:
+        legacy = fault_map(self._history("9000", "3000"), [])
+        c_fixed = fault_map(self._history("9000", "8000"), [])
+        assert c_fixed, "A still contradicts B and C after C alone is fixed"
+        assert new_or_touched_faults(legacy, c_fixed, touched={3}) == []
+        both = fault_map(self._history("4000", "8000"), [])
+        assert new_or_touched_faults(c_fixed, both, touched={1}) == []
+
+    def test_a_write_that_resolves_nothing_on_a_touched_period_is_still_refused(self) -> None:
+        legacy = fault_map(self._history("9000", "3000"), [])
+        worse = fault_map(self._history("9500", "3000"), [])
+        refused = new_or_touched_faults(legacy, worse, touched={1})
+        assert refused
+        assert 1 in refused[0].participants
 
 
 class TestEveryContradictedPredecessorIsNamed:
@@ -484,3 +559,67 @@ class TestFaultMessages:
         for fault in faults:
             assert "910" not in fault.message, fault.message
             assert "period 9" not in fault.message, fault.message
+
+
+class TestDistanceFormatter:
+    def test_km_prints_whole_and_tenths_values(self) -> None:
+        """One decimal, trailing zeros dropped: a whole ten-thousand
+        and a value with a genuine tenth both print correctly. Two odometers
+        typed to the hundredth that differ by less than 0.05 km read as the
+        same number in a message; that is the accepted consequence of one
+        decimal, not exercised here."""
+        assert format_km(Decimal("150000.00")) == "150,000 km"
+        assert format_km(Decimal("12000.50")) == "12,000.5 km"
+
+    def test_miles_convert_and_keep_one_decimal_when_it_matters(self) -> None:
+        fmt = distance_formatter(ADAPTERS["mi"])
+        assert fmt(Decimal("160934.4")) == "100,000 mi"
+        assert fmt(Decimal("16093.44")) == "10,000 mi"
+        # 16,094 km is 10,000.348 mi: whole miles would print "10,000" for it and
+        # for 16,093.44 km, the same number on both sides of "below".
+        assert fmt(Decimal("16094")) == "10,000.3 mi"
+
+    def test_reversed_odometer_message_uses_the_formatter(self) -> None:
+        periods = [
+            _period(1, start=D(2024, 1, 1), end=D(2024, 2, 1), start_odo="10000", end_odo="9000")
+        ]
+        km = validate_period_history(periods, [])
+        mi = validate_period_history(
+            periods, [], format_distance=distance_formatter(ADAPTERS["mi"])
+        )
+        assert [f.key for f in km] == [f.key for f in mi]
+        assert " km" in km[0].message
+        assert " mi" in mi[0].message and " km" not in mi[0].message
+
+    def test_mounted_below_message_uses_the_formatter(self) -> None:
+        """4a: the "mounted below an earlier dismount" message."""
+        p = _period(1, start=D(2026, 1, 1), end=D(2026, 3, 1), start_odo="1000", end_odo="12000.50")
+        q = _period(
+            2, start=D(2026, 4, 1), end=None, start_odo="11500", end_odo=None, position="RL"
+        )
+        km = validate_period_history([p, q], [])
+        mi = validate_period_history([p, q], [], format_distance=distance_formatter(ADAPTERS["mi"]))
+        assert [f.key for f in km] == [f.key for f in mi]
+        assert " km" in km[0].message
+        assert " mi" in mi[0].message and " km" not in mi[0].message
+
+    def test_covering_span_message_uses_the_formatter(self) -> None:
+        """4b: the "claims kilometres already covered" message."""
+        p = _period(1, start=None, end=None, start_odo="1000", end_odo="3000")
+        q = _period(2, start=None, end=None, start_odo="2000", end_odo="4000", position="FR")
+        km = validate_period_history([p, q], [])
+        mi = validate_period_history([p, q], [], format_distance=distance_formatter(ADAPTERS["mi"]))
+        assert [f.key for f in km] == [f.key for f in mi]
+        assert " km" in km[0].message
+        assert " mi" in mi[0].message and " km" not in mi[0].message
+
+    def test_reading_contradiction_message_uses_the_formatter(self) -> None:
+        p = _period(1, start=D(2026, 1, 1), end=D(2026, 6, 1), start_odo="10000", end_odo="20000")
+        reading = _reading(D(2026, 3, 1), "150000.00")
+        km = validate_period_history([p], [reading])
+        mi = validate_period_history(
+            [p], [reading], format_distance=distance_formatter(ADAPTERS["mi"])
+        )
+        assert [f.key for f in km] == [f.key for f in mi]
+        assert " km" in km[0].message
+        assert " mi" in mi[0].message and " km" not in mi[0].message

@@ -19,11 +19,34 @@ list after a flush and before the commit.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 
 from app.models.tire import TireMountPeriod, TireReading
+from app.utils.unit_adapters import ADAPTERS, UnitAdapter
+
+DistanceFormatter = Callable[[Decimal], str]
+
+
+def distance_formatter(adapter: UnitAdapter) -> DistanceFormatter:
+    """Render a canonical km odometer for a message, in `adapter`'s unit.
+
+    One decimal place, trailing zeros dropped, rather than the adapter's own
+    display precision: a message says one odometer is below another, and at
+    whole miles 16,093.4 km and 16,094 km both print as 10,000 mi.
+    """
+
+    def render(value: Decimal) -> str:
+        display = adapter.to_display(value)
+        assert display is not None
+        shown = display.quantize(Decimal("0.1")).normalize()
+        return f"{shown:,f} {adapter.label}"
+
+    return render
+
+
+format_km: DistanceFormatter = distance_formatter(ADAPTERS["km"])
 
 REVERSED_DATES = "reversed_dates"
 REVERSED_ODOMETER = "reversed_odometer"
@@ -37,9 +60,10 @@ class PeriodFault:
     """One contradiction, on the period that introduces it.
 
     `counterpart_id` is the period it contradicts, for the pair rules. Both
-    are participants: the incremental policy refuses a write that touches
-    EITHER side of a persisting contradiction, so the counterpart of an
-    overlap cannot be edited to make it worse under an unchanged key.
+    are participants: a write that touches EITHER side of a persisting
+    contradiction is refused by default, unless that write strictly shrinks
+    the full set of fault keys elsewhere, in which case this same key can
+    pass through worse than before (see `new_or_touched_faults`).
     """
 
     period_id: int
@@ -70,15 +94,6 @@ def _label(period: TireMountPeriod, *, capital: bool = False) -> str:
     if period.mounted_on is None:
         return f"{article} {corner} with an unknown mount date"
     return f"{article} {corner} mounted {period.mounted_on.isoformat()}"
-
-
-def _km(value: Decimal) -> str:
-    """An odometer for a message: thousands separators, no trailing zeros.
-
-    Stored odometers come back from `Numeric(10, 2)` as "12000.00", which read
-    as twelve thousand kilometres and zero hundredths in a sentence.
-    """
-    return f"{value.normalize():,f}"
 
 
 def odometer_contradictions(
@@ -159,7 +174,10 @@ def odometer_contradictions(
 
 
 def validate_period_history(
-    periods: Sequence[TireMountPeriod], readings: Sequence[TireReading]
+    periods: Sequence[TireMountPeriod],
+    readings: Sequence[TireReading],
+    *,
+    format_distance: DistanceFormatter = format_km,
 ) -> list[PeriodFault]:
     """Every contradiction in this tire's history, or an empty list.
 
@@ -180,6 +198,10 @@ def validate_period_history(
 
     Faults name the LATER period of a pair, the one that intrudes on history
     already recorded.
+
+    `format_distance` renders every odometer that appears in a fault message,
+    in `format_km`'s wording by default. It shapes message text only: which
+    faults are raised, their codes and their keys never depend on it.
     """
     faults: list[PeriodFault] = []
     seen: set[tuple[int, str, int | None]] = set()
@@ -216,8 +238,9 @@ def validate_period_history(
             add(
                 p,
                 REVERSED_ODOMETER,
-                f"{_label(p, capital=True)} is dismounted at {_km(p.dismounted_odometer_km)} km, "
-                f"below its mount odometer of {_km(p.mounted_odometer_km)} km.",
+                f"{_label(p, capital=True)} is dismounted at "
+                f"{format_distance(p.dismounted_odometer_km)}, below its mount odometer of "
+                f"{format_distance(p.mounted_odometer_km)}.",
             )
 
     # 3: dates, over periods with a known mount date, in date order. Each
@@ -265,8 +288,9 @@ def validate_period_history(
                 add(
                     q,
                     OVERLAPPING_ODOMETER,
-                    f"{_label(q, capital=True)} is mounted at {_km(q.mounted_odometer_km)} km, "
-                    f"below the {_km(earlier.dismounted_odometer_km)} km at which "
+                    f"{_label(q, capital=True)} is mounted at "
+                    f"{format_distance(q.mounted_odometer_km)}, below the "
+                    f"{format_distance(earlier.dismounted_odometer_km)} at which "
                     f"{_label(earlier)} was dismounted.",
                     counterpart=earlier,
                 )
@@ -276,11 +300,19 @@ def validate_period_history(
     # at once. Sorted by mount odometer; the later-by-odometer span is the
     # intruder. Where 4a already named the same pair, `add` deduplicates.
     #
-    # A running maximum is safe HERE, unlike in 3 and 4a, because every span
-    # is both judged and a possible counterpart. An earlier span P that a later
+    # A running maximum works HERE, unlike in 3 and 4a, because every span is
+    # both judged and a possible counterpart. An earlier span P that a later
     # span intersects, without holding the maximum, is itself a participant: if
     # P is not an intruder, the maximum after P is P's own dismount, so the
     # next span in order (whose mount is below it) is reported against P.
+    #
+    # Only one counterpart is named at a time, though, so which one can lag
+    # behind the full picture: a span may genuinely intersect more than one
+    # earlier span, and only the one currently holding the maximum is named.
+    # That never drops a period's own `(period, code)` flag, so nothing goes
+    # unreported; a contradiction hidden behind the one currently named
+    # becomes its own key, for `new_or_touched_faults` to see, once the fault
+    # naming it is repaired.
     spans = sorted(
         (
             p
@@ -296,8 +328,8 @@ def validate_period_history(
                 q,
                 OVERLAPPING_ODOMETER,
                 f"{_label(q, capital=True)} claims kilometres {_label(covered[1])} already "
-                f"covers: it starts at {_km(q.mounted_odometer_km)} km, before that period ended "
-                f"at {_km(covered[0])} km.",
+                f"covers: it starts at {format_distance(q.mounted_odometer_km)}, before that "
+                f"period ended at {format_distance(covered[0])}.",
                 counterpart=covered[1],
             )
         if covered is None or q.dismounted_odometer_km > covered[0]:
@@ -323,8 +355,8 @@ def validate_period_history(
             p,
             CONTRADICTS_READING,
             f"{_label(p, capital=True)} contradicts the reading dated {reading.recorded_at} at "
-            f"{_km(odometer)} km: the vehicle's odometer would have to run backwards. If that "
-            "reading is wrong, delete it from the tire's history.",
+            f"{format_distance(odometer)}: the vehicle's odometer would have to run backwards. "
+            "If that reading is wrong, delete it from the tire's history.",
         )
     return faults
 
@@ -332,16 +364,27 @@ def validate_period_history(
 FaultMap = dict[tuple[int, str, int | None], PeriodFault]
 
 
-def fault_map(periods: Sequence[TireMountPeriod], readings: Sequence[TireReading]) -> FaultMap:
-    """`validate_period_history` keyed by (period, code, counterpart), for a before/after comparison."""
-    return {f.key: f for f in validate_period_history(periods, readings)}
+def fault_map(
+    periods: Sequence[TireMountPeriod],
+    readings: Sequence[TireReading],
+    *,
+    format_distance: DistanceFormatter = format_km,
+) -> FaultMap:
+    """`validate_period_history` keyed by (period, code, counterpart), for a before/after
+    comparison. `format_distance` shapes message text only; keys and codes never depend on it.
+    """
+    return {
+        f.key: f
+        for f in validate_period_history(periods, readings, format_distance=format_distance)
+    }
 
 
 def new_or_touched_faults(
     before: FaultMap, after: FaultMap, touched: set[int]
 ) -> list[PeriodFault]:
     """The faults a write must refuse: any it introduced, and any persisting one
-    that a period it touched participates in.
+    that a period it touched participates in, unless the write is a strict
+    improvement.
 
     Writers before v3.4.0 committed without validation, so a tire can carry
     two independently contradictory legacy periods. Refusing every fault
@@ -349,8 +392,10 @@ def new_or_touched_faults(
     other) and the tire undismountable. A write is judged on what it changed:
     a fault that was already there, on periods it did not touch, survives and
     stays flagged on the wire, to be repaired in its own turn. Judged on
-    PARTICIPANTS, not on the intruder alone: the counterpart of an overlap
-    cannot be edited to make it worse while the fault persists.
+    PARTICIPANTS, not on the intruder alone: touching either side of a
+    persisting overlap counts against the write by default; whether the write
+    still goes through depends on the full key set, below. An edit that only
+    makes the overlap worse, resolving nothing else, is refused.
 
     The faults about a touched period come first, keeping their order among
     themselves: a writer raises the first one, and the sentence a user reads
@@ -365,12 +410,31 @@ def new_or_touched_faults(
     to the next one and re-labels an untouched 4b fault against a different
     counterpart. Judged by the full key, that relabelled fault would read as
     new and refuse the honest repair. Nothing is lost by leaving the
-    counterpart out: a fault between two untouched periods
-    depends only on their own bounds, so no write can create one, and a fault
-    whose new counterpart IS a touched period is still refused through its
-    participants. `FaultMap` keeps the full triple so each counterpart is
+    counterpart out: whether two untouched periods contradict depends only on
+    their own bounds, so a write can change which counterpart an untouched
+    period's fault names but cannot give that period a code it did not
+    already carry, and a fault whose new counterpart IS a touched period adds
+    a key nothing in `before` had, so it can never be part of a strict shrink
+    (below) and is still refused through its participants. `FaultMap` keeps the full triple so each counterpart is
     still a participant.
+
+    A write that leaves a touched period in a persisting contradiction is
+    nonetheless accepted when the full fault-key set strictly shrinks: at
+    least one fault key resolved, no fault key added. That is what makes two
+    legacy typos that contradict each other repairable one period at a time,
+    in either order. An overlap made worse without resolving anything leaves
+    the key set unchanged, so it is still refused. A write that resolves one
+    contradiction while enlarging another's magnitude is accepted, and the
+    enlarged one stays flagged on the tire's history until it is repaired in
+    its own turn. Rule 4b's running maximum and rule 5's one-fault-per-period
+    already let several genuine contradictions share a single key, so a
+    strict shrink can also land a brand new contradiction under a key some
+    other period already carries: that period's own flag never goes missing,
+    so the new contradiction gets its own key, and this rule's attention,
+    once the fault currently sharing that key is repaired.
     """
+    if set(after) < set(before):
+        return []
     pre_existing = {(f.period_id, f.code) for f in before.values()}
     refused = [
         f

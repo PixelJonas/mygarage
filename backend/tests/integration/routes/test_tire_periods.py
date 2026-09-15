@@ -180,6 +180,40 @@ async def _tire_positions(db_session, vin: str) -> dict[int, str | None]:
     return {tire_id: position for tire_id, position in rows}
 
 
+async def _seed_mutual_ac_history(db_session, vin: str) -> tuple[int, int, int]:
+    """Two mutually contradicting legacy typos. Truth: A 0 to 4,000 km,
+    B 4,000 to 8,000, C 8,000 to 12,000, dated in that order at FL. Stored:
+    A's dismount typed 9,000 and C's mount typed 3,000, below A's TRUE
+    dismount as well, so A and C contradict each other and neither can be
+    fixed alone without the other still flagging it.
+
+    Returns `(tire_id, a_id, c_id)`.
+    """
+    tire = Tire(vin=vin, position=None, brand="Mutual", mount_periods=[], readings=[])
+    db_session.add(tire)
+    await db_session.flush()
+    tire_id = tire.id
+    for start, end, lo, hi in (
+        (date_type(2024, 1, 1), date_type(2024, 3, 1), "0", "9000"),
+        (date_type(2024, 3, 1), date_type(2024, 6, 1), "4000", "8000"),
+        (date_type(2024, 6, 1), date_type(2024, 9, 1), "3000", "12000"),
+    ):
+        db_session.add(
+            TireMountPeriod(
+                tire_id=tire_id,
+                position="FL",
+                mounted_on=start,
+                dismounted_on=end,
+                mounted_odometer_km=Decimal(lo),
+                dismounted_odometer_km=Decimal(hi),
+                is_assumed=False,
+            )
+        )
+    await db_session.commit()
+    a, _b, c = await _periods(db_session, tire_id)
+    return tire_id, a.id, c.id
+
+
 @pytest.mark.asyncio
 class TestWritersRefuseContradictions:
     async def test_a_mount_backdated_before_the_last_dismount_is_refused(
@@ -407,6 +441,57 @@ class TestWritersRefuseContradictions:
             },
         )
         assert rotate.status_code == 409 and "retired" in rotate.json()["detail"]
+
+    async def test_mutually_contradicting_legacy_periods_repair_a_then_c(
+        self, client: AsyncClient, auth_headers, vehicle, db_session
+    ):
+        """Fixing A first resolves A's fault against B and adds no fault key,
+        so it is accepted even though C is still contradicted against A
+        afterward; fixing C then clears the rest."""
+        tire_id, a_id, c_id = await _seed_mutual_ac_history(db_session, vehicle)
+        base = f"/api/vehicles/{vehicle}/tires"
+
+        fix_a = await client.put(
+            f"{base}/{tire_id}/mount-periods/{a_id}",
+            headers=auth_headers,
+            json={"dismounted_odometer_km": "4000"},
+        )
+        assert fix_a.status_code == 200, fix_a.text
+        fix_c = await client.put(
+            f"{base}/{tire_id}/mount-periods/{c_id}",
+            headers=auth_headers,
+            json={"mounted_odometer_km": "8000"},
+        )
+        assert fix_c.status_code == 200, fix_c.text
+        final = await client.get(base, headers=auth_headers)
+        tire_json = next(t for t in final.json()["tires"] if t["id"] == tire_id)
+        assert tire_json["blocking_period_ids"] == []
+
+    async def test_mutually_contradicting_legacy_periods_repair_c_then_a(
+        self, client: AsyncClient, auth_headers, vehicle, db_session
+    ):
+        """Same history, opposite order: fixing C first resolves C's fault
+        against B and adds no fault key, so it is accepted even though C is
+        still contradicted against A afterward; fixing A then clears the
+        rest."""
+        tire_id, a_id, c_id = await _seed_mutual_ac_history(db_session, vehicle)
+        base = f"/api/vehicles/{vehicle}/tires"
+
+        fix_c = await client.put(
+            f"{base}/{tire_id}/mount-periods/{c_id}",
+            headers=auth_headers,
+            json={"mounted_odometer_km": "8000"},
+        )
+        assert fix_c.status_code == 200, fix_c.text
+        fix_a = await client.put(
+            f"{base}/{tire_id}/mount-periods/{a_id}",
+            headers=auth_headers,
+            json={"dismounted_odometer_km": "4000"},
+        )
+        assert fix_a.status_code == 200, fix_a.text
+        final = await client.get(base, headers=auth_headers)
+        tire_json = next(t for t in final.json()["tires"] if t["id"] == tire_id)
+        assert tire_json["blocking_period_ids"] == []
 
 
 async def _seed_migrated_tire(db_session, vin: str) -> tuple[int, int]:

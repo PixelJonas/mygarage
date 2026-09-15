@@ -1120,9 +1120,11 @@ class TireService:
 
         Incremental, not whole-history: `before` is the fault map captured
         before this write mutated anything, and only a fault that is new, or
-        one a period this write touched participates in, refuses it (see
-        `new_or_touched_faults` for what "new" means). A legacy fault on some
-        other period survives and stays flagged. Runs over the tire's resulting
+        one a period this write touched participates in, refuses it, unless
+        the write strictly shrinks the set of fault keys (see
+        `new_or_touched_faults` for what "new" and "strictly shrinks" mean). A
+        legacy fault on some other period survives and stays flagged. Runs
+        over the tire's resulting
         period list, which is why every writer appends new periods to
         `tire.mount_periods` rather than `db.add`ing them, and flushes first so
         they have ids. A refusal raises before the commit; the request's
