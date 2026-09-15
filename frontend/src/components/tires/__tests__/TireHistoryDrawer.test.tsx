@@ -226,8 +226,25 @@ describe('TireHistoryDrawer', () => {
     expect(second.getByTestId('period-2-fault')).toHaveTextContent('M')
   })
 
-  it('a period that is both blocking and needs an odometer still shows periodNeedsOdometer, not periodCheck', () => {
+  it('asks for an odometer only when a blocking period lacks one; a contradiction alone asks for a check', () => {
+    // Period 1 has no mount odometer either way. Flagged only by a
+    // contradiction, adding an odometer is not the repair, so it reads "check".
     const fault = { period_id: 1, code: 'overlapping_dates', counterpart_id: 2, message: 'M' }
+    const { unmount } = render(
+      <TireHistoryDrawer
+        tire={tire({ blocking_period_ids: [], history_faults: [fault] }) as never}
+        open
+        onClose={vi.fn()}
+        onEditPeriod={vi.fn()}
+        labelFor={labelFor}
+        vin={VIN}
+      />
+    )
+    const faultOnly = within(drawer().getByTestId('period-1'))
+    expect(faultOnly.getByText('tireList.periodCheck')).toBeInTheDocument()
+    expect(faultOnly.queryByText('tireList.periodNeedsOdometer')).toBeNull()
+    unmount()
+
     render(
       <TireHistoryDrawer
         tire={tire({ blocking_period_ids: [1], history_faults: [fault] }) as never}
@@ -238,9 +255,28 @@ describe('TireHistoryDrawer', () => {
         vin={VIN}
       />
     )
-    const first = within(drawer().getByTestId('period-1'))
-    expect(first.getByText('tireList.periodNeedsOdometer')).toBeInTheDocument()
-    expect(first.queryByText('tireList.periodCheck')).toBeNull()
+    const blocking = within(drawer().getByTestId('period-1'))
+    expect(blocking.getByText('tireList.periodNeedsOdometer')).toBeInTheDocument()
+    expect(blocking.queryByText('tireList.periodCheck')).toBeNull()
+  })
+
+  it('shows only the first reason when several contradictions name one period', () => {
+    const faults = [
+      { period_id: 2, code: 'overlapping_dates', counterpart_id: 1, message: 'first reason' },
+      { period_id: 2, code: 'contradicts_reading', counterpart_id: null, message: 'second reason' },
+    ]
+    render(
+      <TireHistoryDrawer
+        tire={tire({ blocking_period_ids: [], history_faults: faults }) as never}
+        open
+        onClose={vi.fn()}
+        onEditPeriod={vi.fn()}
+        labelFor={labelFor}
+        vin={VIN}
+      />
+    )
+    expect(drawer().getByTestId('period-2-fault')).toHaveTextContent(/^first reason$/)
+    expect(drawer().getByTestId('period-1-fault')).toHaveTextContent(/^first reason$/)
   })
 
   it('needsFix is true from history_faults alone, true from blocking alone, false from neither', () => {
