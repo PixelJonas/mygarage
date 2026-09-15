@@ -9,42 +9,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Upgrade note
 
-Back up first. Migration 100 adds one nullable column to `tires`; it is additive, and there are no down-migrations.
+Back up first. Migration 100 adds a nullable column to `tires`.
 
 ### Added
 
-- A mount date and odometer on the Add Tire form when the tire goes on a corner, with the vehicle's nearest odometer reading offered beside the field (#153).
-- A date on every tire operation: mount, dismount, retire, rotate and set fit, so a swap done on Saturday can be logged on Monday.
-- Mount history on every tire, with editing of a period's dates, odometers and notes. A Fix control on the card opens it when a period blocks a figure.
-- "Mounted <date> @ <odometer>" on a mounted tire's card and "In storage since <date>" on a stored one.
-- A storage location on a tire, set when adding a tire to storage, when editing a tire, or on dismount (#153).
+- Mount date and odometer on the Add Tire form, with the nearest odometer reading suggested (#153).
+- A date on every tire operation, so a swap can be logged after the fact.
+- Mount history on every tire, with editing of each period's dates, odometers and notes.
+- Add a past mount period from a tire's history.
+- Contradictions in a tire's mount history are badged, with a Fix button on the card.
+- Tire cards show the mount date and odometer, or the date a tire went into storage.
+- A storage location on a tire (#153).
 - Retired tires can be shown on the Tires tab and restored to storage.
-- A tread reading can be deleted from the tire's history, for one entered with the wrong odometer or date.
-- Record a past mount period from a tire's history, for seasons that were never logged at the time.
-- Every contradiction in a tire's mount history is badged on both periods with the reason beneath, and the card offers Fix for it.
+- A tread reading can be deleted from a tire's history.
 
 ### Changed
 
-- Tire history refusal messages give odometers in your own distance unit.
-- A vehicle's current odometer is the highest reading of its latest day, whichever record entered it last.
+- A vehicle's current odometer is the highest reading of its latest day.
 
 ### Fixed
 
-- The Add Tire form never sent the mount odometer, so every tire added at a corner had an unbounded mount period, a blank distance and a withheld wear estimate, and the card asked for an odometer nothing could supply.
-- A dismount could be recorded before its own mount, and a remount below the last dismount; mount, dismount, retire, rotate, set fit and the mount history editor now refuse a history that contradicts itself. To correct a period already recorded, edit it in the tire's mount history rather than backdating a new mount.
+- The Add Tire form never sent the mount odometer, leaving the tire's distance and wear estimate blank.
+- Tire operations accepted a history that contradicts itself, such as a dismount before its mount.
 - A retired tire could be mounted or rotated through the API.
-- Two simultaneous mounts at one corner answered 500 instead of 409.
-- The Log Reading date defaulted to the UTC calendar date, which is tomorrow after early evening in the Americas.
-- Imperial conversions used truncated factors (a mile of 1.60934 km) and the app and server converted pounds differently; both now use the exact definitions. Stored values are unchanged.
-- SD-card backfill could stop importing a device's logs when a new reading appeared twice in one file.
+- Two simultaneous mounts at one corner returned 500 instead of 409.
+- The Log Reading date defaulted to the UTC date instead of your local date.
+- Imperial conversions in the app and server now use the same exact factors.
+- Tire operations could overwrite a same-day odometer reading from a service visit, fuel-up or LiveLink.
+- Re-saving a fuel, DEF or service record could overwrite a same-day tire odometer reading.
+- LiveLink skipped its odometer reading on a day that already had one from another record.
+- SD-card backfill could stop importing a device's logs when a reading appeared twice in one file.
 - A LiveLink reading replayed after a drive ended was left out of that drive's totals.
-- Running an SD-card backfill again over two drives where one ended as the next began left both unchanged instead of extending them.
-- Fuel, DEF, hours and vehicle JSON imports brought in the same row twice when it appeared twice in one file, despite skip duplicates, and one invalid row could discard the whole upload.
-- Two tire mount periods that contradict each other can now be corrected one at a time.
-- Tire operations overwrote, and could later move or delete, an odometer reading a service visit, fuel-up or LiveLink had already recorded that day.
-- A tire odometer retyped from a reading saved before the exact mile was refused as slightly below itself.
-- LiveLink recorded no odometer reading on a day that already held one from a service visit, fuel-up or manual entry.
-- Re-saving a fuel, DEF or service record could overwrite a tire's odometer reading from the same day.
+- A re-run SD-card backfill did not extend two drives that touch end to start.
+- Fuel, DEF, hours and vehicle JSON imports ignored skip duplicates for rows repeated within one file.
+- One invalid row could discard a whole JSON import.
 - An import that failed partway could leave some of its rows saved.
 - CSV imports longer than about ten rows were refused with "Could not determine delimiter" (#163).
 
