@@ -150,9 +150,7 @@ class TestFinancingRoutes:
         )
         assert get_response.status_code == 404
 
-    async def test_list_financing_records_unauthenticated(
-        self, client: AsyncClient, test_vehicle
-    ):
+    async def test_list_financing_records_unauthenticated(self, client: AsyncClient, test_vehicle):
         response = await client.get(
             f"/api/vehicles/{test_vehicle['vin']}/financing-records",
         )

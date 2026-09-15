@@ -48,9 +48,7 @@ class FinancingService:
             records = result.scalars().all()
 
             return FinancingRecordListResponse(
-                financing_records=[
-                    FinancingRecordResponse.model_validate(r) for r in records
-                ],
+                financing_records=[FinancingRecordResponse.model_validate(r) for r in records],
                 total=len(records),
             )
 

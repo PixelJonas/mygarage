@@ -277,9 +277,7 @@ async def get_cost_analysis(db: AsyncSession, vin: str) -> CostAnalysis:
     total_spot_rental_cost = sum(
         (r.total for r in spot_rental_billings if r.total), Decimal("0.00")
     )
-    total_financing_cost = sum(
-        (r.amount for r in financing_records if r.amount), Decimal("0.00")
-    )
+    total_financing_cost = sum((r.amount for r in financing_records if r.amount), Decimal("0.00"))
     total_cost = (
         total_service_cost
         + total_fuel_cost
