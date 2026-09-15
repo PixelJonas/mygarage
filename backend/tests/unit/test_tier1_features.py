@@ -407,6 +407,7 @@ def test_a_clean_projection_still_reports_its_lifetime_blocker():
     `test_wear_blockers_are_not_masked_by_lifetime_blockers` below for the
     fixture that actually distinguishes the two.
     """
+    from app.services.tire_history import format_km
     from app.services.tire_service import TireService
 
     tire = _migrated_then_remounted_tire()
@@ -414,7 +415,7 @@ def test_a_clean_projection_still_reports_its_lifetime_blocker():
     # two calculations and touches no session. Constructed without __init__
     # so the test needs no database.
     service = TireService.__new__(TireService)
-    payload = service._to_response(tire, current_odometer=Decimal("12000"))
+    payload = service._to_response(tire, format_km, current_odometer=Decimal("12000"))
 
     assert payload.wear_status == "projected"
     assert payload.distance_status == "incomplete"
@@ -524,11 +525,12 @@ def test_wear_blockers_are_not_masked_by_lifetime_blockers():
     `distance_on_tire` never checks for). `or` would report only `[1]`,
     silently dropping the periods the projection actually needs repaired.
     """
+    from app.services.tire_history import format_km
     from app.services.tire_service import TireService
 
     tire = _overlapping_periods_tire()
     service = TireService.__new__(TireService)
-    payload = service._to_response(tire, current_odometer=Decimal("12000"))
+    payload = service._to_response(tire, format_km, current_odometer=Decimal("12000"))
 
     assert payload.wear_status == "no_distance_on_tire"
     assert payload.distance_status == "incomplete"

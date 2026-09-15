@@ -148,9 +148,11 @@ class TestTheWayOutOfAMistypedReading:
 
         refused = await client.post(f"{base}/dismount", headers=auth_headers, json=dismount)
         assert refused.status_code == 409, refused.text
+        # The default test user is imperial, so the refusal renders in
+        # miles: 150,000 km / 1.609344 km per mile, to one decimal place.
         assert refused.json()["detail"] == (
             "The FL period mounted 2026-01-01 contradicts the reading dated 2026-03-01 at "
-            "150,000 km: the vehicle's odometer would have to run backwards. If that reading "
+            "93,205.7 mi: the vehicle's odometer would have to run backwards. If that reading "
             "is wrong, delete it from the tire's history."
         )
 

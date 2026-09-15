@@ -216,6 +216,7 @@ class TireSetService:
         vin = vin.upper().strip()
         await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
         await lock_vehicle_for_write(self.db, vin)
+        format_distance = await TireService(self.db).request_distance_formatter(current_user)
         tire_set = await self._get_set(vin, set_id)
 
         members = [tire for tire in (tire_set.tires or []) if tire.retired_on is None]
@@ -307,7 +308,10 @@ class TireSetService:
         )
         for tid, tire in touched.items():
             TireService.refuse_contradictions(
-                tire, befores[tid], open_before[tid] | TireService.open_period_ids(tire)
+                tire,
+                befores[tid],
+                open_before[tid] | TireService.open_period_ids(tire),
+                format_distance,
             )
         # ONE reading for the whole swap. Marked as a set fit rather than as a
         # per-tire operation, so deleting any one tire in the set does not take

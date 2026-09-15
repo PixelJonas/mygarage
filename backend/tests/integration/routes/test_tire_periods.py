@@ -11,6 +11,7 @@ lets the editor move the right record and only that one.
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import date
 from datetime import date as date_type
@@ -21,7 +22,9 @@ from httpx import AsyncClient
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.constants.units import IMPERIAL_PRESET
 from app.models.odometer import OdometerRecord
+from app.models.settings import Setting
 from app.models.tire import Tire, TireMountPeriod
 from app.models.vehicle import Vehicle
 from app.schemas.tire import MountPeriodUpdate, TireCreateAndMountRequest, TireDismountRequest
@@ -31,6 +34,7 @@ from app.services.tire_service import (
     ODOMETER_SOURCE_TIRE_MOUNT,
     TireService,
 )
+from app.utils.default_unit_prefs import DEFAULT_UNIT_PREFS_KEY
 from app.utils.odometer_sync import auto_sync_marker
 
 
@@ -457,6 +461,9 @@ class TestWritersRefuseContradictions:
             json={"dismounted_odometer_km": "4000"},
         )
         assert fix_a.status_code == 200, fix_a.text
+        # The first repair is accepted but not clean: C's contradiction
+        # persists, so it is not vacuous for the second repair to clear it.
+        assert fix_a.json()["history_faults"] != []
         fix_c = await client.put(
             f"{base}/{tire_id}/mount-periods/{c_id}",
             headers=auth_headers,
@@ -466,6 +473,7 @@ class TestWritersRefuseContradictions:
         final = await client.get(base, headers=auth_headers)
         tire_json = next(t for t in final.json()["tires"] if t["id"] == tire_id)
         assert tire_json["blocking_period_ids"] == []
+        assert tire_json["history_faults"] == []
 
     async def test_mutually_contradicting_legacy_periods_repair_c_then_a(
         self, client: AsyncClient, auth_headers, vehicle, db_session
@@ -483,6 +491,9 @@ class TestWritersRefuseContradictions:
             json={"mounted_odometer_km": "8000"},
         )
         assert fix_c.status_code == 200, fix_c.text
+        # The first repair is accepted but not clean: A's contradiction
+        # persists, so it is not vacuous for the second repair to clear it.
+        assert fix_c.json()["history_faults"] != []
         fix_a = await client.put(
             f"{base}/{tire_id}/mount-periods/{a_id}",
             headers=auth_headers,
@@ -492,6 +503,7 @@ class TestWritersRefuseContradictions:
         final = await client.get(base, headers=auth_headers)
         tire_json = next(t for t in final.json()["tires"] if t["id"] == tire_id)
         assert tire_json["blocking_period_ids"] == []
+        assert tire_json["history_faults"] == []
 
 
 async def _seed_migrated_tire(db_session, vin: str) -> tuple[int, int]:
@@ -1227,3 +1239,194 @@ class TestEditorUnderProductionUnitOfWork:
                 auto_sync_marker(ODOMETER_SOURCE_TIRE_DISMOUNT, period_id),
             )
         ]
+
+
+@pytest.mark.asyncio
+class TestFaultsOnTheWire:
+    async def test_a_contradiction_no_figure_blocks_is_on_the_tire(
+        self, client: AsyncClient, auth_headers, vehicle, db_session
+    ):
+        """Two closed periods whose DATES overlap but whose odometers are
+        fully known and consistent. `distance_on_tire` only sums each
+        period's own span and never compares one period against another, and
+        with no readings on file the wear projection withholds nothing
+        either, so `blocking_period_ids` stays empty even though the history
+        contradicts itself -- the case `history_faults` exists for."""
+        tire = Tire(vin=vehicle, position=None, brand="Overlap", mount_periods=[], readings=[])
+        db_session.add(tire)
+        await db_session.flush()
+        tire_id = tire.id
+        db_session.add_all(
+            [
+                TireMountPeriod(
+                    tire_id=tire_id,
+                    position="FL",
+                    mounted_on=date_type(2026, 1, 1),
+                    dismounted_on=date_type(2026, 3, 1),
+                    mounted_odometer_km=Decimal("0"),
+                    dismounted_odometer_km=Decimal("1000"),
+                    is_assumed=False,
+                ),
+                TireMountPeriod(
+                    tire_id=tire_id,
+                    position="FL",
+                    mounted_on=date_type(2026, 2, 1),
+                    dismounted_on=date_type(2026, 4, 1),
+                    mounted_odometer_km=Decimal("1000"),
+                    dismounted_odometer_km=Decimal("2000"),
+                    is_assumed=False,
+                ),
+            ]
+        )
+        await db_session.commit()
+        earlier, later = await _periods(db_session, tire_id)
+
+        base = f"/api/vehicles/{vehicle}/tires"
+        listed = await client.get(base, headers=auth_headers)
+        assert listed.status_code == 200, listed.text
+        tire_json = next(t for t in listed.json()["tires"] if t["id"] == tire_id)
+
+        assert tire_json["blocking_period_ids"] == []
+        faults = tire_json["history_faults"]
+        assert len(faults) == 1
+        (fault,) = faults
+        assert fault["code"] == "overlapping_dates"
+        assert fault["period_id"] == later.id
+        assert fault["counterpart_id"] == earlier.id
+        assert fault["message"]
+
+    async def test_a_reading_contradiction_is_on_the_tire_after_it_is_logged(
+        self, client: AsyncClient, auth_headers, vehicle
+    ):
+        """`add_reading` does not validate against the mount history, so a
+        reading that contradicts a period only shows up here: on the next
+        response, as a fault, once the history validator runs over it."""
+        base = f"/api/vehicles/{vehicle}/tires"
+        made = await client.post(
+            f"{base}/create-and-mount",
+            headers=auth_headers,
+            json={
+                "vin": vehicle,
+                "position": "FL",
+                "mounted_on": "2026-01-01",
+                "mounted_odometer_km": "1000",
+            },
+        )
+        tire_id = made.json()["id"]
+        dismounted = await client.post(
+            f"{base}/{tire_id}/dismount",
+            headers=auth_headers,
+            json={"dismounted_on": "2026-03-01", "dismounted_odometer_km": "2000"},
+        )
+        assert dismounted.status_code == 200, dismounted.text
+        (period_id,) = [p["id"] for p in dismounted.json()["mount_periods"]]
+
+        logged = await client.post(
+            f"{base}/{tire_id}/readings",
+            headers=auth_headers,
+            json={"recorded_at": "2026-02-01", "odometer_km": "3000", "tread_depth_mm": "5.0"},
+        )
+        assert logged.status_code == 201, logged.text
+        faults = [f for f in logged.json()["history_faults"] if f["code"] == "contradicts_reading"]
+        assert len(faults) == 1
+        assert faults[0]["period_id"] == period_id
+        assert faults[0]["message"]
+
+
+@pytest.mark.asyncio
+class TestMessagesInTheUsersUnits:
+    @staticmethod
+    async def _set_unit_preference(client: AsyncClient, headers: dict, preference: str) -> None:
+        response = await client.put(
+            "/api/auth/me/units", headers=headers, json={"unit_preference": preference}
+        )
+        assert response.status_code == 200, response.text
+
+    async def test_a_refusal_speaks_miles_to_a_user_on_miles(
+        self, client: AsyncClient, auth_headers, vehicle
+    ):
+        await self._set_unit_preference(client, auth_headers, "imperial")
+        base = f"/api/vehicles/{vehicle}/tires"
+        made = await client.post(
+            f"{base}/create-and-mount",
+            headers=auth_headers,
+            json={
+                "vin": vehicle,
+                "position": "FL",
+                "mounted_on": "2026-01-01",
+                "mounted_odometer_km": "5000",
+            },
+        )
+        tire_id = made.json()["id"]
+        refused = await client.post(
+            f"{base}/{tire_id}/dismount",
+            headers=auth_headers,
+            json={"dismounted_on": "2026-02-01", "dismounted_odometer_km": "1000"},
+        )
+        assert refused.status_code == 409, refused.text
+        detail = refused.json()["detail"]
+        assert " mi" in detail
+        assert " km" not in detail
+
+    async def test_a_refusal_speaks_km_to_a_user_on_km(
+        self, client: AsyncClient, auth_headers, vehicle
+    ):
+        await self._set_unit_preference(client, auth_headers, "metric")
+        try:
+            base = f"/api/vehicles/{vehicle}/tires"
+            made = await client.post(
+                f"{base}/create-and-mount",
+                headers=auth_headers,
+                json={
+                    "vin": vehicle,
+                    "position": "FL",
+                    "mounted_on": "2026-01-01",
+                    "mounted_odometer_km": "5000",
+                },
+            )
+            tire_id = made.json()["id"]
+            refused = await client.post(
+                f"{base}/{tire_id}/dismount",
+                headers=auth_headers,
+                json={"dismounted_on": "2026-02-01", "dismounted_odometer_km": "1000"},
+            )
+            assert refused.status_code == 409, refused.text
+            detail = refused.json()["detail"]
+            assert " km" in detail
+            assert " mi" not in detail
+        finally:
+            # The suite shares one database with no per-test rollback, and
+            # `test_user` never resets `unit_preference` -- left on metric,
+            # this leaks into every later test that expects the default.
+            await self._set_unit_preference(client, auth_headers, "imperial")
+
+    async def test_the_formatter_follows_the_instance_default_without_a_user(
+        self, db_session: AsyncSession
+    ):
+        """No caller (auth mode none) renders in the INSTANCE default, not a
+        hardcoded one, so this pins the default to miles explicitly rather
+        than relying on `load_default_unit_prefs`'s own fallback."""
+        existing = await db_session.get(Setting, DEFAULT_UNIT_PREFS_KEY)
+        original = existing.value if existing is not None else None
+        if existing is not None:
+            existing.value = json.dumps(IMPERIAL_PRESET.model_dump())
+        else:
+            db_session.add(
+                Setting(
+                    key=DEFAULT_UNIT_PREFS_KEY,
+                    value=json.dumps(IMPERIAL_PRESET.model_dump()),
+                    category="general",
+                )
+            )
+        await db_session.commit()
+        try:
+            formatter = await TireService(db_session).request_distance_formatter(None)
+            assert " mi" in formatter(Decimal("1000"))
+        finally:
+            row = await db_session.get(Setting, DEFAULT_UNIT_PREFS_KEY)
+            if original is None:
+                if row is not None:
+                    await db_session.delete(row)
+            elif row is not None:
+                row.value = original
+            await db_session.commit()

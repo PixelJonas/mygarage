@@ -7281,6 +7281,41 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "HistoryFaultResponse": {
+        "description": "One contradiction in a tire's mount history.\n\nThe same validator that refuses a contradictory write, run over the\nstored history, so a contradiction that blocks writes always has a period\nto badge even when no distance or projection figure is blocked by it.\n`message` is in the requesting user's distance unit.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "counterpart_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Counterpart Id"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "period_id": {
+            "title": "Period Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "period_id",
+          "code",
+          "message"
+        ],
+        "title": "HistoryFaultResponse",
+        "type": "object"
+      },
       "HoursAccumulatedDataPoint": {
         "description": "Single (date, engine_hours) reading from ``hours_records`` history.\n\nThe hours analog of an odometer-over-time series \u2014 no such point series\nis currently exposed for distance in Analytics (``total_km_driven`` /\n``average_km_per_month`` on :class:`VehicleAnalytics` are summary\nscalars, not a series), so this is a new, clearly-named series rather\nthan a literal mirror. Every ``hours_records`` row is a real observation\n(manual, fuel-synced, or service-synced); neither field is nullable \u2014\na row with a null reading cannot exist in the table.",
         "properties": {
@@ -17155,6 +17190,13 @@
               }
             ],
             "title": "Dot Code"
+          },
+          "history_faults": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryFaultResponse"
+            },
+            "title": "History Faults",
+            "type": "array"
           },
           "id": {
             "title": "Id",

@@ -254,6 +254,21 @@ class MountPeriodUpdate(BaseModel):
     notes: str | None = None
 
 
+class HistoryFaultResponse(BaseModel):
+    """One contradiction in a tire's mount history.
+
+    The same validator that refuses a contradictory write, run over the
+    stored history, so a contradiction that blocks writes always has a period
+    to badge even when no distance or projection figure is blocked by it.
+    `message` is in the requesting user's distance unit.
+    """
+
+    period_id: int
+    code: str
+    counterpart_id: int | None = None
+    message: str
+
+
 class TireResponse(TireBase):
     """A tire, with where it is now and what is known about its wear.
 
@@ -295,6 +310,9 @@ class TireResponse(TireBase):
     # The periods a user must supply a number for, so the UI can link to the
     # exact one instead of saying "record a mount".
     blocking_period_ids: list[int] = Field(default_factory=list)
+    # Every contradiction the history validator finds, including ones no
+    # figure is blocked by, so the history drawer can badge and explain them.
+    history_faults: list[HistoryFaultResponse] = Field(default_factory=list)
     below_threshold: bool = False
     mount_periods: list[MountPeriodResponse] = Field(default_factory=list)
     readings: list[TireReadingResponse] = Field(default_factory=list)

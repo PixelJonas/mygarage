@@ -9952,6 +9952,25 @@ export interface components {
             detail?: components["schemas"]["ValidationError"][];
         };
         /**
+         * HistoryFaultResponse
+         * @description One contradiction in a tire's mount history.
+         *
+         *     The same validator that refuses a contradictory write, run over the
+         *     stored history, so a contradiction that blocks writes always has a period
+         *     to badge even when no distance or projection figure is blocked by it.
+         *     `message` is in the requesting user's distance unit.
+         */
+        HistoryFaultResponse: {
+            /** Code */
+            code: string;
+            /** Counterpart Id */
+            counterpart_id?: number | null;
+            /** Message */
+            message: string;
+            /** Period Id */
+            period_id: number;
+        };
+        /**
          * HoursAccumulatedDataPoint
          * @description Single (date, engine_hours) reading from ``hours_records`` history.
          *
@@ -14059,6 +14078,8 @@ export interface components {
             distance_status?: string | null;
             /** Dot Code */
             dot_code?: string | null;
+            /** History Faults */
+            history_faults?: components["schemas"]["HistoryFaultResponse"][];
             /** Id */
             id: number;
             /** Installed Date */

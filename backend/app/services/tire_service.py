@@ -19,6 +19,7 @@ from app.models.reminder import Reminder
 from app.models.tire import Tire, TireMountPeriod, TireReading, TireSet
 from app.models.user import User
 from app.schemas.tire import (
+    HistoryFaultResponse,
     MountPeriodResponse,
     MountPeriodUpdate,
     TireCreate,
@@ -33,10 +34,13 @@ from app.schemas.tire import (
     TireUpdate,
 )
 from app.services.tire_history import (
+    DistanceFormatter,
     FaultMap,
+    distance_formatter,
     fault_map,
     new_or_touched_faults,
     odometer_contradictions,
+    validate_period_history,
 )
 from app.services.tire_results import (
     DistanceResult,
@@ -50,6 +54,8 @@ from app.services.vehicle_lock import lock_vehicle_for_write
 from app.utils.datetime_utils import utc_now
 from app.utils.logging_utils import sanitize_for_log
 from app.utils.odometer_sync import auto_sync_marker, sync_odometer_from_record
+from app.utils.render_context import render_context_for_request
+from app.utils.unit_adapters import adapter_for
 
 logger = logging.getLogger(__name__)
 
@@ -637,6 +643,20 @@ class TireService:
             self.db, vin, when, odometer_km, source_type, source_id, commit=False
         )
 
+    async def request_distance_formatter(self, current_user: User | None) -> DistanceFormatter:
+        """The distance formatter for this request's messages.
+
+        The caller's units, or the instance default when there is no caller
+        (auth mode none), through the one policy every request-driven surface
+        uses. Resolved once per request and passed down, never per tire.
+
+        Public because the set fit in `tire_set_service` resolves the same
+        formatter, the same reason `refuse_contradictions` and
+        `open_period_ids` are public.
+        """
+        context = await render_context_for_request(current_user, self.db)
+        return distance_formatter(adapter_for(context.units, "distance"))
+
     @staticmethod
     def _derived_installed_date(tire: Tire) -> dt.date | None:
         """The `mounted_on` of the earliest period THAT HAS ONE.
@@ -656,6 +676,7 @@ class TireService:
     def _to_response(
         self,
         tire: Tire,
+        format_distance: DistanceFormatter,
         include_readings: bool = True,
         current_odometer: Decimal | None = None,
     ) -> TireResponse:
@@ -692,6 +713,17 @@ class TireService:
         payload.blocking_period_ids = sorted(
             {*distance.blocking_period_ids, *wear.blocking_period_ids}
         )
+        payload.history_faults = [
+            HistoryFaultResponse(
+                period_id=fault.period_id,
+                code=fault.code,
+                counterpart_id=fault.counterpart_id,
+                message=fault.message,
+            )
+            for fault in validate_period_history(
+                tire.mount_periods or [], tire.readings or [], format_distance=format_distance
+            )
+        ]
         payload.installed_date = self._derived_installed_date(tire)
         payload.below_threshold = below
         payload.mount_periods = [
@@ -714,6 +746,7 @@ class TireService:
         vin = vin.upper().strip()
         try:
             await get_vehicle_or_403(vin, current_user, self.db)
+            format_distance = await self.request_distance_formatter(current_user)
             query = select(Tire).where(Tire.vin == vin)
             if not include_retired:
                 # A retired tire is history, not inventory. It still appears in
@@ -731,7 +764,10 @@ class TireService:
             )
             tires = result.scalars().unique().all()
             current_odometer = await self._current_odometer(vin)
-            responses = [self._to_response(t, current_odometer=current_odometer) for t in tires]
+            responses = [
+                self._to_response(t, format_distance, current_odometer=current_odometer)
+                for t in tires
+            ]
             return TireListResponse(tires=responses, total=len(responses))
         except HTTPException:
             raise
@@ -766,6 +802,7 @@ class TireService:
         vin = vin.upper().strip()
         try:
             await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
+            format_distance = await self.request_distance_formatter(current_user)
             fields = data.model_dump(exclude={"vin"})
             fields["storage_location"] = normalise_storage_location(fields.get("storage_location"))
             tire = Tire(vin=vin, **fields)
@@ -782,7 +819,7 @@ class TireService:
                 .options(selectinload(Tire.readings), selectinload(Tire.mount_periods))
             )
             tire = result.scalar_one()
-            return await self._reload_and_sync(tire.id, vin)
+            return await self._reload_and_sync(tire.id, vin, format_distance)
         except HTTPException:
             raise
         except OperationalError as e:
@@ -817,6 +854,7 @@ class TireService:
         vin = vin.upper().strip()
         await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
         await lock_vehicle_for_write(self.db, vin)
+        format_distance = await self.request_distance_formatter(current_user)
         tire = await self._get_tire_for_update(vin, tire_id)
 
         if tire.retired_on is not None:
@@ -861,7 +899,7 @@ class TireService:
         )
         tire.mount_periods.append(period)
         await self.db.flush()
-        self.refuse_contradictions(tire, before, {period.id})
+        self.refuse_contradictions(tire, before, {period.id}, format_distance)
         # Refreshed so the in-memory object carries the column's quantized
         # precision (`Numeric(10, 2)`) instead of whatever scale the
         # request's JSON happened to use. The append above means no later
@@ -872,7 +910,7 @@ class TireService:
         )
         await self.db.commit()
         # The reminder title names the position, so mounting changes it.
-        return await self._reload_and_sync(tire.id, vin)
+        return await self._reload_and_sync(tire.id, vin, format_distance)
 
     async def dismount_tire(
         self, vin: str, tire_id: int, data: TireDismountRequest, current_user: User
@@ -883,6 +921,7 @@ class TireService:
         vin = vin.upper().strip()
         await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
         await lock_vehicle_for_write(self.db, vin)
+        format_distance = await self.request_distance_formatter(current_user)
         tire = await self._get_tire_for_update(vin, tire_id)
         before = fault_map(tire.mount_periods or [], tire.readings or [])
 
@@ -914,7 +953,9 @@ class TireService:
             if data.notes:
                 open_period.notes = data.notes
         await self.db.flush()
-        self.refuse_contradictions(tire, before, {open_period.id} if open_period else set())
+        self.refuse_contradictions(
+            tire, before, {open_period.id} if open_period else set(), format_distance
+        )
         # Published even when there is no open period to close: the user still
         # read that number off the dashboard. Owned by the period when there is
         # one, so the editor can move it later; by the tire otherwise.
@@ -931,7 +972,7 @@ class TireService:
                 vin, dismounted_on, data.dismounted_odometer_km, ODOMETER_SOURCE_TIRE, tire.id
             )
         await self.db.commit()
-        return await self._reload_response(tire.id, vin)
+        return await self._reload_response(tire.id, vin, format_distance)
 
     async def create_and_mount(
         self, vin: str, data: TireCreateAndMountRequest, current_user: User
@@ -947,6 +988,7 @@ class TireService:
         vin = vin.upper().strip()
         await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
         await lock_vehicle_for_write(self.db, vin)
+        format_distance = await self.request_distance_formatter(current_user)
 
         occupant = (
             await self.db.execute(
@@ -983,7 +1025,7 @@ class TireService:
         )
         tire.mount_periods.append(period)
         await self.db.flush()
-        self.refuse_contradictions(tire, {}, {period.id})
+        self.refuse_contradictions(tire, {}, {period.id}, format_distance)
         # Refreshed so the in-memory object carries the column's quantized
         # precision (`Numeric(10, 2)`) instead of whatever scale the
         # request's JSON happened to use ("1000" vs "1000.00"). The append
@@ -995,7 +1037,7 @@ class TireService:
             vin, mounted_on, data.mounted_odometer_km, ODOMETER_SOURCE_TIRE_MOUNT, period.id
         )
         await self.db.commit()
-        return await self._reload_and_sync(tire.id, vin)
+        return await self._reload_and_sync(tire.id, vin, format_distance)
 
     async def rotate_tires(
         self, vin: str, data: TireRotationRequest, current_user: User
@@ -1021,6 +1063,7 @@ class TireService:
         vin = vin.upper().strip()
         await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
         await lock_vehicle_for_write(self.db, vin)
+        format_distance = await self.request_distance_formatter(current_user)
 
         moving_ids = [move.tire_id for move in data.moves]
         tires = {
@@ -1081,7 +1124,7 @@ class TireService:
         )
         for tid, tire in tires.items():
             self.refuse_contradictions(
-                tire, befores[tid], open_before[tid] | self.open_period_ids(tire)
+                tire, befores[tid], open_before[tid] | self.open_period_ids(tire), format_distance
             )
 
         # ONE reading however many tires moved: the odometer is a fact about
@@ -1115,7 +1158,9 @@ class TireService:
         return tire
 
     @staticmethod
-    def refuse_contradictions(tire: Tire, before: FaultMap, touched: set[int]) -> None:
+    def refuse_contradictions(
+        tire: Tire, before: FaultMap, touched: set[int], format_distance: DistanceFormatter
+    ) -> None:
         """Second half of the writer sequence: capture, mutate, flush, VALIDATE, commit.
 
         Incremental, not whole-history: `before` is the fault map captured
@@ -1130,8 +1175,15 @@ class TireService:
         they have ids. A refusal raises before the commit; the request's
         rollback discards what the flush wrote. Public because the set fit in
         `tire_set_service` runs the same sequence.
+
+        `format_distance` renders the refusal's message in the requesting
+        user's distance unit. Required, not defaulted, so a caller that adds a
+        new writer and forgets it is a type error instead of a message
+        quietly stuck in kilometres.
         """
-        after = fault_map(tire.mount_periods or [], tire.readings or [])
+        after = fault_map(
+            tire.mount_periods or [], tire.readings or [], format_distance=format_distance
+        )
         faults = new_or_touched_faults(before, after, touched)
         if faults:
             raise HTTPException(status_code=409, detail=faults[0].message)
@@ -1145,7 +1197,9 @@ class TireService:
         """
         return {p.id for p in tire.mount_periods or [] if p.dismounted_on is None}
 
-    async def _reload_and_sync(self, tire_id: int, vin: str) -> TireResponse:
+    async def _reload_and_sync(
+        self, tire_id: int, vin: str, format_distance: DistanceFormatter
+    ) -> TireResponse:
         """Reload, run the low-tread reminder sync, and serialise.
 
         The sync has to happen on every path that can change a tire's tread or
@@ -1163,9 +1217,11 @@ class TireService:
             )
         ).scalar_one()
         await self._sync_low_tread_reminder(tire)
-        return await self._reload_response(tire_id, vin)
+        return await self._reload_response(tire_id, vin, format_distance)
 
-    async def _reload_response(self, tire_id: int, vin: str) -> TireResponse:
+    async def _reload_response(
+        self, tire_id: int, vin: str, format_distance: DistanceFormatter
+    ) -> TireResponse:
         """Re-query and serialise.
 
         Re-queried rather than refreshed: `updated_at` is a server-side
@@ -1180,7 +1236,9 @@ class TireService:
                 .options(selectinload(Tire.readings), selectinload(Tire.mount_periods))
             )
         ).scalar_one()
-        return self._to_response(tire, current_odometer=await self._current_odometer(vin))
+        return self._to_response(
+            tire, format_distance, current_odometer=await self._current_odometer(vin)
+        )
 
     async def update_tire(
         self, vin: str, tire_id: int, data: TireUpdate, current_user: User
@@ -1190,6 +1248,7 @@ class TireService:
         vin = vin.upper().strip()
         try:
             await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
+            format_distance = await self.request_distance_formatter(current_user)
             result = await self.db.execute(
                 select(Tire)
                 .where(Tire.id == tire_id, Tire.vin == vin)
@@ -1232,7 +1291,9 @@ class TireService:
             # brand came back reporting the tire's distance as unknown. The
             # wrong figure never rendered because the client refetches, which
             # is exactly why it survived.
-            return self._to_response(tire, current_odometer=await self._current_odometer(vin))
+            return self._to_response(
+                tire, format_distance, current_odometer=await self._current_odometer(vin)
+            )
         except HTTPException:
             raise
         except OperationalError as e:
@@ -1258,6 +1319,7 @@ class TireService:
         vin = vin.upper().strip()
         await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
         await lock_vehicle_for_write(self.db, vin)
+        format_distance = await self.request_distance_formatter(current_user)
         tire = await self._get_tire_for_update(vin, tire_id)
         before = fault_map(tire.mount_periods or [], tire.readings or [])
 
@@ -1296,7 +1358,9 @@ class TireService:
         if data.storage_location is not None:
             tire.storage_location = normalise_storage_location(data.storage_location)
         await self.db.flush()
-        self.refuse_contradictions(tire, before, {closed_period.id} if closed_period else set())
+        self.refuse_contradictions(
+            tire, before, {closed_period.id} if closed_period else set(), format_distance
+        )
         if closed_period is not None:
             await self._publish_odometer(
                 vin,
@@ -1310,7 +1374,7 @@ class TireService:
                 vin, retired_on, data.dismounted_odometer_km, ODOMETER_SOURCE_TIRE, tire.id
             )
         await self.db.commit()
-        return await self._reload_response(tire.id, vin)
+        return await self._reload_response(tire.id, vin, format_distance)
 
     async def update_mount_period(
         self,
@@ -1335,6 +1399,7 @@ class TireService:
         vin = vin.upper().strip()
         await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
         await lock_vehicle_for_write(self.db, vin)
+        format_distance = await self.request_distance_formatter(current_user)
         tire = await self._get_tire_for_update(vin, tire_id)
         period = next((p for p in tire.mount_periods or [] if p.id == period_id), None)
         if period is None:
@@ -1369,7 +1434,7 @@ class TireService:
             period.is_assumed = False
 
         await self.db.flush()
-        self.refuse_contradictions(tire, before, {period.id})
+        self.refuse_contradictions(tire, before, {period.id}, format_distance)
 
         if (period.mounted_on, period.mounted_odometer_km) != old_mount:
             await self._follow_period_event(
@@ -1389,7 +1454,7 @@ class TireService:
             )
         await self.db.commit()
         # `_reload_response`, not `_reload_and_sync`: a period edit changes no tread.
-        return await self._reload_response(tire.id, vin)
+        return await self._reload_response(tire.id, vin, format_distance)
 
     async def _follow_period_event(
         self,
@@ -1464,12 +1529,13 @@ class TireService:
         vin = vin.upper().strip()
         await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
         await lock_vehicle_for_write(self.db, vin)
+        format_distance = await self.request_distance_formatter(current_user)
         tire = await self._get_tire_for_update(vin, tire_id)
         if tire.retired_on is None:
             raise HTTPException(status_code=409, detail="This tire is not retired.")
         tire.retired_on = None
         await self.db.commit()
-        return await self._reload_and_sync(tire.id, vin)
+        return await self._reload_and_sync(tire.id, vin, format_distance)
 
     async def delete_tire(self, vin: str, tire_id: int, current_user: User) -> None:
         """Permanently delete a tire and everything measured about it.
@@ -1536,6 +1602,7 @@ class TireService:
         vin = vin.upper().strip()
         try:
             await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
+            format_distance = await self.request_distance_formatter(current_user)
             result = await self.db.execute(
                 select(Tire)
                 .where(Tire.id == tire_id, Tire.vin == vin)
@@ -1600,7 +1667,7 @@ class TireService:
                 .options(selectinload(Tire.readings), selectinload(Tire.mount_periods))
             )
             tire = result.scalar_one()
-            return await self._reload_and_sync(tire.id, vin)
+            return await self._reload_and_sync(tire.id, vin, format_distance)
         except HTTPException:
             raise
         except OperationalError as e:
@@ -1634,6 +1701,7 @@ class TireService:
         vin = vin.upper().strip()
         try:
             await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
+            format_distance = await self.request_distance_formatter(current_user)
             tire = (
                 await self.db.execute(
                     select(Tire)
@@ -1688,7 +1756,7 @@ class TireService:
             # the point. It completes a low-tread reminder once the tire's
             # tread is measured healthy again, and leaves one pending when the
             # tread is still low or now unknown.
-            await self._reload_and_sync(tire.id, vin)
+            await self._reload_and_sync(tire.id, vin, format_distance)
         except HTTPException:
             raise
         except OperationalError as e:
