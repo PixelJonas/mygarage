@@ -436,7 +436,9 @@ async def export_odometer_records_csv(
 
     # Get all odometer records
     result = await db.execute(
-        select(OdometerRecord).where(OdometerRecord.vin == vin).order_by(OdometerRecord.date.desc())
+        select(OdometerRecord)
+        .where(OdometerRecord.vin == vin)
+        .order_by(OdometerRecord.date.desc(), OdometerRecord.id.desc())
     )
     records = result.scalars().all()
 
@@ -779,7 +781,9 @@ async def export_vehicle_json(
     fuel_records = fuel_result.scalars().all()
 
     odometer_result = await db.execute(
-        select(OdometerRecord).where(OdometerRecord.vin == vin).order_by(OdometerRecord.date.desc())
+        select(OdometerRecord)
+        .where(OdometerRecord.vin == vin)
+        .order_by(OdometerRecord.date.desc(), OdometerRecord.id.desc())
     )
     odometer_records = odometer_result.scalars().all()
 

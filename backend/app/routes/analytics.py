@@ -686,7 +686,7 @@ async def get_maintenance_predictions(
         odometer_result = await db.execute(
             select(OdometerRecord.odometer_km)
             .where(OdometerRecord.vin == vin)
-            .order_by(OdometerRecord.date.desc())
+            .order_by(OdometerRecord.date.desc(), OdometerRecord.id.desc())
             .limit(1)
         )
         current_odometer_km = odometer_result.scalar_one_or_none()

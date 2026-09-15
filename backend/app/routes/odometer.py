@@ -57,7 +57,7 @@ async def list_odometer_records(
         result = await db.execute(
             select(OdometerRecord)
             .where(OdometerRecord.vin == vin)
-            .order_by(OdometerRecord.date.desc())
+            .order_by(OdometerRecord.date.desc(), OdometerRecord.id.desc())
             .offset(skip)
             .limit(limit)
         )
@@ -73,7 +73,7 @@ async def list_odometer_records(
         latest_result = await db.execute(
             select(OdometerRecord.odometer_km)
             .where(OdometerRecord.vin == vin)
-            .order_by(OdometerRecord.date.desc())
+            .order_by(OdometerRecord.date.desc(), OdometerRecord.id.desc())
             .limit(1)
         )
         latest_odometer_km = latest_result.scalar_one_or_none()

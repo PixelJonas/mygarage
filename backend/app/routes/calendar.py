@@ -162,7 +162,7 @@ async def get_calendar_events(
                 odo_result = await db.execute(
                     select(OdometerRecord.odometer_km)
                     .where(OdometerRecord.vin == reminder.vin)
-                    .order_by(OdometerRecord.date.desc())
+                    .order_by(OdometerRecord.date.desc(), OdometerRecord.id.desc())
                     .limit(1)
                 )
                 current_odometer_km = odo_result.scalar_one_or_none()
@@ -373,7 +373,7 @@ async def calculate_average_km_per_day(vin: str, db: AsyncSession) -> float | No
     odometer_query = (
         select(OdometerRecord)
         .where(OdometerRecord.vin == vin)
-        .order_by(desc(OdometerRecord.date))
+        .order_by(desc(OdometerRecord.date), desc(OdometerRecord.id))
         .limit(30)
     )
 
@@ -405,7 +405,7 @@ async def estimate_date_from_mileage(
     odometer_query = (
         select(OdometerRecord)
         .where(OdometerRecord.vin == vin)
-        .order_by(desc(OdometerRecord.date))
+        .order_by(desc(OdometerRecord.date), desc(OdometerRecord.id))
         .limit(1)
     )
 
