@@ -167,6 +167,8 @@ on:
       # setup-bun resolves the interpreter from this, and the whole run is
       # bun subprocesses. It was missing from the "exact" list above.
       - '.bun-version'
+      # Same reasoning for Node: the ESLint leg runs on it.
+      - '.nvmrc'
       - '.github/workflows/units-gate.yml'
   pull_request:
     paths:
@@ -187,6 +189,8 @@ on:
       # setup-bun resolves the interpreter from this, and the whole run is
       # bun subprocesses. It was missing from the "exact" list above.
       - '.bun-version'
+      # Same reasoning for Node: the ESLint leg runs on it.
+      - '.nvmrc'
       - '.github/workflows/units-gate.yml'
   # Ignores the receipt below, which is what bounds the drift a content
   # fingerprint cannot see: the ubuntu-latest image, and anything bun resolves
@@ -247,6 +251,7 @@ jobs:
             'frontend/package.json',
             'frontend/bun.lock',
             '.bun-version',
+            '.nvmrc',
             '.github/workflows/units-gate.yml'
             ) }}
         run: |
@@ -366,6 +371,14 @@ jobs:
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version-file: '.bun-version'
+
+      # ESLint (and anything else with a `#!/usr/bin/env node` bin) runs on
+      # Node even under `bun run`, so pin it to the same major as local.
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: '.nvmrc'
+          package-manager-cache: false
 
       # The gate loads the real TypeScript compiler out of node_modules to
       # resolve what an identifier refers to, and the ESLint leg needs the

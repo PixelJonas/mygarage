@@ -151,3 +151,18 @@ describe('VehicleWizard — canonical fuel-type select', () => {
     expect(await screen.findByText('edit.vehicleDetails')).toBeInTheDocument()
   })
 })
+
+describe('VehicleWizard — duplicate-VIN warning (issue #69)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockedVinService.validate.mockResolvedValue({ valid: true, vin: TEST_VIN })
+  })
+
+  it('warns as soon as a complete VIN matches an existing vehicle', async () => {
+    mockedVinService.exists.mockResolvedValue(true)
+    renderAndEnterVin()
+
+    expect(await screen.findByText('vinInput.alreadyExists')).toBeInTheDocument()
+    expect(mockedVinService.exists).toHaveBeenCalledWith(TEST_VIN)
+  })
+})

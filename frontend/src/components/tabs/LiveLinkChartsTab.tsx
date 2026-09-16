@@ -279,7 +279,11 @@ export default function LiveLinkChartsTab({ vin }: LiveLinkChartsTabProps) {
                     borderRadius: '8px',
                     color: 'var(--color-text)',
                   }}
-                  labelFormatter={(value) => formatDateTime(value, timeFormat, { seconds: true })}
+                  labelFormatter={(label) =>
+                    typeof label === 'number' || typeof label === 'string'
+                      ? formatDateTime(label, timeFormat, { seconds: true })
+                      : label
+                  }
                   formatter={(value, name) => {
                     const param = parameters.find((p) => p.param_key === name)
                     const displayValue = typeof value === 'number' ? value.toFixed(2) : t('livelinkCharts.notAvailable')

@@ -34,11 +34,12 @@ describe('IconButton', () => {
 
   // This only proves the icon renders — lucide-react sets aria-hidden="true"
   // on its own icons by default whenever no other a11y prop is passed (dist/
-  // cjs/lucide-react.js: `...!children && !hasA11yProp(rest) && { 'aria-hidden':
-  // 'true' }`), so this assertion passes whether or not IconButton sets the
-  // attribute itself. The real contract — that IconButton itself sets
-  // aria-hidden, not just that lucide defaults to it — is covered by the
-  // bare-icon test below, which uses an icon with no default.
+  // cjs/lucide-react.js, buildLucideIconNode: `params.hasA11yProp === false`,
+  // fed `Boolean(children) || hasA11yProp(rest)`), so this assertion passes
+  // whether or not IconButton sets the attribute itself. The real contract —
+  // that IconButton itself sets aria-hidden, not just that lucide defaults to
+  // it — is covered by the bare-icon test below, which uses an icon with no
+  // default.
   it('renders the glyph hidden from the accessible name (lucide default, not a guard)', () => {
     const { container } = render(<IconButton icon={Trash2} label="Delete" />)
     expect(container.querySelector('svg')).toHaveAttribute('aria-hidden', 'true')

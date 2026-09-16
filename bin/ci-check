@@ -11,7 +11,8 @@
 # gates with CI's exact lockfile-pinned dependency closure and CI's exact
 # Bun version, so what passes here passes there.
 #
-# Host requirements: docker + bun (matching .bun-version). --all also
+# Host requirements: docker + bun (matching .bun-version) + node (major
+# matching .nvmrc). --all also
 # requires uv on PATH (used to provision the backend venv that Playwright
 # spawns from). Curl install: https://astral.sh/uv/install.sh
 #
@@ -47,6 +48,21 @@ if [[ ! -f "$REPO_ROOT/.bun-version" ]]; then
 fi
 BUN_VERSION="$(tr -d '[:space:]' < "$REPO_ROOT/.bun-version")"
 
+if [[ ! -f "$REPO_ROOT/.nvmrc" ]]; then
+  echo "ERROR: $REPO_ROOT/.nvmrc missing. CI parity requires this file." >&2
+  exit 3
+fi
+# vitest, eslint, tsc and Playwright run on Node even under `bun run`. CI's
+# setup-node resolves .nvmrc to the newest release it has for that spec, so
+# parity is the MAJOR, not the exact patch.
+NODE_SPEC="$(tr -d '[:space:]' < "$REPO_ROOT/.nvmrc")"
+NODE_MAJOR="${NODE_SPEC#v}"
+NODE_MAJOR="${NODE_MAJOR%%.*}"
+if [[ ! "$NODE_MAJOR" =~ ^[0-9]+$ ]]; then
+  echo "ERROR: .nvmrc must name a numeric Node version (got '$NODE_SPEC')." >&2
+  exit 3
+fi
+
 do_backend=1; do_frontend=1; do_freshness=1; do_playwright=0; do_docker_build=0
 do_tripwire=$HAS_TRIPWIRE; rebuild=0; skipped=()
 
@@ -74,6 +90,16 @@ if [[ "$do_frontend" -eq 1 || "$do_freshness" -eq 1 || "$do_playwright" -eq 1 ]]
   if [[ "$host_bun" != "$BUN_VERSION" ]]; then
     echo "ERROR: bun version drift (host=$host_bun, CI=$BUN_VERSION)." >&2
     echo "       fix: bun upgrade --bun-version $BUN_VERSION  OR use asdf/proto/mise." >&2
+    exit 3
+  fi
+  if ! command -v node >/dev/null 2>&1; then
+    echo "ERROR: node not on PATH (CI pin: $NODE_SPEC). Install node first." >&2
+    exit 3
+  fi
+  host_node="$(node -p 'process.versions.node')"
+  if [[ "${host_node%%.*}" != "$NODE_MAJOR" ]]; then
+    echo "ERROR: node version drift (host=$host_node, CI=$NODE_SPEC from .nvmrc)." >&2
+    echo "       fix: nvm install $NODE_MAJOR && nvm use $NODE_MAJOR" >&2
     exit 3
   fi
 fi

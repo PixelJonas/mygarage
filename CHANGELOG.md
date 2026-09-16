@@ -7,6 +7,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Frontend: `bun audit` is clean with no `overrides`; every transitive pin is removed because each parent now resolves a patched version.
+
+### Build
+- Bun 1.4.2 (`.bun-version` and the Dockerfile builder).
+- Node 24 LTS, pinned in `.nvmrc`; CI sets it up and `bin/ci-check` refuses a different major.
+- CI: shared-workflows v1.6.0-rc1.
+- Frontend: `@vitejs/plugin-react` replaces the SWC plugin, dropping `@swc/core`.
+- Frontend: `vite.config.ts` is the single Vite and Vitest config; the shadowing `vitest.config.ts` is removed.
+- Frontend: Vite config moves off deprecated options (`rolldownOptions`, `codeSplitting`, `import.meta.dirname`).
+- Frontend: ESLint config uses `defineConfig` from `eslint/config`.
+- Frontend: tsconfig drops `baseUrl`, which TypeScript 7 removes.
+- Frontend: coverage no longer counts the shared test helpers under `src/__tests__/`.
+
+### Dev Dependencies
+- **@playwright/test**: 1.61.1 → 1.63.0
+- **@testing-library/dom**: added at 10.4.2
+- **@testing-library/jest-dom**: 6.9.1 → 7.0.1
+- **@testing-library/react**: 16.3.2 → 16.3.3
+- **@testing-library/user-event**: 14.6.1 → 14.6.7
+- **@types/leaflet**: 1.9.21 → 1.9.22
+- **@types/node**: 26.1.1 → 24.13.5
+- **@types/react**: 19.2.17 → 19.3.0
+- **@types/react-dom**: 19.2.3 → 19.3.0
+- **@typescript-eslint/eslint-plugin**: 8.64.0 → 8.70.0
+- **@typescript-eslint/parser**: 8.64.0 → 8.70.0
+- **@vitejs/plugin-react**: added at 6.1.1
+- **@vitejs/plugin-react-swc**: 4.3.1 → removed
+- **@vitest/coverage-v8**: 4.1.10 → 5.0.1
+- **@vitest/ui**: 4.1.10 → 5.0.1
+- **autoprefixer**: 10.5.4 → removed
+- **eslint**: 10.7.0 → 10.10.0
+- **eslint-plugin-react-refresh**: 0.5.3 → 0.5.7
+- **globals**: 17.7.0 → 17.12.0
+- **jsdom**: 29.1.1 → 30.0.1
+- **typescript-eslint**: 8.64.0 → 8.70.0
+- **vite**: 8.1.5 → 8.3.0
+- **vitest**: 4.1.10 → 5.0.1
+
+### App Dependencies
+- **@hookform/resolvers**: 5.4.0 → 5.9.1
+- **@schedule-x/calendar**: 4.6.1 → 4.8.0
+- **@schedule-x/calendar-controls**: 4.6.1 → 4.8.0
+- **@schedule-x/events-service**: 4.6.1 → 4.8.0
+- **@schedule-x/theme-default**: 4.6.1 → 4.8.0
+- **@tanstack/react-query**: 5.101.2 → 5.103.1
+- **@tanstack/react-query-devtools**: 5.101.2 → 5.103.1
+- **axios**: 1.18.1 → 1.20.0
+- **i18next**: 26.3.6 → 26.4.2
+- **i18next-http-backend**: 4.0.0 → 4.0.2
+- **lucide-react**: 1.25.0 → 1.46.0
+- **react**: 19.2.7 → 19.3.0
+- **react-dom**: 19.2.7 → 19.3.0
+- **react-hook-form**: 7.82.0 → 7.88.0
+- **react-i18next**: 17.0.10 → 17.0.14
+- **react-is**: 19.2.7 → 19.3.0
+- **react-router-dom**: 7.18.1 → 7.18.4
+- **recharts**: 3.9.2 → 3.10.1
+- **sonner**: 2.0.7 → 2.0.8
+- **temporal-polyfill**: 1.0.1 → 1.0.5
+- **zod**: 4.4.3 → 4.6.5
+
 ## [3.4.0] - 2026-09-15
 
 ### Upgrade note

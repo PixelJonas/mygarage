@@ -890,7 +890,7 @@
   {
    "path": "src/components/VINInput.tsx",
    "disposition": "no unit behaviour",
-   "digest": "8a0447a3949cfa3ed50e5a8d23dc95bc6738e25b5bd9841755cc364e7451a5bf",
+   "digest": "98a5c0854fdbbb7d370624ecb3b68fd47567288a659ba321376f970f60407292",
    "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched NONE of them."
   },
   {
@@ -1293,7 +1293,7 @@
   {
    "path": "src/components/tabs/LiveLinkChartsTab.tsx",
    "disposition": "unverifiable",
-   "digest": "006f39e201017b86c8a532a2767b01289abd69384c212bf1ff34b22bcffd8558",
+   "digest": "0cafc00f17f3bac691ff205d6408516a7543b5ff15ebd20303bf2ea19aff8a89",
    "reason": "L6: the drive-session and trip columns come from unit-AMBIGUOUS telemetry. The frontend conversion can be shown correct relative to the API contract; the real-world stored quantity cannot be, because nothing records which PID produced a value or whether it was normalised. WHAT WOULD SETTLE IT: the backend must record the source PID and a normalised flag per telemetry value, so a consumer can tell kilometres from an unnormalised custom-PID delta (design:129). Deferred beyond phase 4. renders param.unit verbatim from the device and its unit-conversion hook is commented out."
   },
   {

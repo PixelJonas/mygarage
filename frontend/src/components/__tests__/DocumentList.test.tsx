@@ -32,6 +32,9 @@ beforeEach(() => {
   vi.spyOn(window, 'confirm').mockReturnValue(true)
   Object.defineProperty(window.URL, 'createObjectURL', { value: vi.fn(() => 'blob:x'), writable: true, configurable: true })
   Object.defineProperty(window.URL, 'revokeObjectURL', { value: vi.fn(), writable: true, configurable: true })
+  // jsdom cannot navigate to the blob: URL a download anchor points at, and
+  // logs "Not implemented: navigation to another Document" on every click.
+  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
   useDocumentsMock.mockReturnValue({ data: { documents: [doc] }, isLoading: false, error: null })
 })
 

@@ -46,8 +46,8 @@ describe('Button', () => {
 
   // This only proves the icon renders next to the label — lucide-react sets
   // aria-hidden="true" on its own icons by default whenever no other a11y
-  // prop is passed (dist/cjs/lucide-react.js:
-  // `...!children && !hasA11yProp(rest) && { 'aria-hidden': 'true' }`), and an
+  // prop is passed (dist/cjs/lucide-react.js, buildLucideIconNode:
+  // `params.hasA11yProp === false`, fed `Boolean(children) || hasA11yProp(rest)`), and an
   // <svg> with no text content contributes nothing to accessible-name
   // computation either way — so this test passes whether or not Button sets
   // aria-hidden itself. The real contract is covered by the bare-icon test
