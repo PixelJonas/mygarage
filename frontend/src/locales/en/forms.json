@@ -745,6 +745,17 @@
     "saveAction": "save the tax record",
     "selectType": "Select type"
   },
+  "financing": {
+    "createTitle": "Add Financing Record",
+    "editTitle": "Edit Financing Record",
+    "date": "Date",
+    "category": "Category",
+    "selectCategory": "Select category",
+    "vendor": "Vendor / Lender",
+    "taxAmount": "Tax",
+    "taxAmountHint": "Net/VAT portion of the amount, if known",
+    "saveAction": "save the financing record"
+  },
   "toll": {
     "addTag": "Add Tag",
     "addTransaction": "Add Transaction",
@@ -936,6 +947,11 @@
     "inspection": "Inspection",
     "propertyTax": "Property Tax",
     "tolls": "Tolls"
+  },
+  "financingCategories": {
+    "leasePayment": "Lease Payment",
+    "loanPayment": "Loan Payment",
+    "upfrontFee": "Upfront Fee"
   },
   "tollSystems": {
     "ezTag": "EZ TAG",
