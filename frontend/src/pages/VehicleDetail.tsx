@@ -21,6 +21,7 @@ import {
   Shield,
   AlertTriangle,
   CreditCard,
+  Landmark,
   MapPin,
   Radio,
   Activity,
@@ -50,6 +51,7 @@ import TollsTab from '../components/tabs/TollsTab'
 import SuppliesUsedTab from '../components/SuppliesUsedTab'
 import SafetyTab from '../components/tabs/SafetyTab'
 import TaxRecordList from '../components/TaxRecordList'
+import FinancingRecordList from '../components/FinancingRecordList'
 import TireList from '../components/TireList'
 import SpotRentalsTab from '../components/tabs/SpotRentalsTab'
 import PropaneTab from '../components/tabs/PropaneTab'
@@ -90,7 +92,7 @@ type ImportSectionResult = {
 
 export type ModalType = 'remove' | 'transfer' | 'sharing' | 'windowSticker' | 'torqueSource' | null
 export type PrimaryTabType = 'overview' | 'media' | 'maintenance' | 'fuel' | 'tracking' | 'financial' | 'livelink'
-export type SubTabType = 'photos' | 'documents' | 'service' | 'fuel' | 'def' | 'propane' | 'odometer' | 'hours' | 'notes' | 'warranties' | 'insurance' | 'tax' | 'tolls' | 'spotrentals' | 'suppliesused' | 'recalls' | 'reports' | 'reminders' | 'live' | 'dtcs' | 'sessions' | 'charts' | 'trips' | 'tires'
+export type SubTabType = 'photos' | 'documents' | 'service' | 'fuel' | 'def' | 'propane' | 'odometer' | 'hours' | 'notes' | 'warranties' | 'insurance' | 'tax' | 'tolls' | 'financing' | 'spotrentals' | 'suppliesused' | 'recalls' | 'reports' | 'reminders' | 'live' | 'dtcs' | 'sessions' | 'charts' | 'trips' | 'tires'
 
 export default function VehicleDetail() {
   const { t } = useTranslation('vehicles')
@@ -278,6 +280,7 @@ export default function VehicleDetail() {
       'documents': { primary: 'media', sub: 'documents' },
       'tax': { primary: 'financial', sub: 'tax' },
       'tolls': { primary: 'financial', sub: 'tolls' },
+      'financing': { primary: 'financial', sub: 'financing' },
       'spotrentals': { primary: 'financial', sub: 'spotrentals' },
       'recalls': { primary: 'maintenance', sub: 'recalls' },
       'tires': { primary: 'maintenance', sub: 'tires' },
@@ -593,6 +596,7 @@ export default function VehicleDetail() {
       { id: 'insurance' as const, label: t('detail.misc.insurance'), icon: Shield },
       { id: 'tax' as const, label: t('detail.misc.taxRegistration'), icon: DollarSign },
       { id: 'tolls' as const, label: t('detail.misc.tolls'), icon: CreditCard },
+      { id: 'financing' as const, label: t('financingList.title'), icon: Landmark },
       { id: 'spotrentals' as const, label: t('spotRentalList.title'), icon: MapPin, visible: isRVOrFifthWheel },
       { id: 'suppliesused' as const, label: t('detail.misc.supplies'), icon: Package },
     ],
@@ -739,6 +743,7 @@ export default function VehicleDetail() {
         {activePrimaryTab === 'financial' && activeSubTab === 'insurance' && vin && <InsuranceTab vin={vin} />}
         {activePrimaryTab === 'financial' && activeSubTab === 'tax' && vin && <TaxRecordList vin={vin} />}
         {activePrimaryTab === 'financial' && activeSubTab === 'tolls' && vin && <TollsTab vin={vin} />}
+        {activePrimaryTab === 'financial' && activeSubTab === 'financing' && vin && <FinancingRecordList vin={vin} />}
         {activePrimaryTab === 'financial' && activeSubTab === 'spotrentals' && vin && <SpotRentalsTab vin={vin} />}
         {activePrimaryTab === 'financial' && activeSubTab === 'suppliesused' && vin && <SuppliesUsedTab vin={vin} />}
 
