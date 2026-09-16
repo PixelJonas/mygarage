@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Importing with Skip duplicates no longer drops a second, different reading from the same day that sits within a few hundred metres of another.
+
 ### Security
 - Frontend: `bun audit` is clean with no `overrides`; every transitive pin is removed because each parent now resolves a patched version.
 

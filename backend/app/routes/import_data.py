@@ -38,7 +38,7 @@ from typing import Any, cast
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from sqlalchemy import ColumnElement, select
+from sqlalchemy import ColumnElement, Numeric, and_, func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 
@@ -129,30 +129,79 @@ def _normalized_fuel_type(raw: str | None) -> str | None:
     return normalized.value if normalized is not None else None
 
 
+async def _last_id_before_import(db: AsyncSession, model: Any) -> int:
+    """The highest `model.id` stored when an import begins, or 0 for an empty table.
+
+    Ids only grow, so every row this import writes sits above it, and a row at
+    or below it was stored before the import started. Taken after the vehicle
+    write lock and before the first row is written.
+    """
+    return int((await db.execute(select(func.max(model.id)))).scalar() or 0)
+
+
+def _within(
+    column: InstrumentedAttribute[Any], value: Decimal, half_width: Decimal
+) -> ColumnElement[bool]:
+    """`column` within `half_width` of `value`, compared exactly on every dialect.
+
+    The bounds are bound as an unscaled NUMERIC. Bound with the column's own
+    type, PostgreSQL casts them to its NUMERIC(10, 2) and rounds them, so a
+    half-step window around 100000.00 reached 100000.01 and swallowed the next
+    step on PostgreSQL only.
+    """
+    return column.between(
+        literal(value - half_width, Numeric()), literal(value + half_width, Numeric())
+    )
+
+
 def _converted_value_matches(
-    column: InstrumentedAttribute[Any], value: Decimal | None, step: Decimal
+    column: InstrumentedAttribute[Any],
+    value: Decimal | None,
+    step: Decimal,
+    *,
+    converted: bool,
+    stored_before_import: ColumnElement[bool],
 ) -> ColumnElement[bool]:
     """A duplicate-check condition on a column holding a unit-converted value.
 
-    Values stored before the exact conversion factors differ from the same
-    figure converted today by a few parts per million, on top of the column's
-    rounding to `step`, so an equality match would import a pre-upgrade row a
-    second time. The band (`conversion_tolerance`, shared with tire history)
-    allows the two together; an absent value still matches only NULL. More
-    than one stored row can fall inside the band, so a caller treats any match
-    as the duplicate rather than asking for exactly one.
+    A stored row matches when it holds the same figure at the column's
+    precision: within half a `step`, which covers PostgreSQL rounding the value
+    on write and SQLite keeping it as given.
+
+    Only one case can sit further away. A value converted from miles or gallons
+    in this import meets a row stored with the truncated pre-v3.4.0 factors a
+    few parts per million off, on top of that rounding
+    (`conversion_tolerance`, shared with tire history). That band is allowed
+    ONLY for a `converted` value and ONLY against a row `stored_before_import`.
+    Applied to every check, it skipped a second, genuinely different same-day
+    reading inside it (0.31 km at 100,000 km), including one this import had
+    just written.
+
+    An absent value still matches only NULL. More than one stored row can
+    match, so a caller treats any match as the duplicate rather than asking for
+    exactly one.
     """
     if value is None:
         return column.is_(None)
-    tolerance = conversion_tolerance(value, step)
-    return column.between(value - tolerance, value + tolerance)
+    half_step = step / 2
+    same_figure = _within(column, value, half_step)
+    if not converted:
+        return same_figure
+    drifted = and_(stored_before_import, _within(column, value, conversion_tolerance(value, step)))
+    return or_(same_figure, drifted)
 
 
 def _odometer_matches(
-    column: InstrumentedAttribute[Any], odometer_km: Decimal | None
+    model: Any, odometer_km: Decimal | None, *, converted: bool, last_id_before_import: int
 ) -> ColumnElement[bool]:
-    """`_converted_value_matches` for an odometer column, in km."""
-    return _converted_value_matches(column, odometer_km, KM_STEP)
+    """`_converted_value_matches` for `model.odometer_km`, in km."""
+    return _converted_value_matches(
+        model.odometer_km,
+        odometer_km,
+        KM_STEP,
+        converted=converted,
+        stored_before_import=model.id <= last_id_before_import,
+    )
 
 
 router = APIRouter(prefix="/api/import", tags=["import"])
@@ -315,6 +364,9 @@ async def import_service_csv(
     # release (see `app.database`), and a failure later in the upload would
     # leave the rows before it behind. Every import route takes it the same way.
     await lock_vehicle_for_write(db, vin)
+    # Taken before the first write; see `_converted_value_matches` for why.
+    odometer_converted = units.converts(DISTANCE)
+    last_id = await _last_id_before_import(db, ServiceVisit)
 
     import_result = ImportResult()
 
@@ -361,7 +413,12 @@ async def import_service_csv(
                     select(ServiceVisit).where(
                         ServiceVisit.vin == vin,
                         ServiceVisit.date == date,
-                        _odometer_matches(ServiceVisit.odometer_km, odometer_km),
+                        _odometer_matches(
+                            ServiceVisit,
+                            odometer_km,
+                            converted=odometer_converted,
+                            last_id_before_import=last_id,
+                        ),
                     )
                 )
                 if existing.scalars().first():
@@ -452,6 +509,9 @@ async def import_fuel_csv(
     )
 
     await lock_vehicle_for_write(db, vin)
+    # Taken before the first write; see `_converted_value_matches` for why.
+    odometer_converted = units.converts(DISTANCE)
+    last_id = await _last_id_before_import(db, FuelRecord)
 
     import_result = ImportResult()
 
@@ -520,7 +580,12 @@ async def import_fuel_csv(
                     select(FuelRecord).where(
                         FuelRecord.vin == vin,
                         FuelRecord.date == date,
-                        _odometer_matches(FuelRecord.odometer_km, odometer_km),
+                        _odometer_matches(
+                            FuelRecord,
+                            odometer_km,
+                            converted=odometer_converted,
+                            last_id_before_import=last_id,
+                        ),
                     )
                 )
                 if existing.scalars().first():
@@ -585,6 +650,9 @@ async def import_def_csv(
     rows, units = _read_csv_with_units(csv_data, (ODOMETER_DISTANCE, FUEL_VOLUME, DEF_PRICE))
 
     await lock_vehicle_for_write(db, vin)
+    # Taken before the first write; see `_converted_value_matches` for why.
+    odometer_converted = units.converts(DISTANCE)
+    last_id = await _last_id_before_import(db, DEFRecord)
 
     import_result = ImportResult()
 
@@ -614,7 +682,12 @@ async def import_def_csv(
                     select(DEFRecord).where(
                         DEFRecord.vin == vin,
                         DEFRecord.date == date,
-                        _odometer_matches(DEFRecord.odometer_km, odometer_km),
+                        _odometer_matches(
+                            DEFRecord,
+                            odometer_km,
+                            converted=odometer_converted,
+                            last_id_before_import=last_id,
+                        ),
                     )
                 )
                 if existing.scalars().first():
@@ -669,6 +742,9 @@ async def import_odometer_csv(
     rows, units = _read_csv_with_units(csv_data, (READING_DISTANCE,))
 
     await lock_vehicle_for_write(db, vin)
+    # Taken before the first write; see `_converted_value_matches` for why.
+    odometer_converted = units.converts(DISTANCE)
+    last_id = await _last_id_before_import(db, OdometerRecord)
 
     import_result = ImportResult()
 
@@ -696,7 +772,12 @@ async def import_odometer_csv(
                     select(OdometerRecord).where(
                         OdometerRecord.vin == vin,
                         OdometerRecord.date == date,
-                        _odometer_matches(OdometerRecord.odometer_km, odometer_km),
+                        _odometer_matches(
+                            OdometerRecord,
+                            odometer_km,
+                            converted=odometer_converted,
+                            last_id_before_import=last_id,
+                        ),
                     )
                 )
                 if existing.scalars().first():
@@ -1179,6 +1260,13 @@ async def import_vehicle_json(
         return d / UnitConverter.US_GALLONS_TO_LITERS if is_legacy_v2 else d
 
     await lock_vehicle_for_write(db, vin)
+    # Taken before the first section writes: only a row at or below these can
+    # carry the pre-v3.4.0 factors (see `_converted_value_matches`), and a v3
+    # backup is canonical already, so only a legacy one was converted.
+    last_ids = {
+        model: await _last_id_before_import(db, model)
+        for model in (ServiceVisit, FuelRecord, DEFRecord, OdometerRecord)
+    }
 
     results = {
         "service_records": {"success": 0, "errors": 0, "skipped": 0},
@@ -1205,7 +1293,12 @@ async def import_vehicle_json(
                     select(ServiceVisit).where(
                         ServiceVisit.vin == vin,
                         ServiceVisit.date == date,
-                        _odometer_matches(ServiceVisit.odometer_km, imported_odometer_km),
+                        _odometer_matches(
+                            ServiceVisit,
+                            imported_odometer_km,
+                            converted=is_legacy_v2,
+                            last_id_before_import=last_ids[ServiceVisit],
+                        ),
                     )
                 )
                 if existing.scalars().first():
@@ -1293,7 +1386,12 @@ async def import_vehicle_json(
                     select(FuelRecord).where(
                         FuelRecord.vin == vin,
                         FuelRecord.date == date,
-                        _odometer_matches(FuelRecord.odometer_km, imported_odometer_km),
+                        _odometer_matches(
+                            FuelRecord,
+                            imported_odometer_km,
+                            converted=is_legacy_v2,
+                            last_id_before_import=last_ids[FuelRecord],
+                        ),
                     )
                 )
                 if existing.scalars().first():
@@ -1354,7 +1452,12 @@ async def import_vehicle_json(
                     select(DEFRecord).where(
                         DEFRecord.vin == vin,
                         DEFRecord.date == date,
-                        _odometer_matches(DEFRecord.odometer_km, imported_odometer_km),
+                        _odometer_matches(
+                            DEFRecord,
+                            imported_odometer_km,
+                            converted=is_legacy_v2,
+                            last_id_before_import=last_ids[DEFRecord],
+                        ),
                     )
                 )
                 if existing.scalars().first():
@@ -1404,7 +1507,12 @@ async def import_vehicle_json(
                     select(OdometerRecord).where(
                         OdometerRecord.vin == vin,
                         OdometerRecord.date == date,
-                        _odometer_matches(OdometerRecord.odometer_km, imported_odometer_km),
+                        _odometer_matches(
+                            OdometerRecord,
+                            imported_odometer_km,
+                            converted=is_legacy_v2,
+                            last_id_before_import=last_ids[OdometerRecord],
+                        ),
                     )
                 )
                 if existing.scalars().first():
@@ -1650,21 +1758,35 @@ async def import_external_fuel_csv(
 # sessions with the same odometer and the same amount are genuinely
 # indistinguishable in the data, so collapsing them is correct.
 def _third_party_duplicate_conditions(
-    vin: str, row: Mapping[str, Any]
+    vin: str, row: Mapping[str, Any], last_id_before_import: int
 ) -> list[ColumnElement[bool]]:
     """The natural key above, as the conditions a stored duplicate must meet.
 
     `filled_at` and `kwh` are never converted and match exactly (`== None`
     renders as IS NULL). The odometer and the volume may have been converted
-    from miles and gallons, so they match within `_converted_value_matches`'s
-    band.
+    from miles and gallons, and the adapters settle that per file (an explicit
+    "(mi)" or "Gallons" header wins over the caller's option), so both are
+    treated as converted: the band still applies only to a row stored before
+    the import, and the time and the volume in the key tell two real fill-ups
+    apart where the band alone could not.
     """
     return [
         FuelRecord.vin == vin,
         FuelRecord.date == row.get("date"),
         FuelRecord.filled_at == row.get("filled_at"),
-        _odometer_matches(FuelRecord.odometer_km, row.get("odometer_km")),
-        _converted_value_matches(FuelRecord.liters, row.get("liters"), LITRE_STEP),
+        _odometer_matches(
+            FuelRecord,
+            row.get("odometer_km"),
+            converted=True,
+            last_id_before_import=last_id_before_import,
+        ),
+        _converted_value_matches(
+            FuelRecord.liters,
+            row.get("liters"),
+            LITRE_STEP,
+            converted=True,
+            stored_before_import=FuelRecord.id <= last_id_before_import,
+        ),
         FuelRecord.kwh == row.get("kwh"),
     ]
 
@@ -1710,6 +1832,8 @@ async def _persist_parsed_fuel(
     # value and reassign the cascade FK. Sync once per date with the highest
     # reading, which is the only choice that survives reordering the file.
     best_per_date: dict[date_type, tuple[Decimal, FuelRecord]] = {}
+    # Callers take the vehicle write lock first; see `_converted_value_matches`.
+    last_id = await _last_id_before_import(db, FuelRecord)
     for row_num, row in enumerate(parsed, start=2):
         try:
             date = row.get("date")
@@ -1719,7 +1843,7 @@ async def _persist_parsed_fuel(
             odometer_km = row.get("odometer_km")
             if skip_duplicates:
                 existing = await db.execute(
-                    select(FuelRecord).where(*_third_party_duplicate_conditions(vin, row))
+                    select(FuelRecord).where(*_third_party_duplicate_conditions(vin, row, last_id))
                 )
                 # .first(), not scalar_one_or_none(): pre-existing duplicates in
                 # the table would otherwise raise MultipleResultsFound.
