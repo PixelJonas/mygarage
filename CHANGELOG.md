@@ -8,21 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
-- Importing with Skip duplicates no longer drops a second, different reading from the same day that sits within a few hundred metres of another.
+- Importing with Skip duplicates dropped a second reading from the same day.
 
 ### Security
-- Frontend: `bun audit` is clean with no `overrides`; every transitive pin is removed because each parent now resolves a patched version.
+- Frontend: drop all `overrides` (`bun audit` clean).
 
 ### Build
-- Bun 1.4.2 (`.bun-version` and the Dockerfile builder).
-- Node 24 LTS, pinned in `.nvmrc`; CI sets it up and `bin/ci-check` refuses a different major.
-- CI: shared-workflows v1.6.0-rc1.
-- Frontend: `@vitejs/plugin-react` replaces the SWC plugin, dropping `@swc/core`.
-- Frontend: `vite.config.ts` is the single Vite and Vitest config; the shadowing `vitest.config.ts` is removed.
-- Frontend: Vite config moves off deprecated options (`rolldownOptions`, `codeSplitting`, `import.meta.dirname`).
-- Frontend: ESLint config uses `defineConfig` from `eslint/config`.
-- Frontend: tsconfig drops `baseUrl`, which TypeScript 7 removes.
-- Frontend: coverage no longer counts the shared test helpers under `src/__tests__/`.
+- Bump Bun to 1.4.2.
+- Pin Node 24 in `.nvmrc`.
+- Bump shared-workflows to v1.6.0-rc1.
+- Frontend: replace `@vitejs/plugin-react-swc` with `@vitejs/plugin-react`.
+- Frontend: merge `vitest.config.ts` into `vite.config.ts`.
+- Frontend: move Vite config off deprecated options.
+- Frontend: switch ESLint config to `defineConfig`.
+- Frontend: drop `baseUrl` from tsconfig.
+- Frontend: exclude `src/__tests__/` helpers from coverage.
 
 ### Dev Dependencies
 - **@playwright/test**: 1.61.1 → 1.63.0
