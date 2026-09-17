@@ -7,13 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Recurring reminders: a maintenance rule (interval in distance, months or hours) per vehicle, from a pack, the reminder form or a service line item (#165).
+- Completing a reminder takes the real date and reading and can log or link a service visit; the next reminder is created from it.
+- Applying a reminder pack previews first: it counts from the most recent matching service and adopts an existing reminder instead of adding another.
+- Canonical maintenance types on service line items and reminders; a "possible duplicate" flag and a reconcile action for reminders of one type.
+- `GET /api/maintenance-types`, `/api/vehicles/{vin}/maintenance-rules` and the reminder `complete`, `apply-pack/preview`, `duplicates`, `reconcile` and `reconcile-duplicates` endpoints.
+
+### Changed
+- A reminder created from a service line item is anchored on that visit's date and odometer, not on the vehicle's latest reading.
+- Mark done records today's date and the nearest reading and still advances a recurring reminder.
+- Every pending reminder with a mileage or hours target reports `projected_usage_date` separately from its calendar threshold.
+- Reminder packs declare `maintenance_type` and intervals (`interval_km`, `interval_months`, `interval_days`, `interval_hours`); the v3.4 keys still load.
+
 ### Fixed
 - Importing with Skip duplicates dropped a second reading from the same day.
+- Applying a pack no longer duplicates a reminder already tracking the same maintenance.
+- Saving an overdue distance or hours reminder unchanged no longer fails validation or moves its target to the current reading.
 
 ### Security
 - Frontend: drop all `overrides` (`bun audit` clean).
 
 ### Build
+- Migration 101: `vehicle_maintenance_rules`, `service_line_items.maintenance_type` and the reminder anchor, completion and rule columns.
 - Bump Bun to 1.4.2.
 - Pin Node 24 in `.nvmrc`.
 - Bump shared-workflows to v1.6.0-rc1.

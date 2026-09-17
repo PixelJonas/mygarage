@@ -26,7 +26,7 @@ Self-hosted vehicle maintenance tracking with VIN decoding, service records, fue
 - **VIN Decoding** - Automatic vehicle details via NHTSA API
 - **Service Visits** - Track maintenance with line items, tax/fees, and attachments
 - **Maintenance Specs** - Oil viscosity, capacity and filter, fuel filter, lug-nut torque, and coolant/brake/transmission fluid per vehicle
-- **Reminders** - Date, mileage, or engine-hours maintenance reminders with due alerts
+- **Reminders** - Recurring maintenance rules anchored on your service history, with date, mileage, or engine-hours thresholds and due alerts
 - **Tire Tracking** - Tread, DOT and pressure readings per position, with mount periods, rotation, seasonal sets, storage, and wear projection
 - **LiveLink Telemetry** - Real-time OBD2 data, movement-detected drive sessions, GPS trips, and DTCs via a WiCAN device (HTTPS POST or MQTT) or the Torque Pro app. See [LiveLink (WiCAN) Setup](docs/LIVELINK_SETUP.md).
 - **POI Finder** - Discover nearby auto shops, EV charging, and fuel stations with interactive map
