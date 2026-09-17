@@ -182,7 +182,11 @@ async def delete_reminder(
     """Delete a reminder."""
     vin = vin.upper().strip()
     await get_vehicle_or_403(vin, current_user, db, require_write=True)
+    await lock_vehicle_for_write(db, vin)
     reminder = await reminder_service._get_reminder_or_404(reminder_id, vin, db)
+    # Deleting the reminder a rule produced stops the repeat, or the next
+    # reconcile would recreate it.
+    await maintenance_service.stop_repeating(db, reminder)
     await db.delete(reminder)
     await db.commit()
     return None
@@ -242,10 +246,12 @@ async def dismiss(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_auth),
 ):
-    """Mark a reminder as dismissed."""
+    """Mark a reminder as dismissed; a recurring one stops repeating."""
     vin = vin.upper().strip()
     await get_vehicle_or_403(vin, current_user, db, require_write=True)
+    await lock_vehicle_for_write(db, vin)
     reminder = await reminder_service._get_reminder_or_404(reminder_id, vin, db)
+    await maintenance_service.stop_repeating(db, reminder)
     reminder.status = "dismissed"
     await db.commit()
     await db.refresh(reminder)

@@ -23,7 +23,7 @@ from decimal import Decimal
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.maintenance_rule import MaintenanceRule
@@ -323,13 +323,22 @@ async def typed_history(
     other_rule = [Reminder.rule_id.isnot(None)]
     if for_rule_id is not None:
         other_rule.append(Reminder.rule_id != for_rule_id)
+    # A reference only OWNS the line item while the two still agree on the
+    # type. Retype a service and the reminder that used to count from it holds
+    # a stale link; without this the service would belong to nobody.
+    still_its_work = or_(
+        Reminder.maintenance_type.is_(None),
+        ServiceLineItem.maintenance_type.is_(None),
+        Reminder.maintenance_type == ServiceLineItem.maintenance_type,
+    )
     owned_elsewhere = (
         select(Reminder.line_item_id)
-        .where(*other_rule, Reminder.line_item_id.isnot(None))
+        .join(ServiceLineItem, ServiceLineItem.id == Reminder.line_item_id)
+        .where(*other_rule, Reminder.line_item_id.isnot(None), still_its_work)
         .union(
-            select(Reminder.completed_line_item_id).where(
-                *other_rule, Reminder.completed_line_item_id.isnot(None)
-            )
+            select(Reminder.completed_line_item_id)
+            .join(ServiceLineItem, ServiceLineItem.id == Reminder.completed_line_item_id)
+            .where(*other_rule, Reminder.completed_line_item_id.isnot(None), still_its_work)
         )
     )
     query = _history_query(vin).where(
@@ -682,7 +691,10 @@ async def reconcile_rule(
         today = date.today()
     pending = await _pending_reminder(db, rule.id)
 
-    # 0. Refresh a service-anchored reminder from its visit.
+    # 0. Refresh a service-anchored reminder from its visit, unless the owner
+    #    has retyped that service since: then it is not this rule's work and
+    #    the reminder re-anchors on whatever history is left.
+    retyped_away = False
     if (
         pending is not None
         and pending.anchor_kind == "service"
@@ -690,10 +702,27 @@ async def reconcile_rule(
     ):
         refreshed = await _anchor_from_line_item(db, rule.vin, pending.line_item_id)
         if refreshed is not None:
-            anchor, _line_item = refreshed
-            _set_anchor(pending, await resolve_readings(db, rule.vin, anchor, rule))
+            anchor, line_item = refreshed
+            if (
+                line_item.maintenance_type is not None
+                and rule.maintenance_type is not None
+                and line_item.maintenance_type != rule.maintenance_type
+            ):
+                retyped_away = True
+            else:
+                _set_anchor(pending, await resolve_readings(db, rule.vin, anchor, rule))
 
     best = candidate if candidate is not None else await best_anchor(db, rule)
+
+    if retyped_away and pending is not None:
+        pending.line_item_id = None
+        await _reanchor(
+            db,
+            pending,
+            rule,
+            best if best is not None else await baseline_anchor(db, rule.vin, today),
+        )
+        return pending
 
     if best is None:
         if pending is None:
@@ -1128,6 +1157,21 @@ async def complete_reminder(
     )
 
 
+async def stop_repeating(db: AsyncSession, reminder: Reminder) -> None:
+    """Dismissing or deleting a rule's pending reminder stops the repeat.
+
+    The owner removed the reminder the rule produced, so the rule goes
+    inactive: leaving it active would have the next reconcile (any service or
+    import write) recreate the reminder with the same thresholds. "Not now" is
+    a snooze, which is its own feature; this is "stop". The rule keeps its
+    history and the Repeat toggle turns it back on.
+    """
+    rule = reminder.rule
+    if reminder.status == ACTIVE_STATUS and rule is not None and rule.is_active:
+        rule.is_active = False
+        await db.flush()
+
+
 # ============================================================================
 #  Packs
 # ============================================================================
@@ -1518,6 +1562,18 @@ async def reconcile_duplicates(
     for reminder in [keeper, *losers]:
         if reminder.status != ACTIVE_STATUS:
             raise HTTPException(status_code=409, detail=f"Reminder {reminder.id} is not pending")
+    # Only a duplicate GROUP can be reconciled: one maintenance type, named.
+    # Without this a stale or hand-made request dismisses unrelated reminders
+    # and deactivates their rules.
+    types = {reminder.maintenance_type for reminder in [keeper, *losers]}
+    if None in types or len(types) != 1:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Reminders can only be reconciled as duplicates when they all track "
+                "the same maintenance type"
+            ),
+        )
 
     loser_rules = [r.rule for r in losers if r.rule is not None and r.rule.id != keeper.rule_id]
     if keeper.rule is None and len(loser_rules) == 1:

@@ -1009,6 +1009,7 @@
     "deleteError": "Failed to delete reminder",
     "deleted": "Reminder deleted",
     "dismiss": "Dismiss",
+    "dismissStopsRepeat": "Dismiss (stops repeating)",
     "dismissError": "Failed to dismiss reminder",
     "dismissed": "Reminder dismissed",
     "due": "Due",

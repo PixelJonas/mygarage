@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Importing with Skip duplicates dropped a second reading from the same day.
 - Applying a pack no longer duplicates a reminder already tracking the same maintenance.
 - Saving an overdue distance or hours reminder unchanged no longer fails validation or moves its target to the current reading.
+- Correcting a service's maintenance type moves the old type's reminder off it, and the new type can count from it.
+- Dismissing or deleting a recurring reminder stops it repeating instead of having it come back on the next service.
+- Resolving duplicate reminders refuses a request mixing maintenance types.
 
 ### Security
 - Frontend: drop all `overrides` (`bun audit` clean).

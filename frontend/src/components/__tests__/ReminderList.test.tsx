@@ -89,6 +89,14 @@ describe('ReminderList — rendering + row actions (pending)', () => {
     await waitFor(() => expect(dismissMock.mock.calls[0]).toStrictEqual([8]))
   })
 
+  it('a RULE-BACKED reminder says Dismiss stops the repeat (v3.5.0: dismiss deactivates the rule, so the label may not read like a one-off dismiss)', () => {
+    const recurring = { ...pending, rule_id: 1, rule: { id: 1, title: 'Oil change', is_active: true } } as unknown as Reminder
+    useRemindersMock.mockReturnValue({ data: [recurring], isLoading: false })
+    render(<ReminderList vin="V1" />)
+    expect(screen.getByRole('button', { name: 'reminderList.dismissStopsRepeat' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'reminderList.dismiss' })).not.toBeInTheDocument()
+  })
+
   it('clicking Delete calls the delete mutation DIRECTLY with the id and never opens a confirm dialog (fails if delete is unwired OR a confirm gate is added — ReminderList delete is direct, LD5)', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm')
     render(<ReminderList vin="V1" />)

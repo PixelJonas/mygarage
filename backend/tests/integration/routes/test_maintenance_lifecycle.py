@@ -1720,3 +1720,208 @@ class TestTCodexRound2:
             x for x in await _pending(client, auth_headers, vin) if x["rule_id"] == oil["rule_id"]
         ]
         assert again[0]["anchor_date"] == OLDER_DATE
+
+
+# ============================================================================
+#  U. Codex review of PR #168
+# ============================================================================
+
+
+class TestUCodexPR168:
+    async def test_p1_retyping_a_line_item_moves_the_old_rule_off_it(self, client, auth_headers):
+        """Correcting a service's type must not leave the old type's reminder
+        counting from it, and the new type's rule must be able to use it."""
+        vin = await _vehicle(client, auth_headers)
+        older = await _visit(
+            client,
+            auth_headers,
+            vin,
+            on=OLDER_DATE,
+            odometer_km=OLDER_KM,
+            items=[{"description": "Oil Change"}],
+        )
+        newer = await _visit(
+            client,
+            auth_headers,
+            vin,
+            on=SERVICE_DATE,
+            odometer_km=SERVICE_KM,
+            items=[{"description": "Oil Change"}],
+        )
+        r = await client.post(
+            f"/api/vehicles/{vin}/reminders",
+            headers=auth_headers,
+            json={
+                "title": "Oil change",
+                "maintenance_type": "engine_oil_filter",
+                "recurrence": {"interval_months": 6},
+            },
+        )
+        assert r.status_code == 201, r.text
+        oil = r.json()
+        assert oil["anchor_date"] == SERVICE_DATE
+        retyped_item = newer["line_items"][0]["id"]
+        assert oil["line_item_id"] == retyped_item
+
+        # The owner corrects the newer visit: that work was a tire rotation.
+        r = await client.put(
+            f"/api/vehicles/{vin}/service-visits/{newer['id']}",
+            headers=auth_headers,
+            json={
+                "line_items": [
+                    {
+                        "id": retyped_item,
+                        "description": "Oil Change",
+                        "maintenance_type": "tire_rotation",
+                    }
+                ]
+            },
+        )
+        assert r.status_code == 200, r.text
+
+        moved = await _oil(client, auth_headers, vin)
+        assert moved["anchor_date"] == OLDER_DATE
+        assert moved["line_item_id"] == older["line_items"][0]["id"]
+        assert moved["due_date"] == "2026-09-16"
+
+        # And the retyped service is available to the type it now belongs to.
+        r = await client.post(
+            f"/api/vehicles/{vin}/reminders",
+            headers=auth_headers,
+            json={
+                "title": "Rotate tires",
+                "maintenance_type": "tire_rotation",
+                "recurrence": {"interval_months": 6},
+            },
+        )
+        assert r.status_code == 201, r.text
+        tires = r.json()
+        assert tires["anchor_date"] == SERVICE_DATE
+        assert tires["line_item_id"] == retyped_item
+
+    async def test_p2_duplicate_reconciliation_refuses_two_different_types(
+        self, client, auth_headers
+    ):
+        vin = await _vehicle(client, auth_headers)
+        made = []
+        for title, code in (("Oil change", "engine_oil_filter"), ("Rotate tires", "tire_rotation")):
+            r = await client.post(
+                f"/api/vehicles/{vin}/reminders",
+                headers=auth_headers,
+                json={
+                    "title": title,
+                    "maintenance_type": code,
+                    "recurrence": {"interval_months": 6},
+                },
+            )
+            assert r.status_code == 201, r.text
+            made.append(r.json())
+        r = await client.post(
+            f"/api/vehicles/{vin}/reminders/reconcile-duplicates",
+            headers=auth_headers,
+            json={"keep_id": made[0]["id"], "supersede_ids": [made[1]["id"]]},
+        )
+        assert r.status_code == 422, r.text
+        statuses = {x["id"]: x["status"] for x in await _all(client, auth_headers, vin)}
+        assert statuses[made[0]["id"]] == "pending"
+        assert statuses[made[1]["id"]] == "pending"
+        rules = (
+            await client.get(f"/api/vehicles/{vin}/maintenance-rules", headers=auth_headers)
+        ).json()
+        assert [x["is_active"] for x in rules] == [True, True]
+
+    async def test_p2_dismissing_a_recurring_reminder_stops_it_repeating(
+        self, client, auth_headers
+    ):
+        vin = await _vehicle(client, auth_headers)
+        await _visit(
+            client,
+            auth_headers,
+            vin,
+            on=SERVICE_DATE,
+            odometer_km=SERVICE_KM,
+            items=[{"description": "Oil Change"}],
+        )
+        await _apply(client, auth_headers, vin, "oil_and_filter")
+        oil = await _oil(client, auth_headers, vin)
+
+        r = await client.post(
+            f"/api/vehicles/{vin}/reminders/{oil['id']}/dismiss", headers=auth_headers
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] == "dismissed"
+        rule = next(
+            x
+            for x in (
+                await client.get(f"/api/vehicles/{vin}/maintenance-rules", headers=auth_headers)
+            ).json()
+            if x["id"] == oil["rule_id"]
+        )
+        assert rule["is_active"] is False
+
+        # Neither an explicit reconcile nor a later service brings it back.
+        r = await client.post(f"/api/vehicles/{vin}/reminders/reconcile", headers=auth_headers)
+        assert r.status_code == 200, r.text
+        await _visit(
+            client,
+            auth_headers,
+            vin,
+            on="2026-07-20",
+            odometer_km=SERVICE_KM + 2000,
+            items=[{"description": "Oil Change"}],
+        )
+        assert _of_type(await _pending(client, auth_headers, vin), "engine_oil_filter") == []
+
+    async def test_p2_deleting_a_recurring_reminder_stops_it_repeating(self, client, auth_headers):
+        vin = await _vehicle(client, auth_headers)
+        await _visit(
+            client,
+            auth_headers,
+            vin,
+            on=SERVICE_DATE,
+            odometer_km=SERVICE_KM,
+            items=[{"description": "Oil Change"}],
+        )
+        await _apply(client, auth_headers, vin, "oil_and_filter")
+        oil = await _oil(client, auth_headers, vin)
+        rule_id = oil["rule_id"]
+
+        r = await client.delete(f"/api/vehicles/{vin}/reminders/{oil['id']}", headers=auth_headers)
+        assert r.status_code == 204, r.text
+        rule = next(
+            x
+            for x in (
+                await client.get(f"/api/vehicles/{vin}/maintenance-rules", headers=auth_headers)
+            ).json()
+            if x["id"] == rule_id
+        )
+        assert rule["is_active"] is False
+        r = await client.post(f"/api/vehicles/{vin}/reminders/reconcile", headers=auth_headers)
+        assert r.status_code == 200, r.text
+        assert _of_type(await _pending(client, auth_headers, vin), "engine_oil_filter") == []
+
+    async def test_p2_dismissing_a_one_off_reminder_touches_no_rule(self, client, auth_headers):
+        vin = await _vehicle(client, auth_headers)
+        await _apply(client, auth_headers, vin, "oil_and_filter")
+        oil = await _oil(client, auth_headers, vin)
+        r = await client.post(
+            f"/api/vehicles/{vin}/reminders",
+            headers=auth_headers,
+            json={"title": "Wash it", "reminder_type": "date", "due_date": SIX_MONTHS_LATER},
+        )
+        assert r.status_code == 201, r.text
+        one_off = r.json()
+        assert one_off["rule_id"] is None
+        r = await client.post(
+            f"/api/vehicles/{vin}/reminders/{one_off['id']}/dismiss", headers=auth_headers
+        )
+        assert r.status_code == 200, r.text
+        rule = next(
+            x
+            for x in (
+                await client.get(f"/api/vehicles/{vin}/maintenance-rules", headers=auth_headers)
+            ).json()
+            if x["id"] == oil["rule_id"]
+        )
+        assert rule["is_active"] is True
+        assert len(_of_type(await _pending(client, auth_headers, vin), "engine_oil_filter")) == 1

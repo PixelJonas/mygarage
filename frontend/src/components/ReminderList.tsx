@@ -325,7 +325,7 @@ export default function ReminderList({ vin }: ReminderListProps) {
                     {reminder.status === 'pending' && (
                       <>
                         <IconButton icon={Check} label={t('reminderList.markDone')} variant="ghost" size="sm" onClick={() => setCompleting(reminder)} />
-                        <IconButton icon={X} label={t('reminderList.dismiss')} variant="ghost" size="sm" onClick={() => handleDismiss(reminder.id)} />
+                        <IconButton icon={X} label={reminder.rule?.is_active ? t('reminderList.dismissStopsRepeat') : t('reminderList.dismiss')} variant="ghost" size="sm" onClick={() => handleDismiss(reminder.id)} />
                       </>
                     )}
                     <IconButton icon={Edit} label={t('common:edit')} variant="ghost" size="sm" onClick={() => handleEdit(reminder)} />
