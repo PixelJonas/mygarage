@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reminder packs declare `maintenance_type` and intervals (`interval_km`, `interval_months`, `interval_days`, `interval_hours`); the v3.4 keys still load.
 
 ### Fixed
+- Backend log statements sanitize user-provided values (CodeQL log-injection).
 - Importing with Skip duplicates dropped a second reading from the same day.
 - Applying a pack no longer duplicates a reminder already tracking the same maintenance.
 - Saving an overdue distance or hours reminder unchanged no longer fails validation or moves its target to the current reading.

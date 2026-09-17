@@ -540,7 +540,7 @@ class ServiceVisitService:
                 except Exception as e:
                     logger.warning(
                         "Failed to auto-sync odometer/hours for visit %s: %s",
-                        visit_id,
+                        sanitize_for_log(visit_id),
                         sanitize_for_log(e),
                     )
 
@@ -654,7 +654,9 @@ class ServiceVisitService:
             await self.db.delete(visit)
             await self.db.commit()
 
-            logger.info("Deleted service visit %s for %s", visit_id, sanitize_for_log(vin))
+            logger.info(
+                "Deleted service visit %s for %s", sanitize_for_log(visit_id), sanitize_for_log(vin)
+            )
             # The deleted visit may have anchored a reminder (the FK is SET
             # NULL; the snapshot stays). Reconcile so a rule whose newest
             # service just vanished still has exactly one pending reminder.

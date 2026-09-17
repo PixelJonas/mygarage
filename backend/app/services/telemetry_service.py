@@ -36,6 +36,7 @@ from app.utils.autopid_normalizer import (
     infer_param_class,
     is_telemetry_param,
 )
+from app.utils.logging_utils import sanitize_for_log
 from app.utils.odometer_units import odometer_value_to_km
 
 
@@ -1013,7 +1014,7 @@ class TelemetryService:
                     "left unchanged (history repair, not ingest)",
                     drive.started_at,
                     drive.movement_ended_at,
-                    device_id,
+                    sanitize_for_log(device_id),
                     len(overlapping),
                 )
                 continue
@@ -1056,7 +1057,7 @@ class TelemetryService:
                 await self.db.flush()
                 logger.info(
                     "SD reconstruction: created session for %s over %s..%s",
-                    device_id,
+                    sanitize_for_log(device_id),
                     drive.started_at,
                     drive.movement_ended_at,
                 )
@@ -1116,8 +1117,8 @@ class TelemetryService:
             "Refreshed %d closed session(s) for %s over %s..%s",
             len(sessions),
             vin[:8],
-            start,
-            end,
+            sanitize_for_log(start),
+            sanitize_for_log(end),
         )
 
     async def store_torque_telemetry(

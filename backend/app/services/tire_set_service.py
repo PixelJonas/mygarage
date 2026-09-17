@@ -323,7 +323,7 @@ class TireSetService:
         await self.db.commit()
         logger.info(
             "Fitted tire set %s (%s tires) for %s",
-            set_id,
+            sanitize_for_log(set_id),
             len(moving),
             sanitize_for_log(vin),
         )

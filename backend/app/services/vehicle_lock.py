@@ -37,6 +37,8 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.utils.logging_utils import sanitize_for_log
+
 logger = logging.getLogger(__name__)
 
 LOCK_CONTRACT = (
@@ -123,5 +125,5 @@ async def lock_vehicle_for_write(db: AsyncSession, vin: str) -> None:
     except DBAPIError as exc:
         if not is_lock_contention(exc):
             raise
-        logger.warning("Vehicle write lock unavailable for %s: %s", vin, exc)
+        logger.warning("Vehicle write lock unavailable for %s: %s", sanitize_for_log(vin), exc)
         raise HTTPException(status_code=503, detail=LOCK_BUSY_DETAIL) from exc

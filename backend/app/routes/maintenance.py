@@ -22,6 +22,7 @@ from app.schemas.maintenance import (
 from app.services import maintenance_service
 from app.services.auth import get_vehicle_or_403, require_auth
 from app.services.vehicle_lock import lock_vehicle_for_write
+from app.utils.logging_utils import sanitize_for_log
 from app.utils.maintenance_types import all_types
 
 logger = logging.getLogger(__name__)
@@ -101,5 +102,7 @@ async def delete_rule(
     rule = await maintenance_service.get_rule_or_404(db, vin, rule_id)
     outcome = await maintenance_service.delete_rule(db, rule)
     await db.commit()
-    logger.info("Maintenance rule %s on %s: %s", rule_id, vin, outcome)
+    logger.info(
+        "Maintenance rule %s on %s: %s", sanitize_for_log(rule_id), sanitize_for_log(vin), outcome
+    )
     return None
