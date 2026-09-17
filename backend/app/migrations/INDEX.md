@@ -111,3 +111,4 @@ migrations must swallow their own operational errors.
 | `098_session_boundaries` | Durable movement state, session provenance, and one open session per device. |
 | `099_add_vehicle_fuel_filter` | **FATAL** — Add ``vehicles.fuel_filter_part_number`` to the maintenance specs. |
 | `100_add_tire_storage_location` | **FATAL** — Add ``tires.storage_location``: where a tire is kept while it is off the car. |
+| `101_maintenance_rules_and_anchors` | **FATAL** — Maintenance rules, service anchors and canonical types for the reminder lifecycle. |

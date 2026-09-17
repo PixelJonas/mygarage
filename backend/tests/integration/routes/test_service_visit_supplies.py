@@ -181,7 +181,10 @@ async def test_update_visit_with_vendor_and_supply_usage_response_stays_intact(
 
     vendor = Vendor(name="QuickLube Test Shop")
     db_session.add(vendor)
-    await db_session.flush()
+    # Committed, not only flushed: the visit writers take the vehicle lock
+    # before their first read, which refuses a session already inside a
+    # write transaction. A pre-existing vendor is committed data anyway.
+    await db_session.commit()
 
     r = await client.post(
         f"/api/vehicles/{vin}/service-visits",

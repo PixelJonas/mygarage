@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from app.models.fuel import FuelRecord
     from app.models.hours import HoursRecord
     from app.models.insurance import InsurancePolicy
+    from app.models.maintenance_rule import MaintenanceRule
     from app.models.note import Note
     from app.models.odometer import OdometerRecord
     from app.models.photo import VehiclePhoto
@@ -206,6 +207,9 @@ class Vehicle(Base):
     )
     reminders: Mapped[list[Reminder]] = relationship(
         "Reminder", back_populates="vehicle", cascade="all, delete-orphan"
+    )
+    maintenance_rules: Mapped[list[MaintenanceRule]] = relationship(
+        "MaintenanceRule", back_populates="vehicle", cascade="all, delete-orphan"
     )
 
     # No DB-level CHECK on vehicle_type: it is validated by the Pydantic

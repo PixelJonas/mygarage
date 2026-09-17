@@ -9,6 +9,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.schemas.maintenance import validate_maintenance_type
 from app.schemas.reminder import ReminderCreate  # noqa: F401 — used in type annotations
 from app.schemas.supply import SupplyUsageInput, SupplyUsageResponse
 
@@ -25,6 +26,13 @@ class ServiceLineItemBase(BaseModel):
 
     description: str = Field(..., description="Service description", min_length=1, max_length=200)
     category: ServiceCategory | None = Field(None, description="Service category")
+    maintenance_type: str | None = Field(
+        None,
+        description=(
+            "Canonical maintenance type code; classified from the description when omitted"
+        ),
+        max_length=50,
+    )
     cost: Decimal | None = Field(None, description="Cost for this line item", ge=0)
     notes: str | None = Field(None, description="Additional notes", max_length=5000)
     is_inspection: bool = Field(default=False, description="Is this an inspection item")
@@ -37,6 +45,12 @@ class ServiceLineItemBase(BaseModel):
     triggered_by_inspection_id: int | None = Field(
         None, description="ID of inspection that triggered this repair"
     )
+
+    @field_validator("maintenance_type")
+    @classmethod
+    def validate_maintenance_type_code(cls, v: str | None) -> str | None:
+        """A stored code is lowercase snake_case."""
+        return validate_maintenance_type(v)
 
     @field_validator("inspection_result")
     @classmethod
@@ -105,6 +119,7 @@ class ServiceLineItemUpdate(BaseModel):
     temp_id: int | None = Field(None, description="Client temp ID; must be negative; not persisted")
     description: str = Field(..., min_length=1, max_length=200)
     category: ServiceCategory | None = None
+    maintenance_type: str | None = Field(None, max_length=50)
     cost: Decimal | None = Field(None, ge=0)
     notes: str | None = Field(None, max_length=5000)
     is_inspection: bool = False
@@ -115,6 +130,12 @@ class ServiceLineItemUpdate(BaseModel):
     supplies_used: list[SupplyUsageInput] = Field(
         default_factory=list, description="Supplies consumed by this line item"
     )
+
+    @field_validator("maintenance_type")
+    @classmethod
+    def validate_maintenance_type_code(cls, v: str | None) -> str | None:
+        """A stored code is lowercase snake_case."""
+        return validate_maintenance_type(v)
 
     @model_validator(mode="after")
     def validate_temp_id(self) -> ServiceLineItemUpdate:

@@ -24,11 +24,13 @@ from app.schemas.service_visit import (
     ServiceVisitUpdate,
     VendorSummary,
 )
-from app.services import reminder_service
+from app.services import maintenance_service
 from app.services.supply_service import SupplyService
+from app.services.vehicle_lock import lock_vehicle_for_write
 from app.utils.cache import invalidate_cache_for_vehicle
 from app.utils.hours_sync import remove_synced_hours, sync_hours_from_record
 from app.utils.logging_utils import sanitize_for_log
+from app.utils.maintenance_types import resolve_type
 from app.utils.odometer_sync import sync_odometer_from_record
 
 logger = logging.getLogger(__name__)
@@ -182,73 +184,11 @@ class ServiceVisitService:
 
         try:
             await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
+            # Line items may carry recurring reminders, which create or reuse a
+            # rule: serialise with every other rule writer before the first read.
+            await lock_vehicle_for_write(self.db, vin)
 
-            # Auto-derive service_category from first line item's category
-            first_cat = next((i.category for i in visit_data.line_items if i.category), None)
-
-            # Create visit
-            visit = ServiceVisit(
-                vin=vin,
-                vendor_id=visit_data.vendor_id,
-                date=visit_data.date,
-                odometer_km=visit_data.odometer_km,
-                engine_hours=visit_data.engine_hours,
-                total_cost=visit_data.total_cost,
-                tax_amount=visit_data.tax_amount,
-                shop_supplies=visit_data.shop_supplies,
-                misc_fees=visit_data.misc_fees,
-                notes=visit_data.notes,
-                service_category=first_cat or visit_data.service_category,
-                insurance_claim_number=visit_data.insurance_claim_number,
-            )
-            self.db.add(visit)
-            await self.db.flush()  # Get visit ID
-
-            # Pass 1: Create all line items, build temp_id → real_id map
-            temp_id_map: dict[int, int] = {}
-            created_items: list[tuple[ServiceLineItemCreate, ServiceLineItem]] = []
-
-            for item_data in visit_data.line_items:
-                line_item = ServiceLineItem(
-                    visit_id=visit.id,
-                    category=item_data.category,
-                    description=item_data.description,
-                    cost=item_data.cost,
-                    notes=item_data.notes,
-                    is_inspection=item_data.is_inspection,
-                    inspection_result=item_data.inspection_result,
-                    inspection_severity=item_data.inspection_severity,
-                    triggered_by_inspection_id=None,  # resolved in Pass 2
-                )
-                self.db.add(line_item)
-                await self.db.flush()
-                if item_data.temp_id is not None:
-                    temp_id_map[item_data.temp_id] = line_item.id
-                created_items.append((item_data, line_item))
-
-            # Pass 2: Resolve triggered_by_inspection_id and create reminders
-            for item_data, line_item in created_items:
-                if item_data.triggered_by_inspection_id is not None:
-                    ref = item_data.triggered_by_inspection_id
-                    line_item.triggered_by_inspection_id = temp_id_map.get(
-                        ref, ref if ref > 0 else None
-                    )
-
-                if item_data.reminder:
-                    await reminder_service.create_reminder(
-                        vin=vin,
-                        data=item_data.reminder,
-                        db=self.db,
-                        line_item_id=line_item.id,
-                    )
-
-            # Pass 3: sync supply usages for each created line item
-            for item_data, line_item in created_items:
-                if item_data.supplies_used:
-                    await self._sync_line_item_supplies(line_item, item_data.supplies_used, vin)
-
-            # Always recompute total_cost from line items + supplies + fees (denormalized cache)
-            await self._recompute_visit_total(visit.id)
+            visit, _items = await self.persist_visit_rows(vin, visit_data)
 
             await self.db.commit()
             await self.db.refresh(visit)
@@ -297,6 +237,12 @@ class ServiceVisitService:
                         sanitize_for_log(e),
                     )
 
+            # Maintenance lifecycle: a typed line item may be the newest service
+            # of a rule's type, which completes that rule's pending reminder and
+            # starts the next cycle. Runs after the sync commit so "current"
+            # readings include this visit. Own lock, own commit, logs on failure.
+            await maintenance_service.reconcile_vehicle(self.db, vin)
+
             await invalidate_cache_for_vehicle(vin)
 
             # Reload with relationships
@@ -320,6 +266,113 @@ class ServiceVisitService:
                 sanitize_for_log(e),
             )
             raise HTTPException(status_code=503, detail="Database temporarily unavailable")
+
+    async def persist_visit_rows(
+        self, vin: str, visit_data: ServiceVisitCreate, *, sync_readings: bool = False
+    ) -> tuple[ServiceVisit, list[ServiceLineItem]]:
+        """Write a visit, its line items, their reminders and supplies. No commit.
+
+        The body ``create_service_visit`` runs inside its transaction, shared
+        with ``maintenance_service.complete_reminder`` so a completion can
+        persist the visit and close the reminder in ONE transaction under the
+        vehicle lock. With ``sync_readings`` the odometer/hours sync is
+        composed in as well (``commit=False``); ``create_service_visit`` keeps
+        its own best-effort sync after its commit instead.
+
+        Every line item gets a ``maintenance_type``: the one given, else the
+        classifier's (which declines rather than guesses).
+        """
+        # Auto-derive service_category from first line item's category
+        first_cat = next((i.category for i in visit_data.line_items if i.category), None)
+
+        visit = ServiceVisit(
+            vin=vin,
+            vendor_id=visit_data.vendor_id,
+            date=visit_data.date,
+            odometer_km=visit_data.odometer_km,
+            engine_hours=visit_data.engine_hours,
+            total_cost=visit_data.total_cost,
+            tax_amount=visit_data.tax_amount,
+            shop_supplies=visit_data.shop_supplies,
+            misc_fees=visit_data.misc_fees,
+            notes=visit_data.notes,
+            service_category=first_cat or visit_data.service_category,
+            insurance_claim_number=visit_data.insurance_claim_number,
+        )
+        self.db.add(visit)
+        await self.db.flush()  # Get visit ID
+
+        # Pass 1: Create all line items, build temp_id → real_id map
+        temp_id_map: dict[int, int] = {}
+        created_items: list[tuple[ServiceLineItemCreate, ServiceLineItem]] = []
+
+        for item_data in visit_data.line_items:
+            line_item = ServiceLineItem(
+                visit_id=visit.id,
+                category=item_data.category,
+                description=item_data.description,
+                maintenance_type=resolve_type(item_data.maintenance_type, item_data.description),
+                cost=item_data.cost,
+                notes=item_data.notes,
+                is_inspection=item_data.is_inspection,
+                inspection_result=item_data.inspection_result,
+                inspection_severity=item_data.inspection_severity,
+                triggered_by_inspection_id=None,  # resolved in Pass 2
+            )
+            self.db.add(line_item)
+            await self.db.flush()
+            if item_data.temp_id is not None:
+                temp_id_map[item_data.temp_id] = line_item.id
+            created_items.append((item_data, line_item))
+
+        # Pass 2: Resolve triggered_by_inspection_id and create reminders
+        for item_data, line_item in created_items:
+            if item_data.triggered_by_inspection_id is not None:
+                ref = item_data.triggered_by_inspection_id
+                line_item.triggered_by_inspection_id = temp_id_map.get(
+                    ref, ref if ref > 0 else None
+                )
+
+            if item_data.reminder:
+                # Anchored on THIS visit, never on the client's cached odometer.
+                await maintenance_service.create_reminder_for_line_item(
+                    self.db, vin, line_item, visit, item_data.reminder
+                )
+
+        # Pass 3: sync supply usages for each created line item
+        for item_data, line_item in created_items:
+            if item_data.supplies_used:
+                await self._sync_line_item_supplies(line_item, item_data.supplies_used, vin)
+
+        # Always recompute total_cost from line items + supplies + fees (denormalized cache)
+        await self._recompute_visit_total(visit.id)
+
+        if sync_readings and visit.date:
+            if visit.odometer_km:
+                await sync_odometer_from_record(
+                    db=self.db,
+                    vin=vin,
+                    date=visit.date,
+                    odometer_km=visit.odometer_km,
+                    source_type="service_visit",
+                    source_id=visit.id,
+                    commit=False,
+                )
+            await sync_hours_from_record(
+                db=self.db,
+                vin=vin,
+                date=visit.date,
+                engine_hours=visit.engine_hours,
+                source_type="service_visit",
+                source_id=visit.id,
+                commit=False,
+            )
+
+        return visit, [line_item for _data, line_item in created_items]
+
+    async def recompute_visit_total(self, visit_id: int) -> ServiceVisit:
+        """Public name for the denormalised total recompute (no commit)."""
+        return await self._recompute_visit_total(visit_id)
 
     async def update_service_visit(
         self,
@@ -349,6 +402,9 @@ class ServiceVisitService:
 
         try:
             await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
+            # Line items may carry recurring reminders, which create or reuse a
+            # rule: serialise with every other rule writer before the first read.
+            await lock_vehicle_for_write(self.db, vin)
             visit = await self.get_service_visit(vin, visit_id, current_user)
 
             update_data = visit_data.model_dump(exclude_unset=True)
@@ -388,6 +444,10 @@ class ServiceVisitService:
                         row = existing[item_data.id]
                         row.category = item_data.category
                         row.description = item_data.description
+                        if "maintenance_type" in item_data.model_fields_set:
+                            row.maintenance_type = item_data.maintenance_type
+                        elif row.maintenance_type is None:
+                            row.maintenance_type = resolve_type(None, item_data.description)
                         row.cost = item_data.cost
                         row.notes = item_data.notes
                         row.is_inspection = item_data.is_inspection
@@ -402,6 +462,9 @@ class ServiceVisitService:
                             visit_id=visit.id,
                             category=item_data.category,
                             description=item_data.description,
+                            maintenance_type=resolve_type(
+                                item_data.maintenance_type, item_data.description
+                            ),
                             cost=item_data.cost,
                             notes=item_data.notes,
                             is_inspection=item_data.is_inspection,
@@ -424,11 +487,8 @@ class ServiceVisitService:
                         )
                     await self._sync_line_item_supplies(line_item, item_data.supplies_used, vin)
                     if item_data.reminder:
-                        await reminder_service.create_reminder(
-                            vin=vin,
-                            data=item_data.reminder,
-                            db=self.db,
-                            line_item_id=line_item.id,
+                        await maintenance_service.create_reminder_for_line_item(
+                            self.db, vin, line_item, visit, item_data.reminder
                         )
 
                 # Auto-derive service_category from submitted items
@@ -483,6 +543,10 @@ class ServiceVisitService:
                         visit_id,
                         sanitize_for_log(e),
                     )
+
+            # Maintenance lifecycle: an edited date, odometer or line item type
+            # moves anchors. Own lock, own commit, logs on failure.
+            await maintenance_service.reconcile_vehicle(self.db, vin)
 
             await invalidate_cache_for_vehicle(vin)
 
@@ -591,6 +655,10 @@ class ServiceVisitService:
             await self.db.commit()
 
             logger.info("Deleted service visit %s for %s", visit_id, sanitize_for_log(vin))
+            # The deleted visit may have anchored a reminder (the FK is SET
+            # NULL; the snapshot stays). Reconcile so a rule whose newest
+            # service just vanished still has exactly one pending reminder.
+            await maintenance_service.reconcile_vehicle(self.db, vin)
             await invalidate_cache_for_vehicle(vin)
 
         except HTTPException:
@@ -639,12 +707,16 @@ class ServiceVisitService:
 
         try:
             await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
+            # Line items may carry recurring reminders, which create or reuse a
+            # rule: serialise with every other rule writer before the first read.
+            await lock_vehicle_for_write(self.db, vin)
             visit = await self.get_service_visit(vin, visit_id, current_user)
 
             line_item = ServiceLineItem(
                 visit_id=visit.id,
                 category=item_data.category,
                 description=item_data.description,
+                maintenance_type=resolve_type(item_data.maintenance_type, item_data.description),
                 cost=item_data.cost,
                 notes=item_data.notes,
                 is_inspection=item_data.is_inspection,
@@ -655,6 +727,11 @@ class ServiceVisitService:
             self.db.add(line_item)
             await self.db.flush()
 
+            if item_data.reminder:
+                await maintenance_service.create_reminder_for_line_item(
+                    self.db, vin, line_item, visit, item_data.reminder
+                )
+
             if item_data.supplies_used:
                 await self._sync_line_item_supplies(line_item, item_data.supplies_used, vin)
 
@@ -662,6 +739,7 @@ class ServiceVisitService:
             await self._recompute_visit_total(visit.id)
 
             await self.db.commit()
+            await maintenance_service.reconcile_vehicle(self.db, vin)
 
             # Reload with supply usages + supply + owning visit eager-loaded so the
             # response can carry supply_usages (to_usage_response reads usage.supply.name
@@ -742,6 +820,7 @@ class ServiceVisitService:
             await self._recompute_visit_total(visit_id)
 
             await self.db.commit()
+            await maintenance_service.reconcile_vehicle(self.db, vin)
 
             logger.info(
                 "Deleted line item %s from visit %s for %s",
@@ -890,6 +969,7 @@ class ServiceVisitService:
                 visit_id=item.visit_id,
                 description=item.description,
                 category=item.category,
+                maintenance_type=item.maintenance_type,
                 cost=item.cost,
                 notes=item.notes,
                 is_inspection=item.is_inspection,

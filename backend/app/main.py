@@ -329,6 +329,8 @@ from app.routes import (
     hours_router,
     import_router,
     insurance_router,
+    maintenance_rules_router,
+    maintenance_types_router,
     notes_router,
     notifications_router,
     odometer_router,
@@ -411,6 +413,8 @@ app.include_router(vendors_router)
 app.include_router(service_visits_router)
 app.include_router(reminders_router)
 app.include_router(reminder_packs_router)
+app.include_router(maintenance_types_router)
+app.include_router(maintenance_rules_router)
 app.include_router(supplies_router)
 app.include_router(vehicle_supplies_router)
 app.include_router(livelink_ingest_router)

@@ -60,6 +60,7 @@ from app.models import (
 )
 from app.models.user import User
 from app.models.vendor import Vendor
+from app.services import maintenance_service
 from app.services.auth import get_vehicle_or_403, require_auth
 from app.services.fuel_side_effects import (
     apply_fuel_record_side_effects,
@@ -89,6 +90,7 @@ from app.utils.csv_units import (
 from app.utils.def_sync import ensure_def_capable
 from app.utils.file_validation import validate_csv_upload
 from app.utils.logging_utils import sanitize_for_log
+from app.utils.maintenance_types import classify
 from app.utils.odometer_tolerance import KM_STEP, LITRE_STEP, conversion_tolerance
 from app.utils.units import UnitConverter
 
@@ -460,6 +462,7 @@ async def import_service_csv(
                 line_item = ServiceLineItem(
                     visit_id=visit.id,
                     description=description or category or "Service",
+                    maintenance_type=classify(description or category or "Service"),
                     cost=cost or Decimal("0"),
                 )
                 db.add(line_item)
@@ -471,6 +474,9 @@ async def import_service_csv(
             import_result.add_error(row_num, "Invalid service record data")
 
     await db.commit()
+    # Imported services may be the newest of a rule's type: reconcile once per
+    # upload (own lock, own commit), never per row.
+    await maintenance_service.reconcile_vehicle(db, vin)
 
     return import_result.to_dict()
 
@@ -1357,6 +1363,7 @@ async def import_vehicle_json(
                 line_item = ServiceLineItem(
                     visit_id=visit.id,
                     description=description,
+                    maintenance_type=classify(description),
                     cost=cost,
                 )
                 db.add(line_item)
@@ -1577,6 +1584,7 @@ async def import_vehicle_json(
                 due_mileage_km=recurrence_miles if has_miles else None,
                 status="pending",
                 notes=reminder_data.get("notes"),
+                maintenance_type=classify(reminder_data["description"]),
             )
             # A savepoint per row. A row the database still rejects rolls
             # back alone here, instead of poisoning the session for every
@@ -1612,6 +1620,8 @@ async def import_vehicle_json(
             results["errors"].append(f"Note {idx}: could not be imported")
 
     await db.commit()
+    # Imported services may be the newest of a rule's type: reconcile once.
+    await maintenance_service.reconcile_vehicle(db, vin)
 
     metric_keys = (
         "service_records",

@@ -2,22 +2,22 @@
   "id": "snowmobile_season",
   "name": "Snowmobile Season Prep",
   "description": "Pre-season and mid-season checks for snowmobiles.",
-  "vehicle_types": ["Snowmobile"],
+  "vehicle_types": [
+    "Snowmobile"
+  ],
   "reminders": [
     {
+      "key": "preseason",
+      "maintenance_type": "preseason_fluids_belt",
       "title": "Pre-Season Fluids & Belt",
-      "reminder_type": "date",
-      "due_mileage_km": null,
-      "due_date_offset_days": 14,
-      "due_hours": null,
+      "interval_days": 14,
       "notes": "Check oil, coolant, and drive belt before the first ride of the season."
     },
     {
+      "key": "track_ski_alignment",
+      "maintenance_type": "track_ski_alignment",
       "title": "Track & Ski Alignment Check",
-      "reminder_type": "hours",
-      "due_mileage_km": null,
-      "due_date_offset_days": null,
-      "due_hours": 40,
+      "interval_hours": 40,
       "notes": "Inspect track tension, ski alignment, and carbide wear."
     }
   ]

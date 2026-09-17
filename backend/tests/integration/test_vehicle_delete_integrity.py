@@ -29,6 +29,7 @@ from app.config import settings
 from app.models.def_record import DEFRecord
 from app.models.drive_session import DriveSession
 from app.models.fuel import FuelRecord
+from app.models.maintenance_rule import MaintenanceRule
 from app.models.odometer import OdometerRecord
 from app.models.reminder import Reminder
 from app.models.user import User
@@ -45,6 +46,7 @@ CHILD_MODELS = [
     (DEFRecord, "vin"),
     (OdometerRecord, "vin"),
     (Reminder, "vin"),
+    (MaintenanceRule, "vin"),
     (VehicleTelemetry, "vin"),
     (VehicleTelemetryLatest, "vin"),
     (DriveSession, "vin"),
@@ -85,6 +87,13 @@ async def _seed_vehicle_with_children(db_session: AsyncSession, user_id: int, vi
                 title="Oil change",
                 reminder_type="date",
                 due_date=today + timedelta(days=30),
+            ),
+            MaintenanceRule(
+                vin=vin,
+                maintenance_type="engine_oil_filter",
+                title="Oil change",
+                interval_km=Decimal("8000"),
+                source="manual",
             ),
             VehicleTelemetry(
                 vin=vin,
