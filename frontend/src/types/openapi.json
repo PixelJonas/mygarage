@@ -1021,6 +1021,233 @@
         "title": "AdminUserUpdate",
         "type": "object"
       },
+      "AnchorCandidate": {
+        "description": "A line item the preview can point at.",
+        "properties": {
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "engine_hours": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engine Hours"
+          },
+          "line_item_id": {
+            "title": "Line Item Id",
+            "type": "integer"
+          },
+          "maintenance_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maintenance Type"
+          },
+          "odometer_km": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Odometer Km"
+          },
+          "visit_id": {
+            "title": "Visit Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "line_item_id",
+          "visit_id",
+          "date",
+          "odometer_km",
+          "engine_hours",
+          "description",
+          "maintenance_type"
+        ],
+        "title": "AnchorCandidate",
+        "type": "object"
+      },
+      "AnchorChoice": {
+        "description": "The caller's pick for one pack item: a line item to type, or done today.",
+        "properties": {
+          "done_today": {
+            "default": false,
+            "title": "Done Today",
+            "type": "boolean"
+          },
+          "line_item_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line Item Id"
+          }
+        },
+        "title": "AnchorChoice",
+        "type": "object"
+      },
+      "AnchorProposal": {
+        "description": "What a reminder would count from, and why.",
+        "properties": {
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "hours": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hours"
+          },
+          "kind": {
+            "enum": [
+              "service",
+              "completion",
+              "baseline"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "line_item_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line Item Id"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "odometer_km": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Odometer Km"
+          },
+          "origin": {
+            "enum": [
+              "reminder",
+              "history",
+              "baseline"
+            ],
+            "title": "Origin",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "date",
+          "odometer_km",
+          "hours",
+          "origin"
+        ],
+        "title": "AnchorProposal",
+        "type": "object"
+      },
+      "AnchorSpec": {
+        "description": "A hand-entered anchor: when and at what reading the work was last done.",
+        "properties": {
+          "date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "hours": {
+            "anyOf": [
+              {
+                "maximum": 9999999.9,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hours"
+          },
+          "odometer_km": {
+            "anyOf": [
+              {
+                "maximum": 99999999.99,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Odometer Km"
+          }
+        },
+        "title": "AnchorSpec",
+        "type": "object"
+      },
       "AnomalyAlert": {
         "description": "Alert for detected spending anomalies.",
         "properties": {
@@ -1067,9 +1294,57 @@
         "title": "AnomalyAlert",
         "type": "object"
       },
-      "ApplyReminderPackRequest": {
-        "description": "Request body for applying a reminder pack to a vehicle.",
+      "ApplyPackPreview": {
+        "description": "The plan for one pack on one vehicle.",
         "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PackItemPlan"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "pack_id": {
+            "title": "Pack Id",
+            "type": "string"
+          },
+          "pack_name": {
+            "title": "Pack Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pack_id",
+          "pack_name",
+          "items"
+        ],
+        "title": "ApplyPackPreview",
+        "type": "object"
+      },
+      "ApplyReminderPackRequest": {
+        "description": "Request body for applying (or previewing) a reminder pack on a vehicle.\n\n``anchors`` maps a pack item key to the caller's anchor choice; an item\nnot named keeps the preview's proposal.",
+        "properties": {
+          "anchors": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AnchorChoice"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anchors"
+          },
           "pack_id": {
             "maxLength": 100,
             "minLength": 1,
@@ -4000,6 +4275,38 @@
           "created_at"
         ],
         "title": "DriveSessionResponse",
+        "type": "object"
+      },
+      "DuplicateGroup": {
+        "description": "Pending reminders that share a maintenance type.",
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "maintenance_type": {
+            "title": "Maintenance Type",
+            "type": "string"
+          },
+          "reminder_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Reminder Ids",
+            "type": "array"
+          },
+          "suggested_keep_id": {
+            "title": "Suggested Keep Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "maintenance_type",
+          "label",
+          "reminder_ids",
+          "suggested_keep_id"
+        ],
+        "title": "DuplicateGroup",
         "type": "object"
       },
       "EVChargingMetadata": {
@@ -9613,6 +9920,449 @@
         "title": "MaintenancePrediction",
         "type": "object"
       },
+      "MaintenanceRuleCreate": {
+        "description": "The explicit path: creates a rule even when one of the type exists.",
+        "properties": {
+          "interval_days": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 36500.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Days"
+          },
+          "interval_hours": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 999999999.9,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Hours"
+          },
+          "interval_km": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 99999999.99,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Km"
+          },
+          "interval_months": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 600.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Months"
+          },
+          "maintenance_type": {
+            "anyOf": [
+              {
+                "maxLength": 50,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maintenance Type"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "MaintenanceRuleCreate",
+        "type": "object"
+      },
+      "MaintenanceRuleResponse": {
+        "description": "A rule on its own.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "interval_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Days"
+          },
+          "interval_hours": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Hours"
+          },
+          "interval_km": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Km"
+          },
+          "interval_months": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Months"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "maintenance_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maintenance Type"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "source_pack_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Pack Id"
+          },
+          "source_pack_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Pack Key"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "vin": {
+            "title": "Vin",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "maintenance_type",
+          "interval_km",
+          "interval_months",
+          "interval_days",
+          "interval_hours",
+          "source",
+          "source_pack_id",
+          "is_active",
+          "vin",
+          "source_pack_key",
+          "notes",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "MaintenanceRuleResponse",
+        "type": "object"
+      },
+      "MaintenanceRuleSummary": {
+        "description": "The rule a reminder is derived from, embedded in the reminder response.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "interval_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Days"
+          },
+          "interval_hours": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Hours"
+          },
+          "interval_km": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Km"
+          },
+          "interval_months": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Months"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "maintenance_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maintenance Type"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "source_pack_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Pack Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "maintenance_type",
+          "interval_km",
+          "interval_months",
+          "interval_days",
+          "interval_hours",
+          "source",
+          "source_pack_id",
+          "is_active"
+        ],
+        "title": "MaintenanceRuleSummary",
+        "type": "object"
+      },
+      "MaintenanceRuleUpdate": {
+        "description": "Patch a rule. Omitted fields keep their values.",
+        "properties": {
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          },
+          "maintenance_type": {
+            "anyOf": [
+              {
+                "maxLength": 50,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maintenance Type"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "recurrence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecurrenceSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "title": "MaintenanceRuleUpdate",
+        "type": "object"
+      },
+      "MaintenanceTypeResponse": {
+        "description": "One registry entry for pickers.",
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "category"
+        ],
+        "title": "MaintenanceTypeResponse",
+        "type": "object"
+      },
       "MonthlyCostSummary": {
         "description": "Monthly cost summary.",
         "properties": {
@@ -11022,6 +11772,228 @@
         "title": "POISearchResponse",
         "type": "object"
       },
+      "PackItemPlan": {
+        "description": "Everything apply-pack would do for one item, computed before any write.",
+        "properties": {
+          "adopted": {
+            "default": false,
+            "title": "Adopted",
+            "type": "boolean"
+          },
+          "anchor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnchorProposal"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "due_hours": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Hours"
+          },
+          "due_mileage_km": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Mileage Km"
+          },
+          "interval_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Days"
+          },
+          "interval_hours": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Hours"
+          },
+          "interval_km": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Km"
+          },
+          "interval_months": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Months"
+          },
+          "keep_reminder_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keep Reminder Id"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "maintenance_type": {
+            "title": "Maintenance Type",
+            "type": "string"
+          },
+          "newer_service": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnchorCandidate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "reminder_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reminder Type"
+          },
+          "rule_action": {
+            "enum": [
+              "create",
+              "reuse",
+              "reactivate",
+              "skip"
+            ],
+            "title": "Rule Action",
+            "type": "string"
+          },
+          "rule_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Id"
+          },
+          "skip_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skip Reason"
+          },
+          "supersede_reminder_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Supersede Reminder Ids",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "typed_history": {
+            "items": {
+              "$ref": "#/components/schemas/AnchorCandidate"
+            },
+            "title": "Typed History",
+            "type": "array"
+          },
+          "untyped_candidates": {
+            "items": {
+              "$ref": "#/components/schemas/AnchorCandidate"
+            },
+            "title": "Untyped Candidates",
+            "type": "array"
+          }
+        },
+        "required": [
+          "key",
+          "maintenance_type",
+          "title",
+          "interval_km",
+          "interval_months",
+          "interval_days",
+          "interval_hours",
+          "rule_action"
+        ],
+        "title": "PackItemPlan",
+        "type": "object"
+      },
       "ParserInfo": {
         "description": "Schema for parser information.",
         "properties": {
@@ -11799,9 +12771,263 @@
         "title": "RecallUpdate",
         "type": "object"
       },
-      "ReminderCreate": {
-        "description": "Schema for creating a vehicle reminder.",
+      "ReconcileDuplicatesRequest": {
+        "description": "Keep one reminder of a group and supersede the rest.",
         "properties": {
+          "keep_id": {
+            "title": "Keep Id",
+            "type": "integer"
+          },
+          "supersede_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "minItems": 1,
+            "title": "Supersede Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "keep_id",
+          "supersede_ids"
+        ],
+        "title": "ReconcileDuplicatesRequest",
+        "type": "object"
+      },
+      "RecurrenceSpec": {
+        "description": "The intervals of a rule. At least one; km and hours never together.",
+        "properties": {
+          "interval_days": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 36500.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Days"
+          },
+          "interval_hours": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 999999999.9,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Hours"
+          },
+          "interval_km": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 99999999.99,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Km"
+          },
+          "interval_months": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 600.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Months"
+          }
+        },
+        "title": "RecurrenceSpec",
+        "type": "object"
+      },
+      "ReminderCompleteRequest": {
+        "description": "Close a reminder with the real completion date and readings.\n\nWith `link_visit` the linked visit is the service record: its date,\nodometer and engine hours are the completion, and `completed_date`,\n`odometer_km` and `engine_hours` in the request are not used.",
+        "properties": {
+          "completed_date": {
+            "format": "date",
+            "title": "Completed Date",
+            "type": "string"
+          },
+          "cost": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost"
+          },
+          "engine_hours": {
+            "anyOf": [
+              {
+                "maximum": 9999999.9,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engine Hours"
+          },
+          "mode": {
+            "default": "create_visit",
+            "enum": [
+              "create_visit",
+              "link_visit",
+              "mark_only"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 5000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "odometer_km": {
+            "anyOf": [
+              {
+                "maximum": 99999999.99,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Odometer Km"
+          },
+          "service_visit_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Visit Id"
+          },
+          "vendor_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor Id"
+          }
+        },
+        "required": [
+          "completed_date"
+        ],
+        "title": "ReminderCompleteRequest",
+        "type": "object"
+      },
+      "ReminderCompleteResponse": {
+        "description": "What completing a reminder produced: the closed one, its successor,\nand the service record it created or linked.",
+        "properties": {
+          "line_item_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line Item Id"
+          },
+          "next_reminder": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReminderResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reminder": {
+            "$ref": "#/components/schemas/ReminderResponse"
+          },
+          "service_visit_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Visit Id"
+          }
+        },
+        "required": [
+          "reminder"
+        ],
+        "title": "ReminderCompleteResponse",
+        "type": "object"
+      },
+      "ReminderCreate": {
+        "description": "Schema for creating a vehicle reminder.\n\nWith ``recurrence`` the server derives ``reminder_type`` and the ``due_*``\nthresholds from the anchor (``anchor``, the linked line item's visit, or\na baseline) plus the intervals, and creates a maintenance rule. Without\nit the reminder is a one-off and the ``due_*`` rules below apply.",
+        "properties": {
+          "anchor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnchorSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "due_date": {
             "anyOf": [
               {
@@ -11859,6 +13085,18 @@
             ],
             "title": "Line Item Id"
           },
+          "maintenance_type": {
+            "anyOf": [
+              {
+                "maxLength": 50,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maintenance Type"
+          },
           "notes": {
             "anyOf": [
               {
@@ -11870,16 +13108,33 @@
             ],
             "title": "Notes"
           },
+          "recurrence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecurrenceSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "reminder_type": {
-            "enum": [
-              "date",
-              "mileage",
-              "both",
-              "smart",
-              "hours"
+            "anyOf": [
+              {
+                "enum": [
+                  "date",
+                  "mileage",
+                  "both",
+                  "smart",
+                  "hours"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Reminder Type",
-            "type": "string"
+            "title": "Reminder Type"
           },
           "title": {
             "maxLength": 200,
@@ -11889,8 +13144,7 @@
           }
         },
         "required": [
-          "title",
-          "reminder_type"
+          "title"
         ],
         "title": "ReminderCreate",
         "type": "object"
@@ -11936,6 +13190,112 @@
       "ReminderResponse": {
         "description": "Schema for reminder response.",
         "properties": {
+          "anchor_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anchor Date"
+          },
+          "anchor_hours": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anchor Hours"
+          },
+          "anchor_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anchor Kind"
+          },
+          "anchor_odometer_km": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anchor Odometer Km"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "completed_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed Date"
+          },
+          "completed_hours": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed Hours"
+          },
+          "completed_line_item_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed Line Item Id"
+          },
+          "completed_odometer_km": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed Odometer Km"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -11977,6 +13337,13 @@
             ],
             "title": "Due Mileage Km"
           },
+          "duplicate_of": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Duplicate Of",
+            "type": "array"
+          },
           "estimated_due_date": {
             "anyOf": [
               {
@@ -12016,6 +13383,17 @@
             ],
             "title": "Line Item Id"
           },
+          "maintenance_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maintenance Type"
+          },
           "notes": {
             "anyOf": [
               {
@@ -12027,13 +13405,57 @@
             ],
             "title": "Notes"
           },
+          "projected_usage_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Projected Usage Date"
+          },
           "reminder_type": {
             "title": "Reminder Type",
             "type": "string"
           },
+          "rule": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MaintenanceRuleSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rule_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Id"
+          },
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "superseded_by_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Superseded By Id"
           },
           "title": {
             "title": "Title",
@@ -12068,7 +13490,7 @@
         "type": "object"
       },
       "ReminderUpdate": {
-        "description": "Schema for updating a vehicle reminder.\n\nStatus is NOT here \u2014 use /done or /dismiss endpoints.\nValidation is lenient (fields may be absent). The route handler merges\nthis patch onto the existing reminder and validates the final state.",
+        "description": "Schema for updating a vehicle reminder.\n\nStatus is NOT here \u2014 use /done, /dismiss or /complete endpoints.\nValidation is lenient (fields may be absent). The route handler merges\nthis patch onto the existing reminder and validates the final state.\n\n``recurrence`` edits the reminder's rule (or creates one); an explicit\n``null`` deactivates the rule and leaves the reminder as a one-off. For a\nreminder with an active rule the ``due_*`` fields are derived and\nrejected with 422 if sent.",
         "properties": {
           "due_date": {
             "anyOf": [
@@ -12116,6 +13538,18 @@
             ],
             "title": "Due Mileage Km"
           },
+          "maintenance_type": {
+            "anyOf": [
+              {
+                "maxLength": 50,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maintenance Type"
+          },
           "notes": {
             "anyOf": [
               {
@@ -12126,6 +13560,16 @@
               }
             ],
             "title": "Notes"
+          },
+          "recurrence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecurrenceSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "reminder_type": {
             "anyOf": [
@@ -12547,6 +13991,19 @@
             "title": "Is Inspection",
             "type": "boolean"
           },
+          "maintenance_type": {
+            "anyOf": [
+              {
+                "maxLength": 50,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Canonical maintenance type code; classified from the description when omitted",
+            "title": "Maintenance Type"
+          },
           "notes": {
             "anyOf": [
               {
@@ -12721,6 +14178,19 @@
             "title": "Is Inspection",
             "type": "boolean"
           },
+          "maintenance_type": {
+            "anyOf": [
+              {
+                "maxLength": 50,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Canonical maintenance type code; classified from the description when omitted",
+            "title": "Maintenance Type"
+          },
           "needs_followup": {
             "default": false,
             "description": "Whether this inspection needs followup",
@@ -12864,6 +14334,18 @@
             "default": false,
             "title": "Is Inspection",
             "type": "boolean"
+          },
+          "maintenance_type": {
+            "anyOf": [
+              {
+                "maxLength": 50,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maintenance Type"
           },
           "notes": {
             "anyOf": [
@@ -32173,6 +33655,37 @@
         ]
       }
     },
+    "/api/maintenance-types": {
+      "get": {
+        "description": "The canonical maintenance types, in registry order, for pickers.",
+        "operationId": "list_maintenance_types_api_maintenance_types_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MaintenanceTypeResponse"
+                  },
+                  "title": "Response List Maintenance Types Api Maintenance Types Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Maintenance Types",
+        "tags": [
+          "Maintenance"
+        ]
+      }
+    },
     "/api/notifications/inbox": {
       "get": {
         "description": "Return actionable in-app alerts (overdue and soon-due reminders).",
@@ -38420,6 +39933,229 @@
         ]
       }
     },
+    "/api/vehicles/{vin}/maintenance-rules": {
+      "get": {
+        "description": "Every maintenance rule on the vehicle, active first.",
+        "operationId": "list_rules_api_vehicles__vin__maintenance_rules_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vin",
+            "required": true,
+            "schema": {
+              "title": "Vin",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MaintenanceRuleResponse"
+                  },
+                  "title": "Response List Rules Api Vehicles  Vin  Maintenance Rules Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Rules",
+        "tags": [
+          "Maintenance"
+        ]
+      },
+      "post": {
+        "description": "Create a rule explicitly (a second rule of a type is allowed here).",
+        "operationId": "create_rule_api_vehicles__vin__maintenance_rules_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vin",
+            "required": true,
+            "schema": {
+              "title": "Vin",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaintenanceRuleCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaintenanceRuleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Rule",
+        "tags": [
+          "Maintenance"
+        ]
+      }
+    },
+    "/api/vehicles/{vin}/maintenance-rules/{rule_id}": {
+      "delete": {
+        "description": "Remove a rule nothing references; deactivate one with history.",
+        "operationId": "delete_rule_api_vehicles__vin__maintenance_rules__rule_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vin",
+            "required": true,
+            "schema": {
+              "title": "Vin",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "title": "Rule Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Rule",
+        "tags": [
+          "Maintenance"
+        ]
+      },
+      "put": {
+        "description": "Edit a rule's intervals, title, type or activity; its pending reminder follows.",
+        "operationId": "update_rule_api_vehicles__vin__maintenance_rules__rule_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vin",
+            "required": true,
+            "schema": {
+              "title": "Vin",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "title": "Rule Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaintenanceRuleUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaintenanceRuleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Rule",
+        "tags": [
+          "Maintenance"
+        ]
+      }
+    },
     "/api/vehicles/{vin}/notes": {
       "get": {
         "description": "List all notes for a vehicle.",
@@ -39829,7 +41565,7 @@
         ]
       },
       "post": {
-        "description": "Create a new reminder for a vehicle.",
+        "description": "Create a new reminder for a vehicle.\n\nWith ``recurrence`` the reminder gets a maintenance rule and its\nthresholds are derived from the anchor and the intervals; the vehicle's\nexisting rule of the type is reused, so this may return that rule's\nexisting pending reminder rather than a new row.",
         "operationId": "create_reminder_api_vehicles__vin__reminders_post",
         "parameters": [
           {
@@ -39887,7 +41623,7 @@
     },
     "/api/vehicles/{vin}/reminders/apply-pack": {
       "post": {
-        "description": "Apply a built-in reminder pack to a vehicle (creates pending reminders).",
+        "description": "Apply a built-in reminder pack to a vehicle.\n\nReturns the pending reminder of every rule the pack touched: created,\nreused or adopted, never a duplicate of one already tracking the type.",
         "operationId": "apply_reminder_pack_api_vehicles__vin__reminders_apply_pack_post",
         "parameters": [
           {
@@ -39947,6 +41683,230 @@
         ]
       }
     },
+    "/api/vehicles/{vin}/reminders/apply-pack/preview": {
+      "post": {
+        "description": "What applying the pack would do: rules, anchors, adoptions, thresholds. No writes.",
+        "operationId": "preview_reminder_pack_api_vehicles__vin__reminders_apply_pack_preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vin",
+            "required": true,
+            "schema": {
+              "title": "Vin",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyReminderPackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplyPackPreview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Preview Reminder Pack",
+        "tags": [
+          "Reminders"
+        ]
+      }
+    },
+    "/api/vehicles/{vin}/reminders/duplicates": {
+      "get": {
+        "description": "Pending reminders that share a maintenance type, with a suggested keeper.",
+        "operationId": "list_duplicates_api_vehicles__vin__reminders_duplicates_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vin",
+            "required": true,
+            "schema": {
+              "title": "Vin",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DuplicateGroup"
+                  },
+                  "title": "Response List Duplicates Api Vehicles  Vin  Reminders Duplicates Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Duplicates",
+        "tags": [
+          "Reminders"
+        ]
+      }
+    },
+    "/api/vehicles/{vin}/reminders/reconcile": {
+      "post": {
+        "description": "Recompute every active rule's pending reminder from the history. Idempotent.",
+        "operationId": "reconcile_reminders_api_vehicles__vin__reminders_reconcile_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vin",
+            "required": true,
+            "schema": {
+              "title": "Vin",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ReminderResponse"
+                  },
+                  "title": "Response Reconcile Reminders Api Vehicles  Vin  Reminders Reconcile Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reconcile Reminders",
+        "tags": [
+          "Reminders"
+        ]
+      }
+    },
+    "/api/vehicles/{vin}/reminders/reconcile-duplicates": {
+      "post": {
+        "description": "Keep one reminder of a duplicate group and supersede the others.",
+        "operationId": "reconcile_duplicates_api_vehicles__vin__reminders_reconcile_duplicates_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vin",
+            "required": true,
+            "schema": {
+              "title": "Vin",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReconcileDuplicatesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ReminderResponse"
+                  },
+                  "title": "Response Reconcile Duplicates Api Vehicles  Vin  Reminders Reconcile Duplicates Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reconcile Duplicates",
+        "tags": [
+          "Reminders"
+        ]
+      }
+    },
     "/api/vehicles/{vin}/reminders/{reminder_id}": {
       "delete": {
         "description": "Delete a reminder.",
@@ -39997,7 +41957,7 @@
         ]
       },
       "put": {
-        "description": "Update a reminder (content only \u2014 use /done or /dismiss for status).",
+        "description": "Update a reminder (content only \u2014 use /done, /dismiss or /complete for status).",
         "operationId": "update_reminder_api_vehicles__vin__reminders__reminder_id__put",
         "parameters": [
           {
@@ -40062,6 +42022,73 @@
         ]
       }
     },
+    "/api/vehicles/{vin}/reminders/{reminder_id}/complete": {
+      "post": {
+        "description": "Complete a reminder with the actual date and readings.\n\nLogs a service visit (default), links an existing one, or just records\nthe completion; a recurring reminder's successor is created from it.",
+        "operationId": "complete_reminder_api_vehicles__vin__reminders__reminder_id__complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vin",
+            "required": true,
+            "schema": {
+              "title": "Vin",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "reminder_id",
+            "required": true,
+            "schema": {
+              "title": "Reminder Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReminderCompleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReminderCompleteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Complete Reminder",
+        "tags": [
+          "Reminders"
+        ]
+      }
+    },
     "/api/vehicles/{vin}/reminders/{reminder_id}/dismiss": {
       "post": {
         "description": "Mark a reminder as dismissed.",
@@ -40121,7 +42148,7 @@
     },
     "/api/vehicles/{vin}/reminders/{reminder_id}/done": {
       "post": {
-        "description": "Mark a reminder as done.",
+        "description": "Mark a reminder as done today, without a service record.\n\nThe fallback: a recurring reminder still advances, anchored on today's\ndate and the nearest readings. ``/complete`` records the real ones.",
         "operationId": "mark_done_api_vehicles__vin__reminders__reminder_id__done_post",
         "parameters": [
           {

@@ -632,8 +632,7 @@
       "categoryLabel": "Kategorie",
       "descriptionLabel": "Beschreibung",
       "reminderTypeLabel": "Typ",
-      "reminderTypeDate": "Datum",
-      "reminderTypeMileage": "Kilometerstand"
+      "reminderTypeDate": "Datum"
     }
   },
   "livelink": {

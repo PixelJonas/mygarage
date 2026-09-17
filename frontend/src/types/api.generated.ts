@@ -2512,6 +2512,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/maintenance-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Maintenance Types
+         * @description The canonical maintenance types, in registry order, for pickers.
+         */
+        get: operations["list_maintenance_types_api_maintenance_types_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/notifications/inbox": {
         parameters: {
             query?: never;
@@ -4992,6 +5012,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/vehicles/{vin}/maintenance-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Rules
+         * @description Every maintenance rule on the vehicle, active first.
+         */
+        get: operations["list_rules_api_vehicles__vin__maintenance_rules_get"];
+        put?: never;
+        /**
+         * Create Rule
+         * @description Create a rule explicitly (a second rule of a type is allowed here).
+         */
+        post: operations["create_rule_api_vehicles__vin__maintenance_rules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vehicles/{vin}/maintenance-rules/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Rule
+         * @description Edit a rule's intervals, title, type or activity; its pending reminder follows.
+         */
+        put: operations["update_rule_api_vehicles__vin__maintenance_rules__rule_id__put"];
+        post?: never;
+        /**
+         * Delete Rule
+         * @description Remove a rule nothing references; deactivate one with history.
+         */
+        delete: operations["delete_rule_api_vehicles__vin__maintenance_rules__rule_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/vehicles/{vin}/notes": {
         parameters: {
             query?: never;
@@ -5413,6 +5481,11 @@ export interface paths {
         /**
          * Create Reminder
          * @description Create a new reminder for a vehicle.
+         *
+         *     With ``recurrence`` the reminder gets a maintenance rule and its
+         *     thresholds are derived from the anchor and the intervals; the vehicle's
+         *     existing rule of the type is reused, so this may return that rule's
+         *     existing pending reminder rather than a new row.
          */
         post: operations["create_reminder_api_vehicles__vin__reminders_post"];
         delete?: never;
@@ -5432,9 +5505,92 @@ export interface paths {
         put?: never;
         /**
          * Apply Reminder Pack
-         * @description Apply a built-in reminder pack to a vehicle (creates pending reminders).
+         * @description Apply a built-in reminder pack to a vehicle.
+         *
+         *     Returns the pending reminder of every rule the pack touched: created,
+         *     reused or adopted, never a duplicate of one already tracking the type.
          */
         post: operations["apply_reminder_pack_api_vehicles__vin__reminders_apply_pack_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vehicles/{vin}/reminders/apply-pack/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Reminder Pack
+         * @description What applying the pack would do: rules, anchors, adoptions, thresholds. No writes.
+         */
+        post: operations["preview_reminder_pack_api_vehicles__vin__reminders_apply_pack_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vehicles/{vin}/reminders/duplicates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Duplicates
+         * @description Pending reminders that share a maintenance type, with a suggested keeper.
+         */
+        get: operations["list_duplicates_api_vehicles__vin__reminders_duplicates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vehicles/{vin}/reminders/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reconcile Reminders
+         * @description Recompute every active rule's pending reminder from the history. Idempotent.
+         */
+        post: operations["reconcile_reminders_api_vehicles__vin__reminders_reconcile_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vehicles/{vin}/reminders/reconcile-duplicates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reconcile Duplicates
+         * @description Keep one reminder of a duplicate group and supersede the others.
+         */
+        post: operations["reconcile_duplicates_api_vehicles__vin__reminders_reconcile_duplicates_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5451,7 +5607,7 @@ export interface paths {
         get?: never;
         /**
          * Update Reminder
-         * @description Update a reminder (content only — use /done or /dismiss for status).
+         * @description Update a reminder (content only — use /done, /dismiss or /complete for status).
          */
         put: operations["update_reminder_api_vehicles__vin__reminders__reminder_id__put"];
         post?: never;
@@ -5460,6 +5616,29 @@ export interface paths {
          * @description Delete a reminder.
          */
         delete: operations["delete_reminder_api_vehicles__vin__reminders__reminder_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vehicles/{vin}/reminders/{reminder_id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete Reminder
+         * @description Complete a reminder with the actual date and readings.
+         *
+         *     Logs a service visit (default), links an existing one, or just records
+         *     the completion; a recurring reminder's successor is created from it.
+         */
+        post: operations["complete_reminder_api_vehicles__vin__reminders__reminder_id__complete_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -5496,7 +5675,10 @@ export interface paths {
         put?: never;
         /**
          * Mark Done
-         * @description Mark a reminder as done.
+         * @description Mark a reminder as done today, without a service record.
+         *
+         *     The fallback: a recurring reminder still advances, anchored on today's
+         *     date and the nearest readings. ``/complete`` records the real ones.
          */
         post: operations["mark_done_api_vehicles__vin__reminders__reminder_id__done_post"];
         delete?: never;
@@ -7251,6 +7433,83 @@ export interface components {
             time_format?: string | null;
         };
         /**
+         * AnchorCandidate
+         * @description A line item the preview can point at.
+         */
+        AnchorCandidate: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Description */
+            description: string;
+            /** Engine Hours */
+            engine_hours: string | null;
+            /** Line Item Id */
+            line_item_id: number;
+            /** Maintenance Type */
+            maintenance_type: string | null;
+            /** Odometer Km */
+            odometer_km: string | null;
+            /** Visit Id */
+            visit_id: number;
+        };
+        /**
+         * AnchorChoice
+         * @description The caller's pick for one pack item: a line item to type, or done today.
+         */
+        AnchorChoice: {
+            /**
+             * Done Today
+             * @default false
+             */
+            done_today: boolean;
+            /** Line Item Id */
+            line_item_id?: number | null;
+        };
+        /**
+         * AnchorProposal
+         * @description What a reminder would count from, and why.
+         */
+        AnchorProposal: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Hours */
+            hours: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "service" | "completion" | "baseline";
+            /** Line Item Id */
+            line_item_id?: number | null;
+            /** Note */
+            note?: string | null;
+            /** Odometer Km */
+            odometer_km: string | null;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "reminder" | "history" | "baseline";
+        };
+        /**
+         * AnchorSpec
+         * @description A hand-entered anchor: when and at what reading the work was last done.
+         */
+        AnchorSpec: {
+            /** Date */
+            date?: string | null;
+            /** Hours */
+            hours?: number | string | null;
+            /** Odometer Km */
+            odometer_km?: number | string | null;
+        };
+        /**
          * AnomalyAlert
          * @description Alert for detected spending anomalies.
          */
@@ -7273,10 +7532,29 @@ export interface components {
             severity: "warning" | "critical";
         };
         /**
+         * ApplyPackPreview
+         * @description The plan for one pack on one vehicle.
+         */
+        ApplyPackPreview: {
+            /** Items */
+            items: components["schemas"]["PackItemPlan"][];
+            /** Pack Id */
+            pack_id: string;
+            /** Pack Name */
+            pack_name: string;
+        };
+        /**
          * ApplyReminderPackRequest
-         * @description Request body for applying a reminder pack to a vehicle.
+         * @description Request body for applying (or previewing) a reminder pack on a vehicle.
+         *
+         *     ``anchors`` maps a pack item key to the caller's anchor choice; an item
+         *     not named keeps the preview's proposal.
          */
         ApplyReminderPackRequest: {
+            /** Anchors */
+            anchors?: {
+                [key: string]: components["schemas"]["AnchorChoice"] | null;
+            } | null;
             /** Pack Id */
             pack_id: string;
         };
@@ -8705,6 +8983,20 @@ export interface components {
             started_at: string;
             /** Vin */
             vin: string;
+        };
+        /**
+         * DuplicateGroup
+         * @description Pending reminders that share a maintenance type.
+         */
+        DuplicateGroup: {
+            /** Label */
+            label: string;
+            /** Maintenance Type */
+            maintenance_type: string;
+            /** Reminder Ids */
+            reminder_ids: number[];
+            /** Suggested Keep Id */
+            suggested_keep_id: number;
         };
         /**
          * EVChargingMetadata
@@ -11101,6 +11393,118 @@ export interface components {
             service_type: string;
         };
         /**
+         * MaintenanceRuleCreate
+         * @description The explicit path: creates a rule even when one of the type exists.
+         */
+        MaintenanceRuleCreate: {
+            /** Interval Days */
+            interval_days?: number | null;
+            /** Interval Hours */
+            interval_hours?: number | string | null;
+            /** Interval Km */
+            interval_km?: number | string | null;
+            /** Interval Months */
+            interval_months?: number | null;
+            /** Maintenance Type */
+            maintenance_type?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Title */
+            title: string;
+        };
+        /**
+         * MaintenanceRuleResponse
+         * @description A rule on its own.
+         */
+        MaintenanceRuleResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: number;
+            /** Interval Days */
+            interval_days: number | null;
+            /** Interval Hours */
+            interval_hours: string | null;
+            /** Interval Km */
+            interval_km: string | null;
+            /** Interval Months */
+            interval_months: number | null;
+            /** Is Active */
+            is_active: boolean;
+            /** Maintenance Type */
+            maintenance_type: string | null;
+            /** Notes */
+            notes: string | null;
+            /** Source */
+            source: string;
+            /** Source Pack Id */
+            source_pack_id: string | null;
+            /** Source Pack Key */
+            source_pack_key: string | null;
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at: string | null;
+            /** Vin */
+            vin: string;
+        };
+        /**
+         * MaintenanceRuleSummary
+         * @description The rule a reminder is derived from, embedded in the reminder response.
+         */
+        MaintenanceRuleSummary: {
+            /** Id */
+            id: number;
+            /** Interval Days */
+            interval_days: number | null;
+            /** Interval Hours */
+            interval_hours: string | null;
+            /** Interval Km */
+            interval_km: string | null;
+            /** Interval Months */
+            interval_months: number | null;
+            /** Is Active */
+            is_active: boolean;
+            /** Maintenance Type */
+            maintenance_type: string | null;
+            /** Source */
+            source: string;
+            /** Source Pack Id */
+            source_pack_id: string | null;
+            /** Title */
+            title: string;
+        };
+        /**
+         * MaintenanceRuleUpdate
+         * @description Patch a rule. Omitted fields keep their values.
+         */
+        MaintenanceRuleUpdate: {
+            /** Is Active */
+            is_active?: boolean | null;
+            /** Maintenance Type */
+            maintenance_type?: string | null;
+            /** Notes */
+            notes?: string | null;
+            recurrence?: components["schemas"]["RecurrenceSpec"] | null;
+            /** Title */
+            title?: string | null;
+        };
+        /**
+         * MaintenanceTypeResponse
+         * @description One registry entry for pickers.
+         */
+        MaintenanceTypeResponse: {
+            /** Category */
+            category: string;
+            /** Code */
+            code: string;
+            /** Label */
+            label: string;
+        };
+        /**
          * MonthlyCostSummary
          * @description Monthly cost summary.
          */
@@ -11735,6 +12139,60 @@ export interface components {
             source: string;
         };
         /**
+         * PackItemPlan
+         * @description Everything apply-pack would do for one item, computed before any write.
+         */
+        PackItemPlan: {
+            /**
+             * Adopted
+             * @default false
+             */
+            adopted: boolean;
+            anchor?: components["schemas"]["AnchorProposal"] | null;
+            /** Due Date */
+            due_date?: string | null;
+            /** Due Hours */
+            due_hours?: string | null;
+            /** Due Mileage Km */
+            due_mileage_km?: string | null;
+            /** Interval Days */
+            interval_days: number | null;
+            /** Interval Hours */
+            interval_hours: string | null;
+            /** Interval Km */
+            interval_km: string | null;
+            /** Interval Months */
+            interval_months: number | null;
+            /** Keep Reminder Id */
+            keep_reminder_id?: number | null;
+            /** Key */
+            key: string;
+            /** Maintenance Type */
+            maintenance_type: string;
+            newer_service?: components["schemas"]["AnchorCandidate"] | null;
+            /** Note */
+            note?: string | null;
+            /** Reminder Type */
+            reminder_type?: string | null;
+            /**
+             * Rule Action
+             * @enum {string}
+             */
+            rule_action: "create" | "reuse" | "reactivate" | "skip";
+            /** Rule Id */
+            rule_id?: number | null;
+            /** Skip Reason */
+            skip_reason?: string | null;
+            /** Supersede Reminder Ids */
+            supersede_reminder_ids?: number[];
+            /** Title */
+            title: string;
+            /** Typed History */
+            typed_history?: components["schemas"]["AnchorCandidate"][];
+            /** Untyped Candidates */
+            untyped_candidates?: components["schemas"]["AnchorCandidate"][];
+        };
+        /**
          * ParserInfo
          * @description Schema for parser information.
          */
@@ -12074,10 +12532,86 @@ export interface components {
             summary?: string | null;
         };
         /**
+         * ReconcileDuplicatesRequest
+         * @description Keep one reminder of a group and supersede the rest.
+         */
+        ReconcileDuplicatesRequest: {
+            /** Keep Id */
+            keep_id: number;
+            /** Supersede Ids */
+            supersede_ids: number[];
+        };
+        /**
+         * RecurrenceSpec
+         * @description The intervals of a rule. At least one; km and hours never together.
+         */
+        RecurrenceSpec: {
+            /** Interval Days */
+            interval_days?: number | null;
+            /** Interval Hours */
+            interval_hours?: number | string | null;
+            /** Interval Km */
+            interval_km?: number | string | null;
+            /** Interval Months */
+            interval_months?: number | null;
+        };
+        /**
+         * ReminderCompleteRequest
+         * @description Close a reminder with the real completion date and readings.
+         *
+         *     With `link_visit` the linked visit is the service record: its date,
+         *     odometer and engine hours are the completion, and `completed_date`,
+         *     `odometer_km` and `engine_hours` in the request are not used.
+         */
+        ReminderCompleteRequest: {
+            /**
+             * Completed Date
+             * Format: date
+             */
+            completed_date: string;
+            /** Cost */
+            cost?: number | string | null;
+            /** Engine Hours */
+            engine_hours?: number | string | null;
+            /**
+             * Mode
+             * @default create_visit
+             * @enum {string}
+             */
+            mode: "create_visit" | "link_visit" | "mark_only";
+            /** Notes */
+            notes?: string | null;
+            /** Odometer Km */
+            odometer_km?: number | string | null;
+            /** Service Visit Id */
+            service_visit_id?: number | null;
+            /** Vendor Id */
+            vendor_id?: number | null;
+        };
+        /**
+         * ReminderCompleteResponse
+         * @description What completing a reminder produced: the closed one, its successor,
+         *     and the service record it created or linked.
+         */
+        ReminderCompleteResponse: {
+            /** Line Item Id */
+            line_item_id?: number | null;
+            next_reminder?: components["schemas"]["ReminderResponse"] | null;
+            reminder: components["schemas"]["ReminderResponse"];
+            /** Service Visit Id */
+            service_visit_id?: number | null;
+        };
+        /**
          * ReminderCreate
          * @description Schema for creating a vehicle reminder.
+         *
+         *     With ``recurrence`` the server derives ``reminder_type`` and the ``due_*``
+         *     thresholds from the anchor (``anchor``, the linked line item's visit, or
+         *     a baseline) plus the intervals, and creates a maintenance rule. Without
+         *     it the reminder is a one-off and the ``due_*`` rules below apply.
          */
         ReminderCreate: {
+            anchor?: components["schemas"]["AnchorSpec"] | null;
             /** Due Date */
             due_date?: string | null;
             /** Due Hours */
@@ -12086,13 +12620,13 @@ export interface components {
             due_mileage_km?: number | string | null;
             /** Line Item Id */
             line_item_id?: number | null;
+            /** Maintenance Type */
+            maintenance_type?: string | null;
             /** Notes */
             notes?: string | null;
-            /**
-             * Reminder Type
-             * @enum {string}
-             */
-            reminder_type: "date" | "mileage" | "both" | "smart" | "hours";
+            recurrence?: components["schemas"]["RecurrenceSpec"] | null;
+            /** Reminder Type */
+            reminder_type?: ("date" | "mileage" | "both" | "smart" | "hours") | null;
             /** Title */
             title: string;
         };
@@ -12123,6 +12657,24 @@ export interface components {
          * @description Schema for reminder response.
          */
         ReminderResponse: {
+            /** Anchor Date */
+            anchor_date?: string | null;
+            /** Anchor Hours */
+            anchor_hours?: string | null;
+            /** Anchor Kind */
+            anchor_kind?: string | null;
+            /** Anchor Odometer Km */
+            anchor_odometer_km?: string | null;
+            /** Completed At */
+            completed_at?: string | null;
+            /** Completed Date */
+            completed_date?: string | null;
+            /** Completed Hours */
+            completed_hours?: string | null;
+            /** Completed Line Item Id */
+            completed_line_item_id?: number | null;
+            /** Completed Odometer Km */
+            completed_odometer_km?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -12134,6 +12686,8 @@ export interface components {
             due_hours: string | null;
             /** Due Mileage Km */
             due_mileage_km: string | null;
+            /** Duplicate Of */
+            duplicate_of?: number[];
             /** Estimated Due Date */
             estimated_due_date?: string | null;
             /** Id */
@@ -12142,12 +12696,21 @@ export interface components {
             last_notified_at: string | null;
             /** Line Item Id */
             line_item_id: number | null;
+            /** Maintenance Type */
+            maintenance_type?: string | null;
             /** Notes */
             notes: string | null;
+            /** Projected Usage Date */
+            projected_usage_date?: string | null;
             /** Reminder Type */
             reminder_type: string;
+            rule?: components["schemas"]["MaintenanceRuleSummary"] | null;
+            /** Rule Id */
+            rule_id?: number | null;
             /** Status */
             status: string;
+            /** Superseded By Id */
+            superseded_by_id?: number | null;
             /** Title */
             title: string;
             /**
@@ -12162,9 +12725,14 @@ export interface components {
          * ReminderUpdate
          * @description Schema for updating a vehicle reminder.
          *
-         *     Status is NOT here — use /done or /dismiss endpoints.
+         *     Status is NOT here — use /done, /dismiss or /complete endpoints.
          *     Validation is lenient (fields may be absent). The route handler merges
          *     this patch onto the existing reminder and validates the final state.
+         *
+         *     ``recurrence`` edits the reminder's rule (or creates one); an explicit
+         *     ``null`` deactivates the rule and leaves the reminder as a one-off. For a
+         *     reminder with an active rule the ``due_*`` fields are derived and
+         *     rejected with 422 if sent.
          */
         ReminderUpdate: {
             /** Due Date */
@@ -12173,8 +12741,11 @@ export interface components {
             due_hours?: number | string | null;
             /** Due Mileage Km */
             due_mileage_km?: number | string | null;
+            /** Maintenance Type */
+            maintenance_type?: string | null;
             /** Notes */
             notes?: string | null;
+            recurrence?: components["schemas"]["RecurrenceSpec"] | null;
             /** Reminder Type */
             reminder_type?: ("date" | "mileage" | "both" | "smart" | "hours") | null;
             /** Title */
@@ -12361,6 +12932,11 @@ export interface components {
              */
             is_inspection: boolean;
             /**
+             * Maintenance Type
+             * @description Canonical maintenance type code; classified from the description when omitted
+             */
+            maintenance_type?: string | null;
+            /**
              * Notes
              * @description Additional notes
              */
@@ -12445,6 +13021,11 @@ export interface components {
              */
             is_inspection: boolean;
             /**
+             * Maintenance Type
+             * @description Canonical maintenance type code; classified from the description when omitted
+             */
+            maintenance_type?: string | null;
+            /**
              * Needs Followup
              * @description Whether this inspection needs followup
              * @default false
@@ -12493,6 +13074,8 @@ export interface components {
              * @default false
              */
             is_inspection: boolean;
+            /** Maintenance Type */
+            maintenance_type?: string | null;
             /** Notes */
             notes?: string | null;
             reminder?: components["schemas"]["ReminderCreate"] | null;
@@ -21322,6 +21905,26 @@ export interface operations {
             };
         };
     };
+    list_maintenance_types_api_maintenance_types_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaintenanceTypeResponse"][];
+                };
+            };
+        };
+    };
     notification_inbox_api_notifications_inbox_get: {
         parameters: {
             query?: never;
@@ -25086,6 +25689,138 @@ export interface operations {
             };
         };
     };
+    list_rules_api_vehicles__vin__maintenance_rules_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaintenanceRuleResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_rule_api_vehicles__vin__maintenance_rules_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MaintenanceRuleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaintenanceRuleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_rule_api_vehicles__vin__maintenance_rules__rule_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+                rule_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MaintenanceRuleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaintenanceRuleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_rule_api_vehicles__vin__maintenance_rules__rule_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+                rule_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_notes_api_vehicles__vin__notes_get: {
         parameters: {
             query?: never;
@@ -25980,6 +26715,138 @@ export interface operations {
             };
         };
     };
+    preview_reminder_pack_api_vehicles__vin__reminders_apply_pack_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyReminderPackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplyPackPreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_duplicates_api_vehicles__vin__reminders_duplicates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DuplicateGroup"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reconcile_reminders_api_vehicles__vin__reminders_reconcile_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reconcile_duplicates_api_vehicles__vin__reminders_reconcile_duplicates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReconcileDuplicatesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     update_reminder_api_vehicles__vin__reminders__reminder_id__put: {
         parameters: {
             query?: never;
@@ -26034,6 +26901,42 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    complete_reminder_api_vehicles__vin__reminders__reminder_id__complete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+                reminder_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReminderCompleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderCompleteResponse"];
+                };
             };
             /** @description Validation Error */
             422: {

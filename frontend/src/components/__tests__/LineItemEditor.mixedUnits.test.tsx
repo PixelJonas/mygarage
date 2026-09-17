@@ -1,18 +1,18 @@
 /**
- * Task 3: the line-item editor's reminder mileage, which WRITES canonical km.
+ * Task 3 (v3.5.0 shape): the line-item editor's recurring-reminder distance
+ * interval, which WRITES canonical km.
  *
- * The plan's first revision filed this component as display-only. It is not:
- * the number typed into "distance until due" is converted here and stored in
- * `reminderDraft.due_mileage_km`, and `ServiceVisitForm` posts that field as
- * canonical kilometres. The conversion ran on `useUnitPreference().system`,
- * which spec D8 collapses from VOLUME, so a `{volume: 'L', distance: 'mi'}`
- * account entering a 500-mile reminder stored 500 km instead of 804.672.
+ * The number typed into "Every (mi)" is converted by `RecurrenceFields` and
+ * stored in `reminderDraft.interval_km`; `ServiceVisitForm` posts that field
+ * inside `reminder.recurrence` as canonical kilometres and the backend anchors
+ * the reminder on the visit. The conversion runs on `units.distance`, never on
+ * the binary system collapsed from the volume choice, so a
+ * `{volume: 'L', distance: 'mi'}` account entering 500 stores 804.672, not 500.
  *
  * Every case DRIVES the component and asserts RENDERED TEXT as well as the
- * value handed to `onChange`.
- *
- * Expected values are hand-written and derived in comments, never computed
- * through the code under test. `MILES_TO_KM` is 1.609344 (`utils/units.ts`).
+ * value handed to `onChange`. Expected values are hand-written and derived in
+ * comments, never computed through the code under test. `MILES_TO_KM` is
+ * 1.609344 (`utils/units.ts`).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -36,6 +36,9 @@ vi.mock('../../hooks/useUnitPreference', () => ({
 }))
 vi.mock('../../hooks/useCurrencyPreference', () => ({
   useCurrencyPreference: () => ({ formatCurrency: (n: number) => `$${n}` }),
+}))
+vi.mock('../../hooks/useReminders', () => ({
+  useMaintenanceTypes: () => ({ data: [] }),
 }))
 
 // LOCAL i18n mock that RETAINS the interpolated values. The global setup.ts
@@ -63,7 +66,7 @@ const GALLONS_KM: UnitSet = { ...IMPERIAL_UNITS, distance: 'km', speed: 'kmh' }
 
 const onChange = vi.fn()
 
-function itemWith(dueMileageKm?: number): ServiceVisitFormLineItem {
+function itemWith(intervalKm?: number): ServiceVisitFormLineItem {
   return {
     tempId: -1,
     description: 'Oil change',
@@ -77,16 +80,16 @@ function itemWith(dueMileageKm?: number): ServiceVisitFormLineItem {
     supplies_used: [],
     reminderDraft: {
       enabled: true,
+      mode: 'recurring',
       title: 'Oil change',
-      reminder_type: 'mileage',
       due_date: undefined,
-      due_mileage_km: dueMileageKm,
+      recurrence: { interval_km: intervalKm },
       notes: undefined,
     },
   }
 }
 
-function renderEditor(item: ServiceVisitFormLineItem, currentMileage?: number): void {
+function renderEditor(item: ServiceVisitFormLineItem): void {
   render(
     <LineItemEditor
       item={item}
@@ -97,93 +100,110 @@ function renderEditor(item: ServiceVisitFormLineItem, currentMileage?: number): 
       onChange={onChange}
       onRemove={vi.fn()}
       categories={['Maintenance']}
-      currentMileage={currentMileage}
     />
   )
 }
 
-/** The one numeric input inside the reminder panel. */
-const mileageInput = (): HTMLInputElement =>
-  screen.getByPlaceholderText(/lineItemEditor\.misc\.egValue/) as HTMLInputElement
+/** The distance interval input inside the recurring-reminder panel. */
+const intervalInput = (): HTMLInputElement =>
+  screen.getByLabelText(/recurrence\.everyDistance/) as HTMLInputElement
 
-/** The reminder mileage field's own label, which carries the unit. */
-const mileageLabel = (): string =>
-  screen.getByText(/lineItemEditor\.misc\.(distanceUntilDue|dueOdometer)/).textContent ?? ''
+/** The distance interval field's own label, which carries the unit. */
+const intervalLabel = (): string =>
+  (screen.getByText(/recurrence\.everyDistance/).closest('label')?.textContent ?? '').replace(/\s+/g, ' ').trim()
+
+function draftOf(call: unknown[]): { interval_km?: number } {
+  return (call[2] as { recurrence: { interval_km?: number } }).recurrence
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
   unitPrefMock.units = METRIC_UNITS
 })
 
-describe('LineItemEditor — the reminder mileage is written on units.distance', () => {
-  it('★ a 500-mile reminder stores 804.672 km, not 500', () => {
-    // 500 mi x 1.609344 = 804.672 km. Before this slice the same entry stored
-    // 500, because `system` reads 'metric' off the litres and the km branch
-    // passes the typed number through.
+describe('LineItemEditor — the recurring-reminder distance interval is written on units.distance', () => {
+  it('★ a 500-mile interval stores 804.672 km, not 500', () => {
+    // 500 mi x 1.609344 = 804.672 km.
     unitPrefMock.units = LITRES_MILES
     renderEditor(itemWith())
 
-    fireEvent.change(mileageInput(), { target: { value: '500' } })
+    fireEvent.change(intervalInput(), { target: { value: '500' } })
 
     expect(onChange).toHaveBeenCalledTimes(1)
-    const [index, fieldName, draft] = onChange.mock.calls[0]
+    const [index, fieldName] = onChange.mock.calls[0]
     expect(index).toBe(0)
     expect(fieldName).toBe('reminderDraft')
-    expect((draft as { due_mileage_km: number }).due_mileage_km).toBe(804.672)
-    expect((draft as { due_mileage_km: number }).due_mileage_km).not.toBe(500)
+    expect(draftOf(onChange.mock.calls[0]).interval_km).toBe(804.672)
+    expect(draftOf(onChange.mock.calls[0]).interval_km).not.toBe(500)
     expect(binarySystemFor(unitPrefMock.units.volume)).toBe('metric')
   })
 
-  it('★ a stored 804.67 km reads back as 500 under a miles label, beside a miles example', () => {
-    // The other half of the same round trip. Before this slice the field showed
-    // 805 (804.67 km rounded) under a `km` label.
+  it('★ a stored 804.67 km reads back as 500 under a miles label', () => {
     unitPrefMock.units = LITRES_MILES
     renderEditor(itemWith(804.67))
 
-    expect(mileageInput().value).toBe('500')
-    expect(mileageLabel()).toBe('lineItemEditor.misc.dueOdometer unit=mi')
-    // One example reading for every account: R5 calls a placeholder an EXAMPLE
-    // value with nothing canonical to convert, and it was still being chosen by
-    // the collapsed system.
-    expect(mileageInput().placeholder).toBe('lineItemEditor.misc.egValue value=100000')
+    expect(intervalInput().value).toBe('500')
+    expect(intervalLabel()).toContain('(mi)')
+    expect(intervalInput().placeholder).toBe('recurrence.distancePlaceholder')
   })
 
-  it('★ with a current odometer, the label, the interval and the target hint all read in miles', () => {
-    // currentMileage 80467 km = 50000 mi exactly, plus a 500 mi interval:
-    // the target is 50500 mi.
+  it('★ a field returned to its seeded display hands back the exact canonical value', () => {
+    // 804.67 km shows as 500 mi. Typing 501 converts (806.28...), and typing
+    // 500 again is the displayed quantity unchanged, so the stored value goes
+    // back to 804.67, not to a re-conversion of 500 (804.672).
     unitPrefMock.units = LITRES_MILES
-    renderEditor(itemWith(804.67), 80467)
-
-    expect(mileageLabel()).toBe('lineItemEditor.misc.distanceUntilDue unit=mi')
-    expect(mileageInput().value).toBe('500')
-    expect(mileageInput().placeholder).toBe('lineItemEditor.misc.egValue value=5000')
-    expect(screen.getByText(/targetCalc/).textContent).toBe(
-      'lineItemEditor.misc.targetCalc current=50,000 interval=500 target=50,500 unit=mi'
-    )
+    renderEditor(itemWith(804.67))
+    fireEvent.change(intervalInput(), { target: { value: '501' } })
+    fireEvent.change(intervalInput(), { target: { value: '500' } })
+    expect(onChange).toHaveBeenCalledTimes(2)
+    expect(draftOf(onChange.mock.calls[0]).interval_km).not.toBe(804.67)
+    expect(draftOf(onChange.mock.calls[1]).interval_km).toBe(804.67)
   })
 
   it('★ mirror: a gallons-and-kilometres client stores kilometres verbatim and reads them back', () => {
-    // The mirror pins the OTHER direction, so nothing above can be satisfied by
-    // code that merely inverted the branch. Before this slice a 500 typed here
-    // was stored as 804.67 km for an account that entered kilometres.
     unitPrefMock.units = GALLONS_KM
     renderEditor(itemWith(804.67))
 
-    expect(mileageInput().value).toBe('805')
-    expect(mileageLabel()).toBe('lineItemEditor.misc.dueOdometer unit=km')
+    expect(intervalInput().value).toBe('805')
+    expect(intervalLabel()).toContain('(km)')
     expect(binarySystemFor(unitPrefMock.units.volume)).toBe('imperial')
 
-    fireEvent.change(mileageInput(), { target: { value: '500' } })
-    const [, , draft] = onChange.mock.calls[0]
-    expect((draft as { due_mileage_km: number }).due_mileage_km).toBe(500)
-    expect((draft as { due_mileage_km: number }).due_mileage_km).not.toBe(804.67)
+    fireEvent.change(intervalInput(), { target: { value: '500' } })
+    expect(draftOf(onChange.mock.calls[0]).interval_km).toBe(500)
+    expect(draftOf(onChange.mock.calls[0]).interval_km).not.toBe(804.67)
   })
 
-  it('clearing the field removes the mileage target rather than storing a zero', () => {
+  it('clearing the field removes the interval rather than storing a zero', () => {
     unitPrefMock.units = LITRES_MILES
     renderEditor(itemWith(804.67))
-    fireEvent.change(mileageInput(), { target: { value: '' } })
-    const [, , draft] = onChange.mock.calls[0]
-    expect((draft as { due_mileage_km?: number }).due_mileage_km).toBeUndefined()
+    fireEvent.change(intervalInput(), { target: { value: '' } })
+    expect(draftOf(onChange.mock.calls[0]).interval_km).toBeUndefined()
+  })
+
+  it('the one-time mode shows a date field and no distance interval', () => {
+    unitPrefMock.units = LITRES_MILES
+    const item = itemWith()
+    item.reminderDraft!.mode = 'once'
+    renderEditor(item)
+    expect(screen.queryByLabelText(/recurrence\.everyDistance/)).not.toBeInTheDocument()
+    expect(screen.getByLabelText('lineItemEditor.misc.dueDate')).toBeInTheDocument()
+  })
+
+  it('enabling the reminder starts a RECURRING draft with no interval and the description as title', () => {
+    unitPrefMock.units = LITRES_MILES
+    const item = itemWith()
+    item.reminderDraft = undefined
+    renderEditor(item)
+    fireEvent.click(screen.getByLabelText('lineItemEditor.misc.setReminder'))
+    const [, field, draft] = onChange.mock.calls[0]
+    expect(field).toBe('reminderDraft')
+    expect(draft).toEqual({
+      enabled: true,
+      mode: 'recurring',
+      title: 'Oil change',
+      due_date: undefined,
+      recurrence: {},
+      notes: undefined,
+    })
   })
 })

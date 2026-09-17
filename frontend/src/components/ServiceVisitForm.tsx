@@ -5,6 +5,7 @@ import FormModalWrapper from './FormModalWrapper'
 import CurrencyInputPrefix from './common/CurrencyInputPrefix'
 import { toast } from 'sonner'
 import type { ServiceVisit, ServiceVisitCreate, ServiceVisitFormData, ServiceVisitFormLineItem, ServiceLineItemCreate, ServiceLineItemUpdate, ServiceCategory, SupplyUsedEntry } from '../types/serviceVisit'
+import { reminderDraftToCreate } from '../types/reminder'
 import type { Vehicle, VehicleType } from '../types/vehicle'
 import { NON_MOTORIZED_TYPES } from '../schemas/vehicle'
 import type { Supply } from '../types/supplies'
@@ -66,6 +67,7 @@ const createEmptyLineItem = (tempId: number): ServiceVisitFormLineItem => ({
   tempId,
   description: '',
   category: '',
+  maintenance_type: undefined,
   cost: undefined,
   notes: '',
   is_inspection: false,
@@ -197,6 +199,7 @@ export default function ServiceVisitForm({
           description: item.description,
           category: (item.category as ServiceCategory) || '',
           cost: item.cost !== undefined && item.cost !== null ? Number(item.cost) : undefined,
+          maintenance_type: item.maintenance_type ?? undefined,
           notes: item.notes || '',
           is_inspection: item.is_inspection,
           inspection_result: item.inspection_result || '',
@@ -433,14 +436,28 @@ export default function ServiceVisitForm({
         }
       }
       // The replaced `min="1"` sat on the DISPLAY value, while
-      // `due_mileage_km` is canonical km (LineItemEditor converts on change).
+      // `interval_km` is canonical km (RecurrenceFields converts on change).
       // Comparing canonical km against a bare 1 would silently loosen the
       // floor for an imperial account from 1 mi to 1 km, so the threshold is
       // converted into the same space the constraint was written in.
-      const km = item.reminderDraft?.due_mileage_km
-      const minimumKm = u.distance.toCanonical(1) ?? 1
-      if (km != null && !Number.isNaN(Number(km)) && Number(km) < minimumKm) {
-        return t('service.reminderIntervalTooSmall', { number: n })
+      const draft = item.reminderDraft
+      if (draft?.enabled) {
+        if (draft.mode === 'once' && !draft.due_date) {
+          return t('service.reminderDateRequired', { number: n })
+        }
+        if (draft.mode === 'recurring') {
+          const { interval_km: km, interval_months: months, interval_hours: hours } = draft.recurrence
+          const minimumKm = u.distance.toCanonical(1) ?? 1
+          if (km != null && !Number.isNaN(Number(km)) && Number(km) < minimumKm) {
+            return t('service.reminderIntervalTooSmall', { number: n })
+          }
+          if (km == null && months == null && hours == null) {
+            return t('service.reminderIntervalRequired', { number: n })
+          }
+          if (km != null && hours != null) {
+            return t('service.reminderDistanceOrHours', { number: n })
+          }
+        }
       }
       for (const usage of item.supplies_used ?? []) {
         if (Number.isNaN(usage.quantity) || usage.quantity < 0) {
@@ -513,14 +530,10 @@ export default function ServiceVisitForm({
           u.distance
         ) ?? undefined
 
-      // Reminder due_mileage_km interval is already canonical km (LineItemEditor
-      // converts on input). Add to current km baseline for absolute target.
-      const toAbsoluteKm = (interval: number | string | null | undefined): number | undefined => {
-        if (interval == null) return undefined
-        const num = typeof interval === 'string' ? parseFloat(interval) : interval
-        if (isNaN(num)) return undefined
-        return currentMileage ? currentMileage + num : num
-      }
+      // A line item's reminder is anchored by the BACKEND on this visit's own
+      // date and odometer (v3.5.0). The form never adds an interval to the
+      // vehicle's latest reading any more: that is what put a reminder 185 km
+      // below the service it followed.
 
       if (isEdit && visit) {
         // Diff-based update — include id for existing items, temp_id for new
@@ -529,6 +542,10 @@ export default function ServiceVisitForm({
           temp_id: item.id ? undefined : item.tempId,
           description: item.description,
           category: (item.category as ServiceCategory) || undefined,
+          // Sent even when blank (null): the backend keeps a blank as
+          // "classify from the description" only for a NEW item; for an
+          // existing item an explicit value, blank included, is the edit.
+          maintenance_type: item.maintenance_type || null,
           cost: item.cost,
           notes: item.notes || undefined,
           is_inspection: item.is_inspection,
@@ -540,13 +557,9 @@ export default function ServiceVisitForm({
           // that was never touched here would wipe its logged usages.
           supplies_used: mapSuppliesUsedForSubmit(item),
           // Reminder only for new items (no id) that have an enabled draft
-          reminder: !item.id && item.reminderDraft?.enabled ? {
-            title: item.reminderDraft.title,
-            reminder_type: item.reminderDraft.reminder_type,
-            due_date: item.reminderDraft.due_date,
-            due_mileage_km: toAbsoluteKm(item.reminderDraft.due_mileage_km),
-            notes: item.reminderDraft.notes,
-          } : undefined,
+          reminder: !item.id && item.reminderDraft?.enabled
+            ? reminderDraftToCreate(item.reminderDraft)
+            : undefined,
         }))
 
         await updateMutation.mutateAsync({
@@ -570,6 +583,7 @@ export default function ServiceVisitForm({
         const createLineItems: ServiceLineItemCreate[] = formData.line_items.map((item) => ({
           description: item.description,
           category: (item.category as ServiceCategory) || undefined,
+          maintenance_type: item.maintenance_type || undefined,
           cost: item.cost,
           notes: item.notes || undefined,
           is_inspection: item.is_inspection,
@@ -578,13 +592,9 @@ export default function ServiceVisitForm({
           triggered_by_inspection_id: item.triggered_by_inspection_id,
           temp_id: item.tempId,
           supplies_used: mapSuppliesUsedForSubmit(item),
-          reminder: item.reminderDraft?.enabled ? {
-            title: item.reminderDraft.title,
-            reminder_type: item.reminderDraft.reminder_type,
-            due_date: item.reminderDraft.due_date,
-            due_mileage_km: toAbsoluteKm(item.reminderDraft.due_mileage_km),
-            notes: item.reminderDraft.notes,
-          } : undefined,
+          reminder: item.reminderDraft?.enabled
+            ? reminderDraftToCreate(item.reminderDraft)
+            : undefined,
         }))
 
         const payload: ServiceVisitCreate = {
@@ -783,6 +793,7 @@ export default function ServiceVisitForm({
                     categories={SERVICE_CATEGORIES as unknown as string[]}
                     isNewItem={!item.id}
                     currentMileage={currentMileage}
+                    tracksHours={tracksHours}
                   />
                   {/* Quick action to add repair from failed inspection */}
                   {item.is_inspection &&

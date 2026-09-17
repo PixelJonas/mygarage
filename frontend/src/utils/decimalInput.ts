@@ -14,6 +14,8 @@
  * input on save.
  */
 
+import { getActiveLocale } from '@/constants/i18n'
+
 export type DecimalParseResult =
   | { kind: 'empty' }
   | { kind: 'value'; value: number; ambiguous: boolean }
@@ -115,4 +117,15 @@ export function parseDecimalInput(raw: string, locale: string): DecimalParseResu
   if (!Number.isFinite(value)) return { kind: 'invalid' }
 
   return { kind: 'value', value: sign * value, ambiguous }
+}
+
+/**
+ * The value of a controlled numeric field, or `undefined` when it is empty or
+ * not a number. For fields whose empty and invalid states both mean "no
+ * value" (an optional interval, a cost); a field that must tell them apart
+ * calls `parseDecimalInput` itself.
+ */
+export function parseOptionalDecimal(raw: string): number | undefined {
+  const result = parseDecimalInput(raw, getActiveLocale())
+  return result.kind === 'value' ? result.value : undefined
 }
