@@ -1,9 +1,10 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react-swc'
+import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 import pkg from './package.json' with { type: 'json' }
-import { injectSwFontAssets } from './scripts/inject-sw-font-assets'
+import { injectSwFontAssets } from './scripts/inject-sw-font-assets.ts'
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -51,7 +52,7 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      '@': path.resolve(import.meta.dirname, './src'),
     },
   },
   test: {
@@ -62,31 +63,42 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
+      // Vitest 5 matches these as globs relative to the root: a bare
+      // 'src/__tests__/' directory stopped matching and leaked the shared
+      // factories and test-utils into the report. node_modules is always
+      // excluded, so it is not listed.
       exclude: [
-        'node_modules/',
-        'src/__tests__/',
+        'src/__tests__/**',
         '**/*.d.ts',
         '**/*.config.{js,ts}',
-        '**/mockData.ts',
       ],
     },
   },
   build: {
-    rollupOptions: {
+    rolldownOptions: {
       input: {
-        main: path.resolve(__dirname, 'index.html'),
+        main: path.resolve(import.meta.dirname, 'index.html'),
       },
       output: {
-        // Manual chunk splitting for better caching and performance
-        manualChunks(id: string) {
-          if (id.includes('node_modules/react-dom') || id.includes('node_modules/react/') || id.includes('node_modules/react-router-dom')) return 'react-vendor'
-          if (id.includes('node_modules/recharts')) return 'charts'
-          if (id.includes('node_modules/@schedule-x/') || id.includes('node_modules/temporal-polyfill') || id.includes('node_modules/date-fns')) return 'calendar'
-          if (id.includes('node_modules/lucide-react') || id.includes('node_modules/sonner')) return 'ui'
-          if (id.includes('node_modules/react-hook-form') || id.includes('node_modules/zod') || id.includes('node_modules/@hookform')) return 'forms'
-          if (id.includes('node_modules/@tanstack/react-query')) return 'query'
-          if (id.includes('node_modules/i18next') || id.includes('node_modules/react-i18next')) return 'i18n'
-          if (id.includes('node_modules/axios')) return 'utils'
+        // Manual chunk splitting for better caching and performance. One group
+        // with a name() function is Rolldown's documented equivalent of the
+        // deprecated manualChunks(id); null leaves a module to default splitting.
+        codeSplitting: {
+          groups: [
+            {
+              name(id: string) {
+                if (id.includes('node_modules/react-dom') || id.includes('node_modules/react/') || id.includes('node_modules/react-router-dom')) return 'react-vendor'
+                if (id.includes('node_modules/recharts')) return 'charts'
+                if (id.includes('node_modules/@schedule-x/') || id.includes('node_modules/temporal-polyfill') || id.includes('node_modules/date-fns')) return 'calendar'
+                if (id.includes('node_modules/lucide-react') || id.includes('node_modules/sonner')) return 'ui'
+                if (id.includes('node_modules/react-hook-form') || id.includes('node_modules/zod') || id.includes('node_modules/@hookform')) return 'forms'
+                if (id.includes('node_modules/@tanstack/react-query')) return 'query'
+                if (id.includes('node_modules/i18next') || id.includes('node_modules/react-i18next')) return 'i18n'
+                if (id.includes('node_modules/axios')) return 'utils'
+                return null
+              },
+            },
+          ],
         },
       },
     },

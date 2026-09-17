@@ -7,9 +7,12 @@ away from its stored self: 89,044 mi saved as 143,302.07 km, retyped as
 143,302.43 km. Anything that orders two odometers (a mount below a dismount, a
 reading behind a period) would read that as the odometer running backwards.
 
-One band, used by the import duplicate check and by every odometer ordering
-comparison in tire history and tire distance, so the three cannot disagree
-about what counts as the same figure.
+One band, used by every odometer ordering comparison in tire history and tire
+distance, so the two cannot disagree about what counts as the same figure. The
+import duplicate check uses it too, but only where the drift can exist: a value
+converted from miles or gallons in that import, against a row stored before it
+(`app.routes.import_data._converted_value_matches`). Everywhere else in an
+import, two figures inside the band are two different readings.
 """
 
 from __future__ import annotations

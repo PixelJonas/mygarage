@@ -1,8 +1,9 @@
 """Integration tests for reminder pack list/apply endpoints."""
 
-from datetime import date, timedelta
+from datetime import date
 
 import pytest
+from dateutil.relativedelta import relativedelta
 from httpx import AsyncClient
 
 
@@ -56,11 +57,22 @@ class TestReminderPacks:
         assert titles == {"Oil & Filter Change", "Inspect Drain Plug Washer"}
 
         oil = next(r for r in created if r["title"] == "Oil & Filter Change")
-        assert oil["reminder_type"] == "smart"
         assert oil["status"] == "pending"
-        assert oil["due_date"] == (date.today() + timedelta(days=180)).isoformat()
-        # No odometer history, so the pack interval is used as an absolute target.
-        assert float(oil["due_mileage_km"]) == 8000.0
+        # v3.5.0: a pack item is a RULE with intervals; the reminder counts
+        # from an anchor. With nothing on record the anchor is a baseline
+        # dated today, and 6 calendar months (not 180 days) is the pack's
+        # calendar interval. No odometer reading exists, so the mileage
+        # threshold cannot be anchored yet and the reminder is date-only;
+        # the rule still carries the 8,000 km interval and the threshold
+        # appears at the next reconcile once a reading exists.
+        assert oil["reminder_type"] == "date"
+        assert oil["due_date"] == (date.today() + relativedelta(months=6)).isoformat()
+        assert oil["due_mileage_km"] is None
+        assert oil["rule"]["interval_km"] is not None
+        assert float(oil["rule"]["interval_km"]) == 8000.0
+        assert oil["rule"]["interval_months"] == 6
+        assert oil["anchor_kind"] == "baseline"
+        assert oil["maintenance_type"] == "engine_oil_filter"
 
     async def test_apply_pack_adds_interval_to_current_odometer(
         self, client: AsyncClient, auth_headers
@@ -92,8 +104,13 @@ class TestReminderPacks:
         )
         assert response.status_code == 201, response.text
         oil = next(r for r in response.json() if r["title"] == "Oil & Filter Change")
-        # Documented behaviour: pack mileage is an interval on top of current.
+        # Documented behaviour: pack mileage is an interval on top of the
+        # baseline anchor, which is the current reading when nothing else is
+        # on record.
         assert float(oil["due_mileage_km"]) == 58000.0
+        assert oil["reminder_type"] == "smart"
+        assert oil["anchor_kind"] == "baseline"
+        assert float(oil["anchor_odometer_km"]) == 50000.0
 
     async def test_apply_boat_winterization_pack(
         self, client: AsyncClient, auth_headers, test_vehicle

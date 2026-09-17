@@ -35,6 +35,7 @@ pip-delete-this-directory.txt
 .coverage
 htmlcov/
 frontend/coverage/
+frontend/.vitest/
 .tox/
 .nox/
 coverage.xml

@@ -55,6 +55,14 @@ jobs:
         with:
           bun-version-file: '.bun-version'
 
+      # ESLint (and anything else with a `#!/usr/bin/env node` bin) runs on
+      # Node even under `bun run`, so pin it to the same major as local.
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: '.nvmrc'
+          package-manager-cache: false
+
       # The four i18n scripts import only Node built-ins, and this step used to
       # skip `bun install` for that reason. `validate-units.ts` broke the
       # assumption: it loads the real TypeScript compiler out of node_modules to

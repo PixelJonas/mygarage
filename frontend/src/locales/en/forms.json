@@ -667,7 +667,16 @@
     "smartModeDescription": "Smart mode uses your usage history to estimate when you'll hit the target. The date acts as a hard cap — you'll be notified by whichever comes first.",
     "titlePlaceholder": "e.g., Next oil change",
     "titleRequired": "Title is required",
-    "updated": "Reminder updated"
+    "updated": "Reminder updated",
+    "repeat": "Repeat this maintenance",
+    "repeatHelp": "Set the interval. When you complete the reminder with the real date and reading, the next one is created from it.",
+    "maintenanceType": "Maintenance type",
+    "maintenanceTypeHint": "Lets service records you log match this reminder automatically.",
+    "recurrenceRequired": "Enter a distance, months, or engine-hours interval",
+    "recurrenceDistanceOrHours": "Use a distance or an engine-hours interval, not both",
+    "lastDoneBaseline": "Count from",
+    "lastDoneDate": "Last done on",
+    "lastDoneRequired": "Enter when it was last done: a date, a reading, or both"
   },
   "service": {
     "addItem": "Add Item",
@@ -705,7 +714,10 @@
     "visitDetails": "Visit Details",
     "visitNotes": "Visit Notes",
     "visitNotesPlaceholder": "Overall notes about this visit...",
-    "visitUpdated": "Service visit updated"
+    "visitUpdated": "Service visit updated",
+    "reminderDateRequired": "Line item {{number}}: choose the reminder date",
+    "reminderIntervalRequired": "Line item {{number}}: enter a reminder interval",
+    "reminderDistanceOrHours": "Line item {{number}}: use a distance or an engine-hours interval, not both"
   },
   "spotRental": {
     "address": "Address",
@@ -946,5 +958,20 @@
     "fasTrak": "FasTrak",
     "iPass": "I-PASS",
     "other": "Other"
+  },
+  "recurrence": {
+    "everyDistance": "Every",
+    "everyMonths": "Every",
+    "everyDays": "Every",
+    "everyHours": "Every",
+    "monthsUnit": "months",
+    "daysUnit": "days",
+    "distancePlaceholder": "e.g., 5000",
+    "monthsPlaceholder": "e.g., 6",
+    "daysPlaceholder": "e.g., 30",
+    "hoursPlaceholder": "e.g., 50",
+    "monthsShort": "{{count}} mo",
+    "daysShort": "{{count}} d",
+    "hoursShort": "{{count}} hr"
   }
 }

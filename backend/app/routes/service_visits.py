@@ -194,6 +194,7 @@ async def add_line_item(
         visit_id=line_item.visit_id,
         description=line_item.description,
         category=line_item.category,
+        maintenance_type=line_item.maintenance_type,
         cost=line_item.cost,
         notes=line_item.notes,
         is_inspection=line_item.is_inspection,

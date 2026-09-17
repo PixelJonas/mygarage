@@ -2,16 +2,15 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, ChevronDown, ChevronUp, Clipboard, Wrench, Bell } from 'lucide-react'
 import type { ServiceVisitFormLineItem } from '../types/serviceVisit'
-import type { ReminderDraft } from '../types/reminder'
+import type { RecurrenceDraft, ReminderDraft, ReminderDraftMode } from '../types/reminder'
 import type { Supply } from '../types/supplies'
 import InspectionResult from './InspectionResult'
 import CurrencyInputPrefix from './common/CurrencyInputPrefix'
 import SupplyUsedPicker from './SupplyUsedPicker'
+import MaintenanceTypeSelect from './MaintenanceTypeSelect'
+import RecurrenceFields from './RecurrenceFields'
 import { Select } from './ui'
 import { useCurrencyPreference } from '../hooks/useCurrencyPreference'
-import { useUnitFormat } from '../hooks/useUnitFormat'
-import { readNumber } from '../utils/decimalSafe'
-import { getActiveLocale } from '@/constants/i18n'
 
 // Service suggestions per category. Module scope can't reach `t`, so these are
 // translation-key suffixes under `lineItemEditor.misc.suggestions.*`, resolved
@@ -42,6 +41,8 @@ interface LineItemEditorProps {
   categories?: string[]
   isNewItem?: boolean
   currentMileage?: number | null
+  /** Whether the vehicle tracks engine hours (offers an hours interval). */
+  tracksHours?: boolean
 }
 
 export default function LineItemEditor({
@@ -55,27 +56,16 @@ export default function LineItemEditor({
   disabled = false,
   categories = [],
   isNewItem = true,
-  currentMileage,
+  tracksHours = false,
 }: LineItemEditorProps) {
   const { t } = useTranslation('vehicles')
   const { formatCurrency } = useCurrencyPreference()
-  const u = useUnitFormat()
   const [expanded, setExpanded] = useState(true)
   const [showSuggestions, setShowSuggestions] = useState(false)
-  // ★ This component WRITES canonical storage, which an earlier plan revision
-  // missed: the mileage typed below is converted here and lands in
-  // `reminderDraft.due_mileage_km`, which ServiceVisitForm posts as canonical
-  // kilometres. It used to convert on `useUnitPreference().system`, which spec
-  // D8 collapses from VOLUME, so a `{volume: 'L', distance: 'mi'}` account
-  // entering a 500-mile reminder stored 500 km instead of 804.67.
-  //
-  // There is no origin to preserve here. The draft is created empty
-  // (`due_mileage_km: undefined`) and only ever holds what this control just
-  // converted, so `toInputValue` and `toCanonical` are the whole round trip and
-  // the tests pin it as a fixed point rather than a re-conversion of history.
-  //
-  // currentMileage is in canonical km; show it in the client's distance unit.
-  const currentDisplay = u.distance.toDisplay(currentMileage)
+  // ★ The reminder draft's `interval_km` is canonical kilometres, converted
+  // by RecurrenceFields through `units.distance` (a litres-and-miles account
+  // typing 500 stores 804.672, not 500). The backend anchors the reminder on
+  // THIS visit's date and odometer, so no "current mileage" is added here.
 
   const suggestions = useMemo(
     () =>
@@ -94,10 +84,10 @@ export default function LineItemEditor({
     if (enabled) {
       const draft: ReminderDraft = {
         enabled: true,
+        mode: 'recurring',
         title: item.description || t('lineItemEditor.misc.defaultReminderTitle'),
-        reminder_type: 'date',
         due_date: undefined,
-        due_mileage_km: undefined,
+        recurrence: {},
         notes: undefined,
       }
       onChange(index, 'reminderDraft', draft)
@@ -109,6 +99,11 @@ export default function LineItemEditor({
   const handleReminderFieldChange = (field: keyof ReminderDraft, value: unknown) => {
     if (!item.reminderDraft) return
     onChange(index, 'reminderDraft', { ...item.reminderDraft, [field]: value })
+  }
+
+  const handleRecurrenceChange = (next: RecurrenceDraft) => {
+    if (!item.reminderDraft) return
+    onChange(index, 'reminderDraft', { ...item.reminderDraft, recurrence: next })
   }
 
   return (
@@ -308,6 +303,21 @@ export default function LineItemEditor({
             />
           </div>
 
+          {/* Maintenance type: what this work IS, so it matches the vehicle's
+              maintenance rules by code rather than by wording. Blank lets the
+              backend classify the description (conservatively). */}
+          <div className="border-t border-garage-border pt-4">
+            <label htmlFor={`maintenance-type-${index}`} className="block text-xs font-medium text-garage-text mb-1">
+              {t('lineItemEditor.misc.maintenanceType')}
+            </label>
+            <MaintenanceTypeSelect
+              id={`maintenance-type-${index}`}
+              value={item.maintenance_type}
+              onChange={(code) => onChange(index, 'maintenance_type', code)}
+              disabled={disabled}
+            />
+          </div>
+
           {/* Reminder toggle — only for new items */}
           {isNewItem ? (
             <div className="border-t border-garage-border pt-4">
@@ -328,103 +338,64 @@ export default function LineItemEditor({
 
               {item.reminderDraft?.enabled && (
                 <div className="mt-3 ml-6 space-y-3 p-3 bg-garage-bg rounded-md border border-garage-border">
-                  <div>
-                    <label className="block text-xs font-medium text-garage-text mb-1">{t('lineItemEditor.misc.reminderTitle')}</label>
-                    <input
-                      type="text"
-                      value={item.reminderDraft.title}
-                      onChange={(e) => handleReminderFieldChange('title', e.target.value)}
-                      disabled={disabled}
-                      className="w-full px-2 py-1.5 text-sm border border-garage-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary bg-garage-surface text-garage-text"
-                    />
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-medium text-garage-text mb-1">{t('lineItemEditor.misc.reminderTypeLabel')}</label>
+                      <label htmlFor={`reminder-title-${index}`} className="block text-xs font-medium text-garage-text mb-1">
+                        {t('lineItemEditor.misc.reminderTitle')}
+                      </label>
+                      <input
+                        id={`reminder-title-${index}`}
+                        type="text"
+                        value={item.reminderDraft.title}
+                        onChange={(e) => handleReminderFieldChange('title', e.target.value)}
+                        disabled={disabled}
+                        className="w-full px-2 py-1.5 text-sm border border-garage-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary bg-garage-surface text-garage-text"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor={`reminder-mode-${index}`} className="block text-xs font-medium text-garage-text mb-1">
+                        {t('lineItemEditor.misc.reminderMode')}
+                      </label>
                       <Select
-                        value={item.reminderDraft.reminder_type}
-                        onChange={(e) => handleReminderFieldChange('reminder_type', e.target.value)}
+                        id={`reminder-mode-${index}`}
+                        value={item.reminderDraft.mode}
+                        onChange={(e) => handleReminderFieldChange('mode', e.target.value as ReminderDraftMode)}
                         disabled={disabled}
                         options={[
-                          { value: 'date', label: t('lineItemEditor.misc.reminderTypeDate') },
-                          { value: 'mileage', label: t('lineItemEditor.misc.reminderTypeMileage') },
-                          { value: 'both', label: t('lineItemEditor.misc.reminderTypeBoth') },
-                          { value: 'smart', label: t('lineItemEditor.misc.reminderTypeSmart') },
+                          { value: 'recurring', label: t('lineItemEditor.misc.reminderModeRecurring') },
+                          { value: 'once', label: t('lineItemEditor.misc.reminderModeOnce') },
                         ]}
                       />
                     </div>
-                    {['date', 'both', 'smart'].includes(item.reminderDraft.reminder_type) && (
-                      <div>
-                        <label className="block text-xs font-medium text-garage-text mb-1">{t('lineItemEditor.misc.dueDate')}</label>
-                        <input
-                          type="date"
-                          value={item.reminderDraft.due_date ?? ''}
-                          onChange={(e) => handleReminderFieldChange('due_date', e.target.value || undefined)}
-                          disabled={disabled}
-                          className="w-full px-2 py-1.5 text-sm border border-garage-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary bg-garage-surface text-garage-text"
-                        />
-                      </div>
-                    )}
-                    {['mileage', 'both', 'smart'].includes(item.reminderDraft.reminder_type) && (
-                      <div>
-                        <label className="block text-xs font-medium text-garage-text mb-1">
-                          {currentMileage
-                            ? t('lineItemEditor.misc.distanceUntilDue', { unit: u.distance.label })
-                            : t('lineItemEditor.misc.dueOdometer', { unit: u.distance.label })}
-                        </label>
-                        <input
-                          type="number"
-                          value={u.distance.toInputValue(readNumber(item.reminderDraft?.due_mileage_km))}
-                          onChange={(e) => {
-                            const val = e.target.value ? parseInt(e.target.value) : undefined
-                            // Display -> canonical km, through the client's own
-                            // distance token rather than a system collapsed
-                            // from its volume choice.
-                            const km = val != null ? u.distance.toCanonical(val) ?? undefined : undefined
-                            handleReminderFieldChange('due_mileage_km', km)
-                          }}
-                          /* One example for every account. R5 calls a
-                             placeholder an EXAMPLE value with nothing canonical
-                             to convert, and it was still being chosen by the
-                             collapsed system, so a litres-and-miles account read
-                             "148000" beside a `mi` label. Both an interval and a
-                             reading that read plausibly in either unit need no
-                             branch, which is what WarrantyForm's own mileage
-                             hint has always done. */
-                          placeholder={t('lineItemEditor.misc.egValue', {
-                            value: currentMileage ? '5000' : '100000',
-                          })}
-                          disabled={disabled}
-                          className="w-full px-2 py-1.5 text-sm border border-garage-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary bg-garage-surface text-garage-text"
-                        />
-                        {currentMileage && item.reminderDraft.due_mileage_km != null && currentDisplay != null ? (() => {
-                          const dueKm = readNumber(item.reminderDraft.due_mileage_km)
-                          if (dueKm == null) return null
-                          // Read back through `toInputValue`, the same function
-                          // the field above renders, so the hint can never quote
-                          // a different number than the input shows.
-                          const intervalDisplay = readNumber(u.distance.toInputValue(dueKm))
-                          if (intervalDisplay == null) return null
-                          return (
-                            <p className="text-xs text-garage-text-muted mt-1">
-                              {t('lineItemEditor.misc.targetCalc', {
-                                current: Math.round(currentDisplay).toLocaleString(getActiveLocale()),
-                                interval: intervalDisplay.toLocaleString(getActiveLocale()),
-                                target: (Math.round(currentDisplay) + intervalDisplay).toLocaleString(getActiveLocale()),
-                                unit: u.distance.label,
-                              })}
-                            </p>
-                          )
-                        })() : !currentMileage ? (
-                          <p className="text-xs text-warning mt-1">{t('lineItemEditor.misc.noOdometerData')}</p>
-                        ) : null}
-                      </div>
-                    )}
                   </div>
-                  {item.reminderDraft.reminder_type === 'smart' && (
-                    <p className="text-xs text-garage-text-muted">
-                      {t('lineItemEditor.misc.smartModeHelp')}
-                    </p>
+                  {item.reminderDraft.mode === 'once' ? (
+                    <div>
+                      <label htmlFor={`reminder-date-${index}`} className="block text-xs font-medium text-garage-text mb-1">
+                        {t('lineItemEditor.misc.dueDate')}
+                      </label>
+                      <input
+                        id={`reminder-date-${index}`}
+                        type="date"
+                        value={item.reminderDraft.due_date ?? ''}
+                        onChange={(e) => handleReminderFieldChange('due_date', e.target.value || undefined)}
+                        disabled={disabled}
+                        className="w-full px-2 py-1.5 text-sm border border-garage-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary bg-garage-surface text-garage-text"
+                      />
+                    </div>
+                  ) : (
+                    <>
+                      <RecurrenceFields
+                        idPrefix={`line-item-${index}`}
+                        value={item.reminderDraft.recurrence}
+                        onChange={handleRecurrenceChange}
+                        tracksDistance
+                        tracksHours={tracksHours}
+                        disabled={disabled}
+                      />
+                      <p className="text-xs text-garage-text-muted">
+                        {t('lineItemEditor.misc.reminderRecurringHelp')}
+                      </p>
+                    </>
                   )}
                 </div>
               )}

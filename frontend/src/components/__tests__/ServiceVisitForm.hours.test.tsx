@@ -37,6 +37,10 @@ vi.mock('../../hooks/useUnitPreference', async () => {
     }),
   }
 })
+vi.mock('../../hooks/useReminders', () => ({
+  useMaintenanceTypes: () => ({ data: [] }),
+  invalidateMaintenanceQueries: () => {},
+}))
 vi.mock('../../hooks/useCurrencyPreference', () => ({
   useCurrencyPreference: () => ({
     currencyCode: 'USD',

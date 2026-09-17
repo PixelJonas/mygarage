@@ -17,26 +17,22 @@ import { useTranslation } from 'react-i18next'
 import { useEffect, useState, type SyntheticEvent } from 'react'
 import { Save, AlertTriangle } from 'lucide-react'
 import FormModalWrapper from './FormModalWrapper'
-import { Button, Field, Input, NumberInput, Textarea } from './ui'
+import { Button, Field, Input, NumberInput, Textarea, Toggle } from './ui'
 import { toast } from 'sonner'
 import { useCreateReminder, useUpdateReminder } from '../hooks/useReminders'
-import type { Reminder, ReminderType } from '../types/reminder'
+import RecurrenceFields from './RecurrenceFields'
+import MaintenanceTypeSelect from './MaintenanceTypeSelect'
+import type { RecurrenceDraft, Reminder, ReminderType } from '../types/reminder'
 import type { Vehicle } from '../types/vehicle'
 import { useUnitFormat } from '../hooks/useUnitFormat'
 import { canonicalFromUnitField, seedUnitField, type UnitFieldOrigin } from '../utils/unitFormat'
 import { readNumber } from '../utils/decimalSafe'
-import { parseDecimalInput } from '../utils/decimalInput'
+import { parseOptionalDecimal } from '../utils/decimalInput'
 import { getUsageTracking } from '../utils/usageTracking'
 import api from '../services/api'
 import { getActionErrorMessage } from '../utils/httpErrorHandler'
 import { applyControlledFieldErrors } from '../hooks/useApiFormErrors'
 import { getActiveLocale } from '@/constants/i18n'
-
-/** Locale-aware parse for controlled (non-RHF) numeric fields — empty vs invalid stay distinct from a real value. */
-function parseOptionalDecimal(raw: string): number | undefined {
-  const result = parseDecimalInput(raw, getActiveLocale())
-  return result.kind === 'value' ? result.value : undefined
-}
 
 type BaselineMode = 'from_now' | 'from_last'
 
@@ -172,6 +168,22 @@ export default function ReminderForm({ vin, reminder, currentMileage, currentHou
 
   const [notes, setNotes] = useState(reminder?.notes ?? '')
 
+  // v3.5.0 — a recurring reminder is a maintenance RULE: intervals, a type,
+  // and an anchor the backend derives the thresholds from. The rule's
+  // pending reminder always counts from the last service, so the absolute
+  // due fields below are never sent for it.
+  const [recurring, setRecurring] = useState<boolean>(!!(reminder?.rule && reminder.rule.is_active))
+  const [recurrence, setRecurrence] = useState<RecurrenceDraft>(() => ({
+    interval_km: readNumber(reminder?.rule?.interval_km),
+    interval_months: reminder?.rule?.interval_months ?? undefined,
+    interval_days: reminder?.rule?.interval_days ?? undefined,
+    interval_hours: readNumber(reminder?.rule?.interval_hours),
+  }))
+  const [maintenanceType, setMaintenanceType] = useState<string | undefined>(
+    reminder?.maintenance_type ?? undefined,
+  )
+  const [lastDoneDate, setLastDoneDate] = useState('')
+
   const mileageFromLast = hasMileage && mileageMode === 'from_last'
   const hoursFromLast = hasHours && hoursMode === 'from_last'
 
@@ -238,12 +250,94 @@ export default function ReminderForm({ vin, reminder, currentMileage, currentHou
       return
     }
 
+    if (recurring) {
+      const hasInterval =
+        recurrence.interval_km != null ||
+        recurrence.interval_months != null ||
+        recurrence.interval_days != null ||
+        recurrence.interval_hours != null
+      if (!hasInterval) {
+        setError(t('reminder.recurrenceRequired'))
+        return
+      }
+      if (recurrence.interval_km != null && recurrence.interval_hours != null) {
+        setError(t('reminder.recurrenceDistanceOrHours'))
+        return
+      }
+      // "From last service" on a new rule: whatever the owner entered (a date
+      // alone is enough) is the anchor. It never depends on the vehicle
+      // already having readings.
+      const fromLast = !isEdit && mileageMode === 'from_last'
+      if (fromLast && !lastDoneDate && lastDoneMileage == null && lastDoneHours == null) {
+        setError(t('reminder.lastDoneRequired'))
+        return
+      }
+      if (fromLast && lastDoneMileage != null && currentDisplay != null && lastDoneMileage > currentDisplay) {
+        setError(t('reminder.lastDoneExceedsCurrentMileage'))
+        return
+      }
+      const lastKm = fromLast && lastDoneMileage != null ? u.distance.toCanonical(lastDoneMileage) : null
+      setSubmitting(true)
+      try {
+        if (isEdit && reminder) {
+          await updateMutation.mutateAsync({
+            id: reminder.id,
+            title,
+            notes: notes || undefined,
+            maintenance_type: maintenanceType ?? null,
+            recurrence,
+          })
+          toast.success(t('reminder.updated'))
+        } else {
+          await createMutation.mutateAsync({
+            title,
+            notes: notes || undefined,
+            maintenance_type: maintenanceType,
+            recurrence,
+            anchor: fromLast
+              ? {
+                  date: lastDoneDate || undefined,
+                  odometer_km: lastKm ?? undefined,
+                  hours: lastDoneHours,
+                }
+              : undefined,
+          })
+          toast.success(t('reminder.created'))
+        }
+        onSuccess()
+      } catch (err) {
+        const { attached, unhandled, errorsByField } = applyControlledFieldErrors(err, ['title', 'notes'])
+        if (attached.length > 0) setFieldErrors(errorsByField)
+        if (attached.length === 0 || unhandled.length > 0) {
+          setError(getActionErrorMessage(err, t('reminder.saveAction')))
+        }
+      } finally {
+        setSubmitting(false)
+      }
+      return
+    }
+
     if (['date', 'both', 'smart'].includes(reminderType) && !dueDate) {
       setError(t('reminder.dueDateRequired'))
       return
     }
 
-    if (needsMileageField && !mileageInterval) {
+    // An edit that leaves a stored target's field exactly as it opened keeps
+    // that target. The field shows the REMAINING interval clamped at zero, so
+    // an overdue reminder opens at 0 and would otherwise be refused (and a
+    // re-save would move its target to the current reading).
+    const mileageUntouched =
+      isEdit &&
+      readNumber(reminder?.due_mileage_km) != null &&
+      mileageMode === 'from_now' &&
+      mileageIntervalText === mileageIntervalOrigin.display
+    const hoursUntouched =
+      isEdit &&
+      readNumber(reminder?.due_hours) != null &&
+      hoursMode === 'from_now' &&
+      hoursIntervalText === (initialHoursInterval != null ? String(initialHoursInterval) : '')
+
+    if (needsMileageField && !mileageInterval && !mileageUntouched) {
       setError(t('reminder.distanceRequired'))
       return
     }
@@ -259,7 +353,7 @@ export default function ReminderForm({ vin, reminder, currentMileage, currentHou
       }
     }
 
-    if (needsHoursField && !hoursInterval) {
+    if (needsHoursField && !hoursInterval && !hoursUntouched) {
       setError(t('reminder.hoursRequired'))
       return
     }
@@ -287,7 +381,9 @@ export default function ReminderForm({ vin, reminder, currentMileage, currentHou
       u.distance,
     )
     let due_mileage_km: number | undefined
-    if (needsMileageField) {
+    if (needsMileageField && mileageUntouched) {
+      due_mileage_km = readNumber(reminder?.due_mileage_km) ?? undefined
+    } else if (needsMileageField) {
       if (mileageFromLast && lastDoneMileage != null && intervalKm != null) {
         // The baseline is typed, never seeded, so there is no origin to
         // preserve and the plain adapter is the whole conversion.
@@ -302,7 +398,9 @@ export default function ReminderForm({ vin, reminder, currentMileage, currentHou
 
     // due_hours mirrors due_mileage_km's baseline + interval conversion.
     let due_hours: number | undefined
-    if (needsHoursField) {
+    if (needsHoursField && hoursUntouched) {
+      due_hours = readNumber(reminder?.due_hours) ?? undefined
+    } else if (needsHoursField) {
       if (hoursFromLast && lastDoneHours != null && hoursInterval != null) {
         due_hours = lastDoneHours + hoursInterval
       } else if (hasHours && hoursInterval != null && !hoursFromLast) {
@@ -323,6 +421,9 @@ export default function ReminderForm({ vin, reminder, currentMileage, currentHou
           due_mileage_km,
           due_hours,
           notes: notes || undefined,
+          // Repeat switched off on a rule-backed reminder: the rule stops and
+          // the one-off values shown in the form (edited or not) are saved.
+          ...(reminder.rule?.is_active ? { recurrence: null } : {}),
         })
         toast.success(t('reminder.updated'))
       } else {
@@ -395,6 +496,99 @@ export default function ReminderForm({ vin, reminder, currentMileage, currentHou
           />
         </Field>
 
+        <Toggle
+          id="reminder-recurring"
+          label={t('reminder.repeat')}
+          checked={recurring}
+          onChange={setRecurring}
+          disabled={submitting}
+        />
+
+        {recurring && (
+          <div className="space-y-3">
+            <p className="text-xs text-text-mute">{t('reminder.repeatHelp')}</p>
+            <Field id="reminder-maintenance-type" label={t('reminder.maintenanceType')} hint={t('reminder.maintenanceTypeHint')}>
+              <MaintenanceTypeSelect
+                id="reminder-maintenance-type"
+                value={maintenanceType}
+                onChange={setMaintenanceType}
+                disabled={submitting}
+              />
+            </Field>
+            <RecurrenceFields
+              idPrefix="reminder"
+              value={recurrence}
+              onChange={setRecurrence}
+              tracksDistance={tracksDistance}
+              tracksHours={tracksHours}
+              disabled={submitting}
+            />
+            {!isEdit && (
+              <div className="space-y-3">
+                <span id="reminder-recurring-baseline-label" className="block text-sm font-medium text-text">
+                  {t('reminder.lastDoneBaseline')}
+                </span>
+                <div role="group" aria-labelledby="reminder-recurring-baseline-label" className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    aria-pressed={mileageMode === 'from_now'}
+                    className={modeButtonClass(mileageMode === 'from_now')}
+                    onClick={() => { setMileageMode('from_now'); setHoursMode('from_now') }}
+                  >
+                    {t('reminderForm.modeFromNow')}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    aria-pressed={mileageMode === 'from_last'}
+                    className={modeButtonClass(mileageMode === 'from_last')}
+                    onClick={() => { setMileageMode('from_last'); setHoursMode('from_last') }}
+                  >
+                    {t('reminderForm.modeFromLast')}
+                  </button>
+                </div>
+                {mileageMode === 'from_last' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <Field id="reminder-last-done-date" label={t('reminder.lastDoneDate')}>
+                      <Input
+                        id="reminder-last-done-date"
+                        type="date"
+                        value={lastDoneDate}
+                        onChange={(e) => setLastDoneDate(e.target.value)}
+                        disabled={submitting}
+                      />
+                    </Field>
+                    {tracksDistance && (
+                      <Field id="reminder-last-done-mileage" label={t('reminder.lastDoneMileage')} unit={u.distance.label}>
+                        <NumberInput
+                          id="reminder-last-done-mileage"
+                          value={lastDoneMileageText}
+                          onChange={(e) => setLastDoneMileageText(e.target.value)}
+                          placeholder={t('reminderForm.mileageExamplePlaceholder')}
+                          disabled={submitting}
+                        />
+                      </Field>
+                    )}
+                    {tracksHours && (
+                      <Field id="reminder-last-done-hours" label={t('reminder.lastDoneHours')} unit="hr">
+                        <NumberInput
+                          id="reminder-last-done-hours"
+                          value={lastDoneHoursText}
+                          onChange={(e) => setLastDoneHoursText(e.target.value)}
+                          placeholder={t('reminderForm.lastDoneHoursPlaceholder')}
+                          disabled={submitting}
+                        />
+                      </Field>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {!recurring && (<>
         <div>
           <span
             id="reminder-type-label"
@@ -695,6 +889,8 @@ export default function ReminderForm({ vin, reminder, currentMileage, currentHou
             </p>
           </div>
         )}
+
+        </>)}
 
         <Field id="reminder-notes" label={t('common:notes')} error={fieldErrors.notes}>
           <Textarea

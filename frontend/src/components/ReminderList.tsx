@@ -1,22 +1,41 @@
 /**
- * Reminder list component for the Tracking tab
+ * Reminder list component for the Tracking tab.
+ *
+ * A reminder derived from a maintenance rule shows the rule's intervals, the
+ * service it counts from, its due thresholds (mileage OR date, whichever
+ * comes first) and, separately, the projected date the mileage is reached at
+ * the current driving rate. Marking done opens the completion dialog so the
+ * real date and reading anchor the next cycle. Applying a pack previews
+ * first. Pending reminders of one maintenance type are flagged as possible
+ * duplicates with a Review action.
  */
 
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Bell, Plus, Check, X, Edit, Trash2, Clock, Gauge, Zap, Timer, Package } from 'lucide-react'
+import { Bell, Plus, Check, X, Edit, Trash2, Clock, Gauge, Zap, Timer, Package, Repeat, GitMerge } from 'lucide-react'
 import { toast } from 'sonner'
-import { useReminders, useMarkReminderDone, useMarkReminderDismissed, useDeleteReminder } from '../hooks/useReminders'
+import {
+  useReminders,
+  useMarkReminderDismissed,
+  useDeleteReminder,
+  useReminderDuplicates,
+  useReminderPacks,
+} from '../hooks/useReminders'
 import { useLatestMileage } from '../hooks/useLatestMileage'
 import { useLatestHours } from '../hooks/useLatestHours'
 import { formatDateForDisplay } from '../utils/dateUtils'
 import { useDateLocale } from '../hooks/useDateLocale'
 import ReminderForm from './ReminderForm'
-import type { Reminder, ReminderStatus } from '../types/reminder'
+import CompleteReminderDialog from './CompleteReminderDialog'
+import ApplyPackDialog from './ApplyPackDialog'
+import ReconcileDuplicatesDialog from './ReconcileDuplicatesDialog'
+import { describeRecurrence } from './RecurrenceFields'
+import type { DuplicateGroup, Reminder, ReminderStatus } from '../types/reminder'
+import type { Vehicle } from '../types/vehicle'
 import { useUnitFormat } from '../hooks/useUnitFormat'
+import { getUsageTracking } from '../utils/usageTracking'
 import { Button, IconButton, Card, Chip, Mono, EmptyState, Select } from './ui'
 import api from '../services/api'
-import { useQueryClient } from '@tanstack/react-query'
 
 interface ReminderListProps {
   vin: string
@@ -38,56 +57,40 @@ const TYPE_ICONS: Record<string, typeof Bell> = {
 
 export default function ReminderList({ vin }: ReminderListProps) {
   const { t } = useTranslation('vehicles')
+  const { t: tForms } = useTranslation('forms')
   const dateLocale = useDateLocale()
   const u = useUnitFormat()
-  const queryClient = useQueryClient()
   const [activeStatus, setActiveStatus] = useState<ReminderStatus | 'all'>('pending')
   const [showForm, setShowForm] = useState(false)
   const [editingReminder, setEditingReminder] = useState<Reminder | undefined>()
-  const [packs, setPacks] = useState<{ id: string; name: string; description?: string }[]>([])
+  const [completing, setCompleting] = useState<Reminder | undefined>()
   const [selectedPack, setSelectedPack] = useState('')
-  const [applyingPack, setApplyingPack] = useState(false)
-  const [vehicleType, setVehicleType] = useState<string | null>(null)
+  const [previewingPack, setPreviewingPack] = useState<{ id: string; name: string } | undefined>()
+  const [reviewingGroup, setReviewingGroup] = useState<DuplicateGroup | undefined>()
+  const [vehicle, setVehicle] = useState<Vehicle | null>(null)
 
   useEffect(() => {
     let cancelled = false
     void api
       .get(`/vehicles/${vin}`)
       .then((res) => {
-        if (!cancelled) setVehicleType(res.data?.vehicle_type ?? null)
+        if (!cancelled) setVehicle(res.data ?? null)
       })
       .catch(() => {
-        if (!cancelled) setVehicleType(null)
+        if (!cancelled) setVehicle(null)
       })
     return () => {
       cancelled = true
     }
   }, [vin])
 
-  useEffect(() => {
-    const params = vehicleType ? { vehicle_type: vehicleType } : undefined
-    void api
-      .get('/reminder-packs', { params })
-      .then((res) => setPacks(res.data || []))
-      .catch(() => setPacks([]))
-  }, [vehicleType])
+  const { tracksDistance, tracksHours } = getUsageTracking({
+    usage_unit: vehicle?.usage_unit,
+    secondary_usage_enabled: vehicle?.secondary_usage_enabled,
+  })
+  const { data: packs = [] } = useReminderPacks(vehicle?.vehicle_type ?? null)
 
-  const applyPack = async () => {
-    if (!selectedPack) return
-    setApplyingPack(true)
-    try {
-      await api.post(`/vehicles/${vin}/reminders/apply-pack`, { pack_id: selectedPack })
-      toast.success(t('reminderList.packApplied'))
-      await queryClient.invalidateQueries({ queryKey: ['reminders', vin] })
-      setSelectedPack('')
-    } catch {
-      toast.error(t('reminderList.packApplyError'))
-    } finally {
-      setApplyingPack(false)
-    }
-  }
-
-  const formatDate = (dateStr: string | null): string => {
+  const formatDate = (dateStr: string | null | undefined): string => {
     if (!dateStr) return '-'
     return formatDateForDisplay(dateStr, { year: 'numeric', month: 'short', day: 'numeric' }, dateLocale)
   }
@@ -95,18 +98,9 @@ export default function ReminderList({ vin }: ReminderListProps) {
   const { data: currentMileage } = useLatestMileage(vin)
   const { data: currentHours } = useLatestHours(vin)
   const { data: reminders = [], isLoading } = useReminders(vin, activeStatus === 'all' ? 'all' : activeStatus)
-  const markDoneMutation = useMarkReminderDone(vin)
+  const { data: duplicateGroups = [] } = useReminderDuplicates(vin)
   const dismissMutation = useMarkReminderDismissed(vin)
   const deleteMutation = useDeleteReminder(vin)
-
-  const handleMarkDone = async (id: number) => {
-    try {
-      await markDoneMutation.mutateAsync(id)
-      toast.success(t('reminderList.markedDone'))
-    } catch {
-      toast.error(t('reminderList.markDoneError'))
-    }
-  }
 
   const handleDismiss = async (id: number) => {
     try {
@@ -135,6 +129,29 @@ export default function ReminderList({ vin }: ReminderListProps) {
     setShowForm(false)
     setEditingReminder(undefined)
   }
+
+  const openPackPreview = () => {
+    const pack = packs.find((p) => p.id === selectedPack)
+    if (!pack) return
+    setPreviewingPack({ id: pack.id, name: pack.name })
+  }
+
+  const anchorText = (reminder: Reminder): string | null => {
+    if (!reminder.anchor_kind || !reminder.anchor_date) return null
+    const reading =
+      reminder.anchor_odometer_km != null
+        ? u.distance.format(Number(reminder.anchor_odometer_km))
+        : reminder.anchor_hours != null
+          ? t('reminderList.dueAtHours', { n: Number(reminder.anchor_hours).toFixed(1) })
+          : null
+    if (reminder.anchor_kind === 'baseline') {
+      return t('reminderList.countingFrom', { date: formatDate(reminder.anchor_date), reading: reading ?? '' })
+    }
+    return t('reminderList.lastDone', { date: formatDate(reminder.anchor_date), reading: reading ?? '' })
+  }
+
+  const rulesById = new Map<number, Reminder>()
+  for (const r of reminders) rulesById.set(r.id, r)
 
   return (
     <div className="space-y-4">
@@ -172,12 +189,31 @@ export default function ReminderList({ vin }: ReminderListProps) {
             variant="secondary"
             size="sm"
             icon={Package}
-            loading={applyingPack}
             disabled={!selectedPack}
-            onClick={() => void applyPack()}
+            onClick={openPackPreview}
           >
             {t('reminderList.applyPack')}
           </Button>
+        </div>
+      )}
+
+      {duplicateGroups.length > 0 && (
+        <div className="rounded-lg border border-warning bg-warning/10 p-3 space-y-2">
+          <p className="text-sm text-text">{t('reminderList.duplicatesFound', { count: duplicateGroups.length })}</p>
+          <ul className="space-y-1">
+            {duplicateGroups.map((group) => (
+              <li key={group.maintenance_type} className="flex items-center justify-between gap-2">
+                <span className="text-xs text-text-mute">
+                  {t(`maintenanceTypes.${group.maintenance_type}`, { defaultValue: group.label })}
+                  {' · '}
+                  {t('reminderList.duplicateCount', { count: group.reminder_ids.length })}
+                </span>
+                <Button variant="secondary" size="sm" icon={GitMerge} onClick={() => setReviewingGroup(group)}>
+                  {t('reminderList.review')}
+                </Button>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -207,6 +243,14 @@ export default function ReminderList({ vin }: ReminderListProps) {
         <div className="space-y-3">
           {reminders.map((reminder) => {
             const TypeIcon = TYPE_ICONS[reminder.reminder_type] || Bell
+            const recurrence = describeRecurrence(
+              reminder.rule,
+              (km) => u.distance.format(km),
+              (key, options) => tForms(key, options),
+            )
+            const isDuplicate = (reminder.duplicate_of?.length ?? 0) > 0
+            const anchor = anchorText(reminder)
+            const supersededBy = reminder.superseded_by_id != null ? rulesById.get(reminder.superseded_by_id) : undefined
             return (
               <Card key={reminder.id} padding="sm">
                 <div className="flex items-start justify-between gap-3">
@@ -216,6 +260,15 @@ export default function ReminderList({ vin }: ReminderListProps) {
                       <h4 className="text-sm font-medium text-text">{reminder.title}</h4>
                       <div className="flex flex-wrap gap-2 mt-1 items-center">
                         <Chip>{reminder.reminder_type}</Chip>
+                        {recurrence && reminder.rule?.is_active && (
+                          <Chip tone="accent">
+                            <Repeat aria-hidden="true" className="w-3 h-3" />
+                            {t('reminderList.every', { interval: recurrence })}
+                          </Chip>
+                        )}
+                        {isDuplicate && reminder.status === 'pending' && (
+                          <Chip tone="warning">{t('reminderList.possibleDuplicate')}</Chip>
+                        )}
                         {reminder.due_date && (
                           <span className="text-xs text-text-mute">
                             {t('reminderList.due')}: <Mono size="xs" tone="muted">{formatDate(reminder.due_date)}</Mono>
@@ -242,11 +295,27 @@ export default function ReminderList({ vin }: ReminderListProps) {
                           </span>
                         )}
                       </div>
+                      {reminder.projected_usage_date && reminder.status === 'pending' && (
+                        <p className="text-xs text-text-mute mt-1">
+                          {t('reminderList.projected', { date: formatDate(reminder.projected_usage_date) })}
+                        </p>
+                      )}
+                      {anchor && <p className="text-xs text-text-mute mt-1">{anchor}</p>}
                       {reminder.notes && (
                         <p className="text-xs text-text-mute mt-1 truncate">{reminder.notes}</p>
                       )}
-                      {reminder.line_item_id && (
+                      {reminder.line_item_id && !anchor && (
                         <p className="text-xs text-text-mute mt-1">{t('reminderList.linkedToService')}</p>
+                      )}
+                      {reminder.status === 'done' && reminder.completed_date && (
+                        <p className="text-xs text-text-mute mt-1">
+                          {t('reminderList.completedOn', { date: formatDate(reminder.completed_date) })}
+                        </p>
+                      )}
+                      {reminder.superseded_by_id != null && (
+                        <p className="text-xs text-text-mute mt-1">
+                          {t('reminderList.supersededBy', { title: supersededBy?.title ?? `#${reminder.superseded_by_id}` })}
+                        </p>
                       )}
                     </div>
                   </div>
@@ -255,8 +324,8 @@ export default function ReminderList({ vin }: ReminderListProps) {
                   <div className="flex items-center gap-1 shrink-0">
                     {reminder.status === 'pending' && (
                       <>
-                        <IconButton icon={Check} label={t('reminderList.markDone')} variant="ghost" size="sm" onClick={() => handleMarkDone(reminder.id)} />
-                        <IconButton icon={X} label={t('reminderList.dismiss')} variant="ghost" size="sm" onClick={() => handleDismiss(reminder.id)} />
+                        <IconButton icon={Check} label={t('reminderList.markDone')} variant="ghost" size="sm" onClick={() => setCompleting(reminder)} />
+                        <IconButton icon={X} label={reminder.rule?.is_active ? t('reminderList.dismissStopsRepeat') : t('reminderList.dismiss')} variant="ghost" size="sm" onClick={() => handleDismiss(reminder.id)} />
                       </>
                     )}
                     <IconButton icon={Edit} label={t('common:edit')} variant="ghost" size="sm" onClick={() => handleEdit(reminder)} />
@@ -278,6 +347,38 @@ export default function ReminderList({ vin }: ReminderListProps) {
           currentHours={currentHours}
           onClose={handleFormClose}
           onSuccess={handleFormClose}
+        />
+      )}
+
+      {completing && (
+        <CompleteReminderDialog
+          vin={vin}
+          reminder={completing}
+          currentMileage={currentMileage}
+          currentHours={currentHours}
+          tracksDistance={tracksDistance}
+          tracksHours={tracksHours}
+          onClose={() => setCompleting(undefined)}
+          onSuccess={() => setCompleting(undefined)}
+        />
+      )}
+
+      {previewingPack && (
+        <ApplyPackDialog
+          vin={vin}
+          packId={previewingPack.id}
+          packName={previewingPack.name}
+          onClose={() => setPreviewingPack(undefined)}
+          onApplied={() => { setPreviewingPack(undefined); setSelectedPack('') }}
+        />
+      )}
+
+      {reviewingGroup && (
+        <ReconcileDuplicatesDialog
+          vin={vin}
+          group={reviewingGroup}
+          onClose={() => setReviewingGroup(undefined)}
+          onDone={() => setReviewingGroup(undefined)}
         />
       )}
     </div>

@@ -45,6 +45,9 @@ beforeEach(() => {
   })
   window.URL.createObjectURL = vi.fn(() => 'blob:mock')
   window.URL.revokeObjectURL = vi.fn()
+  // jsdom cannot navigate to the blob: URL a download anchor points at, and
+  // logs "Not implemented: navigation to another Document" on every click.
+  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
 })
 
 describe('ServiceVisitAttachmentList download (baseURL-relative axios arg)', () => {

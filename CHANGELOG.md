@@ -7,6 +7,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Recurring reminders: a maintenance rule (interval in distance, months or hours) per vehicle, from a pack, the reminder form or a service line item (#165).
+- Completing a reminder takes the real date and reading and can log or link a service visit; the next reminder is created from it.
+- Applying a reminder pack previews first: it counts from the most recent matching service and adopts an existing reminder instead of adding another.
+- Canonical maintenance types on service line items and reminders; a "possible duplicate" flag and a reconcile action for reminders of one type.
+- `GET /api/maintenance-types`, `/api/vehicles/{vin}/maintenance-rules` and the reminder `complete`, `apply-pack/preview`, `duplicates`, `reconcile` and `reconcile-duplicates` endpoints.
+
+### Changed
+- A reminder created from a service line item is anchored on that visit's date and odometer, not on the vehicle's latest reading.
+- Mark done records today's date and the nearest reading and still advances a recurring reminder.
+- Every pending reminder with a mileage or hours target reports `projected_usage_date` separately from its calendar threshold.
+- Reminder packs declare `maintenance_type` and intervals (`interval_km`, `interval_months`, `interval_days`, `interval_hours`); the v3.4 keys still load.
+
+### Fixed
+- Importing with Skip duplicates dropped a second reading from the same day.
+- Applying a pack no longer duplicates a reminder already tracking the same maintenance.
+- Saving an overdue distance or hours reminder unchanged no longer fails validation or moves its target to the current reading.
+- Correcting a service's maintenance type moves the old type's reminder off it, and the new type can count from it.
+- Dismissing or deleting a recurring reminder stops it repeating instead of having it come back on the next service.
+- Resolving duplicate reminders refuses a request mixing maintenance types.
+- Deleting the service a reminder counted from re-anchors it on the previous matching service instead of keeping the deleted one.
+
+### Security
+- Frontend: drop all `overrides` (`bun audit` clean).
+
+### Build
+- Migration 101: `vehicle_maintenance_rules`, `service_line_items.maintenance_type` and the reminder anchor, completion and rule columns.
+- Bump Bun to 1.4.2.
+- Pin Node 24 in `.nvmrc`.
+- Bump shared-workflows to v1.6.0-rc1.
+- Frontend: replace `@vitejs/plugin-react-swc` with `@vitejs/plugin-react`.
+- Frontend: merge `vitest.config.ts` into `vite.config.ts`.
+- Frontend: move Vite config off deprecated options.
+- Frontend: switch ESLint config to `defineConfig`.
+- Frontend: drop `baseUrl` from tsconfig.
+- Frontend: exclude `src/__tests__/` helpers from coverage.
+
+### Dev Dependencies
+- **@playwright/test**: 1.61.1 → 1.63.0
+- **@testing-library/dom**: added at 10.4.2
+- **@testing-library/jest-dom**: 6.9.1 → 7.0.1
+- **@testing-library/react**: 16.3.2 → 16.3.3
+- **@testing-library/user-event**: 14.6.1 → 14.6.7
+- **@types/leaflet**: 1.9.21 → 1.9.22
+- **@types/node**: 26.1.1 → 24.13.5
+- **@types/react**: 19.2.17 → 19.3.0
+- **@types/react-dom**: 19.2.3 → 19.3.0
+- **@typescript-eslint/eslint-plugin**: 8.64.0 → 8.70.0
+- **@typescript-eslint/parser**: 8.64.0 → 8.70.0
+- **@vitejs/plugin-react**: added at 6.1.1
+- **@vitejs/plugin-react-swc**: 4.3.1 → removed
+- **@vitest/coverage-v8**: 4.1.10 → 5.0.1
+- **@vitest/ui**: 4.1.10 → 5.0.1
+- **autoprefixer**: 10.5.4 → removed
+- **eslint**: 10.7.0 → 10.10.0
+- **eslint-plugin-react-refresh**: 0.5.3 → 0.5.7
+- **globals**: 17.7.0 → 17.12.0
+- **jsdom**: 29.1.1 → 30.0.1
+- **typescript-eslint**: 8.64.0 → 8.70.0
+- **vite**: 8.1.5 → 8.3.0
+- **vitest**: 4.1.10 → 5.0.1
+
+### App Dependencies
+- **@hookform/resolvers**: 5.4.0 → 5.9.1
+- **@schedule-x/calendar**: 4.6.1 → 4.8.0
+- **@schedule-x/calendar-controls**: 4.6.1 → 4.8.0
+- **@schedule-x/events-service**: 4.6.1 → 4.8.0
+- **@schedule-x/theme-default**: 4.6.1 → 4.8.0
+- **@tanstack/react-query**: 5.101.2 → 5.103.1
+- **@tanstack/react-query-devtools**: 5.101.2 → 5.103.1
+- **axios**: 1.18.1 → 1.20.0
+- **i18next**: 26.3.6 → 26.4.2
+- **i18next-http-backend**: 4.0.0 → 4.0.2
+- **lucide-react**: 1.25.0 → 1.46.0
+- **react**: 19.2.7 → 19.3.0
+- **react-dom**: 19.2.7 → 19.3.0
+- **react-hook-form**: 7.82.0 → 7.88.0
+- **react-i18next**: 17.0.10 → 17.0.14
+- **react-is**: 19.2.7 → 19.3.0
+- **react-router-dom**: 7.18.1 → 7.18.4
+- **recharts**: 3.9.2 → 3.10.1
+- **sonner**: 2.0.7 → 2.0.8
+- **temporal-polyfill**: 1.0.1 → 1.0.5
+- **zod**: 4.4.3 → 4.6.5
+
 ## [3.4.0] - 2026-09-15
 
 ### Upgrade note

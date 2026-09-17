@@ -38,7 +38,11 @@ class TestReminderPackService:
         assert pack.name
         assert len(pack.reminders) >= 1
         assert pack.reminders[0].title == "Oil & Filter Change"
-        assert pack.reminders[0].due_date_offset_days == 180
+        # v2 pack format: intervals and a canonical type, not absolute offsets.
+        assert pack.reminders[0].maintenance_type == "engine_oil_filter"
+        assert pack.reminders[0].interval_months == 6
+        assert pack.reminders[0].interval_km == 8000
+        assert pack.reminders[0].key == "oil_filter"
         assert any(r.title == "Inspect Drain Plug Washer" for r in pack.reminders)
         assert "Car" in pack.vehicle_types
 
@@ -130,3 +134,55 @@ class TestReminderPackLookup:
         with pytest.raises(HTTPException) as exc:
             get_pack("escape")
         assert exc.value.status_code == 404
+
+
+@pytest.mark.unit
+class TestReminderPackFormatV1:
+    """A pack written for v3.4 (absolute offsets, reminder_type) still loads."""
+
+    def test_v1_keys_map_onto_intervals(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(reminder_pack_service, "PACKS_DIR", tmp_path)
+        (tmp_path / "legacy.json").write_text(
+            json.dumps(
+                {
+                    "id": "legacy",
+                    "name": "Legacy",
+                    "description": "d",
+                    "reminders": [
+                        {
+                            "title": "Oil & Filter Change",
+                            "reminder_type": "smart",
+                            "due_mileage_km": 8000,
+                            "due_date_offset_days": 180,
+                            "due_hours": None,
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        pack = get_pack("legacy")
+        item = pack.reminders[0]
+        assert item.interval_km == 8000
+        assert item.interval_days == 180
+        assert item.interval_hours is None
+        assert item.interval_months is None
+        assert item.key == "oil_filter_change"
+        assert item.maintenance_type is None
+
+    def test_item_without_any_interval_is_rejected(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(reminder_pack_service, "PACKS_DIR", tmp_path)
+        (tmp_path / "empty.json").write_text(
+            json.dumps(
+                {
+                    "id": "empty",
+                    "name": "Empty",
+                    "description": "d",
+                    "reminders": [{"title": "Nothing", "reminder_type": "date"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+        with pytest.raises(HTTPException) as exc:
+            get_pack("empty")
+        assert exc.value.status_code == 500

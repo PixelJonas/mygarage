@@ -15,6 +15,7 @@ from app.models.livelink_device import LiveLinkDevice
 from app.models.livelink_firmware_cache import LiveLinkFirmwareCache
 from app.models.livelink_parameter import LiveLinkParameter
 from app.models.location_point import LocationPoint
+from app.models.maintenance_rule import MaintenanceRule
 from app.models.note import Note
 from app.models.odometer import OdometerRecord
 from app.models.oidc_state import OIDCState
@@ -90,6 +91,7 @@ __all__ = [
     "OIDCState",
     "Vendor",
     "Reminder",
+    "MaintenanceRule",
     "ServiceVisit",
     "ServiceLineItem",
     # Integrations

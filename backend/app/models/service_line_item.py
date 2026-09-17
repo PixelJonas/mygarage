@@ -38,6 +38,10 @@ class ServiceLineItem(Base):
     )
     description: Mapped[str] = mapped_column(String(200), nullable=False)
     category: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    # Canonical maintenance type (app.utils.maintenance_types), given by the
+    # client or classified from `description` at write time, then matched by
+    # code only. Migration 101 classified existing rows.
+    maintenance_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     cost: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     notes: Mapped[str | None] = mapped_column(Text)
     is_inspection: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -74,6 +78,7 @@ class ServiceLineItem(Base):
             name="check_inspection_severity",
         ),
         Index("idx_service_line_items_visit", "visit_id"),
+        Index("ix_service_line_items_maintenance_type", "maintenance_type"),
     )
 
     @property

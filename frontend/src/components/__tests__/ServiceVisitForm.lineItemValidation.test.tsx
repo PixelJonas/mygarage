@@ -47,6 +47,10 @@ vi.mock('../../hooks/useUnitPreference', async () => {
   }
 })
 
+vi.mock('../../hooks/useReminders', () => ({
+  useMaintenanceTypes: () => ({ data: [] }),
+  invalidateMaintenanceQueries: () => {},
+}))
 vi.mock('../../hooks/useCurrencyPreference', () => ({
   useCurrencyPreference: () => ({
     currencyCode: 'USD',
@@ -145,6 +149,22 @@ describe('ServiceVisitForm — the line-item constraints that replaced native on
       )
     )
     expect(offenders.map((el) => el.id || el.getAttribute('aria-label'))).toEqual([])
+  })
+
+  it('refuses a recurring reminder with both a distance and an hours interval (codex FE R1-F2)', async () => {
+    mockedApiGet.mockImplementation((url: string) =>
+      Promise.resolve(
+        url === '/vehicles/TEST123'
+          ? { data: { vin: 'TEST123', usage_unit: 'distance', secondary_usage_enabled: true } }
+          : { data: { items: [] } },
+      ),
+    )
+    render(<ServiceVisitForm {...DEFAULT_PROPS} />)
+    describeTheWork()
+    fireEvent.click(screen.getByLabelText('lineItemEditor.misc.setReminder'))
+    fireEvent.change(await screen.findByLabelText(/recurrence\.everyHours/), { target: { value: '50' } })
+    fireEvent.change(screen.getByLabelText(/recurrence\.everyDistance/), { target: { value: '5000' } })
+    await submitAndExpectRefusal(/reminderDistanceOrHours/)
   })
 
   it('refuses a negative line-item cost', async () => {

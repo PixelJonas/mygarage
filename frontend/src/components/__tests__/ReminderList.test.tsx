@@ -13,6 +13,17 @@ vi.mock('../../hooks/useReminders', () => ({
   useMarkReminderDone: () => ({ mutateAsync: markDoneMock }),
   useMarkReminderDismissed: () => ({ mutateAsync: dismissMock }),
   useDeleteReminder: () => ({ mutateAsync: deleteMock }),
+  useReminderDuplicates: () => ({ data: [] }),
+  useReminderPacks: () => ({ data: [] }),
+}))
+// The completion dialog is its own component with its own tests; here only
+// the fact that Mark done OPENS it with the exact reminder matters.
+const completeDialogProps = vi.hoisted(() => ({ reminder: 'UNSET' as unknown }))
+vi.mock('../CompleteReminderDialog', () => ({
+  default: (props: { reminder?: unknown }) => {
+    completeDialogProps.reminder = props.reminder
+    return <div>complete-dialog-open</div>
+  },
 }))
 vi.mock('../../hooks/useLatestMileage', () => ({ useLatestMileage: () => ({ data: null }) }))
 vi.mock('../../hooks/useLatestHours', () => ({ useLatestHours: () => ({ data: null }) }))
@@ -52,6 +63,7 @@ const done = { ...pending, id: 9, title: 'Old task', status: 'done' } as unknown
 beforeEach(() => {
   vi.clearAllMocks()
   reminderFormProps.reminder = 'UNSET'
+  completeDialogProps.reminder = 'UNSET'
   useRemindersMock.mockReturnValue({ data: [pending], isLoading: false })
 })
 
@@ -62,16 +74,27 @@ describe('ReminderList — rendering + row actions (pending)', () => {
     expect(screen.getByText('mileage')).toBeInTheDocument()   // the reminder_type <Chip>
   })
 
-  it('clicking Mark-done calls the markDone mutation with the reminder id (fails if mark-done is unwired)', async () => {
+  it('clicking Mark-done opens the completion dialog with the EXACT reminder and never flips the status directly (v3.5.0: the real date and reading anchor the next cycle)', async () => {
     render(<ReminderList vin="V1" />)
+    expect(screen.queryByText('complete-dialog-open')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'reminderList.markDone' }))
-    await waitFor(() => expect(markDoneMock.mock.calls[0]).toStrictEqual([8]))
+    await waitFor(() => expect(screen.getByText('complete-dialog-open')).toBeInTheDocument())
+    expect(completeDialogProps.reminder).toBe(pending)
+    expect(markDoneMock).not.toHaveBeenCalled()
   })
 
   it('clicking Dismiss calls the dismiss mutation with the reminder id (fails if dismiss is unwired)', async () => {
     render(<ReminderList vin="V1" />)
     fireEvent.click(screen.getByRole('button', { name: 'reminderList.dismiss' }))
     await waitFor(() => expect(dismissMock.mock.calls[0]).toStrictEqual([8]))
+  })
+
+  it('a RULE-BACKED reminder says Dismiss stops the repeat (v3.5.0: dismiss deactivates the rule, so the label may not read like a one-off dismiss)', () => {
+    const recurring = { ...pending, rule_id: 1, rule: { id: 1, title: 'Oil change', is_active: true } } as unknown as Reminder
+    useRemindersMock.mockReturnValue({ data: [recurring], isLoading: false })
+    render(<ReminderList vin="V1" />)
+    expect(screen.getByRole('button', { name: 'reminderList.dismissStopsRepeat' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'reminderList.dismiss' })).not.toBeInTheDocument()
   })
 
   it('clicking Delete calls the delete mutation DIRECTLY with the id and never opens a confirm dialog (fails if delete is unwired OR a confirm gate is added — ReminderList delete is direct, LD5)', async () => {

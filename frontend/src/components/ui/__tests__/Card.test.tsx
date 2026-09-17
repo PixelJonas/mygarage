@@ -40,8 +40,8 @@ describe('CardHeader', () => {
 
   it('marks the icon aria-hidden itself, not just relying on the icon default', () => {
     // lucide-react icons default to aria-hidden="true" whenever no other
-    // a11y prop is passed (dist/cjs/lucide-react.js:
-    // `...!children && !hasA11yProp(rest) && { 'aria-hidden': 'true' }`), so
+    // a11y prop is passed (dist/cjs/lucide-react.js, buildLucideIconNode:
+    // `params.hasA11yProp === false`, fed `Boolean(children) || hasA11yProp(rest)`), so
     // a test using a lucide icon (e.g. Wrench above) can't tell whether
     // CardHeader sets the attribute itself or is only inheriting lucide's
     // default. A bare SVG component has no such default, so this proves

@@ -1,4 +1,5 @@
 import js from '@eslint/js'
+import { defineConfig } from 'eslint/config'
 import globals from 'globals'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
@@ -160,7 +161,7 @@ const UNITS_CONSTANT_EXEMPT = [
   'src/utils/supplyUnits.ts',
 ]
 
-export default tseslint.config(
+export default defineConfig(
   {
     // `*.mutant.generated.*` is the unit gate's selftest: it mutates COPIES of
     // this file and of scripts/validate-units.ts rather than the originals, so

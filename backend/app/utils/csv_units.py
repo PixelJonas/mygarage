@@ -321,6 +321,16 @@ class CsvUnitContext:
         binding = self._bindings.get(quantity)
         return binding.token if binding is not None else None
 
+    def converts(self, quantity: str) -> bool:
+        """Whether `quantity`'s values change on the way into canonical storage.
+
+        False when the file has no such column or already carries it in the
+        canonical unit (km, L, ...). An importer uses this to tell a figure
+        typed in miles or gallons from one stored exactly as the file gives it.
+        """
+        token = self.token(quantity)
+        return token is not None and token != _CANONICAL_TOKEN[quantity]
+
     def to_canonical(self, quantity: str, value: Decimal | None) -> Decimal | None:
         """Convert one cell of `quantity` into canonical metric storage.
 

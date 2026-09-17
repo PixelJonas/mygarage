@@ -5,18 +5,15 @@ from __future__ import annotations
 import json
 import logging
 import re
-from datetime import date, timedelta
-from decimal import Decimal
 from pathlib import Path
 
 from fastapi import HTTPException
-from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.reminder import ReminderCreate, ReminderResponse
+from app.schemas.maintenance import AnchorChoice, ApplyPackPreview
+from app.schemas.reminder import ReminderResponse
 from app.schemas.reminder_pack import ReminderPackDetail, ReminderPackSummary
-from app.services import reminder_service
-from app.services.reminder_service import get_current_hours, get_current_mileage
+from app.services import maintenance_service, reminder_service
 from app.utils.logging_utils import sanitize_for_log
 
 logger = logging.getLogger(__name__)
@@ -137,57 +134,30 @@ async def apply_pack(
     vin: str,
     pack_id: str,
     db: AsyncSession,
+    anchors: dict[str, AnchorChoice | None] | None = None,
 ) -> list[ReminderResponse]:
-    """Apply a reminder pack to a vehicle.
+    """Apply a reminder pack to a vehicle through the maintenance lifecycle.
 
-    - ``due_date`` is resolved from today + ``due_date_offset_days`` when set.
-    - ``due_mileage_km`` / ``due_hours`` in packs are treated as *intervals*
-      when a current reading exists (current + interval); otherwise used as-is.
+    Each item becomes (or reuses) a per-vehicle maintenance rule; the rule's
+    pending reminder is anchored on the vehicle's most recent qualifying
+    service, adopts a loose reminder of the same type instead of duplicating
+    it, and is created from today's readings only when nothing is on record.
+    See ``maintenance_service.apply_pack`` and the design's section 5.4.
+
+    Returns the pending reminder of every rule the pack touched, in pack
+    order, the list shape this endpoint always returned.
     """
     pack = get_pack(pack_id)
-    today = date.today()
-    current_km = await get_current_mileage(vin, db)
-    current_hours = await get_current_hours(vin, db)
+    reminders = await maintenance_service.apply_pack(db, vin, pack, anchors)
+    return [await reminder_service.enrich_with_estimate(r, db) for r in reminders]
 
-    created: list[ReminderResponse] = []
-    for item in pack.reminders:
-        due_date: date | None = None
-        if item.due_date_offset_days is not None:
-            due_date = today + timedelta(days=item.due_date_offset_days)
 
-        due_mileage_km: Decimal | None = None
-        if item.due_mileage_km is not None:
-            interval = Decimal(str(item.due_mileage_km))
-            if current_km is not None:
-                due_mileage_km = current_km + interval
-            else:
-                due_mileage_km = interval
-
-        due_hours: Decimal | None = None
-        if item.due_hours is not None:
-            interval_h = Decimal(str(item.due_hours))
-            if current_hours is not None:
-                due_hours = current_hours + interval_h
-            else:
-                due_hours = interval_h
-
-        try:
-            data = ReminderCreate(
-                title=item.title,
-                reminder_type=item.reminder_type,  # type: ignore[arg-type]
-                due_date=due_date,
-                due_mileage_km=due_mileage_km,
-                due_hours=due_hours,
-                notes=item.notes,
-            )
-        except ValidationError as exc:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid reminder in pack '{pack_id}': {exc.errors()}",
-            ) from exc
-
-        reminder = await reminder_service.create_reminder(vin, data, db)
-        await db.flush()
-        created.append(await reminder_service.enrich_with_estimate(reminder, db))
-
-    return created
+async def preview_pack(
+    vin: str,
+    pack_id: str,
+    db: AsyncSession,
+    anchors: dict[str, AnchorChoice | None] | None = None,
+) -> ApplyPackPreview:
+    """What ``apply_pack`` would do, with no writes."""
+    pack = get_pack(pack_id)
+    return await maintenance_service.plan_pack(db, vin, pack, anchors)
