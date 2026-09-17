@@ -1935,8 +1935,8 @@ class TireService:
             await self.db.rollback()
             logger.error(
                 "DB error deleting tire reading %s of tire %s: %s",
-                reading_id,
-                tire_id,
+                sanitize_for_log(reading_id),
+                sanitize_for_log(tire_id),
                 sanitize_for_log(e),
             )
             raise HTTPException(status_code=503, detail="Database temporarily unavailable")

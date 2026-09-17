@@ -25,6 +25,7 @@ from app.utils.distance_counters import (
     measure_travelled,
     select_distance_source,
 )
+from app.utils.logging_utils import sanitize_for_log
 from app.utils.movement_keys import (
     is_parked_heartbeat_key,
     rpm_param_key_candidates,
@@ -782,7 +783,7 @@ class SessionService:
             session.id,
             device.vin,
             device.device_id,
-            sample_at,
+            sanitize_for_log(sample_at),
         )
         return session
 
