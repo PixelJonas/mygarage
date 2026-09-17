@@ -5655,7 +5655,7 @@ export interface paths {
         put?: never;
         /**
          * Dismiss
-         * @description Mark a reminder as dismissed.
+         * @description Mark a reminder as dismissed; a recurring one stops repeating.
          */
         post: operations["dismiss_api_vehicles__vin__reminders__reminder_id__dismiss_post"];
         delete?: never;
