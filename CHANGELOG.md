@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Correcting a service's maintenance type moves the old type's reminder off it, and the new type can count from it.
 - Dismissing or deleting a recurring reminder stops it repeating instead of having it come back on the next service.
 - Resolving duplicate reminders refuses a request mixing maintenance types.
+- Deleting the service a reminder counted from re-anchors it on the previous matching service instead of keeping the deleted one.
 
 ### Security
 - Frontend: drop all `overrides` (`bun audit` clean).

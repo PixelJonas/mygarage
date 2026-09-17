@@ -1925,3 +1925,79 @@ class TestUCodexPR168:
         )
         assert rule["is_active"] is True
         assert len(_of_type(await _pending(client, auth_headers, vin), "engine_oil_filter")) == 1
+
+    async def test_deleting_the_anchoring_service_falls_back_to_the_previous_one(
+        self, client, auth_headers
+    ):
+        """A reminder must not keep counting from a service that no longer
+        exists (design section 13, resolved with the retype fix's rule)."""
+        vin = await _vehicle(client, auth_headers)
+        older = await _visit(
+            client,
+            auth_headers,
+            vin,
+            on=OLDER_DATE,
+            odometer_km=OLDER_KM,
+            items=[{"description": "Oil Change"}],
+        )
+        newer = await _visit(
+            client,
+            auth_headers,
+            vin,
+            on=SERVICE_DATE,
+            odometer_km=SERVICE_KM,
+            items=[{"description": "Oil Change"}],
+        )
+        r = await client.post(
+            f"/api/vehicles/{vin}/reminders",
+            headers=auth_headers,
+            json={
+                "title": "Oil change",
+                "maintenance_type": "engine_oil_filter",
+                "recurrence": {"interval_months": 6},
+            },
+        )
+        assert r.status_code == 201, r.text
+        assert r.json()["anchor_date"] == SERVICE_DATE
+
+        r = await client.delete(
+            f"/api/vehicles/{vin}/service-visits/{newer['id']}", headers=auth_headers
+        )
+        assert r.status_code == 204, r.text
+
+        moved = await _oil(client, auth_headers, vin)
+        assert moved["anchor_kind"] == "service"
+        assert moved["anchor_date"] == OLDER_DATE
+        assert moved["line_item_id"] == older["line_items"][0]["id"]
+        assert moved["due_date"] == "2026-09-16"
+
+    async def test_deleting_the_only_anchoring_service_falls_back_to_a_baseline(
+        self, client, auth_headers
+    ):
+        vin = await _vehicle(client, auth_headers)
+        only = await _visit(
+            client,
+            auth_headers,
+            vin,
+            on=SERVICE_DATE,
+            odometer_km=SERVICE_KM,
+            items=[{"description": "Oil Change"}],
+        )
+        r = await client.post(
+            f"/api/vehicles/{vin}/reminders",
+            headers=auth_headers,
+            json={
+                "title": "Oil change",
+                "maintenance_type": "engine_oil_filter",
+                "recurrence": {"interval_months": 6},
+            },
+        )
+        assert r.status_code == 201, r.text
+        r = await client.delete(
+            f"/api/vehicles/{vin}/service-visits/{only['id']}", headers=auth_headers
+        )
+        assert r.status_code == 204, r.text
+        moved = await _oil(client, auth_headers, vin)
+        assert moved["anchor_kind"] == "baseline"
+        assert moved["line_item_id"] is None
+        assert moved["anchor_date"] == date.today().isoformat()

@@ -691,26 +691,28 @@ async def reconcile_rule(
         today = date.today()
     pending = await _pending_reminder(db, rule.id)
 
-    # 0. Refresh a service-anchored reminder from its visit, unless the owner
-    #    has retyped that service since: then it is not this rule's work and
-    #    the reminder re-anchors on whatever history is left.
+    # 0. Refresh a service-anchored reminder from its visit. When that service
+    #    is no longer this rule's work, because the owner retyped it or deleted
+    #    it, the reminder re-anchors on whatever history is left.
     retyped_away = False
-    if (
-        pending is not None
-        and pending.anchor_kind == "service"
-        and pending.line_item_id is not None
-    ):
-        refreshed = await _anchor_from_line_item(db, rule.vin, pending.line_item_id)
-        if refreshed is not None:
-            anchor, line_item = refreshed
-            if (
-                line_item.maintenance_type is not None
-                and rule.maintenance_type is not None
-                and line_item.maintenance_type != rule.maintenance_type
-            ):
-                retyped_away = True
-            else:
-                _set_anchor(pending, await resolve_readings(db, rule.vin, anchor, rule))
+    if pending is not None and pending.anchor_kind == "service":
+        if pending.line_item_id is None:
+            # The service this reminder counted from was deleted (the link is
+            # ON DELETE SET NULL), so its snapshot describes a record that no
+            # longer exists.
+            retyped_away = True
+        else:
+            refreshed = await _anchor_from_line_item(db, rule.vin, pending.line_item_id)
+            if refreshed is not None:
+                anchor, line_item = refreshed
+                if (
+                    line_item.maintenance_type is not None
+                    and rule.maintenance_type is not None
+                    and line_item.maintenance_type != rule.maintenance_type
+                ):
+                    retyped_away = True
+                else:
+                    _set_anchor(pending, await resolve_readings(db, rule.vin, anchor, rule))
 
     best = candidate if candidate is not None else await best_anchor(db, rule)
 
