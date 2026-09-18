@@ -53,7 +53,7 @@ EXPECTED_HEADER_LISTS: dict[str, int] = {
     # The four unit-bearing pairs, which go through `build_csv` ->
     # `apply_unit_set`. These are the ones a miss actually corrupts.
     "export_service_records_csv": 8,
-    "export_fuel_records_csv": 28,
+    "export_fuel_records_csv": 30,
     "export_def_records_csv": 9,
     "export_odometer_records_csv": 3,
     # The five dimensionless pairs, which call `generate_csv_stream` directly
@@ -94,6 +94,10 @@ DIMENSIONLESS_HEADERS: frozenset[str] = frozenset(
         "Vendor",
         "Notes",
         "Fuel Type Used",
+        # #164 — an octane number is a rating on a scale (AKI/RON), not a
+        # unit-bearing quantity, and the grade is an enum label.
+        "Octane",
+        "Diesel Grade",
         "Station ID",
         "Station",
         "Driver ID",

@@ -29,7 +29,9 @@ import ReminderForm from './ReminderForm'
 import CompleteReminderDialog from './CompleteReminderDialog'
 import ApplyPackDialog from './ApplyPackDialog'
 import ReconcileDuplicatesDialog from './ReconcileDuplicatesDialog'
+import SnoozeReminderDialog from './SnoozeReminderDialog'
 import { describeRecurrence } from './RecurrenceFields'
+import { todayInHousehold } from '../constants/i18n'
 import type { DuplicateGroup, Reminder, ReminderStatus } from '../types/reminder'
 import type { Vehicle } from '../types/vehicle'
 import { useUnitFormat } from '../hooks/useUnitFormat'
@@ -39,6 +41,13 @@ import api from '../services/api'
 
 interface ReminderListProps {
   vin: string
+  /**
+   * Fired after any write that moves the vehicle's overdue/upcoming counts
+   * (complete, dismiss, delete, snooze, unsnooze, pack apply, reconcile).
+   * VehicleDetail holds those stats in local state, not react-query, so the
+   * mutation invalidation above cannot refresh them.
+   */
+  onStatsChanged?: () => void
 }
 
 const STATUS_TABS: { id: ReminderStatus | 'all'; labelKey: string }[] = [
@@ -55,7 +64,7 @@ const TYPE_ICONS: Record<string, typeof Bell> = {
   smart: Zap,
 }
 
-export default function ReminderList({ vin }: ReminderListProps) {
+export default function ReminderList({ vin, onStatsChanged }: ReminderListProps) {
   const { t } = useTranslation('vehicles')
   const { t: tForms } = useTranslation('forms')
   const dateLocale = useDateLocale()
@@ -67,6 +76,7 @@ export default function ReminderList({ vin }: ReminderListProps) {
   const [selectedPack, setSelectedPack] = useState('')
   const [previewingPack, setPreviewingPack] = useState<{ id: string; name: string } | undefined>()
   const [reviewingGroup, setReviewingGroup] = useState<DuplicateGroup | undefined>()
+  const [snoozing, setSnoozing] = useState<Reminder | undefined>()
   const [vehicle, setVehicle] = useState<Vehicle | null>(null)
 
   useEffect(() => {
@@ -106,6 +116,7 @@ export default function ReminderList({ vin }: ReminderListProps) {
     try {
       await dismissMutation.mutateAsync(id)
       toast.success(t('reminderList.dismissed'))
+      onStatsChanged?.()
     } catch {
       toast.error(t('reminderList.dismissError'))
     }
@@ -115,6 +126,7 @@ export default function ReminderList({ vin }: ReminderListProps) {
     try {
       await deleteMutation.mutateAsync(id)
       toast.success(t('reminderList.deleted'))
+      onStatsChanged?.()
     } catch {
       toast.error(t('reminderList.deleteError'))
     }
@@ -152,6 +164,12 @@ export default function ReminderList({ vin }: ReminderListProps) {
 
   const rulesById = new Map<number, Reminder>()
   for (const r of reminders) rulesById.set(r.id, r)
+
+  // Strictly-before, matching the backend's is_reminder_snoozed: on the
+  // `until` date itself the snooze has expired and the chip drops.
+  const today = todayInHousehold()
+  const isSnoozed = (reminder: Reminder): boolean =>
+    reminder.snoozed_until != null && today < reminder.snoozed_until
 
   return (
     <div className="space-y-4">
@@ -269,6 +287,9 @@ export default function ReminderList({ vin }: ReminderListProps) {
                         {isDuplicate && reminder.status === 'pending' && (
                           <Chip tone="warning">{t('reminderList.possibleDuplicate')}</Chip>
                         )}
+                        {isSnoozed(reminder) && reminder.status === 'pending' && (
+                          <Chip>{t('reminderList.snoozedUntil', { date: formatDate(reminder.snoozed_until) })}</Chip>
+                        )}
                         {reminder.due_date && (
                           <span className="text-xs text-text-mute">
                             {t('reminderList.due')}: <Mono size="xs" tone="muted">{formatDate(reminder.due_date)}</Mono>
@@ -325,6 +346,7 @@ export default function ReminderList({ vin }: ReminderListProps) {
                     {reminder.status === 'pending' && (
                       <>
                         <IconButton icon={Check} label={t('reminderList.markDone')} variant="ghost" size="sm" onClick={() => setCompleting(reminder)} />
+                        <IconButton icon={Clock} label={isSnoozed(reminder) ? t('reminderList.editSnooze') : t('reminderList.snooze')} variant="ghost" size="sm" onClick={() => setSnoozing(reminder)} />
                         <IconButton icon={X} label={reminder.rule?.is_active ? t('reminderList.dismissStopsRepeat') : t('reminderList.dismiss')} variant="ghost" size="sm" onClick={() => handleDismiss(reminder.id)} />
                       </>
                     )}
@@ -346,7 +368,7 @@ export default function ReminderList({ vin }: ReminderListProps) {
           currentMileage={currentMileage}
           currentHours={currentHours}
           onClose={handleFormClose}
-          onSuccess={handleFormClose}
+          onSuccess={() => { handleFormClose(); onStatsChanged?.() }}
         />
       )}
 
@@ -359,7 +381,16 @@ export default function ReminderList({ vin }: ReminderListProps) {
           tracksDistance={tracksDistance}
           tracksHours={tracksHours}
           onClose={() => setCompleting(undefined)}
-          onSuccess={() => setCompleting(undefined)}
+          onSuccess={() => { setCompleting(undefined); onStatsChanged?.() }}
+        />
+      )}
+
+      {snoozing && (
+        <SnoozeReminderDialog
+          vin={vin}
+          reminder={snoozing}
+          onClose={() => setSnoozing(undefined)}
+          onSuccess={() => { setSnoozing(undefined); onStatsChanged?.() }}
         />
       )}
 
@@ -369,7 +400,7 @@ export default function ReminderList({ vin }: ReminderListProps) {
           packId={previewingPack.id}
           packName={previewingPack.name}
           onClose={() => setPreviewingPack(undefined)}
-          onApplied={() => { setPreviewingPack(undefined); setSelectedPack('') }}
+          onApplied={() => { setPreviewingPack(undefined); setSelectedPack(''); onStatsChanged?.() }}
         />
       )}
 
@@ -378,7 +409,7 @@ export default function ReminderList({ vin }: ReminderListProps) {
           vin={vin}
           group={reviewingGroup}
           onClose={() => setReviewingGroup(undefined)}
-          onDone={() => setReviewingGroup(undefined)}
+          onDone={() => { setReviewingGroup(undefined); onStatsChanged?.() }}
         />
       )}
     </div>

@@ -45,7 +45,11 @@ from app.schemas.widget import (
 )
 from app.services.fuel_service import calculate_average_hours_economy
 from app.services.hours_service import latest_engine_hours_and_date
-from app.services.reminder_service import get_current_hours, is_reminder_overdue
+from app.services.reminder_service import (
+    get_current_hours,
+    is_reminder_overdue,
+    is_reminder_snoozed,
+)
 from app.utils.household_time import household_today
 from app.utils.unit_adapters import ADAPTERS, UnitAdapter
 from app.utils.unit_counterparts import forced_mpg_adapter
@@ -519,6 +523,9 @@ class WidgetAggregationService:
         overdue = 0
         upcoming = 0
         for reminder in reminders:
+            if is_reminder_snoozed(reminder, today):
+                # Out of BOTH counts while snoozed (plan 2026-09-18, decision 4).
+                continue
             if is_reminder_overdue(reminder, current_km_decimal, current_hours, today):
                 overdue += 1
             else:

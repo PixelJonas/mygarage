@@ -5,8 +5,9 @@ Before this task, `EXPORT_SCHEMA_VERSION = "5"` was written into both the CSV
 backup's top-level `"export_version"` field. Bumping it for the CSV surface
 (unit-preference-aware headers land in later tasks of this phase) would have
 silently moved the JSON backup contract too, since both endpoints read one
-name. This module proves the fix: `CSV_SCHEMA_VERSION = "6"` and
-`JSON_SCHEMA_VERSION = "5"` are independent, `EXPORT_SCHEMA_VERSION` is gone,
+name. This module proves the fix: `CSV_SCHEMA_VERSION` and
+`JSON_SCHEMA_VERSION` are independent, `EXPORT_SCHEMA_VERSION` is gone,
+(current literals: CSV "7" / JSON "6" since the #164 fuel-grade columns)
 and the five dimensionless CSV pairs (hours, warranties, insurance, tax,
 notes -- the ones that call `generate_csv_stream` directly rather than going
 through `build_csv`) change ONLY in the version cell.
@@ -57,7 +58,7 @@ class TestDimensionlessCSVPairsVersionCellOnly:
 
     Each test seeds exactly one row with every exportable field populated,
     then asserts the full header set AND every data cell by hand-written
-    literal, plus `units_version == "6"`. If the constant split had touched
+    literal, plus `units_version == "7"`. If the constant split had touched
     anything besides that one cell, one of the non-version assertions would
     fail.
     """
@@ -95,7 +96,7 @@ class TestDimensionlessCSVPairsVersionCellOnly:
         }
         assert len(rows) == 1
         row = rows[0]
-        assert row["units_version"] == "6"
+        assert row["units_version"] == "7"
         assert row["unit_system"] == "metric"
         assert row["Date"] == "2026-05-01"
         assert row["Engine Hours"] == "42.0"
@@ -137,7 +138,7 @@ class TestDimensionlessCSVPairsVersionCellOnly:
         }
         assert len(rows) == 1
         row = rows[0]
-        assert row["units_version"] == "6"
+        assert row["units_version"] == "7"
         assert row["unit_system"] == "metric"
         assert row["Date"] == "2026-05-02"
         assert row["Type"] == "Registration"
@@ -176,7 +177,7 @@ class TestDimensionlessCSVPairsVersionCellOnly:
         }
         assert len(rows) == 1
         row = rows[0]
-        assert row["units_version"] == "6"
+        assert row["units_version"] == "7"
         assert row["unit_system"] == "metric"
         assert row["Date"] == "2026-05-03"
         assert row["Title"] == "Reminder"
@@ -226,7 +227,7 @@ class TestWarrantyInsuranceCSVSchemaVersion:
         )
         assert response.status_code == 200, response.text
         rows = list(csv.DictReader(io.StringIO(response.text)))
-        assert rows[0]["units_version"] == "6"
+        assert rows[0]["units_version"] == "7"
 
     async def test_insurance_csv_emits_the_schema_version(
         self, client: AsyncClient, auth_headers, test_user, db_session
@@ -252,19 +253,19 @@ class TestWarrantyInsuranceCSVSchemaVersion:
         )
         assert response.status_code == 200, response.text
         rows = list(csv.DictReader(io.StringIO(response.text)))
-        assert rows[0]["units_version"] == "6"
+        assert rows[0]["units_version"] == "7"
 
 
 class TestCSVSchemaVersionAlsoAppliesToUnitBearingPairs:
     """`build_csv` (the four unit-bearing pairs) delegates to the same
-    `generate_csv_stream`, so it must also emit "6". This is not one of the
+    `generate_csv_stream`, so it must also emit "7". This is not one of the
     five dimensionless pairs from the phase brief, and no per-column pin is
     asserted here (that belongs to the later task that adds unit tokens to
     these headers) -- just confirmation the version split reaches this path
     too.
     """
 
-    async def test_fuel_csv_emits_schema_version_6(
+    async def test_fuel_csv_emits_schema_version_7(
         self, client: AsyncClient, auth_headers, test_user, db_session
     ):
         from app.models.fuel import FuelRecord
@@ -296,17 +297,17 @@ class TestCSVSchemaVersionAlsoAppliesToUnitBearingPairs:
         rows = list(reader)
         assert len(rows) == 1
         row = rows[0]
-        assert row["units_version"] == "6"
+        assert row["units_version"] == "7"
         assert row["unit_system"] == "metric"
 
 
 class TestJSONExportVersionUnchanged:
-    """The JSON backup's `export_version` stays at the pre-split literal "5".
+    """The JSON backup's `export_version` is the current JSON literal ("6" since the #164 fuel-grade keys).
 
     Proves JSON_SCHEMA_VERSION did not silently move alongside CSV_SCHEMA_VERSION.
     """
 
-    async def test_json_export_emits_schema_version_5(
+    async def test_json_export_emits_schema_version_6(
         self, client: AsyncClient, auth_headers, test_user, db_session
     ):
         from app.models.hours import HoursRecord
@@ -328,7 +329,7 @@ class TestJSONExportVersionUnchanged:
         assert response.status_code == 200, response.text
 
         data = response.json()
-        assert data["export_version"] == "5"
+        assert data["export_version"] == "6"
         assert data["units"] == "metric"
         matching = [r for r in data["hours_records"] if r["date"] == "2026-05-05"]
         assert len(matching) == 1

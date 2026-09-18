@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
+import { act, render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { Link, MemoryRouter, Route, Routes } from 'react-router-dom'
 
 // Mock all tab components to avoid deep dependency trees
@@ -18,7 +18,17 @@ vi.mock('../../components/tabs/SafetyTab', () => ({ default: () => <div>SafetyTa
 vi.mock('../../components/tabs/SpotRentalsTab', () => ({ default: () => <div>SpotRentalsTab</div> }))
 vi.mock('../../components/tabs/PropaneTab', () => ({ default: () => <div>PropaneTab</div> }))
 vi.mock('../../components/tabs/DEFTab', () => ({ default: () => <div>DEFTab</div> }))
-vi.mock('../../components/ReminderList', () => ({ default: () => <div>ReminderList</div> }))
+// Capture onStatsChanged so a test can invoke it like a real reminder write
+// would (vi.hoisted holder — the house idiom for hoisted mock factories).
+const reminderListProps = vi.hoisted(() => ({
+  onStatsChanged: undefined as (() => void) | undefined,
+}))
+vi.mock('../../components/ReminderList', () => ({
+  default: (props: { onStatsChanged?: () => void }) => {
+    reminderListProps.onStatsChanged = props.onStatsChanged
+    return <div>ReminderList</div>
+  },
+}))
 vi.mock('../../components/tabs/LiveLinkLiveTab', () => ({ default: () => <div>LiveLinkLiveTab</div> }))
 vi.mock('../../components/tabs/LiveLinkDTCsTab', () => ({ default: () => <div>LiveLinkDTCsTab</div> }))
 vi.mock('../../components/tabs/LiveLinkSessionsTab', () => ({ default: () => <div>LiveLinkSessionsTab</div> }))
@@ -163,6 +173,7 @@ describe('VehicleDetail', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
+    reminderListProps.onStatsChanged = undefined
     mockedVehicleService.get.mockResolvedValue(mockVehicle)
     mockedVehicleService.getDetailStats.mockRejectedValue(new Error('no stats'))
     mockedLivelinkService.hasLinkedDevice.mockResolvedValue(false)
@@ -610,6 +621,73 @@ describe('VehicleDetail', () => {
     fireEvent.click(screen.getByRole('button', { name: 'detail.hero.addFuel' }))
     expect(await screen.findByText('DEFTab')).toBeInTheDocument()
     expect(screen.queryByText('PropaneTab')).not.toBeInTheDocument()
+  })
+
+  it('a reminder write refetches the detail stats through onStatsChanged (the stats are local state, not react-query — nothing else can reach them)', async () => {
+    renderVehicleDetail('/vehicles/TEST12345678901234?tab=reminders')
+    await waitFor(() => expect(screen.getByText('ReminderList')).toBeInTheDocument())
+    expect(reminderListProps.onStatsChanged).toBeDefined()
+    const baseline = mockedVehicleService.getDetailStats.mock.calls.length
+    act(() => reminderListProps.onStatsChanged?.())
+    await waitFor(() =>
+      expect(mockedVehicleService.getDetailStats.mock.calls.length).toBe(baseline + 1),
+    )
+    expect(mockedVehicleService.getDetailStats).toHaveBeenLastCalledWith('TEST12345678901234')
+  })
+
+  it('an older stats response never overwrites a newer one (codex R1-M2: every load carries a generation)', async () => {
+    const deferred: Array<(stats: VehicleDetailStats) => void> = []
+    mockedVehicleService.getDetailStats.mockImplementation(
+      () =>
+        new Promise<VehicleDetailStats>((resolve) => {
+          deferred.push(resolve)
+        }),
+    )
+    renderVehicleDetail('/vehicles/TEST12345678901234?tab=reminders')
+    await waitFor(() => expect(reminderListProps.onStatsChanged).toBeDefined())
+    await waitFor(() => expect(deferred.length).toBe(1)) // the initial load
+
+    act(() => reminderListProps.onStatsChanged?.()) // older refresh
+    act(() => reminderListProps.onStatsChanged?.()) // newest refresh
+    await waitFor(() => expect(deferred.length).toBe(3))
+
+    // Newest resolves FIRST with an overdue count; the two stale responses
+    // then land with zero. The hero badge must survive them.
+    await act(async () => deferred[2]({ overdue_count: 2 } as unknown as VehicleDetailStats))
+    await screen.findByText('vehicleStats.overdue')
+    await act(async () => deferred[1]({ overdue_count: 0 } as unknown as VehicleDetailStats))
+    await act(async () => deferred[0]({ overdue_count: 0 } as unknown as VehicleDetailStats))
+    expect(screen.getByText('vehicleStats.overdue')).toBeInTheDocument()
+  })
+
+  it('a mutation callback for A landing after navigation to B cannot start an A request (codex R2-M1)', async () => {
+    mockedVehicleService.getDetailStats.mockResolvedValue(
+      { overdue_count: 0 } as unknown as VehicleDetailStats,
+    )
+    render(
+      <MemoryRouter initialEntries={['/vehicles/TEST12345678901234?tab=reminders']}>
+        <Link to="/vehicles/OTHERV123456789012">go-other</Link>
+        <Routes>
+          <Route path="/vehicles/:vin" element={<VehicleDetail />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(reminderListProps.onStatsChanged).toBeDefined())
+    const capturedForA = reminderListProps.onStatsChanged!
+
+    fireEvent.click(screen.getByText('go-other'))
+    await waitFor(() =>
+      expect(mockedVehicleService.getDetailStats).toHaveBeenLastCalledWith('OTHERV123456789012'),
+    )
+
+    const callsForA = (): number =>
+      mockedVehicleService.getDetailStats.mock.calls.filter(
+        ([v]) => v === 'TEST12345678901234',
+      ).length
+    const before = callsForA()
+    act(() => capturedForA())
+    await new Promise((r) => setTimeout(r, 0))
+    expect(callsForA()).toBe(before)
   })
 
   it('Reminder switches the active primary tab to Tracking (SDQ-1)', async () => {

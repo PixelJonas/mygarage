@@ -99,6 +99,17 @@ class ReminderUpdate(BaseModel):
     _validate_type = field_validator("maintenance_type")(validate_maintenance_type)
 
 
+class ReminderSnoozeRequest(BaseModel):
+    """Body of POST /{reminder_id}/snooze.
+
+    The range check (strictly after household "today", at most ten years
+    out) lives in the route: it needs ``household_today()``, which is
+    request-scoped state a schema validator cannot see.
+    """
+
+    until: date
+
+
 class ReminderResponse(BaseModel):
     """Schema for reminder response."""
 
@@ -114,6 +125,11 @@ class ReminderResponse(BaseModel):
     due_hours: Decimal | None
     status: str
     notes: str | None
+    #: Hide-until-date snooze. The due fields above stay real; while
+    #: household "today" is before this date the reminder is out of every
+    #: overdue/due-soon count and notification. The frontend derives
+    #: "snoozed now" by comparing against todayInHousehold().
+    snoozed_until: date | None = None
     estimated_due_date: date | None = None
     #: When the usage target (mileage or hours) is reached at the current
     #: rate, uncapped. ``estimated_due_date`` is the earlier of this and

@@ -53,6 +53,25 @@ export function formatDateForDisplay(
 }
 
 /**
+ * Add days to a YYYY-MM-DD string. UTC arithmetic on the parsed parts, so a
+ * DST transition in the browser's zone can never shift the result a day.
+ */
+export function addDaysToIsoDate(isoDate: string, days: number): string {
+  const [y, m, d] = isoDate.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10)
+}
+
+/**
+ * Add calendar months to a YYYY-MM-DD string, clamping to the target month's
+ * last day (Jan 31 + 1 month = Feb 28, not Mar 3).
+ */
+export function addMonthsToIsoDate(isoDate: string, months: number): string {
+  const [y, m, d] = isoDate.split('-').map(Number)
+  const lastDay = new Date(Date.UTC(y, m + months, 0)).getUTCDate()
+  return new Date(Date.UTC(y, m - 1 + months, Math.min(d, lastDay))).toISOString().slice(0, 10)
+}
+
+/**
  * Format a date string for input[type="date"] without timezone issues.
  * Ensures the date is in YYYY-MM-DD format without timezone conversion.
  *

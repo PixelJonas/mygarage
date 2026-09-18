@@ -76,6 +76,23 @@ export function useMarkReminderDismissed(vin: string) {
   })
 }
 
+export function useSnoozeReminder(vin: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, until }: { id: number; until: string }) =>
+      reminderService.snooze(vin, id, until),
+    onSuccess: () => invalidateMaintenanceQueries(queryClient, vin),
+  })
+}
+
+export function useUnsnoozeReminder(vin: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => reminderService.unsnooze(vin, id),
+    onSuccess: () => invalidateMaintenanceQueries(queryClient, vin),
+  })
+}
+
 export function useCompleteReminder(vin: string) {
   const queryClient = useQueryClient()
   return useMutation({

@@ -206,6 +206,7 @@ class DEFRecordService:
                         odometer_km=record.odometer_km,
                         source_type="def",
                         source_id=record.id,
+                        operation="update",
                     )
                 except Exception as e:
                     logger.warning(

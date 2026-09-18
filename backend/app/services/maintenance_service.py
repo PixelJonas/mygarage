@@ -588,6 +588,9 @@ def _complete(reminder: Reminder, anchor: Anchor) -> None:
     reminder.completed_odometer_km = anchor.odometer_km
     reminder.completed_hours = anchor.hours
     reminder.completed_line_item_id = anchor.line_item_id
+    # The cycle this snooze silenced is over; a rule's successor is a new
+    # row and starts un-snoozed either way.
+    reminder.snoozed_until = None
 
 
 async def _pending_reminder(db: AsyncSession, rule_id: int) -> Reminder | None:

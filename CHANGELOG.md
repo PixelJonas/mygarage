@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Reminder snooze: hide a pending reminder from overdue/upcoming counts and notifications until a date; due dates stay unchanged.
+- Octane and diesel grade (on-road/off-road) on fuel records, prefilled from the last fill-up (#164).
+- WiCAN firmware notifications fire once per release, with a per-device "skip this version" in LiveLink settings.
 - Recurring reminders: a maintenance rule (interval in distance, months or hours) per vehicle, from a pack, the reminder form or a service line item (#165).
 - Completing a reminder takes the real date and reading and can log or link a service visit; the next reminder is created from it.
 - Applying a reminder pack previews first: it counts from the most recent matching service and adopts an existing reminder instead of adding another.
@@ -21,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reminder packs declare `maintenance_type` and intervals (`interval_km`, `interval_months`, `interval_days`, `interval_hours`); the v3.4 keys still load.
 
 ### Fixed
+- Editing a fuel, service or DEF date moved its auto-synced odometer reading instead of leaving a duplicate at the old date; existing duplicates are repaired at upgrade (#171).
+- Restoring a JSON backup dropped each fuel record's fuel type and hauling flag.
 - Server and browser now compute "today" in one household time zone (Settings -> System -> Timezone, then MYGARAGE_TIMEZONE, then the container zone); tire defaults used UTC and everything else used the container zone, so evening dates disagreed west of Greenwich.
 - An incidental timezone=UTC settings row written by earlier System-tab saves is removed once at upgrade when the container zone differs; re-select UTC in Settings if you had deliberately chosen it.
 - Backend log statements sanitize user-provided values (CodeQL log-injection).
@@ -36,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Frontend: drop all `overrides` (`bun audit` clean).
 
 ### Build
+- Migrations 103-106: reminder `snoozed_until`, device firmware notification state, fuel `octane`/`diesel_grade`, odometer-sync duplicate repair.
 - Migration 101: `vehicle_maintenance_rules`, `service_line_items.maintenance_type` and the reminder anchor, completion and rule columns.
 - Bump Bun to 1.4.2.
 - Pin Node 24 in `.nvmrc`.

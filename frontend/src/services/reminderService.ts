@@ -51,6 +51,17 @@ export const reminderService = {
     return data
   },
 
+  /** Hide a pending reminder from every nag surface until a date (exclusive). */
+  async snooze(vin: string, id: number, until: string): Promise<Reminder> {
+    const { data } = await api.post<Reminder>(`/vehicles/${vin}/reminders/${id}/snooze`, { until })
+    return data
+  },
+
+  async unsnooze(vin: string, id: number): Promise<Reminder> {
+    const { data } = await api.post<Reminder>(`/vehicles/${vin}/reminders/${id}/unsnooze`)
+    return data
+  },
+
   async complete(
     vin: string,
     id: number,

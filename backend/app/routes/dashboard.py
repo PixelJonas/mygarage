@@ -4,7 +4,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -31,7 +31,7 @@ from app.services.auth import require_auth
 from app.services.fuel_service import calculate_average_hours_economy, compute_full_tank_economy
 from app.services.hours_service import latest_engine_hours_and_date
 from app.services.odometer_service import latest_odometer_km_and_date
-from app.services.reminder_service import is_reminder_overdue
+from app.services.reminder_service import is_reminder_overdue, is_reminder_snoozed
 from app.services.service_visit_service import service_visit_cost_load_options
 from app.utils.household_time import household_today
 
@@ -125,6 +125,10 @@ async def calculate_vehicle_stats(
     upcoming_count = 0
     overdue_count = 0
     for reminder in pending_reminders:
+        if is_reminder_snoozed(reminder, today):
+            # Excluded, not reclassified: a snoozed reminder is out of BOTH
+            # counts until its date passes (plan 2026-09-18, decision 4).
+            continue
         if is_reminder_overdue(reminder, current_odometer_km, current_engine_hours, today):
             overdue_count += 1
         else:
@@ -219,6 +223,7 @@ async def _fleet_next_due(
        odometer reading sorted after those that do (falling back to
        ``due_mileage_km ASC``); final tie-break ``id ASC``.
     """
+    today = household_today()
     dated = (
         await db.execute(
             select(
@@ -230,6 +235,9 @@ async def _fleet_next_due(
             .where(
                 Reminder.vin.in_(vins),
                 Reminder.status == "pending",
+                # Snoozed reminders never headline the fleet strip
+                # (plan 2026-09-18, decision 4).
+                or_(Reminder.snoozed_until.is_(None), Reminder.snoozed_until <= today),
                 Reminder.due_date.isnot(None),
             )
             .order_by(Reminder.due_date.asc(), Reminder.id.asc())
@@ -254,6 +262,7 @@ async def _fleet_next_due(
             ).where(
                 Reminder.vin.in_(vins),
                 Reminder.status == "pending",
+                or_(Reminder.snoozed_until.is_(None), Reminder.snoozed_until <= today),
                 Reminder.due_date.is_(None),
                 Reminder.due_mileage_km.isnot(None),
             )
@@ -328,6 +337,9 @@ async def calculate_fleet_health(
         select(func.count(Reminder.id)).where(
             Reminder.vin.in_(vins),
             Reminder.status == "pending",
+            # A snoozed reminder is out of every due-soon count until its
+            # date passes (plan 2026-09-18, decision 4).
+            or_(Reminder.snoozed_until.is_(None), Reminder.snoozed_until <= today),
             Reminder.due_date.isnot(None),
             Reminder.due_date > today,
             Reminder.due_date <= upcoming_end,

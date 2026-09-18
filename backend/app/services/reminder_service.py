@@ -191,6 +191,10 @@ def is_reminder_overdue(
     """
     if today is None:
         today = household_today()
+    if is_reminder_snoozed(reminder, today):
+        # A snooze silences every trigger alike, date, mileage and hours:
+        # "not now" is about the nagging, not about which threshold fired.
+        return False
     if reminder.due_date and reminder.due_date <= today:
         return True
     if reminder.due_mileage_km and current_km and current_km >= reminder.due_mileage_km:
@@ -198,6 +202,19 @@ def is_reminder_overdue(
     if reminder.due_hours and current_hours and current_hours >= reminder.due_hours:
         return True
     return False
+
+
+def is_reminder_snoozed(reminder: Reminder, today: date | None = None) -> bool:
+    """Whether the reminder's snooze is active right now.
+
+    Strictly before: a snooze until the 20th means "leave me alone UNTIL
+    the 20th", and on the 20th the reminder is back. Inert on non-pending
+    reminders only by virtue of every consumer filtering status first; the
+    field itself needs no clearing to expire.
+    """
+    if today is None:
+        today = household_today()
+    return reminder.snoozed_until is not None and today < reminder.snoozed_until
 
 
 def calculate_smart_estimated_date(
@@ -425,6 +442,12 @@ async def check_due_reminders(db: AsyncSession) -> None:
     dispatcher = NotificationDispatcher(db)
 
     for reminder in reminders:
+        if is_reminder_snoozed(reminder, today):
+            # Snoozed: no notification whatever the thresholds say, and no
+            # cooldown stamp either, so the day the snooze expires the very
+            # next run notifies (plan 2026-09-18, feature A).
+            continue
+
         # Dedup check. Reminder.last_notified_at is a plain (non-tz-aware)
         # DateTime column — SQLite's bind processor silently drops tzinfo on
         # write, so a value round-tripped through the DB comes back naive

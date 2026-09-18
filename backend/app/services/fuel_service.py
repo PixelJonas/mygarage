@@ -880,6 +880,7 @@ class FuelRecordService:
                         source_type="fuel",
                         source_id=record.id,
                         commit=False,
+                        operation="update",
                     )
                 except Exception as e:
                     logger.warning(

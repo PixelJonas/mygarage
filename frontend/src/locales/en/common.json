@@ -655,6 +655,9 @@
     },
     "fuel": {
       "fuelTypeTooLong": "Fuel type too long",
+      "octaneTooSmall": "Octane must be at least 50",
+      "octaneTooLarge": "Octane cannot exceed 150",
+      "octaneInvalid": "Enter a whole-number octane rating",
       "obcTripDurationFormat": "Use seconds (e.g. 8100), HH:MM (e.g. 2:15), or HH:MM:SS",
       "obcNegative": "OBC value cannot be negative",
       "obcTooLarge": "OBC value too large",

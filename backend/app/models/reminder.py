@@ -69,6 +69,14 @@ class Reminder(Base):
     status: Mapped[str] = mapped_column(String(10), nullable=False, default="pending")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_notified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Snooze (migration 103): while household_today() < snoozed_until the
+    # pending reminder is excluded from overdue/due-soon counts, the inbox,
+    # fleet next-due and scheduled notifications. The due fields stay
+    # untouched; the value goes inert the day it passes. `_complete()`
+    # clears it; `_reanchor` deliberately does NOT (reconcile re-anchors on
+    # no-op paths, and clearing there would wipe a snooze on every vehicle
+    # reconcile).
+    snoozed_until: Mapped[date | None] = mapped_column(Date, nullable=True)
     # --- Maintenance lifecycle (migration 101) ------------------------------
     # The rule this reminder is derived from, if any. A rule has at most ONE
     # pending reminder (`uq_reminders_rule_pending` below).

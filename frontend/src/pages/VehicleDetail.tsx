@@ -210,24 +210,42 @@ export default function VehicleDetail() {
   // last-fill-up/spent-YTD). Independent secondary fetch — the detail page never
   // blocks on it (the hero renders without the reading/badge and the key-facts
   // strip is omitted entirely until it resolves; no layout is reserved).
-  // B3: clear stats on vin change so B never shows A's numbers, and ignore a
-  // stale A response that resolves after we've navigated to B.
-  useEffect(() => {
-    if (!vin) return
-    let cancelled = false
-    setDetailStats(null)
+  //
+  // Every load goes through one generation counter: only the NEWEST request
+  // may write. That covers B3 (a stale A response after navigating to B —
+  // the vin effect bumps the generation) and the refresh race (two rapid
+  // writes whose responses resolve out of order must not leave the older
+  // counts displayed; codex code review R1-M2). The active-vin check on top
+  // covers the third shape (R2-M1): a mutation for A that finishes AFTER
+  // navigating to B still holds A's callback, and without the check it would
+  // START a fresh A request carrying the newest generation.
+  const statsGenRef = useRef(0)
+  const activeStatsVinRef = useRef(vin)
+  const refreshDetailStats = useCallback(() => {
+    if (!vin || activeStatsVinRef.current !== vin) return
+    const gen = ++statsGenRef.current
     vehicleService
       .getDetailStats(vin)
       .then((stats) => {
-        if (!cancelled) setDetailStats(stats)
+        if (statsGenRef.current === gen && activeStatsVinRef.current === vin) {
+          setDetailStats(stats)
+        }
       })
       .catch(() => {
-        if (!cancelled) setDetailStats(null)
+        // Keep what is shown; a failed refresh is not worth blanking the strip.
       })
-    return () => {
-      cancelled = true
-    }
   }, [vin])
+
+  // The stats are local state, not react-query, so a reminder write inside
+  // ReminderList cannot invalidate them — the child calls refreshDetailStats
+  // back up through onStatsChanged.
+  useEffect(() => {
+    if (!vin) return
+    activeStatsVinRef.current = vin
+    // B3: never show A's numbers on B, even for the moment the fetch takes.
+    setDetailStats(null)
+    refreshDetailStats()
+  }, [vin, refreshDetailStats])
 
   // Handle URL tab parameter from calendar navigation
   useEffect(() => {
@@ -718,7 +736,7 @@ export default function VehicleDetail() {
 
         {/* Tracking Sub-tabs */}
         {activePrimaryTab === 'tracking' && activeSubTab === 'notes' && vin && <NotesTab vin={vin} />}
-        {activePrimaryTab === 'tracking' && activeSubTab === 'reminders' && vin && <ReminderList vin={vin} />}
+        {activePrimaryTab === 'tracking' && activeSubTab === 'reminders' && vin && <ReminderList vin={vin} onStatsChanged={refreshDetailStats} />}
         {activePrimaryTab === 'tracking' && activeSubTab === 'reports' && vin && <ReportsTab vin={vin} />}
 
         {/* Financial Sub-tabs */}

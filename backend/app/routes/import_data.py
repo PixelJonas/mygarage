@@ -60,6 +60,7 @@ from app.models import (
 )
 from app.models.user import User
 from app.models.vendor import Vendor
+from app.schemas.fuel import _validate_diesel_grade, _validate_octane
 from app.services import maintenance_service
 from app.services.auth import get_vehicle_or_403, require_auth
 from app.services.fuel_side_effects import (
@@ -96,6 +97,21 @@ from app.utils.odometer_tolerance import KM_STEP, LITRE_STEP, conversion_toleran
 from app.utils.units import UnitConverter
 
 logger = logging.getLogger(__name__)
+
+
+def _coerce_octane(value: object) -> int | None:
+    """A backup's octane as an int, or a ValueError for a fractional one.
+
+    JSON numbers arrive as int or float; a float only passes when it is
+    integral, because int() would otherwise store 91.9 as 91 and let 150.9
+    sneak under the 150 bound the API enforces (codex code review R1-M1).
+    Strings raise in int() and fail the row like any other bad field.
+    """
+    if value is None:
+        return None
+    if isinstance(value, float) and not value.is_integer():
+        raise ValueError(f"octane must be a whole number, got {value!r}")
+    return int(value)  # type: ignore[arg-type]
 
 
 def _derive_price_basis(
@@ -581,6 +597,15 @@ async def import_fuel_csv(
                 )
                 normalized_fuel_type = FuelTypeEnum.OTHER
 
+            # #164 — octane + diesel grade (v7 columns; absent/blank = NULL).
+            # The constructor below bypasses Pydantic, so the shared schema
+            # validators run here: an invalid value fails this ROW through
+            # the per-row error handler, never silently persisted (R1-M2).
+            raw_octane = (row.get("Octane", "") or "").strip()
+            octane = _validate_octane(int(raw_octane)) if raw_octane else None
+            raw_grade = (row.get("Diesel Grade", "") or "").strip()
+            diesel_grade = _validate_diesel_grade(raw_grade) if raw_grade else None
+
             # Check for duplicates if requested
             if skip_duplicates:
                 existing = await db.execute(
@@ -616,6 +641,8 @@ async def import_fuel_csv(
                 fuel_type_used=(
                     normalized_fuel_type.value if normalized_fuel_type is not None else None
                 ),
+                octane=octane,
+                diesel_grade=diesel_grade,
                 outside_temp_c=outside_temp_c,
                 obc_l_per_100km=obc_l_per_100km,
                 obc_avg_speed_kmh=obc_avg_speed_kmh,
@@ -1389,6 +1416,19 @@ async def import_vehicle_json(
             )
             imported_ppu = _maybe_per_gal_to_per_l(record_data.get("price_per_unit"))
 
+            # The export has always written fuel_type_used and is_hauling but
+            # this constructor silently dropped both, so a restored backup
+            # lost them. Same locale-tolerant normalization as the CSV path.
+            raw_fuel_type = (record_data.get("fuel_type_used") or "").strip() or None
+            normalized_fuel_type = normalize_fuel_type(raw_fuel_type)
+            if raw_fuel_type and normalized_fuel_type is None:
+                logger.warning(
+                    "Fuel import record %s: unrecognized fuel type %r → 'other'",
+                    idx,
+                    raw_fuel_type,
+                )
+                normalized_fuel_type = FuelTypeEnum.OTHER
+
             if skip_duplicates:
                 existing = await db.execute(
                     select(FuelRecord).where(
@@ -1420,6 +1460,16 @@ async def import_vehicle_json(
                 rebate=Decimal(str(record_data["rebate"])) if record_data.get("rebate") else None,
                 is_full_tank=record_data.get("is_full_tank", True),
                 missed_fillup=record_data.get("missed_fillup", False),
+                is_hauling=record_data.get("is_hauling", False),
+                fuel_type_used=(
+                    normalized_fuel_type.value if normalized_fuel_type is not None else None
+                ),
+                # #164 — direct ORM construction bypasses Pydantic, so the
+                # shared validators run here per-row (R1-M2). _coerce_octane
+                # rejects a fractional value instead of silently truncating it
+                # the way a bare int() would (91.9 -> 91; codex review R1-M1).
+                octane=_validate_octane(_coerce_octane(record_data.get("octane"))),
+                diesel_grade=_validate_diesel_grade(record_data.get("diesel_grade")),
                 notes=record_data.get("notes"),
             )
             # A savepoint per row. Leaving it flushes the insert, so the next

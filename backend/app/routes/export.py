@@ -67,8 +67,11 @@ limiter = Limiter(key_func=get_remote_address)
 # JSON_SCHEMA_VERSION plus a `"units"` field.
 # The importer (`app/routes/import_data.py`) reads the marker and falls back
 # to v2 imperial conversion when it's missing (legacy v2 backups).
-CSV_SCHEMA_VERSION = "6"
-JSON_SCHEMA_VERSION = "5"
+# - CSV "7" / JSON "6": additive fuel grade columns, #164 — `Octane` and
+#   `Diesel Grade` in the fuel CSV, `octane`/`diesel_grade` keys in the JSON
+#   fuel records (same additive treatment as the v3→v4 fuel columns).
+CSV_SCHEMA_VERSION = "7"
+JSON_SCHEMA_VERSION = "6"
 EXPORT_UNITS = "metric"
 
 
@@ -280,6 +283,8 @@ async def export_fuel_records_csv(
         "Missed Fill-up",
         "Is Hauling",
         "Fuel Type Used",
+        "Octane",
+        "Diesel Grade",
         "Station ID",
         "Station",
         "Driver ID",
@@ -323,6 +328,10 @@ async def export_fuel_records_csv(
                 "Yes" if record.missed_fillup else "No",
                 "Yes" if record.is_hauling else "No",
                 record.fuel_type_used or "",
+                # Dimensionless grade fields (#164) — an octane is an int label,
+                # not a unit-bearing quantity, so no csv_emission conversion.
+                record.octane if record.octane is not None else "",
+                record.diesel_grade or "",
                 record.station_address_book_id or "",
                 station_names.get(record.id) or "",
                 record.driver_user_id or "",
@@ -844,6 +853,8 @@ async def export_vehicle_json(
                 "missed_fillup": r.missed_fillup,
                 "is_hauling": r.is_hauling,
                 "fuel_type_used": r.fuel_type_used,
+                "octane": r.octane,
+                "diesel_grade": r.diesel_grade,
                 "notes": r.notes,
             }
             for r in fuel_records

@@ -38,7 +38,7 @@ from app.services.auth import (
 from app.services.fuel_service import calculate_average_hours_economy
 from app.services.hours_service import latest_engine_hours_and_date
 from app.services.odometer_service import latest_odometer_km_and_date
-from app.services.reminder_service import is_reminder_overdue
+from app.services.reminder_service import is_reminder_overdue, is_reminder_snoozed
 from app.services.service_visit_service import service_visit_cost_load_options
 from app.services.vehicle_service import VehicleService
 from app.utils.datetime_utils import utc_now
@@ -203,6 +203,9 @@ async def _vehicle_detail_stats(db: AsyncSession, vin: str) -> VehicleDetailStat
     overdue_count = 0
     upcoming_count = 0
     for reminder in pending:
+        if is_reminder_snoozed(reminder, today):
+            # Out of BOTH counts while snoozed (plan 2026-09-18, decision 4).
+            continue
         if is_reminder_overdue(reminder, current_odometer_km, latest_hours, today):
             overdue_count += 1
         else:

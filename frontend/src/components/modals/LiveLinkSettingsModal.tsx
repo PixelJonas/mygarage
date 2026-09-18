@@ -25,6 +25,7 @@ import {
   Play,
   Square,
   Battery,
+  BellOff,
   Download,
 } from 'lucide-react'
 import { livelinkService } from '@/services/livelinkService'
@@ -334,6 +335,28 @@ export default function LiveLinkSettingsModal({ isOpen, onClose }: LiveLinkSetti
     } catch (error) {
       console.error('Failed to send command:', error)
       toast.error(t('modal.failedToSendCommand'))
+    }
+  }
+
+  const handleSkipFirmware = async (deviceId: string, version: string) => {
+    try {
+      await livelinkService.skipFirmwareVersion(deviceId, version)
+      // Refresh deviceFirmware (and everything else): the row's pill is
+      // derived from the server's skipped_version, not local state.
+      await loadData()
+    } catch (error) {
+      console.error('Failed to skip firmware version:', error)
+      toast.error(t('modal.livelink.skipFailed'))
+    }
+  }
+
+  const handleUnskipFirmware = async (deviceId: string) => {
+    try {
+      await livelinkService.unskipFirmwareVersion(deviceId)
+      await loadData()
+    } catch (error) {
+      console.error('Failed to unskip firmware version:', error)
+      toast.error(t('modal.livelink.skipFailed'))
     }
   }
 
@@ -703,6 +726,8 @@ export default function LiveLinkSettingsModal({ isOpen, onClose }: LiveLinkSetti
                             onSendCommand={handleSendCommand}
                             onSetSdConfig={handleSetSdConfig}
                             onSdBackfill={handleSdBackfill}
+                            onSkipFirmware={handleSkipFirmware}
+                            onUnskipFirmware={handleUnskipFirmware}
                           />
                         ))}
                       </tbody>
@@ -1000,8 +1025,8 @@ export default function LiveLinkSettingsModal({ isOpen, onClose }: LiveLinkSetti
   )
 }
 
-// Device row component
-function DeviceRow({
+// Device row component (exported for its own tests)
+export function DeviceRow({
   device,
   vehicles,
   deviceFirmware,
@@ -1013,6 +1038,8 @@ function DeviceRow({
   onSendCommand,
   onSetSdConfig,
   onSdBackfill,
+  onSkipFirmware,
+  onUnskipFirmware,
 }: {
   device: LiveLinkDevice
   vehicles: Vehicle[]
@@ -1028,6 +1055,8 @@ function DeviceRow({
     config: { device_address: string | null; sd_backfill_enabled: boolean }
   ) => Promise<void>
   onSdBackfill: (deviceId: string) => Promise<BackfillResultResponse | null>
+  onSkipFirmware: (deviceId: string, version: string) => void
+  onUnskipFirmware: (deviceId: string) => void
 }) {
   const { t } = useTranslation('forms')
   const [editing, setEditing] = useState(false)
@@ -1060,6 +1089,10 @@ function DeviceRow({
     await onSdBackfill(device.device_id)
     setBackfilling(false)
   }
+
+  const firmwareSkipped =
+    deviceFirmware?.skipped_version != null &&
+    deviceFirmware.skipped_version === deviceFirmware.latest_version
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -1123,10 +1156,38 @@ function DeviceRow({
       </td>
       <td className="py-2 px-3">
         <span className="text-xs text-garage-text">{device.fw_version ?? t('modal.livelink.unknown')}</span>
-        {deviceFirmware?.update_available && (
-          <span className="ml-1 px-1 py-0.5 bg-yellow-500/20 text-yellow-500 text-xs rounded">
-            {t('modal.livelink.updateBadge')}
-          </span>
+        {/* A skip silences exactly the release it named: a newer latest no
+            longer matches skipped_version and the badge returns. */}
+        {deviceFirmware?.update_available && firmwareSkipped && (
+          <>
+            <span className="ml-1 px-1 py-0.5 bg-garage-border/50 text-garage-text-muted text-xs rounded">
+              {t('modal.livelink.skippedBadge', { version: deviceFirmware.latest_version })}
+            </span>
+            <button
+              onClick={() => onUnskipFirmware(device.device_id)}
+              className="ml-1 p-0.5 text-garage-text-muted hover:text-yellow-500"
+              title={t('modal.livelink.unskip')}
+            >
+              <Bell className="w-3 h-3" />
+            </button>
+          </>
+        )}
+        {deviceFirmware?.update_available && !firmwareSkipped && (
+          <>
+            <span className="ml-1 px-1 py-0.5 bg-yellow-500/20 text-yellow-500 text-xs rounded">
+              {t('modal.livelink.updateBadge')}
+            </span>
+            <button
+              onClick={() =>
+                deviceFirmware.latest_version &&
+                onSkipFirmware(device.device_id, deviceFirmware.latest_version)
+              }
+              className="ml-1 p-0.5 text-garage-text-muted hover:text-yellow-500"
+              title={t('modal.livelink.skipVersion')}
+            >
+              <BellOff className="w-3 h-3" />
+            </button>
+          </>
         )}
       </td>
       <td className="py-2 px-3 text-right">

@@ -26,6 +26,9 @@ import {
 
 export const PRICE_BASIS_VALUES = ['per_volume', 'per_weight', 'per_kwh', 'per_tank'] as const
 
+// #164 — the US clear-vs-dyed (farm) diesel distinction.
+export const DIESEL_GRADE_VALUES = ['onroad', 'offroad'] as const
+
 // Drop empty strings before validating an optional enum — HTML <select>
 // elements without a chosen value submit "" by default, and zod's enum
 // validator would reject that. Coerce empty -> undefined first.
@@ -78,6 +81,17 @@ export const makeFuelRecordSchema = (t: TFunction) =>
     price_per_unit: makeOptionalPricePerUnitSchema(t),
     price_basis: z.enum(PRICE_BASIS_VALUES).optional(),
     fuel_type_used: optionalEnum(FUEL_TYPE_VALUES),
+    // #164 — 50-150 covers AKI and RON plus race fuel; mirrors the backend's
+    // _validate_octane band, so a fat-fingered 893 never reaches the wire.
+    octane: makeNumericField(t, {
+      min: 50,
+      max: 150,
+      negativeKey: 'common:validation.fuel.octaneTooSmall',
+      tooLargeKey: 'common:validation.fuel.octaneTooLarge',
+      invalidKey: 'common:validation.fuel.octaneInvalid',
+      integerKey: 'common:validation.fuel.octaneInvalid',
+    }),
+    diesel_grade: optionalEnum(DIESEL_GRADE_VALUES),
     is_full_tank: z.boolean(),
     missed_fillup: z.boolean(),
     is_hauling: z.boolean(),
