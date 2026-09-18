@@ -1,0 +1,227 @@
+"""Issue #171: editing a source record's date must MOVE its auto-synced
+odometer row, not orphan it and insert a second one.
+
+`sync_odometer_from_record` used to look the source's own row up by
+`(vin, NEW date)` only, so after a date edit the old-date row was never
+found: the edit left it in place, inserted a duplicate on the new date,
+and, when the new date already held another source's auto-synced row,
+claimed that row instead (rewriting its marker and `fuel_record_id`, so
+deleting the edited record cascade-deleted the hijacked row too).
+
+Every test here was observed red on the pre-fix code.
+"""
+
+import pytest
+from httpx import AsyncClient
+
+pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
+
+
+async def _odometer_rows(client: AsyncClient, headers: dict, vin: str) -> list[dict]:
+    r = await client.get(f"/api/vehicles/{vin}/odometer", headers=headers)
+    assert r.status_code == 200, r.text
+    return r.json()["records"]
+
+
+def _auto_rows(rows: list[dict]) -> list[dict]:
+    return [r for r in rows if r.get("notes") and "[AUTO-SYNC from" in r["notes"]]
+
+
+def _marked(rows: list[dict], source_type: str, source_id: int) -> list[dict]:
+    marker = f"[AUTO-SYNC from {source_type} #{source_id}]"
+    return [r for r in rows if r.get("notes") == marker]
+
+
+async def _fuel(
+    client: AsyncClient, headers: dict, vin: str, *, on: str, odometer_km: float
+) -> dict:
+    r = await client.post(
+        f"/api/vehicles/{vin}/fuel",
+        json={
+            "vin": vin,
+            "date": on,
+            "liters": 40.0,
+            "cost": 45.00,
+            "odometer_km": odometer_km,
+            "is_full_tank": True,
+        },
+        headers=headers,
+    )
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+class TestFuelDateEdit:
+    async def test_editing_the_date_moves_the_synced_row(
+        self, client: AsyncClient, auth_headers, test_vehicle
+    ):
+        """The report's exact reproduction: 08-06 -> 08-03, one row, moved."""
+        vin = test_vehicle["vin"]
+        record = await _fuel(client, auth_headers, vin, on="2026-08-06", odometer_km=166111)
+
+        rows = _marked(await _odometer_rows(client, auth_headers, vin), "fuel", record["id"])
+        assert len(rows) == 1 and rows[0]["date"] == "2026-08-06"
+
+        r = await client.put(
+            f"/api/vehicles/{vin}/fuel/{record['id']}",
+            json={"date": "2026-08-03"},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200, r.text
+
+        rows = _marked(await _odometer_rows(client, auth_headers, vin), "fuel", record["id"])
+        assert len(rows) == 1, rows
+        assert rows[0]["date"] == "2026-08-03"
+        assert float(rows[0]["odometer_km"]) == 166111
+
+    async def test_moving_onto_an_occupied_date_does_not_hijack_the_residents_row(
+        self, client: AsyncClient, auth_headers, test_vehicle
+    ):
+        """The report's side effect: the 08-03 fill-up must keep its reading."""
+        vin = test_vehicle["vin"]
+        resident = await _fuel(client, auth_headers, vin, on="2026-08-03", odometer_km=166059)
+        mover = await _fuel(client, auth_headers, vin, on="2026-08-06", odometer_km=166111)
+
+        r = await client.put(
+            f"/api/vehicles/{vin}/fuel/{mover['id']}",
+            json={"date": "2026-08-03"},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200, r.text
+
+        rows = await _odometer_rows(client, auth_headers, vin)
+        resident_rows = _marked(rows, "fuel", resident["id"])
+        assert len(resident_rows) == 1, rows
+        assert resident_rows[0]["date"] == "2026-08-03"
+        assert float(resident_rows[0]["odometer_km"]) == 166059
+        mover_rows = _marked(rows, "fuel", mover["id"])
+        assert len(mover_rows) == 1, rows
+        assert mover_rows[0]["date"] == "2026-08-03"
+        assert float(mover_rows[0]["odometer_km"]) == 166111
+
+        # Deleting the edited record takes ONLY its own row with it.
+        r = await client.delete(f"/api/vehicles/{vin}/fuel/{mover['id']}", headers=auth_headers)
+        assert r.status_code in (200, 204), r.text
+        rows = await _odometer_rows(client, auth_headers, vin)
+        assert len(_marked(rows, "fuel", resident["id"])) == 1, rows
+        assert _marked(rows, "fuel", mover["id"]) == [], rows
+
+    async def test_an_update_after_losing_its_row_never_claims_a_third_records(
+        self, client: AsyncClient, auth_headers, test_vehicle
+    ):
+        """R1-H1: ownership loss is a designed same-day outcome.
+
+        B's same-day create claims A's row (the one-reading-per-day policy
+        for automatic rows). A's own marker row then no longer exists, so
+        a later edit of A must CREATE a fresh row, never claim whatever
+        automatic row happens to live on the destination date (here C's).
+        """
+        vin = test_vehicle["vin"]
+        rec_a = await _fuel(client, auth_headers, vin, on="2026-08-03", odometer_km=1000)
+        await _fuel(client, auth_headers, vin, on="2026-08-03", odometer_km=1010)
+        rec_c = await _fuel(client, auth_headers, vin, on="2026-08-10", odometer_km=2000)
+
+        r = await client.put(
+            f"/api/vehicles/{vin}/fuel/{rec_a['id']}",
+            json={"date": "2026-08-10"},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200, r.text
+
+        rows = await _odometer_rows(client, auth_headers, vin)
+        c_rows = _marked(rows, "fuel", rec_c["id"])
+        assert len(c_rows) == 1, rows
+        assert float(c_rows[0]["odometer_km"]) == 2000
+        a_rows = _marked(rows, "fuel", rec_a["id"])
+        assert len(a_rows) == 1, rows
+        assert a_rows[0]["date"] == "2026-08-10"
+        assert float(a_rows[0]["odometer_km"]) == 1000
+
+        r = await client.delete(f"/api/vehicles/{vin}/fuel/{rec_a['id']}", headers=auth_headers)
+        assert r.status_code in (200, 204), r.text
+        rows = await _odometer_rows(client, auth_headers, vin)
+        assert len(_marked(rows, "fuel", rec_c["id"])) == 1, rows
+
+    async def test_a_mileage_only_edit_still_updates_in_place(
+        self, client: AsyncClient, auth_headers, test_vehicle
+    ):
+        """Regression guard: the pre-fix same-day path already handled this."""
+        vin = test_vehicle["vin"]
+        record = await _fuel(client, auth_headers, vin, on="2026-08-06", odometer_km=166111)
+        r = await client.put(
+            f"/api/vehicles/{vin}/fuel/{record['id']}",
+            json={"odometer_km": 166200},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200, r.text
+        rows = _marked(await _odometer_rows(client, auth_headers, vin), "fuel", record["id"])
+        assert len(rows) == 1, rows
+        assert float(rows[0]["odometer_km"]) == 166200
+
+
+class TestServiceVisitDateEdit:
+    async def test_editing_the_date_moves_the_synced_row(
+        self, client: AsyncClient, auth_headers, test_vehicle
+    ):
+        vin = test_vehicle["vin"]
+        r = await client.post(
+            f"/api/vehicles/{vin}/service-visits",
+            json={
+                "date": "2026-08-06",
+                "odometer_km": 5000,
+                "line_items": [{"description": "Air filter"}],
+            },
+            headers=auth_headers,
+        )
+        assert r.status_code == 201, r.text
+        visit = r.json()
+
+        r = await client.put(
+            f"/api/vehicles/{vin}/service-visits/{visit['id']}",
+            json={"date": "2026-08-03"},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200, r.text
+
+        rows = _marked(
+            await _odometer_rows(client, auth_headers, vin), "service_visit", visit["id"]
+        )
+        assert len(rows) == 1, rows
+        assert rows[0]["date"] == "2026-08-03"
+
+
+class TestDefDateEdit:
+    async def test_editing_the_date_moves_the_synced_row(self, client: AsyncClient, auth_headers):
+        r = await client.post(
+            "/api/vehicles",
+            json={
+                "vin": "DEF171XEDT0000001",
+                "nickname": "def-171",
+                "vehicle_type": "Truck",
+                "fuel_type": "Diesel",
+            },
+            headers=auth_headers,
+        )
+        assert r.status_code == 201, r.text
+        vin = r.json()["vin"]
+        try:
+            r = await client.post(
+                f"/api/vehicles/{vin}/def",
+                json={"vin": vin, "date": "2026-08-06", "odometer_km": 5000},
+                headers=auth_headers,
+            )
+            assert r.status_code == 201, r.text
+            record = r.json()
+
+            r = await client.put(
+                f"/api/vehicles/{vin}/def/{record['id']}",
+                json={"date": "2026-08-03"},
+                headers=auth_headers,
+            )
+            assert r.status_code == 200, r.text
+
+            rows = _marked(await _odometer_rows(client, auth_headers, vin), "def", record["id"])
+            assert len(rows) == 1, rows
+            assert rows[0]["date"] == "2026-08-03"
+        finally:
+            await client.delete(f"/api/vehicles/{vin}", headers=auth_headers)

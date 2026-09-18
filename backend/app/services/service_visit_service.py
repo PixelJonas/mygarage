@@ -526,6 +526,7 @@ class ServiceVisitService:
                             source_type="service_visit",
                             source_id=visit_id,
                             commit=False,
+                            operation="update",
                         )
                     await sync_hours_from_record(
                         db=self.db,

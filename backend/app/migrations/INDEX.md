@@ -113,3 +113,4 @@ migrations must swallow their own operational errors.
 | `100_add_tire_storage_location` | **FATAL** — Add ``tires.storage_location``: where a tire is kept while it is off the car. |
 | `101_maintenance_rules_and_anchors` | **FATAL** — Maintenance rules, service anchors and canonical types for the reminder lifecycle. |
 | `102_drop_incidental_utc_timezone` | Delete an incidental ``timezone=UTC`` settings row (household timezone fix). |
+| `106_repair_odometer_sync_duplicates` | Repair odometer rows duplicated by pre-fix auto-sync date edits (issue #171). |

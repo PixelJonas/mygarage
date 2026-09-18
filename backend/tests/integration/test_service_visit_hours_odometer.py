@@ -282,13 +282,15 @@ class TestServiceVisitDeleteCleansUpSyncedRecords:
     async def test_delete_after_date_edit_removes_synced_odometer_row_at_old_date(
         self, client: AsyncClient, auth_headers, test_user, db_session: AsyncSession
     ) -> None:
-        """Regression: the sync helper matches on (vin, date), so editing a
-        visit's date after odometer sync leaves the ORIGINAL synced row
-        behind at the OLD date and creates a second synced row at the NEW
-        date. A delete that filters on date == visit.date would only catch
-        the new-date row and orphan the old-date one forever. The fix drops
-        the date predicate -- the marker alone uniquely identifies every row
-        this visit ever synced, so delete must clean up both."""
+        """A date edit MOVES the visit's synced row (issue #171), and delete
+        cleans by marker alone, without a date predicate.
+
+        Pre-#171 the sync matched on (vin, date), so a date edit left the
+        old-date row behind and created a second one; this test used to pin
+        that duplication to prove delete cleaned BOTH. The duplication is
+        fixed, but the marker-only delete still matters for rows the buggy
+        era left in the wild (migration 106 repairs stocks, this guards the
+        path), so a legacy duplicate is seeded directly."""
         vin = "SVCHOURS000000007"
         await _make_vehicle(db_session, int(test_user["id"]), vin)  # type: ignore[arg-type]
         old_date = date(2026, 3, 5)
@@ -331,11 +333,21 @@ class TestServiceVisitDeleteCleansUpSyncedRecords:
         )
         await db_session.commit()
 
-        # Edit only the visit's date. sync_odometer_from_record matches on
-        # (vin, date): with nothing at new_date it creates a SECOND synced
-        # row there, carrying the SAME marker -- the row at old_date is left
-        # in place untouched. This is the sync's actual date-edit behavior,
-        # confirmed here rather than assumed.
+        # A legacy duplicate from the pre-#171 era: same marker, stranded on
+        # an in-between date, as the (vin, date) lookup used to leave behind.
+        db_session.add(
+            OdometerRecord(
+                vin=vin,
+                date=date(2026, 3, 20),
+                odometer_km=Decimal("3000.00"),
+                notes=marker,
+                source="service_visit",
+            )
+        )
+        await db_session.commit()
+
+        # Edit only the visit's date: the synced row MOVES (issue #171), and
+        # the sync's self-heal drops the stranded legacy duplicate.
         resp = await client.put(
             f"/api/vehicles/{vin}/service-visits/{visit_id}",
             json={"date": new_date.isoformat()},
@@ -346,9 +358,9 @@ class TestServiceVisitDeleteCleansUpSyncedRecords:
         synced_after_edit = {
             r.date for r in await _odometer_rows(db_session, vin) if r.notes == marker
         }
-        assert synced_after_edit == {old_date, new_date}, (
-            "date edit should leave the old-date synced row in place AND create a "
-            "new one at the new date"
+        assert synced_after_edit == {new_date}, (
+            "a date edit must move the visit's one synced row to the new date "
+            "and clean up any stranded duplicate"
         )
 
         resp = await client.delete(
@@ -357,9 +369,9 @@ class TestServiceVisitDeleteCleansUpSyncedRecords:
         assert resp.status_code == 204, resp.text
 
         remaining = await _odometer_rows(db_session, vin)
-        # Both synced rows (old date AND new date) are gone -- with the old
-        # date == visit.date filter, the old-date row would have survived
-        # as a permanent orphan.
+        # The synced row is gone wherever it sat -- delete filters on the
+        # marker with no date predicate, so a row a pre-fix edit stranded on
+        # another date would be caught too.
         assert all(r.notes != marker for r in remaining)
         # The unrelated manual row survives.
         assert len(remaining) == 1
