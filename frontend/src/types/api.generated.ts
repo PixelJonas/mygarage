@@ -5687,6 +5687,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/vehicles/{vin}/reminders/{reminder_id}/snooze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Snooze
+         * @description Hide a pending reminder from every nag surface until a date.
+         *
+         *     The due fields stay untouched: on `until` the reminder is back, with
+         *     whatever overdue state reality gives it. Dismiss is "stop repeating";
+         *     this is "not now".
+         */
+        post: operations["snooze_api_vehicles__vin__reminders__reminder_id__snooze_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vehicles/{vin}/reminders/{reminder_id}/unsnooze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unsnooze
+         * @description Clear a pending reminder's snooze; it counts again immediately.
+         */
+        post: operations["unsnooze_api_vehicles__vin__reminders__reminder_id__unsnooze_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/vehicles/{vin}/reports/all-records-csv": {
         parameters: {
             query?: never;
@@ -12707,6 +12751,8 @@ export interface components {
             rule?: components["schemas"]["MaintenanceRuleSummary"] | null;
             /** Rule Id */
             rule_id?: number | null;
+            /** Snoozed Until */
+            snoozed_until?: string | null;
             /** Status */
             status: string;
             /** Superseded By Id */
@@ -12720,6 +12766,21 @@ export interface components {
             updated_at: string;
             /** Vin */
             vin: string;
+        };
+        /**
+         * ReminderSnoozeRequest
+         * @description Body of POST /{reminder_id}/snooze.
+         *
+         *     The range check (strictly after household "today", at most ten years
+         *     out) lives in the route: it needs ``household_today()``, which is
+         *     request-scoped state a schema validator cannot see.
+         */
+        ReminderSnoozeRequest: {
+            /**
+             * Until
+             * Format: date
+             */
+            until: string;
         };
         /**
          * ReminderUpdate
@@ -26982,6 +27043,74 @@ export interface operations {
         };
     };
     mark_done_api_vehicles__vin__reminders__reminder_id__done_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+                reminder_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    snooze_api_vehicles__vin__reminders__reminder_id__snooze_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+                reminder_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReminderSnoozeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unsnooze_api_vehicles__vin__reminders__reminder_id__unsnooze_post: {
         parameters: {
             query?: never;
             header?: never;

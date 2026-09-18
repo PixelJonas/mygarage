@@ -229,6 +229,27 @@ export default function VehicleDetail() {
     }
   }, [vin])
 
+  // Re-fetch the detail stats after a reminder write (snooze, dismiss,
+  // completion…). The stats are local state, not react-query, so the child's
+  // mutation invalidation cannot refresh them — ReminderList calls back up.
+  // vinRef guards the write like `cancelled` above: a slow response must not
+  // land A's stats on B's page after navigation.
+  const vinRef = useRef(vin)
+  useEffect(() => {
+    vinRef.current = vin
+  }, [vin])
+  const refreshDetailStats = useCallback(() => {
+    if (!vin) return
+    vehicleService
+      .getDetailStats(vin)
+      .then((stats) => {
+        if (vinRef.current === vin) setDetailStats(stats)
+      })
+      .catch(() => {
+        // Keep the stats we have; a failed refresh is not worth blanking the strip.
+      })
+  }, [vin])
+
   // Handle URL tab parameter from calendar navigation
   useEffect(() => {
     const tabParam = searchParams.get('tab')
@@ -718,7 +739,7 @@ export default function VehicleDetail() {
 
         {/* Tracking Sub-tabs */}
         {activePrimaryTab === 'tracking' && activeSubTab === 'notes' && vin && <NotesTab vin={vin} />}
-        {activePrimaryTab === 'tracking' && activeSubTab === 'reminders' && vin && <ReminderList vin={vin} />}
+        {activePrimaryTab === 'tracking' && activeSubTab === 'reminders' && vin && <ReminderList vin={vin} onStatsChanged={refreshDetailStats} />}
         {activePrimaryTab === 'tracking' && activeSubTab === 'reports' && vin && <ReportsTab vin={vin} />}
 
         {/* Financial Sub-tabs */}

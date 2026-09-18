@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
+import { act, render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { Link, MemoryRouter, Route, Routes } from 'react-router-dom'
 
 // Mock all tab components to avoid deep dependency trees
@@ -18,7 +18,17 @@ vi.mock('../../components/tabs/SafetyTab', () => ({ default: () => <div>SafetyTa
 vi.mock('../../components/tabs/SpotRentalsTab', () => ({ default: () => <div>SpotRentalsTab</div> }))
 vi.mock('../../components/tabs/PropaneTab', () => ({ default: () => <div>PropaneTab</div> }))
 vi.mock('../../components/tabs/DEFTab', () => ({ default: () => <div>DEFTab</div> }))
-vi.mock('../../components/ReminderList', () => ({ default: () => <div>ReminderList</div> }))
+// Capture onStatsChanged so a test can invoke it like a real reminder write
+// would (vi.hoisted holder — the house idiom for hoisted mock factories).
+const reminderListProps = vi.hoisted(() => ({
+  onStatsChanged: undefined as (() => void) | undefined,
+}))
+vi.mock('../../components/ReminderList', () => ({
+  default: (props: { onStatsChanged?: () => void }) => {
+    reminderListProps.onStatsChanged = props.onStatsChanged
+    return <div>ReminderList</div>
+  },
+}))
 vi.mock('../../components/tabs/LiveLinkLiveTab', () => ({ default: () => <div>LiveLinkLiveTab</div> }))
 vi.mock('../../components/tabs/LiveLinkDTCsTab', () => ({ default: () => <div>LiveLinkDTCsTab</div> }))
 vi.mock('../../components/tabs/LiveLinkSessionsTab', () => ({ default: () => <div>LiveLinkSessionsTab</div> }))
@@ -163,6 +173,7 @@ describe('VehicleDetail', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
+    reminderListProps.onStatsChanged = undefined
     mockedVehicleService.get.mockResolvedValue(mockVehicle)
     mockedVehicleService.getDetailStats.mockRejectedValue(new Error('no stats'))
     mockedLivelinkService.hasLinkedDevice.mockResolvedValue(false)
@@ -610,6 +621,18 @@ describe('VehicleDetail', () => {
     fireEvent.click(screen.getByRole('button', { name: 'detail.hero.addFuel' }))
     expect(await screen.findByText('DEFTab')).toBeInTheDocument()
     expect(screen.queryByText('PropaneTab')).not.toBeInTheDocument()
+  })
+
+  it('a reminder write refetches the detail stats through onStatsChanged (the stats are local state, not react-query — nothing else can reach them)', async () => {
+    renderVehicleDetail('/vehicles/TEST12345678901234?tab=reminders')
+    await waitFor(() => expect(screen.getByText('ReminderList')).toBeInTheDocument())
+    expect(reminderListProps.onStatsChanged).toBeDefined()
+    const baseline = mockedVehicleService.getDetailStats.mock.calls.length
+    act(() => reminderListProps.onStatsChanged?.())
+    await waitFor(() =>
+      expect(mockedVehicleService.getDetailStats.mock.calls.length).toBe(baseline + 1),
+    )
+    expect(mockedVehicleService.getDetailStats).toHaveBeenLastCalledWith('TEST12345678901234')
   })
 
   it('Reminder switches the active primary tab to Tracking (SDQ-1)', async () => {

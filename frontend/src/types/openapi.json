@@ -13442,6 +13442,18 @@
             ],
             "title": "Rule Id"
           },
+          "snoozed_until": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snoozed Until"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -13487,6 +13499,21 @@
           "updated_at"
         ],
         "title": "ReminderResponse",
+        "type": "object"
+      },
+      "ReminderSnoozeRequest": {
+        "description": "Body of POST /{reminder_id}/snooze.\n\nThe range check (strictly after household \"today\", at most ten years\nout) lives in the route: it needs ``household_today()``, which is\nrequest-scoped state a schema validator cannot see.",
+        "properties": {
+          "until": {
+            "format": "date",
+            "title": "Until",
+            "type": "string"
+          }
+        },
+        "required": [
+          "until"
+        ],
+        "title": "ReminderSnoozeRequest",
         "type": "object"
       },
       "ReminderUpdate": {
@@ -42198,6 +42225,130 @@
           }
         ],
         "summary": "Mark Done",
+        "tags": [
+          "Reminders"
+        ]
+      }
+    },
+    "/api/vehicles/{vin}/reminders/{reminder_id}/snooze": {
+      "post": {
+        "description": "Hide a pending reminder from every nag surface until a date.\n\nThe due fields stay untouched: on `until` the reminder is back, with\nwhatever overdue state reality gives it. Dismiss is \"stop repeating\";\nthis is \"not now\".",
+        "operationId": "snooze_api_vehicles__vin__reminders__reminder_id__snooze_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vin",
+            "required": true,
+            "schema": {
+              "title": "Vin",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "reminder_id",
+            "required": true,
+            "schema": {
+              "title": "Reminder Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReminderSnoozeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReminderResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Snooze",
+        "tags": [
+          "Reminders"
+        ]
+      }
+    },
+    "/api/vehicles/{vin}/reminders/{reminder_id}/unsnooze": {
+      "post": {
+        "description": "Clear a pending reminder's snooze; it counts again immediately.",
+        "operationId": "unsnooze_api_vehicles__vin__reminders__reminder_id__unsnooze_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vin",
+            "required": true,
+            "schema": {
+              "title": "Vin",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "reminder_id",
+            "required": true,
+            "schema": {
+              "title": "Reminder Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReminderResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Unsnooze",
         "tags": [
           "Reminders"
         ]
