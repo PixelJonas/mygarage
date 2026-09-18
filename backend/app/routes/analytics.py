@@ -31,6 +31,7 @@ from app.models import (
     SpotRentalBilling,
     Vehicle,
 )
+from app.models.financing import FinancingRecord
 from app.models.service_line_item import ServiceLineItem
 from app.models.spot_rental import SpotRental
 from app.models.user import User
@@ -246,6 +247,12 @@ async def get_cost_analysis(db: AsyncSession, vin: str) -> CostAnalysis:
     )
     def_records = list(def_result.scalars().all())
 
+    # Get all financing records
+    financing_result = await db.execute(
+        select(FinancingRecord).where(FinancingRecord.vin == vin).order_by(FinancingRecord.date)
+    )
+    financing_records = list(financing_result.scalars().all())
+
     # Get spot rental billings via spot_rentals (only if vehicle type supports it)
     spot_rental_billings = []
     if has_spot_rentals:
@@ -267,7 +274,14 @@ async def get_cost_analysis(db: AsyncSession, vin: str) -> CostAnalysis:
     total_spot_rental_cost = sum(
         (r.total for r in spot_rental_billings if r.total), Decimal("0.00")
     )
-    total_cost = total_service_cost + total_fuel_cost + total_def_cost + total_spot_rental_cost
+    total_financing_cost = sum((r.amount for r in financing_records if r.amount), Decimal("0.00"))
+    total_cost = (
+        total_service_cost
+        + total_fuel_cost
+        + total_def_cost
+        + total_spot_rental_cost
+        + total_financing_cost
+    )
 
     # Use pandas for monthly aggregation (one row per visit)
     df = analytics_service.visits_to_dataframe(
@@ -380,6 +394,7 @@ async def get_cost_analysis(db: AsyncSession, vin: str) -> CostAnalysis:
         total_service_cost=total_service_cost,
         total_fuel_cost=total_fuel_cost,
         total_def_cost=total_def_cost,
+        total_financing_cost=total_financing_cost,
         total_cost=total_cost,
         average_monthly_cost=average_monthly_cost,
         service_count=len(service_visits),
@@ -977,6 +992,7 @@ async def get_garage_analytics(
         selectinload(Vehicle.def_records),
         selectinload(Vehicle.insurance_policies),
         selectinload(Vehicle.tax_records),
+        selectinload(Vehicle.financing_records),
     )
 
     # Scope to owned + shared vehicles for non-admin users
@@ -1011,6 +1027,7 @@ async def get_garage_analytics(
     total_def = Decimal("0.00")
     total_insurance = Decimal("0.00")
     total_taxes = Decimal("0.00")
+    total_financing = Decimal("0.00")
 
     vehicle_costs = []
 
@@ -1037,6 +1054,10 @@ async def get_garage_analytics(
         for tax_record in vehicle.tax_records:
             if tax_record.amount:
                 total_taxes += tax_record.amount
+
+        for financing_record in vehicle.financing_records:
+            if financing_record.amount:
+                total_financing += financing_record.amount
 
         # Use eager-loaded service visits
         service_visits = list(vehicle.service_visits)
@@ -1151,6 +1172,8 @@ async def get_garage_analytics(
         cost_breakdown.append(GarageCostByCategory(category="Insurance", amount=total_insurance))
     if total_taxes > 0:
         cost_breakdown.append(GarageCostByCategory(category="Taxes", amount=total_taxes))
+    if total_financing > 0:
+        cost_breakdown.append(GarageCostByCategory(category="Financing", amount=total_financing))
 
     # Create monthly trends (last 12 months)
     monthly_trends = []
@@ -1180,6 +1203,7 @@ async def get_garage_analytics(
             total_def=total_def,
             total_insurance=total_insurance,
             total_taxes=total_taxes,
+            total_financing=total_financing,
         ),
         cost_breakdown_by_category=cost_breakdown,
         cost_by_vehicle=vehicle_costs,

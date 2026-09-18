@@ -58,6 +58,34 @@ class TestVehicleAnalyticsRoutes:
 
         assert response.status_code == 403
 
+    async def test_vehicle_analytics_includes_financing_cost(
+        self, client: AsyncClient, auth_headers, test_vehicle
+    ):
+        """Financing records must appear in CostAnalysis and count toward total_cost."""
+        vin = test_vehicle["vin"]
+
+        baseline = await client.get(f"/api/analytics/vehicles/{vin}", headers=auth_headers)
+        baseline_total = float(baseline.json()["cost_analysis"]["total_cost"])
+
+        create_resp = await client.post(
+            f"/api/vehicles/{vin}/financing-records",
+            json={
+                "vin": vin,
+                "date": "2026-01-01",
+                "amount": 450.00,
+                "category": "lease_payment",
+            },
+            headers=auth_headers,
+        )
+        assert create_resp.status_code == 201
+
+        response = await client.get(f"/api/analytics/vehicles/{vin}", headers=auth_headers)
+        assert response.status_code == 200
+        cost_analysis = response.json()["cost_analysis"]
+
+        assert float(cost_analysis["total_financing_cost"]) == 450.00
+        assert float(cost_analysis["total_cost"]) == pytest.approx(baseline_total + 450.00)
+
 
 @pytest.mark.integration
 @pytest.mark.asyncio
@@ -85,6 +113,42 @@ class TestGarageAnalyticsRoutes:
         response = await client.get("/api/analytics/garage")
 
         assert response.status_code == 401
+
+    async def test_garage_analytics_includes_financing_total(
+        self, client: AsyncClient, auth_headers, test_vehicle
+    ):
+        """Financing records must roll up into GarageCostTotals.total_financing
+        and appear as a "Financing" entry in cost_breakdown_by_category,
+        without touching per-vehicle totals or monthly trends (ticket #7)."""
+        vin = test_vehicle["vin"]
+
+        create_resp = await client.post(
+            f"/api/vehicles/{vin}/financing-records",
+            json={
+                "vin": vin,
+                "date": "2026-01-01",
+                "amount": 600.00,
+                "category": "loan_payment",
+            },
+            headers=auth_headers,
+        )
+        assert create_resp.status_code == 201
+
+        response = await client.get("/api/analytics/garage", headers=auth_headers)
+        assert response.status_code == 200
+        data = response.json()
+
+        assert float(data["total_costs"]["total_financing"]) >= 600.00
+
+        financing_entries = [
+            c for c in data["cost_breakdown_by_category"] if c["category"] == "Financing"
+        ]
+        assert len(financing_entries) == 1
+        assert float(financing_entries[0]["amount"]) >= 600.00
+
+        # Ticket #7: no per-vehicle financing column/total.
+        for vehicle_cost in data["cost_by_vehicle"]:
+            assert "total_financing" not in vehicle_cost
 
 
 @pytest.mark.integration

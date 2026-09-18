@@ -2243,6 +2243,12 @@
             "title": "Total Def Cost",
             "type": "string"
           },
+          "total_financing_cost": {
+            "default": "0.00",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Total Financing Cost",
+            "type": "string"
+          },
           "total_fuel_cost": {
             "default": "0.00",
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
@@ -4830,6 +4836,339 @@
         "title": "FamilyVehicleSummary",
         "type": "object"
       },
+      "FinancingRecordCreate": {
+        "description": "Schema for creating a new financing record.",
+        "examples": [
+          {
+            "amount": 450.0,
+            "category": "lease_payment",
+            "date": "2026-01-01",
+            "notes": "Monthly lease payment",
+            "vin": "ML32A5HJ9KH009478"
+          }
+        ],
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "description": "Payment or fee amount",
+            "title": "Amount"
+          },
+          "category": {
+            "description": "Type of financing cost",
+            "enum": [
+              "lease_payment",
+              "loan_payment",
+              "upfront_fee"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "date": {
+            "description": "Date of the payment or fee",
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Additional notes",
+            "title": "Notes"
+          },
+          "tax_amount": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Net/VAT tax portion, if known",
+            "title": "Tax Amount"
+          },
+          "vendor_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Associated vendor/lender ID",
+            "title": "Vendor Id"
+          },
+          "vin": {
+            "description": "VIN of the vehicle",
+            "maxLength": 17,
+            "minLength": 17,
+            "title": "Vin",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "amount",
+          "category",
+          "vin"
+        ],
+        "title": "FinancingRecordCreate",
+        "type": "object"
+      },
+      "FinancingRecordListResponse": {
+        "description": "Schema for financing record list response.",
+        "examples": [
+          {
+            "financing_records": [],
+            "total": 0
+          }
+        ],
+        "properties": {
+          "financing_records": {
+            "items": {
+              "$ref": "#/components/schemas/FinancingRecordResponse"
+            },
+            "title": "Financing Records",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "financing_records",
+          "total"
+        ],
+        "title": "FinancingRecordListResponse",
+        "type": "object"
+      },
+      "FinancingRecordResponse": {
+        "description": "Schema for financing record response.",
+        "examples": [
+          {
+            "amount": 450.0,
+            "category": "lease_payment",
+            "created_at": "2026-01-01T10:00:00",
+            "date": "2026-01-01",
+            "id": 1,
+            "notes": "Monthly lease payment",
+            "vin": "ML32A5HJ9KH009478"
+          }
+        ],
+        "properties": {
+          "amount": {
+            "description": "Payment or fee amount",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount",
+            "type": "string"
+          },
+          "category": {
+            "description": "Type of financing cost",
+            "enum": [
+              "lease_payment",
+              "loan_payment",
+              "upfront_fee"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "date": {
+            "description": "Date of the payment or fee",
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Additional notes",
+            "title": "Notes"
+          },
+          "tax_amount": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Net/VAT tax portion, if known",
+            "title": "Tax Amount"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "vendor_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Associated vendor/lender ID",
+            "title": "Vendor Id"
+          },
+          "vin": {
+            "title": "Vin",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "amount",
+          "category",
+          "id",
+          "vin",
+          "created_at"
+        ],
+        "title": "FinancingRecordResponse",
+        "type": "object"
+      },
+      "FinancingRecordUpdate": {
+        "description": "Schema for updating an existing financing record.",
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Payment or fee amount",
+            "title": "Amount"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "enum": [
+                  "lease_payment",
+                  "loan_payment",
+                  "upfront_fee"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Type of financing cost",
+            "title": "Category"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Date of the payment or fee",
+            "title": "Date"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Additional notes",
+            "title": "Notes"
+          },
+          "tax_amount": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Net/VAT tax portion, if known",
+            "title": "Tax Amount"
+          },
+          "vendor_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Associated vendor/lender ID",
+            "title": "Vendor Id"
+          }
+        },
+        "title": "FinancingRecordUpdate",
+        "type": "object"
+      },
       "FirmwareInfoResponse": {
         "description": "Schema for firmware information response.",
         "properties": {
@@ -7059,6 +7398,12 @@
             "default": "0.00",
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Total Detailing",
+            "type": "string"
+          },
+          "total_financing": {
+            "default": "0.00",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Total Financing",
             "type": "string"
           },
           "total_fuel": {
@@ -35803,6 +36148,280 @@
         "summary": "Download Document",
         "tags": [
           "documents"
+        ]
+      }
+    },
+    "/api/vehicles/{vin}/financing-records": {
+      "get": {
+        "description": "Get all financing records for a vehicle.",
+        "operationId": "list_financing_records_api_vehicles__vin__financing_records_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vin",
+            "required": true,
+            "schema": {
+              "title": "Vin",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinancingRecordListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Financing Records",
+        "tags": [
+          "Financing"
+        ]
+      },
+      "post": {
+        "description": "Create a new financing record for a vehicle.",
+        "operationId": "create_financing_record_api_vehicles__vin__financing_records_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vin",
+            "required": true,
+            "schema": {
+              "title": "Vin",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinancingRecordCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinancingRecordResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Financing Record",
+        "tags": [
+          "Financing"
+        ]
+      }
+    },
+    "/api/vehicles/{vin}/financing-records/{record_id}": {
+      "delete": {
+        "description": "Delete a financing record.",
+        "operationId": "delete_financing_record_api_vehicles__vin__financing_records__record_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vin",
+            "required": true,
+            "schema": {
+              "title": "Vin",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "title": "Record Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Financing Record",
+        "tags": [
+          "Financing"
+        ]
+      },
+      "get": {
+        "description": "Get a specific financing record.",
+        "operationId": "get_financing_record_api_vehicles__vin__financing_records__record_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vin",
+            "required": true,
+            "schema": {
+              "title": "Vin",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "title": "Record Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinancingRecordResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Financing Record",
+        "tags": [
+          "Financing"
+        ]
+      },
+      "put": {
+        "description": "Update a financing record.",
+        "operationId": "update_financing_record_api_vehicles__vin__financing_records__record_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vin",
+            "required": true,
+            "schema": {
+              "title": "Vin",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "title": "Record Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinancingRecordUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinancingRecordResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Financing Record",
+        "tags": [
+          "Financing"
         ]
       }
     },

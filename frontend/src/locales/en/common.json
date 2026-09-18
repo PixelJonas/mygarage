@@ -539,6 +539,9 @@
       "tagNumberRequired": "Tag number is required",
       "tagNumberTooLong": "Tag number too long (max 50 characters)"
     },
+    "financing": {
+      "categoryRequired": "Category is required"
+    },
     "odometer": {
       "negative": "Odometer cannot be negative",
       "tooLarge": "Odometer value too large",
