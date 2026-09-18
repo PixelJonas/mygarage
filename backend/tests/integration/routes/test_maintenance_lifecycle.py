@@ -2001,3 +2001,158 @@ class TestUCodexPR168:
         assert moved["anchor_kind"] == "baseline"
         assert moved["line_item_id"] is None
         assert moved["anchor_date"] == date.today().isoformat()
+
+
+# ============================================================================
+#  T. Section-13 edge-case pins (plan 2026-09-18, feature D)
+# ============================================================================
+
+
+async def _hours(client: AsyncClient, headers: dict, vin: str, on: str, hours: float) -> None:
+    r = await client.post(
+        f"/api/vehicles/{vin}/hours",
+        headers=headers,
+        json={"vin": vin, "date": on, "engine_hours": hours},
+    )
+    assert r.status_code == 201, r.text
+
+
+class TestT13EdgeCasePins:
+    """Regression pins for the two section-13 edge cases.
+
+    The behavior is correct by design ("dropped, not guessed" +
+    "same date = same event"); these tests keep it that way. Extends the
+    coverage of TestQEdges (hours) and TestNAnchorPrecedence (same-day).
+    """
+
+    async def test_hours_threshold_dropped_when_the_visit_has_only_an_odometer(
+        self, client, auth_headers
+    ):
+        vin = await _vehicle(client, auth_headers, vehicle_type="ATV")
+        visit = await _visit(
+            client,
+            auth_headers,
+            vin,
+            on=SERVICE_DATE,
+            odometer_km=1000.0,
+            items=[{"description": "Engine Oil Change"}],
+        )
+        r = await client.post(
+            f"/api/vehicles/{vin}/reminders",
+            headers=auth_headers,
+            json={
+                "title": "Engine Oil Change",
+                "recurrence": {"interval_hours": 50, "interval_months": 6},
+            },
+        )
+        assert r.status_code == 201, r.text
+        oil = await _oil(client, auth_headers, vin)
+        # Anchored on the odometer-only visit: the hours interval is dropped,
+        # not guessed; the calendar half of the rule survives.
+        assert oil["line_item_id"] == visit["line_items"][0]["id"]
+        assert oil["due_hours"] is None
+        assert oil["due_date"] == SIX_MONTHS_LATER
+        assert oil["reminder_type"] == "date"
+
+    async def test_a_later_hours_reading_backfills_the_dropped_threshold(
+        self, client, auth_headers
+    ):
+        vin = await _vehicle(client, auth_headers, vehicle_type="ATV")
+        await _visit(
+            client,
+            auth_headers,
+            vin,
+            on=SERVICE_DATE,
+            odometer_km=1000.0,
+            items=[{"description": "Engine Oil Change"}],
+        )
+        r = await client.post(
+            f"/api/vehicles/{vin}/reminders",
+            headers=auth_headers,
+            json={
+                "title": "Engine Oil Change",
+                "recurrence": {"interval_hours": 50, "interval_months": 6},
+            },
+        )
+        assert r.status_code == 201, r.text
+        await _hours(client, auth_headers, vin, on=SERVICE_DATE, hours=100.0)
+        r = await client.post(f"/api/vehicles/{vin}/reminders/reconcile", headers=auth_headers)
+        assert r.status_code == 200, r.text
+        oil = await _oil(client, auth_headers, vin)
+        assert float(oil["anchor_hours"]) == 100.0
+        assert float(oil["due_hours"]) == 150.0
+        assert oil["reminder_type"] == "smart"
+
+    async def test_an_hours_only_rule_writes_no_reminder_until_a_reading_exists(
+        self, client, auth_headers
+    ):
+        vin = await _vehicle(client, auth_headers, vehicle_type="ATV")
+        r = await client.post(
+            f"/api/vehicles/{vin}/maintenance-rules",
+            headers=auth_headers,
+            json={
+                "title": "Engine Oil Change",
+                "maintenance_type": "engine_oil_filter",
+                "interval_hours": 50,
+            },
+        )
+        assert r.status_code == 201, r.text
+        # No hours anywhere: nothing to anchor an hours threshold on, so no
+        # reminder row at all (the sharpest edge of "dropped, not guessed").
+        assert _of_type(await _pending(client, auth_headers, vin), "engine_oil_filter") == []
+        await _hours(client, auth_headers, vin, on=SERVICE_DATE, hours=100.0)
+        r = await client.post(f"/api/vehicles/{vin}/reminders/reconcile", headers=auth_headers)
+        assert r.status_code == 200, r.text
+        oil = await _oil(client, auth_headers, vin)
+        assert oil["anchor_kind"] == "baseline"
+        assert float(oil["due_hours"]) == 150.0
+
+    async def test_two_same_type_services_on_one_date_are_one_event(self, client, auth_headers):
+        vin = await _vehicle(client, auth_headers)
+        await _rule_from_report(client, auth_headers, vin)
+        first = await _oil(client, auth_headers, vin)
+        visit_b = await _visit(
+            client,
+            auth_headers,
+            vin,
+            on=SERVICE_DATE,
+            odometer_km=SERVICE_KM + 200,
+            items=[{"description": "Oil Change"}],
+        )
+        after = await _oil(client, auth_headers, vin)
+        # Same date = same event: re-anchor, no completion, no successor.
+        assert after["id"] == first["id"]
+        done = [
+            x
+            for x in _of_type(await _all(client, auth_headers, vin), "engine_oil_filter")
+            if x["status"] == "done"
+        ]
+        assert done == []
+        # The day's later event (_newer: higher odometer) is the anchor.
+        assert after["line_item_id"] == visit_b["line_items"][0]["id"]
+        assert _km(after["due_mileage_km"]) == _km(SERVICE_KM + 200 + INTERVAL_KM)
+
+    async def test_pack_preview_never_calls_a_same_day_service_a_completion(
+        self, client, auth_headers
+    ):
+        vin = await _vehicle(client, auth_headers)
+        rule = await _rule_from_report(client, auth_headers, vin)
+        # A same-day SECOND visit at a LOWER odometer: `_newer` keeps the
+        # first visit as the anchor, so the pending reminder and the newest
+        # typed history end up on DIFFERENT line items sharing one date.
+        # That makes the strict `newest.date > current.date` predicate the
+        # only thing standing between preview and a false "a newer service
+        # completes this reminder" (the same-line-item guard is out of play).
+        await _visit(
+            client,
+            auth_headers,
+            vin,
+            on=SERVICE_DATE,
+            odometer_km=SERVICE_KM - 200,
+            items=[{"description": "Oil Change"}],
+        )
+        oil = await _oil(client, auth_headers, vin)
+        assert oil["line_item_id"] == rule["_line_item_id"]
+        preview = await _preview(client, auth_headers, vin, "oil_and_filter")
+        item = next(i for i in preview["items"] if i["key"] == "oil_filter")
+        assert item["newer_service"] is None
