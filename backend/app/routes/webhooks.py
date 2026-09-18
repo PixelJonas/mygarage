@@ -31,7 +31,12 @@ from app.models.fuel import FuelRecord
 from app.models.odometer import OdometerRecord
 from app.models.reminder import Reminder
 from app.models.vehicle import Vehicle
-from app.schemas.fuel import CHARGE_LEVEL_VALUES, CHARGE_LOCATION_VALUES
+from app.schemas.fuel import (
+    CHARGE_LEVEL_VALUES,
+    CHARGE_LOCATION_VALUES,
+    _validate_diesel_grade,
+    _validate_octane,
+)
 from app.services.fuel_side_effects import (
     apply_fuel_record_side_effects,
     invalidate_cache_for_vehicle,
@@ -111,6 +116,19 @@ class WebhookFuelPayload(BaseModel):
     charge_location: str | None = Field(None, max_length=20)
     battery_soh_pct: Decimal | None = Field(None, ge=0, le=100)
     fuel_type_used: str | None = None
+    # #164 — same validators as the fuel input schemas.
+    octane: int | None = None
+    diesel_grade: str | None = Field(None, max_length=10)
+
+    @field_validator("octane")
+    @classmethod
+    def _check_octane(cls, v: int | None) -> int | None:
+        return _validate_octane(v)
+
+    @field_validator("diesel_grade")
+    @classmethod
+    def _check_diesel_grade(cls, v: str | None) -> str | None:
+        return _validate_diesel_grade(v)
 
     @field_validator("charge_level")
     @classmethod
@@ -187,6 +205,8 @@ async def _create_fuel_record(db: AsyncSession, payload: WebhookFuelPayload) -> 
         charge_location=payload.charge_location,
         battery_soh_pct=payload.battery_soh_pct,
         fuel_type_used=payload.fuel_type_used or ("electric" if payload.kwh is not None else None),
+        octane=payload.octane,
+        diesel_grade=payload.diesel_grade,
     )
     db.add(record)
     await db.flush()  # populate record.id without committing

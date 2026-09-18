@@ -9518,6 +9518,8 @@ export interface components {
             liters?: number | null;
             /** Notes */
             notes?: string | null;
+            /** Octane */
+            octane?: number | null;
             /** Odometer Km */
             odometer_km?: number | null;
             /** Price Per Unit */
@@ -9584,6 +9586,11 @@ export interface components {
              * @description DEF tank level (0.00=empty, 1.00=full) — auto-creates a DEF observation
              */
             def_fill_level?: number | string | null;
+            /**
+             * Diesel Grade
+             * @description Diesel grade: 'onroad' (clear) or 'offroad' (dyed/farm)
+             */
+            diesel_grade?: string | null;
             /**
              * Driver Name Freetext
              * @description Freetext driver name (non-account household member)
@@ -9657,6 +9664,11 @@ export interface components {
              * @description OBC reported trip duration in seconds
              */
             obc_trip_duration_s?: number | null;
+            /**
+             * Octane
+             * @description Octane rating for gasoline/E85 fill-ups (AKI or RON)
+             */
+            octane?: number | null;
             /**
              * Odometer Km
              * @description Odometer reading in kilometers
@@ -9833,6 +9845,11 @@ export interface components {
              */
             date: string;
             /**
+             * Diesel Grade
+             * @description Diesel grade: 'onroad' (clear) or 'offroad' (dyed/farm)
+             */
+            diesel_grade?: string | null;
+            /**
              * Driver Name Freetext
              * @description Freetext driver name (non-account household member)
              */
@@ -9917,6 +9934,11 @@ export interface components {
              * @description OBC reported trip duration in seconds
              */
             obc_trip_duration_s?: number | null;
+            /**
+             * Octane
+             * @description Octane rating for gasoline/E85 fill-ups (AKI or RON)
+             */
+            octane?: number | null;
             /**
              * Odometer Km
              * @description Odometer reading in kilometers
@@ -10025,6 +10047,11 @@ export interface components {
              * @description DEF tank level (0.00=empty, 1.00=full) — auto-creates a DEF observation
              */
             def_fill_level?: number | string | null;
+            /**
+             * Diesel Grade
+             * @description Diesel grade: 'onroad' (clear) or 'offroad' (dyed/farm)
+             */
+            diesel_grade?: string | null;
             /** Driver Name Freetext */
             driver_name_freetext?: string | null;
             /** Driver User Id */
@@ -10080,6 +10107,11 @@ export interface components {
             obc_l_per_100km?: number | string | null;
             /** Obc Trip Duration S */
             obc_trip_duration_s?: number | null;
+            /**
+             * Octane
+             * @description Octane rating for gasoline/E85 fill-ups (AKI or RON)
+             */
+            octane?: number | null;
             /**
              * Odometer Km
              * @description Odometer reading in kilometers
@@ -17873,6 +17905,8 @@ export interface components {
             cost?: number | string | null;
             /** Date */
             date?: string | null;
+            /** Diesel Grade */
+            diesel_grade?: string | null;
             /** Fuel Type Used */
             fuel_type_used?: string | null;
             /**
@@ -17886,6 +17920,8 @@ export interface components {
             liters?: number | string | null;
             /** Notes */
             notes?: string | null;
+            /** Octane */
+            octane?: number | null;
             /** Odometer Km */
             odometer_km?: number | string | null;
             /** Price Basis */

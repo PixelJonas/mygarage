@@ -60,6 +60,7 @@ from app.models import (
 )
 from app.models.user import User
 from app.models.vendor import Vendor
+from app.schemas.fuel import _validate_diesel_grade, _validate_octane
 from app.services import maintenance_service
 from app.services.auth import get_vehicle_or_403, require_auth
 from app.services.fuel_side_effects import (
@@ -581,6 +582,15 @@ async def import_fuel_csv(
                 )
                 normalized_fuel_type = FuelTypeEnum.OTHER
 
+            # #164 — octane + diesel grade (v7 columns; absent/blank = NULL).
+            # The constructor below bypasses Pydantic, so the shared schema
+            # validators run here: an invalid value fails this ROW through
+            # the per-row error handler, never silently persisted (R1-M2).
+            raw_octane = (row.get("Octane", "") or "").strip()
+            octane = _validate_octane(int(raw_octane)) if raw_octane else None
+            raw_grade = (row.get("Diesel Grade", "") or "").strip()
+            diesel_grade = _validate_diesel_grade(raw_grade) if raw_grade else None
+
             # Check for duplicates if requested
             if skip_duplicates:
                 existing = await db.execute(
@@ -616,6 +626,8 @@ async def import_fuel_csv(
                 fuel_type_used=(
                     normalized_fuel_type.value if normalized_fuel_type is not None else None
                 ),
+                octane=octane,
+                diesel_grade=diesel_grade,
                 outside_temp_c=outside_temp_c,
                 obc_l_per_100km=obc_l_per_100km,
                 obc_avg_speed_kmh=obc_avg_speed_kmh,
@@ -1389,6 +1401,19 @@ async def import_vehicle_json(
             )
             imported_ppu = _maybe_per_gal_to_per_l(record_data.get("price_per_unit"))
 
+            # The export has always written fuel_type_used and is_hauling but
+            # this constructor silently dropped both, so a restored backup
+            # lost them. Same locale-tolerant normalization as the CSV path.
+            raw_fuel_type = (record_data.get("fuel_type_used") or "").strip() or None
+            normalized_fuel_type = normalize_fuel_type(raw_fuel_type)
+            if raw_fuel_type and normalized_fuel_type is None:
+                logger.warning(
+                    "Fuel import record %s: unrecognized fuel type %r → 'other'",
+                    idx,
+                    raw_fuel_type,
+                )
+                normalized_fuel_type = FuelTypeEnum.OTHER
+
             if skip_duplicates:
                 existing = await db.execute(
                     select(FuelRecord).where(
@@ -1420,6 +1445,16 @@ async def import_vehicle_json(
                 rebate=Decimal(str(record_data["rebate"])) if record_data.get("rebate") else None,
                 is_full_tank=record_data.get("is_full_tank", True),
                 missed_fillup=record_data.get("missed_fillup", False),
+                is_hauling=record_data.get("is_hauling", False),
+                fuel_type_used=(
+                    normalized_fuel_type.value if normalized_fuel_type is not None else None
+                ),
+                # #164 — direct ORM construction bypasses Pydantic, so the
+                # shared validators run here per-row (R1-M2).
+                octane=_validate_octane(
+                    int(record_data["octane"]) if record_data.get("octane") is not None else None
+                ),
+                diesel_grade=_validate_diesel_grade(record_data.get("diesel_grade")),
                 notes=record_data.get("notes"),
             )
             # A savepoint per row. Leaving it flushes the insert, so the next

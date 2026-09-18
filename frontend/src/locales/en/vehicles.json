@@ -508,6 +508,7 @@
     "year": "Year"
   },
   "fuelList": {
+    "octane": "Octane",
     "actions": "Actions",
     "addFillUp": "Add Fill-up",
     "addFirstFillUp": "Add First Fill-up",

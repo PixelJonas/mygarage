@@ -55,6 +55,27 @@ def _validate_fuel_type_enum(v: str | None) -> str | None:
     return v
 
 
+DIESEL_GRADE_VALUES = ("onroad", "offroad")
+
+
+def _validate_octane(v: int | None) -> int | None:
+    """50-150 covers AKI and RON ranges plus race fuel; rejects fat-fingers.
+
+    Module-level (not inline on a schema) because the CSV/JSON importers
+    construct ORM rows directly and must run the same check per-row.
+    """
+    if v is not None and not (50 <= v <= 150):
+        raise ValueError(f"octane must be between 50 and 150, got {v!r}")
+    return v
+
+
+def _validate_diesel_grade(v: str | None) -> str | None:
+    """'onroad' | 'offroad' — the US clear-vs-dyed (farm) distinction."""
+    if v is not None and v not in DIESEL_GRADE_VALUES:
+        raise ValueError(f"diesel_grade must be one of {DIESEL_GRADE_VALUES}, got {v!r}")
+    return v
+
+
 class FuelRecordBase(BaseModel):
     """Base fuel record schema with common fields (metric canonical)."""
 
@@ -144,6 +165,17 @@ class FuelRecordBase(BaseModel):
             "surfaced in UI when the vehicle has a secondary fuel capability."
         ),
         max_length=20,
+    )
+    # #164 — tolerant here (no bounds) per the base-schema convention below:
+    # the response schema inherits these and must accept whatever the DB
+    # returns. The input schemas wire _validate_octane/_validate_diesel_grade.
+    octane: int | None = Field(
+        None, description="Octane rating for gasoline/E85 fill-ups (AKI or RON)"
+    )
+    diesel_grade: str | None = Field(
+        None,
+        description="Diesel grade: 'onroad' (clear) or 'offroad' (dyed/farm)",
+        max_length=10,
     )
     is_full_tank: bool = Field(True, description="Full tank fill-up")
     missed_fillup: bool = Field(False, description="Skipped recording a fill-up")
@@ -294,6 +326,16 @@ class FuelRecordCreate(FuelRecordBase):
     @classmethod
     def _check_fuel_type_used_create(cls, v: str | None) -> str | None:
         return _validate_fuel_type_enum(v)
+
+    @field_validator("octane")
+    @classmethod
+    def _check_octane_create(cls, v: int | None) -> int | None:
+        return _validate_octane(v)
+
+    @field_validator("diesel_grade")
+    @classmethod
+    def _check_diesel_grade_create(cls, v: str | None) -> str | None:
+        return _validate_diesel_grade(v)
 
     @field_validator("payment_method")
     @classmethod
@@ -452,6 +494,15 @@ class FuelRecordUpdate(BaseModel):
         description="Actual fuel dispensed (canonical enum)",
         max_length=20,
     )
+    # #164 — same shape as on FuelRecordBase; validators wired below.
+    octane: int | None = Field(
+        None, description="Octane rating for gasoline/E85 fill-ups (AKI or RON)"
+    )
+    diesel_grade: str | None = Field(
+        None,
+        description="Diesel grade: 'onroad' (clear) or 'offroad' (dyed/farm)",
+        max_length=10,
+    )
     is_full_tank: bool | None = Field(None, description="Full tank fill-up")
     missed_fillup: bool | None = Field(None, description="Skipped recording a fill-up")
     is_hauling: bool | None = Field(
@@ -509,6 +560,16 @@ class FuelRecordUpdate(BaseModel):
     @classmethod
     def _check_fuel_type_used(cls, v: str | None) -> str | None:
         return _validate_fuel_type_enum(v)
+
+    @field_validator("octane")
+    @classmethod
+    def _check_octane_update(cls, v: int | None) -> int | None:
+        return _validate_octane(v)
+
+    @field_validator("diesel_grade")
+    @classmethod
+    def _check_diesel_grade_update(cls, v: str | None) -> str | None:
+        return _validate_diesel_grade(v)
 
     @field_validator("payment_method")
     @classmethod
@@ -646,6 +707,7 @@ class FuelReceiptDraft(BaseModel):
     cost: float | None = None
     price_per_unit: float | None = None
     fuel_type_used: str | None = None
+    octane: int | None = None
     notes: str | None = None
     station_name: str | None = None
 

@@ -5586,6 +5586,17 @@
             ],
             "title": "Notes"
           },
+          "octane": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Octane"
+          },
           "odometer_km": {
             "anyOf": [
               {
@@ -5742,6 +5753,19 @@
             ],
             "description": "DEF tank level (0.00=empty, 1.00=full) \u2014 auto-creates a DEF observation",
             "title": "Def Fill Level"
+          },
+          "diesel_grade": {
+            "anyOf": [
+              {
+                "maxLength": 10,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Diesel grade: 'onroad' (clear) or 'offroad' (dyed/farm)",
+            "title": "Diesel Grade"
           },
           "driver_name_freetext": {
             "anyOf": [
@@ -5927,6 +5951,18 @@
             ],
             "description": "OBC reported trip duration in seconds",
             "title": "Obc Trip Duration S"
+          },
+          "octane": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Octane rating for gasoline/E85 fill-ups (AKI or RON)",
+            "title": "Octane"
           },
           "odometer_km": {
             "anyOf": [
@@ -6334,6 +6370,19 @@
             "title": "Date",
             "type": "string"
           },
+          "diesel_grade": {
+            "anyOf": [
+              {
+                "maxLength": 10,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Diesel grade: 'onroad' (clear) or 'offroad' (dyed/farm)",
+            "title": "Diesel Grade"
+          },
           "driver_name_freetext": {
             "anyOf": [
               {
@@ -6523,6 +6572,18 @@
             ],
             "description": "OBC reported trip duration in seconds",
             "title": "Obc Trip Duration S"
+          },
+          "octane": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Octane rating for gasoline/E85 fill-ups (AKI or RON)",
+            "title": "Octane"
           },
           "odometer_km": {
             "anyOf": [
@@ -6831,6 +6892,19 @@
             "description": "DEF tank level (0.00=empty, 1.00=full) \u2014 auto-creates a DEF observation",
             "title": "Def Fill Level"
           },
+          "diesel_grade": {
+            "anyOf": [
+              {
+                "maxLength": 10,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Diesel grade: 'onroad' (clear) or 'offroad' (dyed/farm)",
+            "title": "Diesel Grade"
+          },
           "driver_name_freetext": {
             "anyOf": [
               {
@@ -7028,6 +7102,18 @@
               }
             ],
             "title": "Obc Trip Duration S"
+          },
+          "octane": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Octane rating for gasoline/E85 fill-ups (AKI or RON)",
+            "title": "Octane"
           },
           "odometer_km": {
             "anyOf": [
@@ -26279,6 +26365,18 @@
             ],
             "title": "Date"
           },
+          "diesel_grade": {
+            "anyOf": [
+              {
+                "maxLength": 10,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diesel Grade"
+          },
           "fuel_type_used": {
             "anyOf": [
               {
@@ -26339,6 +26437,17 @@
               }
             ],
             "title": "Notes"
+          },
+          "octane": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Octane"
           },
           "odometer_km": {
             "anyOf": [
