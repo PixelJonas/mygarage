@@ -1,7 +1,7 @@
 """Notification API endpoints for testing notification services and in-app inbox."""
 
 import logging
-from datetime import date, timedelta
+from datetime import timedelta
 from typing import Any, Literal
 
 import httpx
@@ -18,6 +18,7 @@ from app.services.hours_service import latest_engine_hours_and_date
 from app.services.odometer_service import latest_odometer_km_and_date
 from app.services.reminder_service import is_reminder_overdue
 from app.services.settings_service import SettingsService
+from app.utils.household_time import household_today
 
 logger = logging.getLogger(__name__)
 
@@ -445,7 +446,7 @@ async def notification_inbox(
 ) -> InboxResponse:
     """Return actionable in-app alerts (overdue and soon-due reminders)."""
     vehicles = await accessible_vehicles(db, current_user)
-    today = date.today()
+    today = household_today()
     soon = today + timedelta(days=14)
     items: list[InboxItem] = []
 

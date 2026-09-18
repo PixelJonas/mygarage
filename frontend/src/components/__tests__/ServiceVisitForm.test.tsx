@@ -90,3 +90,21 @@ describe('ServiceVisitForm – mileage field visibility', () => {
     }
   )
 })
+
+describe('ServiceVisitForm – household date default (plan 4.7)', () => {
+  // 2026-09-17T11:00:00Z: Pacific/Kiritimati (UTC+14) is already on 09-18
+  // while UTC and America/Chicago hosts still say 09-17, so a browser-clock
+  // seed fails on any test host.
+  it('a NEW visit opens dated in the household zone, not the browser zone', async () => {
+    const { setHouseholdTimeZone } = await import('../../constants/i18n')
+    vi.useFakeTimers({ now: new Date('2026-09-17T11:00:00Z'), toFake: ['Date'] })
+    setHouseholdTimeZone('Pacific/Kiritimati')
+    try {
+      render(<ServiceVisitForm {...DEFAULT_PROPS} />)
+      expect(screen.getByDisplayValue('2026-09-18')).toBeInTheDocument()
+    } finally {
+      setHouseholdTimeZone(null)
+      vi.useRealTimers()
+    }
+  })
+})

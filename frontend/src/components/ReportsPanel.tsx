@@ -6,6 +6,7 @@ import api from '../services/api'
 import { getActionErrorMessage } from '../utils/httpErrorHandler'
 import { useCurrencyPreference } from '../hooks/useCurrencyPreference'
 import { Button, Field, Input, Select, Card } from './ui'
+import { todayInHousehold } from '@/constants/i18n'
 
 interface ReportsPanelProps {
   vin: string
@@ -15,11 +16,11 @@ export default function ReportsPanel({ vin }: ReportsPanelProps) {
   const { t } = useTranslation('analytics')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
+  const [selectedYear, setSelectedYear] = useState(() => Number(todayInHousehold().slice(0, 4)))
   const [isGenerating, setIsGenerating] = useState(false)
   const { currencyCode, locale } = useCurrencyPreference()
 
-  const currentYear = new Date().getFullYear()
+  const currentYear = Number(todayInHousehold().slice(0, 4))
   const years = Array.from({ length: 10 }, (_, i) => currentYear - i)
 
   const handleDownloadPDF = async (reportType: string) => {

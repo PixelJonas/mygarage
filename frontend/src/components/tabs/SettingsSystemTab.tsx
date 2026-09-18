@@ -8,7 +8,7 @@ import { asTimeFormat } from '@/hooks/useTimeFormat'
 import api from '@/services/api'
 import { toast } from 'sonner'
 import { formatCurrency } from '@/utils/formatUtils'
-import { SUPPORTED_LANGUAGES, SUPPORTED_CURRENCIES, languageToLocale } from '@/constants/i18n'
+import { SUPPORTED_LANGUAGES, SUPPORTED_CURRENCIES, languageToLocale, getHouseholdTimeZone } from '@/constants/i18n'
 import OIDCModal from '@/components/modals/OIDCModal'
 import FamilyManagementModal from '@/components/modals/FamilyManagementModal'
 import ArchivedVehiclesList from '@/components/ArchivedVehiclesList'
@@ -24,7 +24,7 @@ type RawSetting = {
 export default function SettingsSystemTab() {
   const { t } = useTranslation('settings')
   const { i18n } = useTranslation()
-  const { isAuthenticated, isAdmin, user: currentUser, refreshUser } = useAuth()
+  const { isAuthenticated, isAdmin, user: currentUser, refreshUser, refreshPublicSettings } = useAuth()
   const { triggerSave, registerSaveHandler, unregisterSaveHandler } = useSettings()
   const [formData, setFormData] = useState({
     timezone: 'UTC',
@@ -149,7 +149,7 @@ export default function SettingsSystemTab() {
       }
 
       const newFormData = {
-        timezone: settingsMap.timezone || 'UTC',
+        timezone: settingsMap.timezone || getHouseholdTimeZone() || 'UTC',
         debug: settingsMap.debug || 'false',
         family_friends_enabled: settingsMap.family_friends_enabled || 'false',
         auth_mode: settingsMap.auth_mode || 'none',
@@ -276,6 +276,12 @@ export default function SettingsSystemTab() {
 
     await api.post('/settings/batch', { settings: nonOidcSettings })
 
+    if ('timezone' in nonOidcSettings) {
+      // The saved zone changes what "today" means for every open form;
+      // update the browser store before leaving the saving state.
+      await refreshPublicSettings()
+    }
+
     const restartRequired = formData.debug !== 'false'
     if (restartRequired) {
       setMessage({
@@ -284,7 +290,7 @@ export default function SettingsSystemTab() {
       })
       setTimeout(() => setMessage(null), 5000)
     }
-  }, [formData, loadedFormData])
+  }, [formData, loadedFormData, refreshPublicSettings])
 
   const handleAutoArchiveDaysChange = (raw: string) => {
     setAutoArchiveDays(raw.replace(/[^\d]/g, ''))
@@ -496,7 +502,10 @@ export default function SettingsSystemTab() {
             value={formData.timezone}
             onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}
             className="md:w-96"
-            options={timezones.map((tz) => ({ value: tz, label: tz }))}
+            options={(timezones.includes(formData.timezone)
+              ? timezones
+              : [formData.timezone, ...timezones]
+            ).map((tz) => ({ value: tz, label: tz }))}
           />
           <p className="mt-2 text-sm text-garage-text-muted">
             {t('timezone.description')}

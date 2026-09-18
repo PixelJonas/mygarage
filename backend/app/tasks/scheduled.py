@@ -9,7 +9,7 @@
 import asyncio
 import logging
 import os
-from datetime import date, timedelta
+from datetime import UTC, timedelta
 from decimal import Decimal
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -39,6 +39,11 @@ from app.tasks.livelink_tasks import (
     prune_old_telemetry,
 )
 from app.utils.datetime_utils import utc_now
+from app.utils.household_time import (
+    household_today,
+    household_zone,
+    load_household_zone,
+)
 from app.utils.render_context import render_context_for_vehicle
 
 logger = logging.getLogger(__name__)
@@ -61,6 +66,7 @@ async def reset_daily_limits() -> None:
     Runs daily at midnight UTC.
     """
     async with AsyncSessionLocal() as db:
+        await load_household_zone(db)
         for provider in ["tomtom", "yelp"]:
             try:
                 await SettingsService.set(db, f"{provider}_api_usage", "0")
@@ -75,6 +81,7 @@ async def reset_monthly_limits() -> None:
     Runs on the 1st of each month at midnight UTC.
     """
     async with AsyncSessionLocal() as db:
+        await load_household_zone(db)
         for provider in ["google_places", "foursquare"]:
             try:
                 await SettingsService.set(db, f"{provider}_api_usage", "0")
@@ -90,6 +97,7 @@ async def check_expiring_documents() -> None:
     settings. Uses 24-hour cooldown to prevent duplicate notifications.
     """
     async with AsyncSessionLocal() as db:
+        await load_household_zone(db)
         try:
             dispatcher = NotificationDispatcher(db)
             if not await dispatcher._has_any_service_enabled():
@@ -98,7 +106,7 @@ async def check_expiring_documents() -> None:
             notify_insurance_days = int(await _get_setting(db, "notify_insurance_days", "30"))
             notify_warranty_days = int(await _get_setting(db, "notify_warranty_days", "30"))
 
-            today = date.today()
+            today = household_today()
             now = utc_now()
 
             # Get all vehicles for name lookup
@@ -190,6 +198,7 @@ async def check_odometer_milestones() -> None:
     MILESTONE_INTERVAL_KM = 10_000  # noqa: N806 — constant value, intentionally uppercased
 
     async with AsyncSessionLocal() as db:
+        await load_household_zone(db)
         try:
             dispatcher = NotificationDispatcher(db)
             if not await dispatcher._has_any_service_enabled():
@@ -296,6 +305,7 @@ async def check_def_levels() -> None:
     silent until the next refill-and-dip cycle.
     """
     async with AsyncSessionLocal() as db:
+        await load_household_zone(db)
         try:
             dispatcher = NotificationDispatcher(db)
             if not await dispatcher._has_any_service_enabled():
@@ -398,6 +408,7 @@ async def check_recalls_all_vehicles() -> None:
     from app.services.nhtsa import NHTSAService
 
     async with AsyncSessionLocal() as db:
+        await load_household_zone(db)
         try:
             # Check if auto-check is enabled
             auto_check = await _get_setting(db, "nhtsa_auto_check", "true")
@@ -494,6 +505,7 @@ async def check_reminder_notifications() -> None:
     logger.info("Running reminder notification check...")
     try:
         async with AsyncSessionLocal() as db:
+            await load_household_zone(db)
             from app.services.reminder_service import check_due_reminders
 
             await check_due_reminders(db)
@@ -518,6 +530,7 @@ async def auto_archive_inactive_vehicles() -> None:
 
     try:
         async with AsyncSessionLocal() as db:
+            await load_household_zone(db)
             setting = (
                 await db.execute(select(Setting).where(Setting.key == "auto_archive_inactive_days"))
             ).scalar_one_or_none()
@@ -528,7 +541,7 @@ async def auto_archive_inactive_vehicles() -> None:
             if days <= 0:
                 return
 
-            cutoff_date = (utc_now() - timedelta(days=days)).date()
+            cutoff_date = household_today() - timedelta(days=days)
             vehicles = (
                 (await db.execute(select(Vehicle).where(Vehicle.archived_at.is_(None))))
                 .scalars()
@@ -563,7 +576,9 @@ async def auto_archive_inactive_vehicles() -> None:
                 for ts in (vehicle.updated_at, vehicle.created_at):
                     if ts is None:
                         continue
-                    latest_dates.append(ts.date())
+                    # Stored naive UTC; the comparison is between calendar
+                    # dates, so convert into the household zone first.
+                    latest_dates.append(ts.replace(tzinfo=UTC).astimezone(household_zone()).date())
 
                 if not latest_dates or max(latest_dates) >= cutoff_date:
                     continue

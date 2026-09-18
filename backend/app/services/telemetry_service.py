@@ -4,7 +4,6 @@ import hashlib
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import date as date_type
 from datetime import datetime, timedelta
 from typing import Any, cast
 
@@ -36,6 +35,7 @@ from app.utils.autopid_normalizer import (
     infer_param_class,
     is_telemetry_param,
 )
+from app.utils.household_time import household_today
 from app.utils.logging_utils import sanitize_for_log
 from app.utils.odometer_units import odometer_value_to_km
 
@@ -678,7 +678,7 @@ class TelemetryService:
             return
 
         # Cap date to today (don't allow future dates from device clock issues)
-        today = date_type.today()
+        today = household_today()
         record_date = min(timestamp.date(), today) if timestamp else today
 
         # LiveLink owns only its own rows. A day can hold several odometer rows

@@ -95,6 +95,10 @@ COPY --from=backend-builder /usr/local/bin /usr/local/bin
 COPY --from=backend-builder /app/app ./app
 COPY --from=backend-builder /app/pyproject.toml ./pyproject.toml
 
+# The household timezone feature resolves IANA zones at runtime; a slim image
+# has no system tzdata, so this asserts the copied packages carry it.
+RUN python -c "from zoneinfo import ZoneInfo; ZoneInfo('America/Chicago')" 
+
 # Copy the maintenance tools. The upgrade notes in CHANGELOG.md tell operators
 # to run these against a live instance, and without this they are not in the
 # image at all: every documented command failed with "can't open file".

@@ -33,6 +33,7 @@ from app.services.hours_service import latest_engine_hours_and_date
 from app.services.odometer_service import latest_odometer_km_and_date
 from app.services.reminder_service import is_reminder_overdue
 from app.services.service_visit_service import service_visit_cost_load_options
+from app.utils.household_time import household_today
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -106,7 +107,7 @@ async def calculate_vehicle_stats(
     average_l_per_hr, average_cost_per_hr = await calculate_average_hours_economy(db, vehicle.vin)
 
     # Count upcoming and overdue reminders
-    today = date_type.today()
+    today = household_today()
     pending_reminders_result = await db.execute(
         select(Reminder).where(Reminder.vin == vehicle.vin, Reminder.status == "pending")
     )
@@ -304,7 +305,7 @@ async def calculate_fleet_health(
     query is identical on SQLite (prod) and PostgreSQL (CI) — no EXTRACT /
     strftime (G8). Costs are Decimal, never float (G9).
     """
-    today = date_type.today()
+    today = household_today()
     year = today.year
     year_start = date_type(year, 1, 1)
     upcoming_end = today + timedelta(days=30)

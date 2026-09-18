@@ -417,3 +417,14 @@ def non_admin_headers(non_admin_user: dict[str, object]) -> dict[str, str]:
         data={"sub": str(non_admin_user["id"]), "username": str(non_admin_user["username"])}
     )
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture(autouse=True)
+def _reset_household_zone():
+    """Per-test reset of the household-zone globals (plan 4.7)."""
+    from app.utils import household_time
+
+    household_time.household_zone_var.set(None)
+    household_time._warned_values.clear()
+    yield
+    household_time.household_zone_var.set(None)

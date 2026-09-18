@@ -52,7 +52,7 @@ from app.services.tire_results import (
     WearStatus,
 )
 from app.services.vehicle_lock import lock_vehicle_for_write
-from app.utils.datetime_utils import utc_now
+from app.utils.household_time import household_today
 from app.utils.logging_utils import sanitize_for_log
 from app.utils.odometer_sync import (
     auto_sync_marker,
@@ -968,7 +968,7 @@ class TireService:
 
         # Hoisted so the period and the odometer reading cannot land on
         # different dates when this runs across midnight.
-        mounted_on = data.mounted_on or utc_now().date()
+        mounted_on = data.mounted_on or household_today()
         tire.position = data.position
         # Appended to the relationship rather than `db.add`ed, so the
         # collection the history validator reads is the resulting set; then
@@ -1024,7 +1024,7 @@ class TireService:
             )
         ).scalar_one_or_none()
 
-        dismounted_on = data.dismounted_on or utc_now().date()
+        dismounted_on = data.dismounted_on or household_today()
         tire.position = None
         # Three intents, two shapes: a key absent from the body leaves the
         # location alone, an empty string clears it, text sets it. The
@@ -1099,7 +1099,7 @@ class TireService:
         )
         self.db.add(tire)
         await self.db.flush()
-        mounted_on = data.mounted_on or utc_now().date()
+        mounted_on = data.mounted_on or household_today()
         period = TireMountPeriod(
             tire_id=tire.id,
             position=data.position,
@@ -1197,7 +1197,7 @@ class TireService:
                 detail=f"Position(s) {occupied} are held by tires not in this rotation.",
             )
 
-        when = data.rotated_on or utc_now().date()
+        when = data.rotated_on or household_today()
         await apply_mount_moves(
             self.db,
             vacate=[tires[tire_id] for tire_id in moving_ids],
@@ -1412,7 +1412,7 @@ class TireService:
 
         # One date for the closed period and the retirement both, so a retire
         # that runs across midnight cannot record two.
-        retired_on = data.dismounted_on or utc_now().date()
+        retired_on = data.dismounted_on or household_today()
 
         closed_period: TireMountPeriod | None = None
         if tire.position is not None:
@@ -2116,7 +2116,7 @@ class TireService:
             dirty = True
 
         if below and existing is None:
-            due = utc_now().date()
+            due = household_today()
             # `project_wear` sorts its own readings now. The old call passed
             # them unsorted, so `newer` was the OLDEST reading, `tread_delta`
             # came out negative, and this projection has been silently absent

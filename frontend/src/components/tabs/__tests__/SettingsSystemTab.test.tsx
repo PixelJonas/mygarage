@@ -32,6 +32,8 @@ vi.mock('@/contexts/AuthContext', () => ({
     isAdmin: true,
     user: { unit_preference: 'imperial', language: 'en', currency_code: 'USD' },
     refreshUser: vi.fn(),
+    refreshPublicSettings: vi.fn(),
+    householdTimeZone: null,
   }),
 }))
 

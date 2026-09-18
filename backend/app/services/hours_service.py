@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import HoursRecord
+from app.utils.household_time import household_today
 
 
 async def latest_engine_hours_and_date(
@@ -124,7 +125,7 @@ async def set_manual_current_hours(
     Returns:
         The created or updated ``HoursRecord``.
     """
-    today = date.today()
+    today = household_today()
     existing = (
         (
             await db.execute(

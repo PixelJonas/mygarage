@@ -89,6 +89,7 @@ from app.utils.csv_units import (
 )
 from app.utils.def_sync import ensure_def_capable
 from app.utils.file_validation import validate_csv_upload
+from app.utils.household_time import household_today
 from app.utils.logging_utils import sanitize_for_log
 from app.utils.maintenance_types import classify
 from app.utils.odometer_tolerance import KM_STEP, LITRE_STEP, conversion_tolerance
@@ -1574,7 +1575,11 @@ async def import_vehicle_json(
             # Calculate due_date from recurrence_days
             due_date = None
             if has_date and recurrence_days:
-                due_date = (date_type.today() + timedelta(days=recurrence_days)).isoformat()
+                # A date object, in the household zone. The previous code
+                # assigned .isoformat() -- a str the Date column rejects at
+                # flush -- so every recurring-days row errored out of the
+                # import; the per-row savepoint made it look like bad data.
+                due_date = household_today() + timedelta(days=recurrence_days)
 
             reminder = Reminder(
                 vin=vin,

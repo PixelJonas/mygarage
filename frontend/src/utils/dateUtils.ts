@@ -1,3 +1,4 @@
+import { todayInHousehold } from '@/constants/i18n'
 /**
  * Date utility functions to handle date formatting without timezone issues
  */
@@ -60,11 +61,8 @@ export function formatDateForDisplay(
  */
 export function formatDateForInput(dateString?: string | null): string {
   if (!dateString) {
-    const now = new Date()
-    const year = now.getFullYear()
-    const month = String(now.getMonth() + 1).padStart(2, '0')
-    const day = String(now.getDate()).padStart(2, '0')
-    return `${year}-${month}-${day}`
+    // The household's date, not the browser's (see todayInHousehold).
+    return todayInHousehold()
   }
 
   // If it's already in YYYY-MM-DD format, return as-is

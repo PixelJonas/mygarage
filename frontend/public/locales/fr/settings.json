@@ -15,7 +15,7 @@
   },
   "timezone": {
     "label": "Fuseau horaire",
-    "description": "Affecte les horodatages des journaux, les tâches planifiées et l'affichage des dates dans toute l'application."
+    "description": "Le jour calendaire que MyGarage utilise pour les échéances, les badges de retard, les notifications et les dates préremplies dans les formulaires. Les horodatages des journaux restent en UTC."
   },
   "debug": {
     "label": "Mode débogage",

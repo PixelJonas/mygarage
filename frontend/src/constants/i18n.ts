@@ -74,3 +74,47 @@ export function setActiveLocale(lang: string): void {
 export function getActiveLocale(): string {
   return activeLocale
 }
+
+/**
+ * The household time zone, published by `/settings/public` as
+ * `effective_timezone` and stored here (same module-level pattern as
+ * `activeLocale`) so non-React code like `formatDateForInput` can read it.
+ * Null until the payload arrives; the browser zone applies until then.
+ */
+let householdTimeZone: string | null = null
+
+export function setHouseholdTimeZone(zone: string | null): void {
+  householdTimeZone = zone && zone.trim() !== '' ? zone : null
+}
+
+export function getHouseholdTimeZone(): string | null {
+  return householdTimeZone
+}
+
+/**
+ * Today's calendar date (YYYY-MM-DD) in the household zone.
+ *
+ * A date the browser fills in or compares against is a second "today", so it
+ * must agree with the server's. Falls back to the browser zone until the
+ * store is set, or if the published zone name is one this browser rejects.
+ */
+export function todayInHousehold(): string {
+  const build = (timeZone?: string): string => {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(new Date())
+    const get = (type: string): string => parts.find((p) => p.type === type)?.value ?? ''
+    return `${get('year')}-${get('month')}-${get('day')}`
+  }
+  if (householdTimeZone) {
+    try {
+      return build(householdTimeZone)
+    } catch {
+      // An invalid zone from the server must not break every form default.
+    }
+  }
+  return build(undefined)
+}

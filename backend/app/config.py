@@ -36,7 +36,10 @@ class Settings(BaseSettings):
     app_name: str = "MyGarage"
     app_version: str = Field(default_factory=get_version)
     debug: bool = False
-    timezone: str = "UTC"  # User-editable via Settings UI
+    # MYGARAGE_TIMEZONE: env fallback for the household zone when the Settings
+    # row is absent. Read from os.environ by app/utils/household_time.py; this
+    # field only documents the variable (the default is NOT a fallback value).
+    timezone: str = "UTC"
 
     # Server
     host: str = "0.0.0.0"

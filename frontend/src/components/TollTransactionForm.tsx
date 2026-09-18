@@ -11,6 +11,7 @@ import { makeTollTransactionSchema, type TollTransactionFormData } from '../sche
 import { useCreateTollTransaction, useUpdateTollTransaction } from '../hooks/queries/useTollRecords'
 import { applyServerErrors } from '../hooks/useApiFormErrors'
 import { getActionErrorMessage } from '../utils/httpErrorHandler'
+import { formatDateForInput } from '@/utils/dateUtils'
 
 interface TollTransactionFormProps {
   vin: string
@@ -40,7 +41,7 @@ export default function TollTransactionForm({ vin, tollTags, transaction, onClos
   } = useForm<TollTransactionFormData>({
     resolver: zodResolver(schema) as Resolver<TollTransactionFormData>,
     defaultValues: {
-      transaction_date: transaction?.date || new Date().toISOString().split('T')[0],
+      transaction_date: transaction?.date || formatDateForInput(),
       amount: transaction?.amount != null ? Number(transaction.amount) : undefined,
       location: transaction?.location || '',
       toll_tag_id: transaction?.toll_tag_id ?? undefined,

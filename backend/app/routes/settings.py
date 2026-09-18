@@ -6,6 +6,7 @@ import re
 import sys
 import time
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import func, select, text
@@ -31,6 +32,11 @@ from app.services.settings_service import SettingsService
 from app.utils.default_unit_prefs import (
     DEFAULT_UNIT_PREFS_KEY,
     validate_default_unit_prefs_value,
+)
+from app.utils.household_time import (
+    EFFECTIVE_TIMEZONE_KEY,
+    TIMEZONE_SETTING_KEY,
+    household_zone,
 )
 from app.utils.logging_utils import sanitize_for_log
 
@@ -70,6 +76,15 @@ def _resolve_write_value(key: str, new_value: str, stored_value: str | None) -> 
     return new_value
 
 
+def _reject_reserved_key(key: str) -> None:
+    """`effective_timezone` is computed and served, never stored (plan 4.4)."""
+    if key == EFFECTIVE_TIMEZONE_KEY:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Setting '{key}' is computed and read-only",
+        )
+
+
 def _reject_unwritable_value(key: str, value: str | None) -> None:
     """Refuse a settings write whose value the reader could not use.
 
@@ -89,7 +104,10 @@ def _reject_unwritable_value(key: str, value: str | None) -> None:
     straight through `SettingsService.set`, and it applies this same rule at its
     own site rather than through here.
 
-    Only `default_unit_prefs` has a shape to check today. It is checked because
+    Three keys have a shape to check today: `effective_timezone` is computed
+    and never stored; `timezone` must be a valid IANA name or the reader
+    would skip it (see `app.utils.household_time.resolve_zone`); and
+    `default_unit_prefs` is checked because
     `parse_default_unit_prefs` degrades WHOLE: an unparseable row hands every
     anonymous client the imperial preset, which on a UK or metric instance is a
     silent 20 percent error in every volume and every fuel economy, and the
@@ -102,6 +120,15 @@ def _reject_unwritable_value(key: str, value: str | None) -> None:
     Raises:
         HTTPException: 422 when the value would not survive a read.
     """
+    _reject_reserved_key(key)
+    if key == TIMEZONE_SETTING_KEY and value:
+        try:
+            ZoneInfo(value)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Setting '{key}' must be a valid IANA time zone name",
+            ) from exc
     if key != DEFAULT_UNIT_PREFS_KEY:
         return
     try:
@@ -157,10 +184,22 @@ async def get_public_settings(db: AsyncSession = Depends(get_db)):
     )
     settings = result.scalars().all()
 
-    return SettingsListResponse(
-        settings=[_to_response(s) for s in settings],
-        total=len(settings),
+    entries = [_to_response(s) for s in settings]
+    # Computed, read-only: the zone in effect for this request. Never a
+    # stored row; every write path rejects the key.
+    now = dt.datetime.now()
+    entries.append(
+        SettingResponse(
+            key=EFFECTIVE_TIMEZONE_KEY,
+            value=household_zone().key,
+            category="system",
+            description="The household time zone in effect. Set 'timezone' to change it.",
+            encrypted=False,
+            created_at=now,
+            updated_at=now,
+        )
     )
+    return SettingsListResponse(settings=entries, total=len(entries))
 
 
 @router.get("", response_model=SettingsListResponse)
@@ -616,6 +655,7 @@ async def update_setting(
     current_user: User | None = Depends(get_current_admin_user),
 ):
     """Update a setting (admin only)."""
+    _reject_reserved_key(key)
     result = await db.execute(select(Setting).where(Setting.key == key))
     setting = result.scalar_one_or_none()
 

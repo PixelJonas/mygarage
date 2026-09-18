@@ -1,8 +1,9 @@
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react'
 import api, { setCSRFToken, getCSRFToken, clearCSRFToken, setApiAuthMode } from '../services/api'
 import type { components } from '../types/api.generated'
 import type { UnitSet } from '../types/units'
 import { readPublicUnitDefaults, type PublicSetting } from '../utils/publicUnitDefaults'
+import { setHouseholdTimeZone } from '../constants/i18n'
 
 /**
  * The user shape comes from the generated schema, not from a hand-maintained
@@ -51,6 +52,20 @@ interface AuthContextType {
   register: (username: string, email: string, password: string) => Promise<void>
   logout: () => void
   refreshUser: () => Promise<void>
+  /**
+   * Refetch `/settings/public` and update the stores it feeds (the instance
+   * unit defaults and the household time zone). The System tab awaits it
+   * after a save whose batch included `timezone`; the Backup tab after a
+   * restore; every client calls it on `visibilitychange`, rate-limited.
+   */
+  refreshPublicSettings: () => Promise<void>
+  /**
+   * The household time zone from `/settings/public` as REACT STATE, so a
+   * consumer (the calendar) re-renders when a refresh changes it. The
+   * module-level store in constants/i18n serves non-React code; this mirrors
+   * it.
+   */
+  householdTimeZone: string | null
   setAuthToken: (token: string) => void
 }
 
@@ -100,6 +115,12 @@ export function AuthProvider({ children }: { children: ReactNode}) {
       // is the mode that needs the instance default most, and returning early
       // first is exactly why four phases shipped with this payload discarded.
       setDefaultUnitPrefs(readPublicUnitDefaults(publicSettings))
+      {
+        const zone = publicSettings.find((s) => s.key === 'effective_timezone')?.value ?? null
+        setHouseholdTimeZone(zone)
+        setHouseholdTimeZoneState(zone)
+      }
+      lastPublicRefreshRef.current = Date.now()
       // Set from the same payload and in the same order, so nothing can observe
       // "loaded" while `defaultUnitPrefs` still holds the previous answer.
       setPublicSettingsLoaded(true)
@@ -135,6 +156,44 @@ export function AuthProvider({ children }: { children: ReactNode}) {
   useEffect(() => {
     loadUser()
   }, [loadUser])
+
+  const lastPublicRefreshRef = useRef(0)
+  const [householdTimeZone, setHouseholdTimeZoneState] = useState<string | null>(null)
+
+  const refreshPublicSettings = useCallback(async () => {
+    try {
+      const settingsResponse = await api.get('/settings/public')
+      const publicSettings: PublicSetting[] = settingsResponse.data?.settings ?? []
+      setDefaultUnitPrefs(readPublicUnitDefaults(publicSettings))
+      {
+        const zone = publicSettings.find((s) => s.key === 'effective_timezone')?.value ?? null
+        setHouseholdTimeZone(zone)
+        setHouseholdTimeZoneState(zone)
+      }
+      setPublicSettingsLoaded(true)
+      lastPublicRefreshRef.current = Date.now()
+    } catch {
+      // Keep the current values. The server stays authoritative for every
+      // date it fills in or judges; the browser catches up on the next
+      // successful refetch or reload.
+    }
+  }, [])
+
+  // Another client (or a restore) can change the household zone while this
+  // tab sits in the background: refetch when the document becomes visible,
+  // at most once per 60 seconds (plan 4.5.1).
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') return
+      if (Date.now() - lastPublicRefreshRef.current < 60_000) return
+      // Stamp before the async call so a second event in the same tick
+      // cannot pass the check while the first fetch is still in flight.
+      lastPublicRefreshRef.current = Date.now()
+      void refreshPublicSettings()
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange)
+  }, [refreshPublicSettings])
 
   // Login/register deliberately do NOT catch-and-rewrap. The original AxiosError
   // (with its `.response.data.detail` — an array on a 422) has to reach the
@@ -208,6 +267,8 @@ export function AuthProvider({ children }: { children: ReactNode}) {
     register,
     logout,
     refreshUser,
+    refreshPublicSettings,
+    householdTimeZone,
     setAuthToken,
   }
 

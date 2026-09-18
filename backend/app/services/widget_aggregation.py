@@ -46,6 +46,7 @@ from app.schemas.widget import (
 from app.services.fuel_service import calculate_average_hours_economy
 from app.services.hours_service import latest_engine_hours_and_date
 from app.services.reminder_service import get_current_hours, is_reminder_overdue
+from app.utils.household_time import household_today
 from app.utils.unit_adapters import ADAPTERS, UnitAdapter
 from app.utils.unit_counterparts import forced_mpg_adapter
 
@@ -509,7 +510,7 @@ class WidgetAggregationService:
         """
         if not vins:
             return 0, 0
-        today = date_type.today()
+        today = household_today()
         current_km_decimal = (
             Decimal(current_odometer_km) if current_odometer_km is not None else None
         )

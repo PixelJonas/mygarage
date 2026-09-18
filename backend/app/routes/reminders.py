@@ -3,7 +3,6 @@ completion with a real date and reading, pack preview and apply, duplicate
 reconciliation and an idempotent reconcile."""
 
 import logging
-from datetime import date
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +25,7 @@ from app.schemas.reminder_pack import ApplyReminderPackRequest, ReminderPackSumm
 from app.services import maintenance_service, reminder_pack_service, reminder_service
 from app.services.auth import get_vehicle_or_403, require_auth
 from app.services.vehicle_lock import lock_vehicle_for_write
+from app.utils.household_time import household_today
 
 logger = logging.getLogger(__name__)
 
@@ -230,7 +230,7 @@ async def mark_done(
             db,
             vin,
             reminder_id,
-            ReminderCompleteRequest(completed_date=date.today(), mode="mark_only"),
+            ReminderCompleteRequest(completed_date=household_today(), mode="mark_only"),
         )
         return result.reminder
     reminder.status = "done"

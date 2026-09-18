@@ -54,6 +54,8 @@ const h = vi.hoisted(() => ({
   isAuthenticated: true,
   defaultUnitPrefs: null as UnitSet | null,
   refreshUser: vi.fn(),
+    refreshPublicSettings: vi.fn(),
+    householdTimeZone: null,
 }))
 
 vi.mock('@/services/api', () => ({
