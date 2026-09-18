@@ -3,8 +3,9 @@ completion with a real date and reading, pack preview and apply, duplicate
 reconciliation and an idempotent reconcile."""
 
 import logging
+from datetime import timedelta
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -19,6 +20,7 @@ from app.schemas.reminder import (
     ReminderCompleteResponse,
     ReminderCreate,
     ReminderResponse,
+    ReminderSnoozeRequest,
     ReminderUpdate,
 )
 from app.schemas.reminder_pack import ApplyReminderPackRequest, ReminderPackSummary
@@ -253,6 +255,57 @@ async def dismiss(
     reminder = await reminder_service._get_reminder_or_404(reminder_id, vin, db)
     await maintenance_service.stop_repeating(db, reminder)
     reminder.status = "dismissed"
+    await db.commit()
+    await db.refresh(reminder)
+    return await reminder_service.enrich_with_estimate(reminder, db)
+
+
+@router.post("/{reminder_id}/snooze", response_model=ReminderResponse)
+async def snooze(
+    vin: str,
+    reminder_id: int,
+    data: ReminderSnoozeRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_auth),
+):
+    """Hide a pending reminder from every nag surface until a date.
+
+    The due fields stay untouched: on `until` the reminder is back, with
+    whatever overdue state reality gives it. Dismiss is "stop repeating";
+    this is "not now".
+    """
+    vin = vin.upper().strip()
+    await get_vehicle_or_403(vin, current_user, db, require_write=True)
+    await lock_vehicle_for_write(db, vin)
+    reminder = await reminder_service._get_reminder_or_404(reminder_id, vin, db)
+    if reminder.status != "pending":
+        raise HTTPException(status_code=409, detail="Only a pending reminder can be snoozed")
+    today = household_today()
+    if data.until <= today:
+        raise HTTPException(status_code=422, detail="Snooze until must be a future date")
+    if data.until > today + timedelta(days=3653):
+        raise HTTPException(status_code=422, detail="Snooze until is more than ten years out")
+    reminder.snoozed_until = data.until
+    await db.commit()
+    await db.refresh(reminder)
+    return await reminder_service.enrich_with_estimate(reminder, db)
+
+
+@router.post("/{reminder_id}/unsnooze", response_model=ReminderResponse)
+async def unsnooze(
+    vin: str,
+    reminder_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_auth),
+):
+    """Clear a pending reminder's snooze; it counts again immediately."""
+    vin = vin.upper().strip()
+    await get_vehicle_or_403(vin, current_user, db, require_write=True)
+    await lock_vehicle_for_write(db, vin)
+    reminder = await reminder_service._get_reminder_or_404(reminder_id, vin, db)
+    if reminder.status != "pending":
+        raise HTTPException(status_code=409, detail="Only a pending reminder can be unsnoozed")
+    reminder.snoozed_until = None
     await db.commit()
     await db.refresh(reminder)
     return await reminder_service.enrich_with_estimate(reminder, db)

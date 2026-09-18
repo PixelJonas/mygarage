@@ -16,7 +16,7 @@ from app.models.user import User
 from app.services.auth import accessible_vehicles, get_current_admin_user, require_auth
 from app.services.hours_service import latest_engine_hours_and_date
 from app.services.odometer_service import latest_odometer_km_and_date
-from app.services.reminder_service import is_reminder_overdue
+from app.services.reminder_service import is_reminder_overdue, is_reminder_snoozed
 from app.services.settings_service import SettingsService
 from app.utils.household_time import household_today
 
@@ -481,6 +481,10 @@ async def notification_inbox(
         )
 
         for reminder in pending:
+            if is_reminder_snoozed(reminder, today):
+                # The inbox is exactly the nag surface a snooze silences
+                # (plan 2026-09-18, decision 4).
+                continue
             overdue = is_reminder_overdue(reminder, current_km, current_hours, today)
             upcoming = False
             if not overdue and reminder.due_date is not None:
