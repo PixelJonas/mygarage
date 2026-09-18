@@ -37,6 +37,17 @@ def is_tire_marked(record: OdometerRecord) -> bool:
     return record.notes is not None and record.notes.startswith(TIRE_MARKER_PREFIX)
 
 
+def legacy_service_marker(source_id: int) -> str:
+    """The pre-rename service marker, ``[AUTO-SYNC from service #N]``.
+
+    Databases from before the ``service_visit`` marker rename still hold
+    rows with this note. The delete path has always recognized it; ownership
+    lookup must too, or a date edit misses the legacy row and re-creates the
+    #171 duplicate for exactly the oldest data (codex PR review P1).
+    """
+    return f"[AUTO-SYNC from service #{source_id}]"
+
+
 def auto_sync_marker(source_type: str, source_id: int) -> str:
     """The note that marks an odometer row as owned by one source record.
 
@@ -78,6 +89,8 @@ async def _own_records(
     conditions = [OdometerRecord.notes == marker]
     if source_type == "fuel":
         conditions.append(OdometerRecord.fuel_record_id == source_id)
+    if source_type == "service_visit":
+        conditions.append(OdometerRecord.notes == legacy_service_marker(source_id))
     result = await db.execute(
         select(OdometerRecord)
         .where(OdometerRecord.vin == vin)

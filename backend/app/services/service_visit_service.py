@@ -638,9 +638,11 @@ class ServiceVisitService:
             # left behind at an OLD date after the visit's date was edited
             # (a date == visit.date filter would miss that row and orphan
             # it). Never touches a manual row.
+            from app.utils.odometer_sync import auto_sync_marker, legacy_service_marker
+
             auto_sync_markers = (
-                f"[AUTO-SYNC from service_visit #{visit_id}]",
-                f"[AUTO-SYNC from service #{visit_id}]",  # legacy marker
+                auto_sync_marker("service_visit", visit_id),
+                legacy_service_marker(visit_id),
             )
             await self.db.execute(
                 delete(OdometerRecord)

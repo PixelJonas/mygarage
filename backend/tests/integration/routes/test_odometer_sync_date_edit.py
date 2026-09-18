@@ -190,6 +190,60 @@ class TestServiceVisitDateEdit:
         assert rows[0]["date"] == "2026-08-03"
 
 
+class TestLegacyServiceMarkerDateEdit:
+    async def test_a_legacy_marked_row_moves_instead_of_duplicating(
+        self, client: AsyncClient, auth_headers, test_vehicle, db_session
+    ):
+        """Codex PR review P1: databases predating the service_visit marker
+        rename hold rows marked ``[AUTO-SYNC from service #N]`` (the delete
+        path still recognizes the alias). The ownership lookup must too, or
+        a date edit misses the legacy row and re-creates the #171 duplicate
+        for exactly the oldest data. The move also normalizes the note to
+        the current marker."""
+        from sqlalchemy import update
+
+        from app.models.odometer import OdometerRecord
+
+        vin = test_vehicle["vin"]
+        r = await client.post(
+            f"/api/vehicles/{vin}/service-visits",
+            json={
+                "date": "2026-08-06",
+                "odometer_km": 6100,
+                "line_items": [{"description": "Cabin filter"}],
+            },
+            headers=auth_headers,
+        )
+        assert r.status_code == 201, r.text
+        visit = r.json()
+
+        legacy = f"[AUTO-SYNC from service #{visit['id']}]"
+        current = f"[AUTO-SYNC from service_visit #{visit['id']}]"
+        await db_session.execute(
+            update(OdometerRecord)
+            .where(OdometerRecord.vin == vin)
+            .where(OdometerRecord.notes == current)
+            .values(notes=legacy)
+        )
+        await db_session.commit()
+
+        r = await client.put(
+            f"/api/vehicles/{vin}/service-visits/{visit['id']}",
+            json={"date": "2026-08-03"},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200, r.text
+
+        rows = [
+            row
+            for row in await _odometer_rows(client, auth_headers, vin)
+            if row.get("notes") in (legacy, current)
+        ]
+        assert len(rows) == 1, rows
+        assert rows[0]["date"] == "2026-08-03"
+        assert rows[0]["notes"] == current
+
+
 class TestDefDateEdit:
     async def test_editing_the_date_moves_the_synced_row(self, client: AsyncClient, auth_headers):
         r = await client.post(

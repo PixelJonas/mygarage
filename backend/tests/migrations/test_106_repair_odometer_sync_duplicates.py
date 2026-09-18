@@ -136,3 +136,65 @@ def test_106_is_idempotent_and_quiet_on_clean_data(engine_for_migration):
 def test_106_survives_a_missing_table(engine_for_migration):
     _dialect, engine, _url = engine_for_migration
     _load("106_repair_odometer_sync_duplicates").upgrade(engine)
+
+
+def test_106_merges_the_legacy_service_marker_alias(engine_for_migration):
+    """Codex PR review P1: a pre-fix date edit on a visit whose synced row
+    carries the LEGACY ``[AUTO-SYNC from service #N]`` marker leaves the
+    duplicate under the CURRENT marker. Grouped by raw note they are two
+    singletons and the repair skips both; grouping must be by source
+    identity with ``service`` normalized to ``service_visit``, and the
+    survivor's note normalized so the runtime lookup owns it afterwards."""
+    _dialect, engine, _url = engine_for_migration
+    _make_tables(engine)
+    with engine.begin() as conn:
+        conn.execute(
+            text("INSERT INTO service_visits (id, vin, date) VALUES (41, :vin, '2026-08-03')"),
+            {"vin": VIN},
+        )
+        _odo(conn, 1, VIN, "2026-08-06", 700, "[AUTO-SYNC from service #41]")
+        _odo(conn, 2, VIN, "2026-08-03", 700, "[AUTO-SYNC from service_visit #41]")
+
+    _load("106_repair_odometer_sync_duplicates").upgrade(engine)
+
+    rows = _rows(engine)
+    assert set(rows) == {2}, rows
+    assert rows[2] == (VIN, "2026-08-03", "[AUTO-SYNC from service_visit #41]")
+
+
+def test_106_normalizes_a_legacy_only_group_it_repairs(engine_for_migration):
+    """Two stranded legacy-marker rows: one survivor, moved to the source's
+    date, with the note rewritten to the current marker."""
+    _dialect, engine, _url = engine_for_migration
+    _make_tables(engine)
+    with engine.begin() as conn:
+        conn.execute(
+            text("INSERT INTO service_visits (id, vin, date) VALUES (42, :vin, '2026-09-01')"),
+            {"vin": VIN},
+        )
+        _odo(conn, 1, VIN, "2026-08-10", 800, "[AUTO-SYNC from service #42]")
+        _odo(conn, 2, VIN, "2026-08-15", 800, "[AUTO-SYNC from service #42]")
+
+    _load("106_repair_odometer_sync_duplicates").upgrade(engine)
+
+    rows = _rows(engine)
+    assert set(rows) == {2}, rows
+    assert rows[2] == (VIN, "2026-09-01", "[AUTO-SYNC from service_visit #42]")
+
+
+def test_106_swallows_an_operational_error(engine_for_migration):
+    """Codex PR review P2: the runner stops the pending chain on ANY raise
+    and never stamps the failed migration, so a best-effort repair that
+    raises would retry forever and block every later migration. A schema
+    surprise (here: no ``notes`` column) must log and return, not raise."""
+    _dialect, engine, _url = engine_for_migration
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "CREATE TABLE odometer_records ("
+                "id INTEGER PRIMARY KEY, vin VARCHAR(17), date DATE, "
+                "odometer_km DECIMAL(10,2))"
+            )
+        )
+
+    _load("106_repair_odometer_sync_duplicates").upgrade(engine)  # must not raise
