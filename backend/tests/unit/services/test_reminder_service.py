@@ -838,7 +838,5 @@ class TestReminderSnooze:
     def test_the_overdue_state_returns_the_day_the_snooze_expires(self):
         from app.services.reminder_service import is_reminder_overdue
 
-        reminder = self._reminder(
-            due_date=date(2020, 1, 1), snoozed_until=date(2026, 9, 20)
-        )
+        reminder = self._reminder(due_date=date(2020, 1, 1), snoozed_until=date(2026, 9, 20))
         assert is_reminder_overdue(reminder, None, None, today=date(2026, 9, 20)) is True
