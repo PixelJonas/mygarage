@@ -660,6 +660,36 @@ describe('VehicleDetail', () => {
     expect(screen.getByText('vehicleStats.overdue')).toBeInTheDocument()
   })
 
+  it('a mutation callback for A landing after navigation to B cannot start an A request (codex R2-M1)', async () => {
+    mockedVehicleService.getDetailStats.mockResolvedValue(
+      { overdue_count: 0 } as unknown as VehicleDetailStats,
+    )
+    render(
+      <MemoryRouter initialEntries={['/vehicles/TEST12345678901234?tab=reminders']}>
+        <Link to="/vehicles/OTHERV123456789012">go-other</Link>
+        <Routes>
+          <Route path="/vehicles/:vin" element={<VehicleDetail />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(reminderListProps.onStatsChanged).toBeDefined())
+    const capturedForA = reminderListProps.onStatsChanged!
+
+    fireEvent.click(screen.getByText('go-other'))
+    await waitFor(() =>
+      expect(mockedVehicleService.getDetailStats).toHaveBeenLastCalledWith('OTHERV123456789012'),
+    )
+
+    const callsForA = (): number =>
+      mockedVehicleService.getDetailStats.mock.calls.filter(
+        ([v]) => v === 'TEST12345678901234',
+      ).length
+    const before = callsForA()
+    act(() => capturedForA())
+    await new Promise((r) => setTimeout(r, 0))
+    expect(callsForA()).toBe(before)
+  })
+
   it('Reminder switches the active primary tab to Tracking (SDQ-1)', async () => {
     renderVehicleDetail()
     await waitFor(() => expect(screen.getByText('Test Car')).toBeInTheDocument())

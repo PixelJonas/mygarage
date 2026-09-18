@@ -215,15 +215,21 @@ export default function VehicleDetail() {
   // may write. That covers B3 (a stale A response after navigating to B —
   // the vin effect bumps the generation) and the refresh race (two rapid
   // writes whose responses resolve out of order must not leave the older
-  // counts displayed; codex code review R1-M2).
+  // counts displayed; codex code review R1-M2). The active-vin check on top
+  // covers the third shape (R2-M1): a mutation for A that finishes AFTER
+  // navigating to B still holds A's callback, and without the check it would
+  // START a fresh A request carrying the newest generation.
   const statsGenRef = useRef(0)
+  const activeStatsVinRef = useRef(vin)
   const refreshDetailStats = useCallback(() => {
-    if (!vin) return
+    if (!vin || activeStatsVinRef.current !== vin) return
     const gen = ++statsGenRef.current
     vehicleService
       .getDetailStats(vin)
       .then((stats) => {
-        if (statsGenRef.current === gen) setDetailStats(stats)
+        if (statsGenRef.current === gen && activeStatsVinRef.current === vin) {
+          setDetailStats(stats)
+        }
       })
       .catch(() => {
         // Keep what is shown; a failed refresh is not worth blanking the strip.
@@ -235,6 +241,7 @@ export default function VehicleDetail() {
   // back up through onStatsChanged.
   useEffect(() => {
     if (!vin) return
+    activeStatsVinRef.current = vin
     // B3: never show A's numbers on B, even for the moment the fetch takes.
     setDetailStats(null)
     refreshDetailStats()
