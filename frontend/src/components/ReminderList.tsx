@@ -368,7 +368,7 @@ export default function ReminderList({ vin, onStatsChanged }: ReminderListProps)
           currentMileage={currentMileage}
           currentHours={currentHours}
           onClose={handleFormClose}
-          onSuccess={handleFormClose}
+          onSuccess={() => { handleFormClose(); onStatsChanged?.() }}
         />
       )}
 

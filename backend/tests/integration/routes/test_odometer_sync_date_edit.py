@@ -225,3 +225,73 @@ class TestDefDateEdit:
             assert rows[0]["date"] == "2026-08-03"
         finally:
             await client.delete(f"/api/vehicles/{vin}", headers=auth_headers)
+
+
+class TestTirePublishesKeepPerDateRows:
+    async def test_backdated_tire_reading_leaves_earlier_published_rows_alone(
+        self, client: AsyncClient, auth_headers
+    ):
+        """Codex R1-H1 (code review pass 1): tire markers are keyed by TIRE,
+        not by reading — `[AUTO-SYNC from tire #N]` legitimately marks one
+        odometer row per reading date. The vin-wide own-row lookup the #171
+        fix introduced must therefore stay scoped to the one-row-per-source
+        types (fuel, service_visit, def); applied to a tire publish it
+        collapses the tire's whole history into the newest row and a
+        backdated reading rewinds the vehicle's current mileage."""
+        r = await client.post(
+            "/api/vehicles",
+            json={
+                "vin": "TRE171XSYNC000001",
+                "nickname": "tire-171",
+                "vehicle_type": "Car",
+                "fuel_type": "Gasoline",
+            },
+            headers=auth_headers,
+        )
+        assert r.status_code == 201, r.text
+        vin = r.json()["vin"]
+        try:
+            r = await client.post(
+                f"/api/vehicles/{vin}/tires/create-and-mount",
+                headers=auth_headers,
+                json={
+                    "vin": vin,
+                    "position": "FR",
+                    "brand": "Continental",
+                    "tread_depth_mm": "7.0",
+                    "min_tread_mm": "2.0",
+                    "mounted_on": "2026-01-01",
+                    "mounted_odometer_km": "10000",
+                },
+            )
+            assert r.status_code == 201, r.text
+            tire_id = r.json()["id"]
+
+            for recorded_at, odo, tread in (
+                ("2026-03-01", "12000", "6.0"),
+                ("2026-06-01", "15000", "5.5"),
+                # The backdated one: with the vin-wide lookup this MOVED the
+                # 06-01 row to 04-15 and deleted the 03-01 row.
+                ("2026-04-15", "13000", "5.8"),
+            ):
+                r = await client.post(
+                    f"/api/vehicles/{vin}/tires/{tire_id}/readings",
+                    headers=auth_headers,
+                    json={
+                        "recorded_at": recorded_at,
+                        "odometer_km": odo,
+                        "tread_depth_mm": tread,
+                    },
+                )
+                assert r.status_code == 201, r.text
+
+            rows = _marked(await _odometer_rows(client, auth_headers, vin), "tire", tire_id)
+            by_date = {row["date"]: row["odometer_km"] for row in rows}
+            assert by_date == {
+                "2026-03-01": "12000.00",
+                "2026-04-15": "13000.00",
+                "2026-06-01": "15000.00",
+            }, rows
+        finally:
+            r = await client.delete(f"/api/vehicles/{vin}", headers=auth_headers)
+            assert r.status_code in (200, 204), r.text

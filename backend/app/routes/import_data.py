@@ -99,6 +99,21 @@ from app.utils.units import UnitConverter
 logger = logging.getLogger(__name__)
 
 
+def _coerce_octane(value: object) -> int | None:
+    """A backup's octane as an int, or a ValueError for a fractional one.
+
+    JSON numbers arrive as int or float; a float only passes when it is
+    integral, because int() would otherwise store 91.9 as 91 and let 150.9
+    sneak under the 150 bound the API enforces (codex code review R1-M1).
+    Strings raise in int() and fail the row like any other bad field.
+    """
+    if value is None:
+        return None
+    if isinstance(value, float) and not value.is_integer():
+        raise ValueError(f"octane must be a whole number, got {value!r}")
+    return int(value)  # type: ignore[arg-type]
+
+
 def _derive_price_basis(
     price_per_unit: Decimal | None,
     *,
@@ -1450,10 +1465,10 @@ async def import_vehicle_json(
                     normalized_fuel_type.value if normalized_fuel_type is not None else None
                 ),
                 # #164 — direct ORM construction bypasses Pydantic, so the
-                # shared validators run here per-row (R1-M2).
-                octane=_validate_octane(
-                    int(record_data["octane"]) if record_data.get("octane") is not None else None
-                ),
+                # shared validators run here per-row (R1-M2). _coerce_octane
+                # rejects a fractional value instead of silently truncating it
+                # the way a bare int() would (91.9 -> 91; codex review R1-M1).
+                octane=_validate_octane(_coerce_octane(record_data.get("octane"))),
                 diesel_grade=_validate_diesel_grade(record_data.get("diesel_grade")),
                 notes=record_data.get("notes"),
             )

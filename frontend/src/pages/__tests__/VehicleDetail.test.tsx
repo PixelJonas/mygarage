@@ -635,6 +635,31 @@ describe('VehicleDetail', () => {
     expect(mockedVehicleService.getDetailStats).toHaveBeenLastCalledWith('TEST12345678901234')
   })
 
+  it('an older stats response never overwrites a newer one (codex R1-M2: every load carries a generation)', async () => {
+    const deferred: Array<(stats: VehicleDetailStats) => void> = []
+    mockedVehicleService.getDetailStats.mockImplementation(
+      () =>
+        new Promise<VehicleDetailStats>((resolve) => {
+          deferred.push(resolve)
+        }),
+    )
+    renderVehicleDetail('/vehicles/TEST12345678901234?tab=reminders')
+    await waitFor(() => expect(reminderListProps.onStatsChanged).toBeDefined())
+    await waitFor(() => expect(deferred.length).toBe(1)) // the initial load
+
+    act(() => reminderListProps.onStatsChanged?.()) // older refresh
+    act(() => reminderListProps.onStatsChanged?.()) // newest refresh
+    await waitFor(() => expect(deferred.length).toBe(3))
+
+    // Newest resolves FIRST with an overdue count; the two stale responses
+    // then land with zero. The hero badge must survive them.
+    await act(async () => deferred[2]({ overdue_count: 2 } as unknown as VehicleDetailStats))
+    await screen.findByText('vehicleStats.overdue')
+    await act(async () => deferred[1]({ overdue_count: 0 } as unknown as VehicleDetailStats))
+    await act(async () => deferred[0]({ overdue_count: 0 } as unknown as VehicleDetailStats))
+    expect(screen.getByText('vehicleStats.overdue')).toBeInTheDocument()
+  })
+
   it('Reminder switches the active primary tab to Tracking (SDQ-1)', async () => {
     renderVehicleDetail()
     await waitFor(() => expect(screen.getByText('Test Car')).toBeInTheDocument())

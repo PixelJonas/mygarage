@@ -210,45 +210,35 @@ export default function VehicleDetail() {
   // last-fill-up/spent-YTD). Independent secondary fetch — the detail page never
   // blocks on it (the hero renders without the reading/badge and the key-facts
   // strip is omitted entirely until it resolves; no layout is reserved).
-  // B3: clear stats on vin change so B never shows A's numbers, and ignore a
-  // stale A response that resolves after we've navigated to B.
-  useEffect(() => {
-    if (!vin) return
-    let cancelled = false
-    setDetailStats(null)
-    vehicleService
-      .getDetailStats(vin)
-      .then((stats) => {
-        if (!cancelled) setDetailStats(stats)
-      })
-      .catch(() => {
-        if (!cancelled) setDetailStats(null)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [vin])
-
-  // Re-fetch the detail stats after a reminder write (snooze, dismiss,
-  // completion…). The stats are local state, not react-query, so the child's
-  // mutation invalidation cannot refresh them — ReminderList calls back up.
-  // vinRef guards the write like `cancelled` above: a slow response must not
-  // land A's stats on B's page after navigation.
-  const vinRef = useRef(vin)
-  useEffect(() => {
-    vinRef.current = vin
-  }, [vin])
+  //
+  // Every load goes through one generation counter: only the NEWEST request
+  // may write. That covers B3 (a stale A response after navigating to B —
+  // the vin effect bumps the generation) and the refresh race (two rapid
+  // writes whose responses resolve out of order must not leave the older
+  // counts displayed; codex code review R1-M2).
+  const statsGenRef = useRef(0)
   const refreshDetailStats = useCallback(() => {
     if (!vin) return
+    const gen = ++statsGenRef.current
     vehicleService
       .getDetailStats(vin)
       .then((stats) => {
-        if (vinRef.current === vin) setDetailStats(stats)
+        if (statsGenRef.current === gen) setDetailStats(stats)
       })
       .catch(() => {
-        // Keep the stats we have; a failed refresh is not worth blanking the strip.
+        // Keep what is shown; a failed refresh is not worth blanking the strip.
       })
   }, [vin])
+
+  // The stats are local state, not react-query, so a reminder write inside
+  // ReminderList cannot invalidate them — the child calls refreshDetailStats
+  // back up through onStatsChanged.
+  useEffect(() => {
+    if (!vin) return
+    // B3: never show A's numbers on B, even for the moment the fetch takes.
+    setDetailStats(null)
+    refreshDetailStats()
+  }, [vin, refreshDetailStats])
 
   // Handle URL tab parameter from calendar navigation
   useEffect(() => {

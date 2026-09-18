@@ -31,7 +31,13 @@ vi.mock('../../hooks/useReminders', () => ({
   useUnsnoozeReminder: () => ({ mutateAsync: unsnoozeMock, isPending: false }),
 }))
 vi.mock('../CompleteReminderDialog', () => ({ default: () => <div>complete-dialog-open</div> }))
-vi.mock('../ReminderForm', () => ({ default: () => <div>reminder-form-open</div> }))
+const reminderFormProps = vi.hoisted(() => ({ onSuccess: undefined as (() => void) | undefined }))
+vi.mock('../ReminderForm', () => ({
+  default: (props: { onSuccess?: () => void }) => {
+    reminderFormProps.onSuccess = props.onSuccess
+    return <div>reminder-form-open</div>
+  },
+}))
 vi.mock('../../hooks/useLatestMileage', () => ({ useLatestMileage: () => ({ data: null }) }))
 vi.mock('../../hooks/useLatestHours', () => ({ useLatestHours: () => ({ data: null }) }))
 vi.mock('../../hooks/useDateLocale', () => ({ useDateLocale: () => 'en-US' }))
@@ -134,6 +140,16 @@ describe('ReminderList — snoozed chip + unsnooze', () => {
 })
 
 describe('ReminderList — other stat-moving writes also notify', () => {
+  it('a reminder-form save reports a stats change (codex R1-M1: creating an overdue reminder moves the counts too)', async () => {
+    const statsChanged = vi.fn()
+    render(<ReminderList vin="V1" onStatsChanged={statsChanged} />)
+    fireEvent.click(screen.getByRole('button', { name: 'reminderList.addReminder' }))
+    await screen.findByText('reminder-form-open')
+    expect(reminderFormProps.onSuccess).toBeDefined()
+    reminderFormProps.onSuccess?.()
+    expect(statsChanged).toHaveBeenCalled()
+  })
+
   it('a dismiss reports a stats change (the counts move server-side)', async () => {
     const statsChanged = vi.fn()
     render(<ReminderList vin="V1" onStatsChanged={statsChanged} />)

@@ -203,3 +203,50 @@ describe('FuelRecordForm — submit payload', () => {
     expect(mockedApiPut).not.toHaveBeenCalled()
   })
 })
+
+describe('FuelRecordForm — codex code-review fixes', () => {
+  it('an invalid octane hidden by switching to diesel cannot block the save (R1-M3)', async () => {
+    // Multi-fuel vehicle so the fuel_type_used select renders.
+    mockGets(mockVehicle({ fuel_type: 'gasoline', fuel_type_secondary: 'diesel' } as never))
+    render(
+      <FuelRecordForm
+        {...DEFAULT_PROPS}
+        record={{ id: 8, vin: DEFAULT_PROPS.vin, date: '2026-05-01', fuel_type_used: 'gasoline' } as never}
+      />,
+    )
+    await waitFor(() => expect(octaneInput()).toBeInTheDocument())
+    fireEvent.change(octaneInput()!, { target: { value: '893' } })
+
+    const fuelTypeSelect = document.getElementById('fuel_type_used') as HTMLSelectElement
+    fireEvent.change(fuelTypeSelect, { target: { value: 'diesel' } })
+    await waitFor(() => expect(octaneInput()).not.toBeInTheDocument())
+
+    fireEvent.submit(drawerForm())
+    await waitFor(() => expect(mockedApiPut).toHaveBeenCalled())
+    const body = mockedApiPut.mock.calls.at(-1)?.[1] as Record<string, unknown>
+    expect(body.octane).toBeNull()
+    expect(body.fuel_type_used).toBe('diesel')
+  })
+
+  it('a value typed and cleared before the history resolves stays cleared (R1-M4)', async () => {
+    let resolveHistory: (v: unknown) => void = () => {}
+    mockedApiGet.mockImplementation((url: string) => {
+      if (String(url).includes('/fuel')) {
+        return new Promise((resolve) => {
+          resolveHistory = resolve
+        })
+      }
+      return Promise.resolve({ data: mockVehicle({ fuel_type: 'gasoline' }) })
+    })
+    render(<FuelRecordForm {...DEFAULT_PROPS} />)
+    await waitFor(() => expect(octaneInput()).toBeInTheDocument())
+
+    fireEvent.change(octaneInput()!, { target: { value: '91' } })
+    fireEvent.change(octaneInput()!, { target: { value: '' } })
+
+    resolveHistory({ data: { records: [{ id: 9, octane: 93 }] } })
+    // Give the resolved promise's then() a tick to (not) write.
+    await new Promise((r) => setTimeout(r, 0))
+    expect(octaneInput()?.value).toBe('')
+  })
+})

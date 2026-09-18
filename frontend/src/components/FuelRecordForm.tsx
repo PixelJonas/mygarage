@@ -431,7 +431,21 @@ export default function FuelRecordForm({ vin, record, onClose, onSuccess }: Fuel
 
   // #164 — create-mode prefill: people buy the same fuel at the same pump,
   // so seed octane / diesel grade from the newest fill-up (client-side, the
-  // existing list endpoint) unless the user already typed one.
+  // existing list endpoint). A field the user has TOUCHED is never seeded —
+  // "currently empty" is not enough, because typing and then clearing before
+  // the fetch resolves is a deliberate clear the prefill must not undo
+  // (codex code review R1-M4). The subscription marks any octane/diesel_grade
+  // change, including the form's own setValue calls, which is fine: those all
+  // happen after (prefill itself, and the hidden-field clears below).
+  const gradeTouchedRef = useRef({ octane: false, diesel_grade: false })
+  useEffect(() => {
+    const subscription = watch((_, { name }) => {
+      if (name === 'octane') gradeTouchedRef.current.octane = true
+      if (name === 'diesel_grade') gradeTouchedRef.current.diesel_grade = true
+    })
+    return () => subscription.unsubscribe()
+  }, [watch])
+
   useEffect(() => {
     if (record) return
     let cancelled = false
@@ -443,10 +457,14 @@ export default function FuelRecordForm({ vin, record, onClose, onSuccess }: Fuel
           | { octane?: number | null; diesel_grade?: 'onroad' | 'offroad' | null }
           | undefined
         if (!last) return
-        if (last.octane != null && getValues('octane') == null) {
+        if (last.octane != null && !gradeTouchedRef.current.octane && getValues('octane') == null) {
           setValue('octane', last.octane)
         }
-        if (last.diesel_grade != null && !getValues('diesel_grade')) {
+        if (
+          last.diesel_grade != null &&
+          !gradeTouchedRef.current.diesel_grade &&
+          !getValues('diesel_grade')
+        ) {
           setValue('diesel_grade', last.diesel_grade)
         }
       })
@@ -456,7 +474,7 @@ export default function FuelRecordForm({ vin, record, onClose, onSuccess }: Fuel
     return () => {
       cancelled = true
     }
-  }, [vin, record, setValue, getValues])
+  }, [vin, record, setValue, getValues, watch])
 
   // Station autocomplete state — drives both the textbox and the FK pick.
   // Seed from the resolved `station_name`, not the freetext: picking an
@@ -934,6 +952,20 @@ export default function FuelRecordForm({ vin, record, onClose, onSuccess }: Fuel
   const effectiveFuelLower = (effectiveFuelType || '').toLowerCase()
   const showOctane = effectiveFuelLower.includes('gasoline') || effectiveFuelLower === 'e85'
   const showDieselGrade = isDieselFuelType(effectiveFuelType)
+
+  // Switching the fuel dispensed hides a grade field; clear it, or a stale
+  // hidden value keeps failing validation with an error the user cannot see
+  // and blocks the save (codex code review R1-M3). Only a true->false FLIP
+  // clears: on mount prev is null, so a legacy value on a record whose type
+  // never showed the field this session is left alone.
+  const prevGradeVisibilityRef = useRef<{ octane: boolean; grade: boolean } | null>(null)
+  useEffect(() => {
+    const prev = prevGradeVisibilityRef.current
+    prevGradeVisibilityRef.current = { octane: showOctane, grade: showDieselGrade }
+    if (!prev) return
+    if (prev.octane && !showOctane) setValue('octane', undefined)
+    if (prev.grade && !showDieselGrade) setValue('diesel_grade', undefined)
+  }, [showOctane, showDieselGrade, setValue])
 
   // Dynamic labels. The denominator follows the PRICE BASIS, not the volume
   // unit alone: `priceToDisplay` scales a `per_weight` price by the resolved

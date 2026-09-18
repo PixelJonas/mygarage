@@ -25,6 +25,12 @@ from app.utils.odometer_tolerance import odometer_below
 #: source may take one over.
 TIRE_MARKER_PREFIX = "[AUTO-SYNC from tire"
 
+#: Sources that own exactly ONE odometer row per source record: their marker
+#: embeds a per-record id and their edit paths move that row across dates
+#: (issue #171). Tire markers are keyed by tire/period/event and mark one row
+#: per reading date, so they must never get the vin-wide identity lookup.
+SINGLE_ROW_SOURCES = frozenset({"fuel", "service_visit", "def"})
+
 
 def is_tire_marked(record: OdometerRecord) -> bool:
     """Whether a tire event wrote this odometer record."""
@@ -162,13 +168,22 @@ async def sync_odometer_from_record(
     # service/livelink the FK stays NULL (no fuel parent to cascade from).
     fk_value = source_id if source_type == "fuel" else None
 
-    own = await _own_records(db, vin, marker, source_type, source_id)
-    existing = own[0] if own else None
-    for extra in own[1:]:
-        # Self-heal: pre-fix date edits left one owned row per edit behind
-        # (issue #171). Keep the newest, drop the leftovers; migration 106
-        # repairs stocks this path never revisits.
-        await db.delete(extra)
+    if source_type in SINGLE_ROW_SOURCES:
+        own = await _own_records(db, vin, marker, source_type, source_id)
+        existing = own[0] if own else None
+        for extra in own[1:]:
+            # Self-heal: pre-fix date edits left one owned row per edit behind
+            # (issue #171). Keep the newest, drop the leftovers; migration 106
+            # repairs stocks this path never revisits.
+            await db.delete(extra)
+    else:
+        # Tire publishes: their markers are keyed by tire/period/event, not by
+        # reading, so ONE marker legitimately marks a row per reading date. A
+        # vin-wide identity lookup here collapsed that history into the newest
+        # row (codex code review R1-H1), so identity stays DATE-scoped — the
+        # pre-#171 shape. The period editor moves rows by its own marker.
+        same_day = await same_day_records(db, vin, date)
+        existing = next((row for row in same_day if row.notes == marker), None)
 
     if existing is None:
         if claim_other_records:

@@ -266,3 +266,40 @@ class TestOctaneGradeRoundTrip:
         # the import constructor silently dropped them until this change.
         assert mine[0]["fuel_type_used"] == "gasoline"
         assert mine[0]["is_hauling"] is True
+
+
+class TestJsonOctaneCoercion:
+    async def test_a_fractional_octane_fails_its_row_instead_of_truncating(
+        self, client, auth_headers, test_vehicle
+    ):
+        """Codex code review R1-M1: a bare int() stored 91.9 as 91 and let
+        150.9 sneak under the API's 150 bound. A fractional octane must fail
+        that row like any other bad field, never persist rounded."""
+        import json as jsonlib
+
+        vin = test_vehicle["vin"]
+        backup = {
+            "fuel_records": [
+                {"date": "2026-05-10", "odometer_km": 201000.0, "liters": 40.0, "octane": 91.9},
+                {"date": "2026-05-11", "odometer_km": 201100.0, "liters": 40.0, "octane": 150.9},
+                {"date": "2026-05-12", "odometer_km": 201200.0, "liters": 40.0, "octane": 91.0},
+            ]
+        }
+        r = await client.post(
+            f"/api/import/vehicles/{vin}/json",
+            headers=auth_headers,
+            files={
+                "file": ("backup.json", BytesIO(jsonlib.dumps(backup).encode()), "application/json")
+            },
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["fuel_records"]["errors"] == 2, body
+        assert body["fuel_records"]["success"] == 1, body
+
+        r = await client.get(f"/api/vehicles/{vin}/fuel", headers=auth_headers)
+        records = r.json()["records"]
+        assert not [x for x in records if x["date"] in ("2026-05-10", "2026-05-11")]
+        # An integral float is fine: 91.0 is 91, not a truncation.
+        good = [x for x in records if x["date"] == "2026-05-12"]
+        assert good and good[0]["octane"] == 91
