@@ -38,7 +38,7 @@ from app.services.tire_service import (
     publish_tire_odometer,
 )
 from app.services.vehicle_lock import lock_vehicle_for_write
-from app.utils.datetime_utils import utc_now
+from app.utils.household_time import household_today
 from app.utils.logging_utils import sanitize_for_log
 
 logger = logging.getLogger(__name__)
@@ -287,7 +287,7 @@ class TireSetService:
         # identical one, splitting its history at a moment when nothing
         # happened to it.
         moving = [tire for tire in members if tire.position != destinations[tire.id]]
-        when = data.mounted_on or utc_now().date()
+        when = data.mounted_on or household_today()
 
         # Every tire the fit touches, coming off as well as going on. A
         # backdated fit closes each displaced tire's period at the same `when`,

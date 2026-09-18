@@ -149,6 +149,10 @@ test.describe('Tires', () => {
           tread_depth_mm: 8,
           min_tread_mm: 2,
           mounted_odometer_km: 1000,
+          // Explicit past date: this spec is about the dismount flow, not
+          // about whether the server's default "today" matches the browser's
+          // (that contract has its own spec, household-timezone.spec.ts).
+          mounted_on: '2026-04-01',
         },
       }
     )
@@ -584,6 +588,8 @@ test.describe('Tire rotation and retirement', () => {
             brand: `E2E Rot ${position}`,
             tread_depth_mm: 8,
             mounted_odometer_km: 1000,
+            // Past date for the same reason as the dismount seed above.
+            mounted_on: '2026-04-01',
           },
         }
       )
@@ -799,6 +805,8 @@ test.describe('Tire rotation and retirement, through the UI', () => {
         brand: 'E2E RetireUI',
         tread_depth_mm: 8,
         mounted_odometer_km: 1000,
+        // Past date for the same reason as the dismount seed above.
+        mounted_on: '2026-04-01',
       },
     })
     expect(created.status(), await created.text()).toBe(201)

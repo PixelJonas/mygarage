@@ -6,7 +6,7 @@ import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -15,6 +15,7 @@ from slowapi.util import get_remote_address
 
 from app.config import settings
 from app.database import init_db
+from app.utils.household_time import household_zone_dependency
 
 
 def _configure_logging() -> None:
@@ -200,6 +201,10 @@ app = FastAPI(
     description="Self-hosted vehicle maintenance tracking application",
     lifespan=lifespan,
     root_path=settings.root_path,
+    # The household zone is read per request with the request's own session
+    # (FastAPI de-duplicates get_db), so every writer of the timezone row is
+    # covered without invalidation code.
+    dependencies=[Depends(household_zone_dependency)],
 )
 
 # Configure rate limiting

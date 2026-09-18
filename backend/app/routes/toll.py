@@ -26,6 +26,7 @@ from app.schemas.toll import (
 from app.services.auth import get_vehicle_or_403, require_auth
 from app.services.toll_service import TollService
 from app.utils.csv_safe import sanitize_csv_row
+from app.utils.household_time import household_today
 
 logger = logging.getLogger(__name__)
 
@@ -247,6 +248,6 @@ async def export_toll_transactions_csv(
         content=csv_content,
         media_type="text/csv",
         headers={
-            "Content-Disposition": f"attachment; filename=toll_transactions_{vin}_{dt.date.today().isoformat()}.csv"
+            "Content-Disposition": f"attachment; filename=toll_transactions_{vin}_{household_today().isoformat()}.csv"
         },
     )

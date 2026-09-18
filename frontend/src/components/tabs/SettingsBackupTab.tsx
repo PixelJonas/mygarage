@@ -16,6 +16,7 @@ import api from '@/services/api'
 import { getActionErrorMessage } from '@/utils/httpErrorHandler'
 import { formatDateTime } from '@/utils/parseAPITimestamp'
 import { useTimeFormat } from '@/hooks/useTimeFormat'
+import { useAuth } from '@/contexts/AuthContext'
 
 interface BackupFile {
   filename: string
@@ -57,6 +58,7 @@ function isPostgresBackupTarget(stats: BackupStats | null): boolean {
 
 export default function SettingsBackupTab() {
   const { t } = useTranslation('settings')
+  const { refreshPublicSettings } = useAuth()
   const { timeFormat } = useTimeFormat()
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState<BackupStats | null>(null)
@@ -161,6 +163,9 @@ export default function SettingsBackupTab() {
       })
 
       await loadData()
+      // A restored settings file can carry a different timezone row; update
+      // the browser stores (household zone, unit defaults) right away.
+      await refreshPublicSettings()
 
       if (isFullBackup) {
         setMessage({

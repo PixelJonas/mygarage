@@ -27,6 +27,7 @@ from app.schemas.family import (
 )
 from app.services.hours_service import latest_engine_hours_and_date
 from app.services.reminder_service import is_reminder_overdue
+from app.utils.household_time import household_today
 from app.utils.logging_utils import sanitize_for_log
 
 logger = logging.getLogger(__name__)
@@ -150,7 +151,7 @@ class FamilyDashboardService:
 
     async def _build_vehicle_summary(self, vehicle: Vehicle) -> FamilyVehicleSummary:
         """Build a vehicle summary with service and maintenance schedule info."""
-        today = date.today()
+        today = household_today()
 
         # Get last service visit with line items.
         # NB: this loads line_items only (reads line-item scalars below). If you ever

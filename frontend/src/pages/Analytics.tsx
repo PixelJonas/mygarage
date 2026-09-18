@@ -76,6 +76,7 @@ import { formatDateForDisplay } from '../utils/dateUtils'
 import { useCurrencyPreference } from '../hooks/useCurrencyPreference'
 import { useCurrencySymbol } from '../hooks/useCurrencySymbol'
 import { useDateLocale } from '../hooks/useDateLocale'
+import { formatDateForInput } from '@/utils/dateUtils'
 
 /**
  * Backend prediction confidence -> translation key.
@@ -369,7 +370,7 @@ export default function Analytics() {
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
     const link = document.createElement('a')
     link.href = URL.createObjectURL(blob)
-    link.download = `mygarage-analytics-${analytics.vin}-${new Date().toISOString().split('T')[0]}.csv`
+    link.download = `mygarage-analytics-${analytics.vin}-${formatDateForInput()}.csv`
     link.click()
   }
 

@@ -140,6 +140,8 @@ vi.mock('@/contexts/AuthContext', () => ({
     publicSettingsLoaded: true,
     user: h.user,
     refreshUser: vi.fn(),
+    refreshPublicSettings: vi.fn(),
+    householdTimeZone: null,
   }),
 }))
 

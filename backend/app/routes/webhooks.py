@@ -37,6 +37,7 @@ from app.services.fuel_side_effects import (
     invalidate_cache_for_vehicle,
 )
 from app.services.settings_service import SettingsService
+from app.utils.household_time import household_today
 from app.utils.units import UnitConverter
 
 logger = logging.getLogger(__name__)
@@ -162,7 +163,7 @@ async def _resolve_vehicle(db: AsyncSession, vin_or_nick: str) -> Vehicle:
 
 async def _create_fuel_record(db: AsyncSession, payload: WebhookFuelPayload) -> dict[str, Any]:
     vehicle = await _resolve_vehicle(db, payload.vin)
-    fill_date = payload.date or date_type.today()
+    fill_date = payload.date or household_today()
     price_basis = payload.price_basis
     if price_basis is None and payload.kwh is not None:
         price_basis = "per_kwh"
@@ -221,7 +222,7 @@ async def webhook_odometer(
     vehicle = await _resolve_vehicle(db, payload.vin)
     reading = OdometerRecord(
         vin=vehicle.vin,
-        date=payload.date or date_type.today(),
+        date=payload.date or household_today(),
         odometer_km=payload.odometer_km,
         notes=payload.notes,
         source="webhook",
@@ -257,8 +258,6 @@ async def webhook_complete_reminder(
     # the legacy completion so a recurring reminder still gets its successor,
     # anchored on today and the nearest readings.
     if reminder.status == "pending":
-        from datetime import date
-
         from app.schemas.maintenance import ReminderCompleteRequest
         from app.services.maintenance_service import complete_reminder
 
@@ -266,7 +265,7 @@ async def webhook_complete_reminder(
             db,
             vehicle.vin,
             reminder.id,
-            ReminderCompleteRequest(completed_date=date.today(), mode="mark_only"),
+            ReminderCompleteRequest(completed_date=household_today(), mode="mark_only"),
         )
         return {"id": result.reminder.id, "status": result.reminder.status}
     reminder.status = "done"

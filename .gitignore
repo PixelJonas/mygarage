@@ -93,6 +93,8 @@ data/
 # Keep packaged static data (reminder packs, etc.) under the app tree
 !backend/app/data/
 !backend/app/data/**
+# ...but never bytecode: the ** negation above would re-include it.
+backend/app/data/**/__pycache__/
 *.db
 *.db-shm
 *.db-wal

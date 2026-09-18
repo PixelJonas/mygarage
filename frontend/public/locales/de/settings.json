@@ -15,7 +15,7 @@
   },
   "timezone": {
     "label": "Zeitzone",
-    "description": "Beeinflusst Protokoll-Zeitstempel, geplante Aufgaben und Datumsanzeigen in der gesamten Anwendung."
+    "description": "Der Kalendertag, den MyGarage für Fälligkeiten, Überfällig-Markierungen, Benachrichtigungen und vorausgefüllte Formulardaten verwendet. Log-Zeitstempel bleiben in UTC."
   },
   "debug": {
     "label": "Debug-Modus",

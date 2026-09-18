@@ -9,6 +9,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.utils.household_time import household_today
+
 TirePosition = Literal["FL", "FR", "RL", "RR", "SPARE"]
 TIRE_POSITIONS: tuple[str, ...] = ("FL", "FR", "RL", "RR", "SPARE")
 
@@ -276,7 +278,7 @@ class MountPeriodCreate(BaseModel):
     def _a_closed_period_in_the_past(self) -> MountPeriodCreate:
         if self.dismounted_on < self.mounted_on:
             raise ValueError("dismounted_on cannot be before mounted_on")
-        if self.dismounted_on > date_type.today() + timedelta(days=1):
+        if self.dismounted_on > household_today() + timedelta(days=1):
             raise ValueError("dismounted_on cannot be in the future")
         return self
 

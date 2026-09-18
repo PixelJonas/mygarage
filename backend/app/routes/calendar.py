@@ -29,6 +29,7 @@ from app.services.reminder_service import (
     calculate_smart_estimated_date,
     get_current_hours,
 )
+from app.utils.household_time import household_today
 
 router = APIRouter(prefix="/api", tags=["calendar"])
 
@@ -41,7 +42,7 @@ def calculate_urgency(event_date: date, is_overdue: bool) -> UrgencyLevel:
     if is_overdue:
         return "overdue"
 
-    days_until = (event_date - date.today()).days
+    days_until = (event_date - household_today()).days
 
     if days_until <= 7:
         return "high"
@@ -66,9 +67,9 @@ async def get_calendar_events(
 
     # Set default date range if not provided
     if start_date is None:
-        start_date = date.today() - timedelta(days=30)
+        start_date = household_today() - timedelta(days=30)
     if end_date is None:
-        end_date = date.today() + timedelta(days=365)
+        end_date = household_today() + timedelta(days=365)
 
     # Parse filters
     vin_list = vehicle_vins.split(",") if vehicle_vins else None
@@ -99,7 +100,7 @@ async def get_calendar_events(
         allowed_vins = allowed_vins & set(vin_list)
 
     events = []
-    today = date.today()
+    today = household_today()
 
     # Fetch pending reminders for calendar
     if "maintenance" in type_list:
@@ -430,7 +431,7 @@ async def estimate_date_from_mileage(
 
     if km_remaining <= 0:
         # Already past due
-        return date.today()
+        return household_today()
 
     # Get average km per day
     avg_km_per_day = await calculate_average_km_per_day(vin, db)
@@ -442,7 +443,7 @@ async def estimate_date_from_mileage(
     # Calculate estimated days until due
     days_until_due = int(float(km_remaining) / avg_km_per_day)
 
-    return date.today() + timedelta(days=days_until_due)
+    return household_today() + timedelta(days=days_until_due)
 
 
 async def estimate_date_from_hours(vin: str, due_hours: Decimal, db: AsyncSession) -> date | None:
@@ -470,7 +471,7 @@ async def estimate_date_from_hours(vin: str, due_hours: Decimal, db: AsyncSessio
 
     if hours_remaining <= 0:
         # Already past due
-        return date.today()
+        return household_today()
 
     # Get average engine-hours per day
     avg_hours_per_day = await calculate_hours_driving_rate(vin, db)
@@ -555,6 +556,6 @@ async def export_calendar_ical(
         content=ical.getvalue(),
         media_type="text/calendar",
         headers={
-            "Content-Disposition": f"attachment; filename=mygarage-calendar-{date.today().strftime('%Y%m%d')}.ics"
+            "Content-Disposition": f"attachment; filename=mygarage-calendar-{household_today().strftime('%Y%m%d')}.ics"
         },
     )

@@ -61,6 +61,7 @@ from app.services.reminder_service import (
 from app.services.vehicle_lock import lock_vehicle_for_write
 from app.utils.cache import invalidate_cache_for_vehicle
 from app.utils.datetime_utils import utc_now
+from app.utils.household_time import household_today
 from app.utils.logging_utils import sanitize_for_log
 from app.utils.maintenance_types import get_compiled, label_for, normalise, resolve_type
 
@@ -223,7 +224,7 @@ async def _retype(db: AsyncSession, rule: MaintenanceRule, maintenance_type: str
     pending.maintenance_type = maintenance_type
     anchor = await best_anchor(db, rule)
     if anchor is None:
-        anchor = await baseline_anchor(db, rule.vin, date.today())
+        anchor = await baseline_anchor(db, rule.vin, household_today())
     await _reanchor(db, pending, rule, anchor)
 
 
@@ -688,7 +689,7 @@ async def reconcile_rule(
     Writes only what differs, so calling it again is a no-op.
     """
     if today is None:
-        today = date.today()
+        today = household_today()
     pending = await _pending_reminder(db, rule.id)
 
     # 0. Refresh a service-anchored reminder from its visit. When that service
@@ -865,7 +866,7 @@ async def create_recurring_reminder(db: AsyncSession, vin: str, data: ReminderCr
     ):
         explicit = Anchor(
             "completion",
-            data.anchor.date or date.today(),
+            data.anchor.date or household_today(),
             data.anchor.odometer_km,
             data.anchor.hours,
         )
@@ -1405,7 +1406,7 @@ async def plan_pack(
 ) -> ApplyPackPreview:
     """The preview: the same decisions `apply_pack` makes, with no writes."""
     if today is None:
-        today = date.today()
+        today = household_today()
     chosen = await _validate_anchor_choices(db, vin, pack, anchors)
     items = [
         await _plan_item(db, vin, item, chosen.get(item.key or ""), today, for_preview=True)
@@ -1428,7 +1429,7 @@ async def apply_pack(
     order, so the response shape stays the list it always was.
     """
     if today is None:
-        today = date.today()
+        today = household_today()
     await lock_vehicle_for_write(db, vin)
     chosen = await _validate_anchor_choices(db, vin, pack, anchors)
     results: list[Reminder] = []

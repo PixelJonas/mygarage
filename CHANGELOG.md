@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reminder packs declare `maintenance_type` and intervals (`interval_km`, `interval_months`, `interval_days`, `interval_hours`); the v3.4 keys still load.
 
 ### Fixed
+- Server and browser now compute "today" in one household time zone (Settings -> System -> Timezone, then MYGARAGE_TIMEZONE, then the container zone); tire defaults used UTC and everything else used the container zone, so evening dates disagreed west of Greenwich.
+- An incidental timezone=UTC settings row written by earlier System-tab saves is removed once at upgrade when the container zone differs; re-select UTC in Settings if you had deliberately chosen it.
 - Backend log statements sanitize user-provided values (CodeQL log-injection).
 - Importing with Skip duplicates dropped a second reading from the same day.
 - Applying a pack no longer duplicates a reminder already tracking the same maintenance.

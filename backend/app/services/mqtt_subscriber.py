@@ -19,6 +19,7 @@ from app.services.settings_service import SettingsService
 from app.services.telemetry_service import TelemetryService
 from app.utils.autopid_normalizer import normalize_autopid_data
 from app.utils.datetime_utils import utc_now
+from app.utils.household_time import load_household_zone
 from app.utils.logging_utils import sanitize_for_log
 
 logger = logging.getLogger(__name__)
@@ -127,6 +128,7 @@ class MQTTSubscriber:
     async def _get_config(self) -> dict[str, Any] | None:
         """Get MQTT configuration from settings."""
         async with AsyncSessionLocal() as db:
+            await load_household_zone(db)
             enabled = await SettingsService.get(db, "livelink_mqtt_enabled")
             if not enabled or enabled.value != "true":
                 return None
@@ -277,6 +279,7 @@ class MQTTSubscriber:
 
         # Route to appropriate handler
         async with AsyncSessionLocal() as db:
+            await load_household_zone(db)
             try:
                 if subtopic == "can/status":
                     await self._handle_status(db, device_id, data)

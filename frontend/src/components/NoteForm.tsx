@@ -9,6 +9,7 @@ import type { Note, NoteCreate, NoteUpdate } from '../types/note'
 import { makeNoteSchema, type NoteFormData } from '../schemas/note'
 import { useCreateNote, useUpdateNote } from '../hooks/queries/useNotes'
 import { useFormSubmit } from '../hooks/useFormSubmit'
+import { formatDateForInput } from '@/utils/dateUtils'
 
 interface NoteFormProps {
   vin: string
@@ -57,7 +58,7 @@ export default function NoteForm({ vin, note, onClose, onSuccess }: NoteFormProp
   } = useForm<NoteFormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      date: note?.date || new Date().toISOString().split('T')[0],
+      date: note?.date || formatDateForInput(),
       title: note?.title || '',
       content: note?.content || '',
     },

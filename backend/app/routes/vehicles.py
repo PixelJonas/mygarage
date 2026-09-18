@@ -42,6 +42,7 @@ from app.services.reminder_service import is_reminder_overdue
 from app.services.service_visit_service import service_visit_cost_load_options
 from app.services.vehicle_service import VehicleService
 from app.utils.datetime_utils import utc_now
+from app.utils.household_time import household_today
 from app.utils.logging_utils import sanitize_for_log
 
 logger = logging.getLogger(__name__)
@@ -136,7 +137,7 @@ async def _vehicle_detail_stats(db: AsyncSession, vin: str) -> VehicleDetailStat
     float. latest_odometer_km stays raw canonical km (converted at the API
     boundary on the client).
     """
-    today = date.today()
+    today = household_today()
     year = today.year
     year_start = date(year, 1, 1)
 

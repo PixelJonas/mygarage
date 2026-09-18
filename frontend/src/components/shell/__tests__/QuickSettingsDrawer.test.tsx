@@ -9,6 +9,8 @@ import { ACCENT_KEYS } from '../../../constants/accents'
 const h = vi.hoisted(() => ({
   setAccent: vi.fn(),
   refreshUser: vi.fn(),
+    refreshPublicSettings: vi.fn(),
+    householdTimeZone: null,
   logout: vi.fn(),
   navigate: vi.fn(),
   put: vi.fn(),

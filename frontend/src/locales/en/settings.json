@@ -15,7 +15,7 @@
   },
   "timezone": {
     "label": "Timezone",
-    "description": "Affects log timestamps, scheduled tasks, and date displays throughout the application."
+    "description": "The calendar day MyGarage uses for due dates, overdue badges, notifications and the dates forms fill in. Log timestamps stay in UTC."
   },
   "debug": {
     "label": "Debug Mode",

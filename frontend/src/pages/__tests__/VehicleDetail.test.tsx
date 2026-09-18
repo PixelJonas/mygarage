@@ -111,7 +111,8 @@ vi.mock('../../contexts/AuthContext', () => ({
     login: vi.fn(),
     register: vi.fn(),
     logout: vi.fn(),
-    refreshUser: vi.fn(),
+    refreshUser: vi.fn(), refreshPublicSettings: vi.fn(),
+    householdTimeZone: null,
     setAuthToken: vi.fn(),
   })),
 }))
@@ -473,7 +474,8 @@ describe('VehicleDetail', () => {
       login: vi.fn(),
       register: vi.fn(),
       logout: vi.fn(),
-      refreshUser: vi.fn(),
+      refreshUser: vi.fn(), refreshPublicSettings: vi.fn(),
+    householdTimeZone: null,
       setAuthToken: vi.fn(),
     })
 

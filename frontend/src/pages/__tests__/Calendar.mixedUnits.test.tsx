@@ -58,6 +58,10 @@ vi.mock('../../services/api', () => ({
   default: { get: (...args: unknown[]) => apiGet(...args), post: vi.fn() },
 }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+// CalendarPage reads the household zone from the auth context (R1-M1/M2).
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({ householdTimeZone: null, refreshPublicSettings: vi.fn() }),
+}))
 vi.mock('../../hooks/useTimeFormat', () => ({ useTimeFormat: () => ({ timeFormat: 24 }) }))
 vi.mock('../../hooks/useDateLocale', () => ({ useDateLocale: () => 'en-US' }))
 

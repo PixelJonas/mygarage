@@ -72,6 +72,7 @@ from app.services.odometer_service import latest_odometer_km_and_date
 from app.services.service_visit_service import service_visit_cost_load_options
 from app.services.tire_service import TireService
 from app.utils.cache import cached
+from app.utils.household_time import household_today
 from app.utils.logging_utils import sanitize_for_log
 from app.utils.render_context import render_context_for_request
 
@@ -175,7 +176,7 @@ def filter_anomalies_to_window(
     if anomaly_range == "all":
         return list(anomalies)
 
-    today = date_type.today()
+    today = household_today()
     start: date_type | None = None
     end: date_type | None = today
 
@@ -728,7 +729,7 @@ async def get_maintenance_predictions(
 
     # Generate predictions
     predictions = []
-    today = date_type.today()
+    today = household_today()
 
     for service_type, intervals in service_intervals.items():
         if not intervals:
@@ -904,7 +905,7 @@ async def get_vehicle_analytics(
         if days_owned > 0:
             average_km_per_month = (total_km_driven / Decimal(str(days_owned))) * Decimal("30")
     elif vehicle.purchase_date:
-        days_owned = (date_type.today() - vehicle.purchase_date).days
+        days_owned = (household_today() - vehicle.purchase_date).days
 
     vehicle_name = f"{vehicle.year} {vehicle.make} {vehicle.model}"
 

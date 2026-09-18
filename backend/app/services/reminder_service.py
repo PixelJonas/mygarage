@@ -17,6 +17,7 @@ from app.schemas.reminder import ReminderCreate, ReminderResponse, ReminderUpdat
 from app.services.hours_service import latest_engine_hours_and_date
 from app.services.maintenance_recurrence import project_usage_date
 from app.utils.hours_formatting import format_hours
+from app.utils.household_time import household_today
 from app.utils.logging_utils import sanitize_for_log
 from app.utils.maintenance_types import classify
 from app.utils.render_context import RenderContext, render_context_for_vehicle
@@ -68,7 +69,7 @@ async def calculate_driving_rate(vin: str, db: AsyncSession) -> float | None:
 
     Returns None if fewer than 2 records in the window.
     """
-    cutoff = date.today() - timedelta(days=90)
+    cutoff = household_today() - timedelta(days=90)
     result = await db.execute(
         select(
             func.min(OdometerRecord.odometer_km),
@@ -117,7 +118,7 @@ async def calculate_hours_driving_rate(vin: str, db: AsyncSession) -> float | No
 
     Returns None if fewer than 2 records in the window.
     """
-    cutoff = date.today() - timedelta(days=90)
+    cutoff = household_today() - timedelta(days=90)
     result = await db.execute(
         select(
             func.min(HoursRecord.engine_hours),
@@ -183,13 +184,13 @@ def is_reminder_overdue(
         current_hours: The vehicle's current engine-hours reading, or
             ``None`` if no reading exists yet.
         today: Override for "today" (tests only); defaults to
-            ``date.today()``.
+            ``household_today()``.
 
     Returns:
         ``True`` if the reminder is overdue by date, mileage, or hours.
     """
     if today is None:
-        today = date.today()
+        today = household_today()
     if reminder.due_date and reminder.due_date <= today:
         return True
     if reminder.due_mileage_km and current_km and current_km >= reminder.due_mileage_km:
@@ -207,9 +208,9 @@ def calculate_smart_estimated_date(
 ) -> date:
     """Estimate when km target will be hit. Never later than hard_date."""
     if target_odometer_km <= current_odometer_km:
-        return date.today()
+        return household_today()
     days = float(target_odometer_km - current_odometer_km) / avg_km_per_day
-    estimated = date.today() + timedelta(days=days)
+    estimated = household_today() + timedelta(days=days)
     return min(estimated, hard_date)
 
 
@@ -365,7 +366,7 @@ async def enrich_with_estimate(reminder: Reminder, db: AsyncSession) -> Reminder
         current = await get_current_hours(reminder.vin, db)
         target = reminder.due_hours
     if rate and current is not None and target is not None:
-        projected = project_usage_date(current, target, rate, date.today())
+        projected = project_usage_date(current, target, rate, household_today())
         response.projected_usage_date = projected
         if projected is not None:
             response.estimated_due_date = (
@@ -415,7 +416,7 @@ async def check_due_reminders(db: AsyncSession) -> None:
     from app.services.notifications.dispatcher import NotificationDispatcher
 
     now = datetime.now(UTC)
-    today = date.today()
+    today = household_today()
 
     # Get all pending reminders
     result = await db.execute(select(Reminder).where(Reminder.status == "pending"))

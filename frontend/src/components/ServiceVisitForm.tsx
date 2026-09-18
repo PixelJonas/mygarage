@@ -30,6 +30,7 @@ import { applyControlledFieldErrors } from '../hooks/useApiFormErrors'
 import { Button, Field, Input, Textarea, Mono } from './ui'
 import { formatCurrency, formatCurrencyZero } from '../utils/formatUtils'
 import { useCurrencyPreference } from '../hooks/useCurrencyPreference'
+import { formatDateForInput } from '@/utils/dateUtils'
 
 // Shared by the edit-hydration effect (canonical -> display, via
 // canonicalToDisplay) and mapSuppliesUsedForSubmit (display -> canonical, via
@@ -177,8 +178,7 @@ export default function ServiceVisitForm({
 
   // Form state
   const [formData, setFormData] = useState<ServiceVisitFormData>(() => {
-    const today = new Date()
-    const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+    const dateStr = formatDateForInput()
 
     if (visit) {
       return {
