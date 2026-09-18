@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.5.0] - 2026-09-18
+
 ### Added
 - Reminder snooze: hide a pending reminder from overdue/upcoming counts and notifications until a date; due dates stay unchanged.
 - Octane and diesel grade (on-road/off-road) on fuel records, prefilled from the last fill-up (#164).
