@@ -265,6 +265,20 @@ class DeviceFirmwareStatus(BaseModel):
     update_available: bool | None = False
     release_url: str | None = None
     firmware_track: str | None = None
+    #: The version the admin chose to skip (silences its notification and
+    #: badge until a newer release). Surfaced so the UI can show "Skipped
+    #: vX" instead of the update badge.
+    skipped_version: str | None = None
+
+
+class FirmwareSkipRequest(BaseModel):
+    """Body of POST /devices/{device_id}/firmware/skip.
+
+    The client names the version it saw, so a release landing between
+    render and click is never silently skipped.
+    """
+
+    version: str = Field(..., min_length=1, max_length=20)
 
 
 # =============================================================================

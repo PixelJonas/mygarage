@@ -168,6 +168,29 @@ export const livelinkService = {
     return response.data
   },
 
+  /**
+   * Skip firmware-update notifications for one release on one device.
+   * The version is the one the client saw, so a release landing between
+   * render and click is never silently skipped.
+   */
+  async skipFirmwareVersion(deviceId: string, version: string): Promise<DeviceFirmwareStatus> {
+    const response = await api.post<DeviceFirmwareStatus>(
+      `/livelink/devices/${deviceId}/firmware/skip`,
+      { version },
+    )
+    return response.data
+  },
+
+  /**
+   * Clear a device's skipped firmware version.
+   */
+  async unskipFirmwareVersion(deviceId: string): Promise<DeviceFirmwareStatus> {
+    const response = await api.delete<DeviceFirmwareStatus>(
+      `/livelink/devices/${deviceId}/firmware/skip`,
+    )
+    return response.data
+  },
+
   // ===========================================================================
   // DTC Definitions (lookup database)
   // ===========================================================================

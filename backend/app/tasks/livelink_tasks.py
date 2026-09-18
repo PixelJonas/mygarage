@@ -199,20 +199,56 @@ async def check_firmware_updates():
             devices_needing_update = await firmware_service.get_devices_needing_update()
 
             if devices_needing_update:
+                from sqlalchemy import select
+
+                from app.models.livelink_device import LiveLinkDevice
+
                 dispatcher = NotificationDispatcher(db)
 
+                notified_count = 0
                 for device_info in devices_needing_update:
-                    await dispatcher.notify_livelink_firmware_update(
+                    latest = device_info["latest_version"]
+                    # Notify once per version: skip when the notified or the
+                    # admin-skipped version matches latest EXACTLY. A newer
+                    # release matches neither and notifies again. The None
+                    # guard matters — compare_versions takes strings.
+                    suppressed = any(
+                        stamped is not None
+                        and FirmwareService.compare_versions(latest, stamped) == 0
+                        for stamped in (
+                            device_info["notified_version"],
+                            device_info["skipped_version"],
+                        )
+                    )
+                    if suppressed:
+                        continue
+
+                    results = await dispatcher.notify_livelink_firmware_update(
                         device_id=device_info["device_id"],
                         current_version=device_info["current_version"],
-                        latest_version=device_info["latest_version"],
+                        latest_version=latest,
                         release_url=device_info.get("release_url"),
                     )
+                    # Stamp only when at least one backend actually accepted
+                    # the send (the threshold-alert precedent): an all-failed
+                    # or empty dict must not silence tomorrow's retry.
+                    if any(results.values()):
+                        row = await db.execute(
+                            select(LiveLinkDevice).where(
+                                LiveLinkDevice.device_id == device_info["device_id"]
+                            )
+                        )
+                        device = row.scalar_one_or_none()
+                        if device is not None:
+                            device.firmware_notified_version = latest
+                    notified_count += 1
 
-                logger.info(
-                    "Sent firmware update notifications for %d devices",
-                    len(devices_needing_update),
-                )
+                await db.commit()
+                if notified_count:
+                    logger.info(
+                        "Sent firmware update notifications for %d devices",
+                        notified_count,
+                    )
 
         except Exception as e:
             logger.error("Error checking firmware updates: %s", e)

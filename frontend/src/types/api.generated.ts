@@ -2116,6 +2116,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/livelink/devices/{device_id}/firmware/skip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Skip Firmware Version
+         * @description Skip firmware-update notifications for one release on one device.
+         *
+         *     The next (newer) release notifies again. Note the interplay with
+         *     notify-once: a release that was already notified stays silenced even
+         *     after an unskip, because ``firmware_notified_version`` still matches —
+         *     that is the notify-once rule working, not a bug.
+         *
+         *     **Security:**
+         *     - Requires admin authentication
+         */
+        post: operations["skip_firmware_version_api_livelink_devices__device_id__firmware_skip_post"];
+        /**
+         * Unskip Firmware Version
+         * @description Clear a device's skipped firmware version.
+         *
+         *     Because ``firmware_notified_version`` is only stamped on actual sends,
+         *     an unskipped device that was never notified gets its notification at
+         *     the next daily run.
+         *
+         *     **Security:**
+         *     - Requires admin authentication
+         */
+        delete: operations["unskip_firmware_version_api_livelink_devices__device_id__firmware_skip_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/livelink/devices/{device_id}/sd-config": {
         parameters: {
             query?: never;
@@ -8697,6 +8736,8 @@ export interface components {
             latest_version: string | null;
             /** Release Url */
             release_url?: string | null;
+            /** Skipped Version */
+            skipped_version?: string | null;
             /**
              * Update Available
              * @default false
@@ -9343,6 +9384,17 @@ export interface components {
              * @description GitHub release URL
              */
             release_url?: string | null;
+        };
+        /**
+         * FirmwareSkipRequest
+         * @description Body of POST /devices/{device_id}/firmware/skip.
+         *
+         *     The client names the version it saw, so a release landing between
+         *     render and click is never silently skipped.
+         */
+        FirmwareSkipRequest: {
+            /** Version */
+            version: string;
         };
         /**
          * FirmwareTrack
@@ -21408,6 +21460,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeviceCommandResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    skip_firmware_version_api_livelink_devices__device_id__firmware_skip_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FirmwareSkipRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceFirmwareStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unskip_firmware_version_api_livelink_devices__device_id__firmware_skip_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceFirmwareStatus"];
                 };
             };
             /** @description Validation Error */

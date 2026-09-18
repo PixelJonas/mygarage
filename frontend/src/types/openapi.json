@@ -3541,6 +3541,17 @@
             ],
             "title": "Release Url"
           },
+          "skipped_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skipped Version"
+          },
           "update_available": {
             "anyOf": [
               {
@@ -5215,6 +5226,22 @@
           }
         },
         "title": "FirmwareInfoResponse",
+        "type": "object"
+      },
+      "FirmwareSkipRequest": {
+        "description": "Body of POST /devices/{device_id}/firmware/skip.\n\nThe client names the version it saw, so a release landing between\nrender and click is never silently skipped.",
+        "properties": {
+          "version": {
+            "maxLength": 20,
+            "minLength": 1,
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "FirmwareSkipRequest",
         "type": "object"
       },
       "FirmwareTrack": {
@@ -32864,6 +32891,110 @@
           }
         ],
         "summary": "Send Device Command",
+        "tags": [
+          "LiveLink Admin"
+        ]
+      }
+    },
+    "/api/livelink/devices/{device_id}/firmware/skip": {
+      "delete": {
+        "description": "Clear a device's skipped firmware version.\n\nBecause ``firmware_notified_version`` is only stamped on actual sends,\nan unskipped device that was never notified gets its notification at\nthe next daily run.\n\n**Security:**\n- Requires admin authentication",
+        "operationId": "unskip_firmware_version_api_livelink_devices__device_id__firmware_skip_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "title": "Device Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceFirmwareStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Unskip Firmware Version",
+        "tags": [
+          "LiveLink Admin"
+        ]
+      },
+      "post": {
+        "description": "Skip firmware-update notifications for one release on one device.\n\nThe next (newer) release notifies again. Note the interplay with\nnotify-once: a release that was already notified stays silenced even\nafter an unskip, because ``firmware_notified_version`` still matches \u2014\nthat is the notify-once rule working, not a bug.\n\n**Security:**\n- Requires admin authentication",
+        "operationId": "skip_firmware_version_api_livelink_devices__device_id__firmware_skip_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "title": "Device Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FirmwareSkipRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceFirmwareStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Skip Firmware Version",
         "tags": [
           "LiveLink Admin"
         ]

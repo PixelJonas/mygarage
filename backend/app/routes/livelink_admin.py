@@ -15,6 +15,7 @@ from app.schemas.livelink import (
     DeviceCommandResponse,
     DeviceFirmwareStatus,
     FirmwareInfoResponse,
+    FirmwareSkipRequest,
     LiveLinkDeviceListResponse,
     LiveLinkDeviceResponse,
     LiveLinkDeviceUpdate,
@@ -628,10 +629,81 @@ async def get_device_firmware_status(
                 update_available=status.get("update_available") or False,
                 release_url=status.get("release_url") if status.get("update_available") else None,
                 firmware_track=status.get("firmware_track"),
+                skipped_version=status.get("skipped_version"),
             )
         )
 
     return results
+
+
+async def _get_device_or_404(db: AsyncSession, device_id: str):
+    """Fetch a device for the firmware-skip endpoints; 404 when unknown."""
+    device = await LiveLinkService(db).get_device_by_id(device_id)
+    if device is None:
+        raise HTTPException(status_code=404, detail="Device not found")
+    return device
+
+
+@router.post("/devices/{device_id}/firmware/skip", response_model=DeviceFirmwareStatus)
+async def skip_firmware_version(
+    device_id: str,
+    body: FirmwareSkipRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_current_admin_user),
+):
+    """Skip firmware-update notifications for one release on one device.
+
+    The next (newer) release notifies again. Note the interplay with
+    notify-once: a release that was already notified stays silenced even
+    after an unskip, because ``firmware_notified_version`` still matches —
+    that is the notify-once rule working, not a bug.
+
+    **Security:**
+    - Requires admin authentication
+    """
+    device = await _get_device_or_404(db, device_id)
+    device.firmware_skipped_version = body.version
+    await db.commit()
+    status = await FirmwareService(db).check_device_firmware(device_id)
+    return DeviceFirmwareStatus(
+        device_id=device_id,
+        current_version=status.get("current_version"),
+        latest_version=status.get("latest_version"),
+        update_available=status.get("update_available") or False,
+        release_url=status.get("release_url") if status.get("update_available") else None,
+        firmware_track=status.get("firmware_track"),
+        skipped_version=status.get("skipped_version"),
+    )
+
+
+@router.delete("/devices/{device_id}/firmware/skip", response_model=DeviceFirmwareStatus)
+async def unskip_firmware_version(
+    device_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_current_admin_user),
+):
+    """Clear a device's skipped firmware version.
+
+    Because ``firmware_notified_version`` is only stamped on actual sends,
+    an unskipped device that was never notified gets its notification at
+    the next daily run.
+
+    **Security:**
+    - Requires admin authentication
+    """
+    device = await _get_device_or_404(db, device_id)
+    device.firmware_skipped_version = None
+    await db.commit()
+    status = await FirmwareService(db).check_device_firmware(device_id)
+    return DeviceFirmwareStatus(
+        device_id=device_id,
+        current_version=status.get("current_version"),
+        latest_version=status.get("latest_version"),
+        update_available=status.get("update_available") or False,
+        release_url=status.get("release_url") if status.get("update_available") else None,
+        firmware_track=status.get("firmware_track"),
+        skipped_version=status.get("skipped_version"),
+    )
 
 
 # =============================================================================

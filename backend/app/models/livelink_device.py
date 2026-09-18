@@ -47,6 +47,13 @@ class LiveLinkDevice(Base):
     hw_version: Mapped[str | None] = mapped_column(String(50))  # e.g., "WiCAN-OBD-PRO"
     fw_version: Mapped[str | None] = mapped_column(String(20))  # e.g., "4.45"
     git_version: Mapped[str | None] = mapped_column(String(20))  # e.g., "v4.45p"
+    # Firmware notification state (plan 2026-09-18, feature B). Stamped by the
+    # daily check: notified only when at least one backend accepted the send
+    # (notify-once per version); skipped is the admin's "skip this version".
+    # An exact match against the latest release suppresses the notification;
+    # a newer release matches neither and notifies again.
+    firmware_notified_version: Mapped[str | None] = mapped_column(String(20))
+    firmware_skipped_version: Mapped[str | None] = mapped_column(String(20))
     sta_ip: Mapped[str | None] = mapped_column(String(45))  # Device IP for local UI link
     device_address: Mapped[str | None] = mapped_column(
         String(255)
