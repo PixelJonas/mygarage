@@ -15,7 +15,7 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 import tzlocal
-from fastapi import Depends
+from fastapi import Depends, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -94,10 +94,20 @@ def household_today() -> date:
     return datetime.now(household_zone()).date()
 
 
-async def household_zone_dependency(db: AsyncSession = Depends(get_db)) -> None:
+# Liveness endpoints stay database-free: the Docker HEALTHCHECK hits
+# /health, and a locked SQLite file or an exhausted PostgreSQL pool must
+# not report a live HTTP process dead. None of them uses a calendar date.
+LIVENESS_PATHS = frozenset({"/health", "/healthz", "/api/health"})
+
+
+async def household_zone_dependency(request: Request, db: AsyncSession = Depends(get_db)) -> None:
     """App-level dependency: load the zone with the request's own session.
 
     FastAPI de-duplicates ``get_db``, so a route that already opens it adds
-    one indexed select and no extra connection.
+    one indexed select and no extra connection. Liveness paths are exempt
+    (see LIVENESS_PATHS); the session is created lazily and never connects
+    for them.
     """
+    if request.scope.get("path") in LIVENESS_PATHS:
+        return
     await load_household_zone(db)

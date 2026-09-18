@@ -406,3 +406,31 @@ class TestCodexTZR1:
             },
         )
         assert response.status_code == 422, response.text
+
+
+@pytest.mark.asyncio
+class TestLivenessStaysDatabaseFree:
+    """Codex PR-170 P2: the Docker HEALTHCHECK hits /health, so a locked
+    SQLite file or an exhausted PG pool must not report the process dead.
+    The household-zone dependency skips liveness paths (they need no
+    calendar date); every API route still loads the zone."""
+
+    async def test_health_endpoints_skip_the_zone_load(self, client, monkeypatch):
+        calls: list[str] = []
+
+        async def spy(db):
+            calls.append("load")
+            from zoneinfo import ZoneInfo
+
+            return ZoneInfo("UTC")
+
+        monkeypatch.setattr("app.utils.household_time.load_household_zone", spy)
+
+        for path in ("/health", "/api/health"):
+            response = await client.get(path)
+            assert response.status_code == 200, (path, response.text)
+        assert calls == [], "liveness must not touch the database"
+
+        response = await client.get("/api/settings/public")
+        assert response.status_code == 200
+        assert calls == ["load"], "API routes still load the zone per request"
