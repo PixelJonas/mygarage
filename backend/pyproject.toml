@@ -25,6 +25,8 @@ dependencies = [
     "pillow-heif>=1.5.0",
     "reportlab>=5.0.0",
     "pandas>=3.0.5",
+    "numpy>=2.3.3",  # direct: used in analytics trends, PDF charts and both OCR paths;
+                     # was only ever a pandas/matplotlib transitive, so its major was not ours to choose
     "email-validator>=2.3.0",
     "python-magic>=0.4.27",
     "slowapi>=0.1.10",
