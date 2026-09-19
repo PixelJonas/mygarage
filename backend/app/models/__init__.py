@@ -2,6 +2,7 @@
 
 from app.models.address_book import AddressBookEntry
 from app.models.attachment import Attachment
+from app.models.audit_log import AuditLog
 from app.models.csrf_token import CSRFToken
 from app.models.def_record import DEFRecord
 from app.models.document import Document
@@ -18,6 +19,7 @@ from app.models.location_point import LocationPoint
 from app.models.maintenance_rule import MaintenanceRule
 from app.models.note import Note
 from app.models.odometer import OdometerRecord
+from app.models.oidc_pending_link import OIDCPendingLink
 from app.models.oidc_state import OIDCState
 from app.models.photo import VehiclePhoto
 from app.models.recall import Recall
@@ -31,6 +33,8 @@ from app.models.spot_rental_billing import SpotRentalBilling
 from app.models.supply import Supply, SupplyPurchase, SupplyUsage
 from app.models.tax import TaxRecord
 from app.models.tire import Tire, TireReading
+from app.models.toll import TollTag, TollTransaction
+from app.models.user import User
 from app.models.vehicle import TrailerDetails, Vehicle
 from app.models.vehicle_dtc import VehicleDTC
 from app.models.vehicle_share import VehicleShare
@@ -96,4 +100,10 @@ __all__ = [
     "ServiceLineItem",
     # Integrations
     "WidgetApiKey",
+    # Previously missing from the registry
+    "AuditLog",
+    "OIDCPendingLink",
+    "TollTag",
+    "TollTransaction",
+    "User",
 ]

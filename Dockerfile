@@ -47,10 +47,18 @@ WORKDIR /app
 # Prevent bytecode during build (speeds up and reduces image size)
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# Install dependencies from lockfile for reproducible builds
+# Install dependencies from the LOCKFILE, not pyproject.toml. Every constraint
+# in pyproject.toml is a bare `>=` floor, so installing from it resolved fresh
+# on every build: two builds of the same commit on different days produced
+# different dependency sets, and the versions the test image pinned via
+# `uv sync --frozen` were never the versions production ran. Exporting the lock
+# to a hash-pinned requirements file keeps `--system` installs while making the
+# build reproducible and hash-verified.
 COPY backend/pyproject.toml backend/uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --system --no-cache -r pyproject.toml
+    uv export --frozen --no-dev --no-emit-project --format requirements-txt \
+      -o /tmp/requirements.txt \
+    && uv pip install --system --no-cache --require-hashes -r /tmp/requirements.txt
 
 # Copy backend code and install the project itself
 COPY backend/ ./

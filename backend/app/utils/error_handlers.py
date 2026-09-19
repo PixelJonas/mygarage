@@ -67,7 +67,10 @@ class SecureErrorResponse:
             content["request_id"] = request_id
 
         return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            # Renamed upstream: starlette 1.6.0 deprecated
+            # HTTP_422_UNPROCESSABLE_ENTITY in favour of the RFC 9110 spelling.
+            # Same 422 on the wire.
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             content=content,
         )
 
