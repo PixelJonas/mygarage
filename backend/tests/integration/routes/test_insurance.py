@@ -523,3 +523,144 @@ class TestVehicleLifecycle:
         assert [v["vin"] for v in kept["vehicles"]] == [owned_vehicle.vin]
         assert kept["premium_amount"] == "400.00"
         assert Decimal(kept["vehicles"][0]["effective_share"]) == Decimal("400.00")
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+class TestCodeReviewRegressions:
+    """Each of these was a real defect the code review found."""
+
+    async def test_deleting_a_vehicle_takes_its_share_out_of_the_premium(
+        self, client, owner_headers, owned_vehicle, second_vehicle
+    ):
+        # CB-R1-H1: the cascade removed the link but left the premium counting it.
+        policy = await _create(
+            client,
+            owner_headers,
+            [
+                _on(owned_vehicle.vin, premium_share="400.00"),
+                _on(SECOND_VIN, premium_share="200.00"),
+            ],
+        )
+
+        deleted = await client.delete(f"/api/vehicles/{SECOND_VIN}", headers=owner_headers)
+        assert deleted.status_code in (200, 204), deleted.text
+
+        kept = (await client.get(f"{API}/{policy['id']}", headers=owner_headers)).json()
+        assert kept["premium_amount"] == "400.00"
+        assert [v["effective_share"] for v in kept["vehicles"]] == ["400.00"]
+        # And the policy is still editable: 400 explicit against a 600 premium
+        # would be refused by the allocation rule forever after.
+        edited = await client.put(
+            f"{API}/{policy['id']}", json={"notes": "x"}, headers=owner_headers
+        )
+        assert edited.status_code == 200, edited.text
+
+    async def test_money_is_whole_cents(self, client, owner_headers, owned_vehicle, second_vehicle):
+        # CB-R1-H3: 0.005 + 0.005 validated as 0.01, then stored as 0.01 + 0.01.
+        response = await client.post(
+            API,
+            json=_body(
+                [
+                    _on(owned_vehicle.vin, premium_share="0.005"),
+                    _on(SECOND_VIN, premium_share="0.005"),
+                ],
+                premium_amount="0.01",
+            ),
+            headers=owner_headers,
+        )
+        assert response.status_code == 422
+
+    async def test_renewing_after_a_vehicle_left_scales_against_what_is_still_covered(
+        self, client, owner_headers, owned_vehicle, second_vehicle
+    ):
+        # CB-R1-M1: the survivor's 400 was scaled by 700/600 to 466.67 and the
+        # renewal was refused, because the 600 still counted the departed 200.
+        policy = await _create(
+            client,
+            owner_headers,
+            [
+                _on(owned_vehicle.vin, premium_share="400.00"),
+                _on(SECOND_VIN, premium_share="200.00"),
+            ],
+        )
+        left = await client.put(
+            f"{API}/{policy['id']}",
+            json={
+                "vehicles": [
+                    _on(owned_vehicle.vin, premium_share="400.00"),
+                    _on(SECOND_VIN, premium_share="200.00", effective_to=policy["start_date"]),
+                ]
+            },
+            headers=owner_headers,
+        )
+        assert left.status_code == 200, left.text
+
+        renewed = await client.post(
+            f"{API}/{policy['id']}/renew", json={"premium_amount": "700.00"}, headers=owner_headers
+        )
+
+        assert renewed.status_code == 201, renewed.text
+        assert [(v["vin"], v["premium_share"]) for v in renewed.json()["vehicles"]] == [
+            (owned_vehicle.vin, "700.00")
+        ]
+
+    async def test_a_creator_with_read_only_access_to_a_vehicle_can_still_edit_the_policy(
+        self, client, db_session, reader_headers, reader_user, owned_vehicle, owner_headers
+    ):
+        # CF-R1-M1: the form always sends the whole vehicle list, and an
+        # UNCHANGED vehicle demanded write access the creator did not have.
+        policy = await _create(client, owner_headers, [_on(owned_vehicle.vin)])
+        row = await db_session.get(InsurancePolicy, policy["id"])
+        row.created_by_user_id = reader_user.id
+        await db_session.commit()
+
+        untouched = await client.put(
+            f"{API}/{policy['id']}",
+            json={"provider": "Progressive Direct", "vehicles": [_on(owned_vehicle.vin)]},
+            headers=reader_headers,
+        )
+        assert untouched.status_code == 200, untouched.text
+        assert untouched.json()["provider"] == "Progressive Direct"
+
+        changed = await client.put(
+            f"{API}/{policy['id']}",
+            json={"vehicles": [_on(owned_vehicle.vin, deductible="250.00")]},
+            headers=reader_headers,
+        )
+        assert changed.status_code == 403
+
+    async def test_switching_insurers_can_carry_the_new_coverages_in_one_step(
+        self, client, owner_headers, owned_vehicle, second_vehicle
+    ):
+        # CF-R1-H2: the form offered coverage edits the endpoint ignored.
+        old = await _create(client, owner_headers, [_on(owned_vehicle.vin), _on(SECOND_VIN)])
+        today = household_today()
+
+        response = await client.post(
+            f"{API}/{old['id']}/replace",
+            json={
+                "provider": "GEICO",
+                "policy_number": "G-8",
+                "start_date": today.isoformat(),
+                "end_date": (today + timedelta(days=180)).isoformat(),
+                "premium_amount": "500.00",
+                "vehicles": [
+                    _on(
+                        owned_vehicle.vin,
+                        policy_type="Liability",
+                        premium_share="500.00",
+                        deductible="1000.00",
+                    )
+                ],
+            },
+            headers=owner_headers,
+        )
+
+        assert response.status_code == 201, response.text
+        (vehicle,) = response.json()["vehicles"]
+        assert (vehicle["vin"], vehicle["policy_type"], vehicle["deductible"]) == (
+            owned_vehicle.vin,
+            "Liability",
+            "1000.00",
+        )

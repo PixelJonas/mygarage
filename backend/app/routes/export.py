@@ -955,6 +955,9 @@ async def export_vehicle_json(
                 "deductible": float(link.deductible) if link.deductible is not None else None,
                 "coverage_limits": link.coverage_limits,
                 "notes": link.notes,
+                # Without it a restore silently puts a vehicle that LEFT the
+                # policy back on it for the whole term.
+                "effective_to": link.effective_to.isoformat() if link.effective_to else None,
                 "fields": [{"label": f.label, "value": f.value} for f in link.fields],
             }
             for link in insurance_links

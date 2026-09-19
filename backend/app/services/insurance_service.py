@@ -23,8 +23,8 @@ from datetime import date
 from decimal import Decimal
 
 from fastapi import HTTPException
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import select, text
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.insurance import InsurancePolicy, InsurancePolicyField, InsurancePolicyVehicle
@@ -46,6 +46,7 @@ from app.schemas.insurance import (
     PolicyVehicleUpsert,
 )
 from app.services.auth import get_vehicle_or_403
+from app.services.vehicle_lock import LOCK_BUSY_DETAIL, is_lock_contention
 from app.utils.household_time import household_today
 from app.utils.insurance_shares import (
     AllocationError,
@@ -150,6 +151,32 @@ class InsuranceService:
         return _Access(
             everything=False, user_id=current_user.id, read_vins=read_vins, write_vins=write_vins
         )
+
+    async def _lock(self, policy_id: int | None = None) -> None:
+        """Serialise this policy's writers for the rest of the transaction.
+
+        The allocation invariant is a check-then-write across SEVERAL rows (the
+        policy's premium and every link's share), so two requests that each
+        validate against the other's stale rows could both commit and leave
+        shares exceeding the premium. SQLite: `BEGIN IMMEDIATE`, the database
+        write lock, before any read (a caller already inside a transaction,
+        such as an import holding the vehicle lock, holds it already).
+        PostgreSQL: `FOR UPDATE` on the policy row.
+        """
+        try:
+            if self.db.get_bind().dialect.name == "sqlite":
+                raw = await (await self.db.connection()).get_raw_connection()
+                if not raw.driver_connection.in_transaction:
+                    await self.db.execute(text("BEGIN IMMEDIATE"))
+            elif policy_id is not None:
+                await self.db.execute(
+                    text("SELECT id FROM insurance_policies WHERE id = :id FOR UPDATE"),
+                    {"id": policy_id},
+                )
+        except DBAPIError as exc:
+            if not is_lock_contention(exc):
+                raise
+            raise HTTPException(status_code=503, detail=LOCK_BUSY_DETAIL) from exc
 
     async def access_for(self, current_user: User | None) -> _Access:
         """The caller's resolved access, for code outside this service that must
@@ -476,6 +503,7 @@ class InsuranceService:
     async def update_policy(
         self, policy_id: int, data: InsurancePolicyUpdate, current_user: User | None
     ) -> InsurancePolicyResponse:
+        await self._lock(policy_id)
         access = await self._resolve_access(current_user)
         policy = await self._load_writable(policy_id, access)
         changes = data.model_dump(exclude_unset=True)
@@ -548,6 +576,24 @@ class InsuranceService:
             if link is None:
                 await self._new_link(policy, item, current_user)
                 continue
+            unchanged = (
+                link.policy_type == item.policy_type
+                and link.premium_share == item.premium_share
+                and link.deductible == item.deductible
+                and (link.coverage_limits or None) == (item.coverage_limits or None)
+                and (link.notes or None) == (item.notes or None)
+                and link.effective_to == item.effective_to
+                and (
+                    item.fields is None
+                    or [(f.label, f.value) for f in link.fields]
+                    == [(f.label.strip(), f.value) for f in item.fields]
+                )
+            )
+            if unchanged:
+                # The form always sends the whole list. A creator with only READ
+                # access to one covered vehicle must still be able to fix the
+                # provider's name, so an untouched vehicle needs no write access.
+                continue
             if not access.can_write_vin(vin):
                 raise HTTPException(
                     status_code=403, detail="Editing a vehicle's coverage needs write access to it"
@@ -574,6 +620,7 @@ class InsuranceService:
                 )
 
     async def delete_policy(self, policy_id: int, current_user: User | None) -> None:
+        await self._lock(policy_id)
         access = await self._resolve_access(current_user)
         policy = await self._load_writable(policy_id, access)
         await self.db.delete(policy)
@@ -584,7 +631,11 @@ class InsuranceService:
         self, policy_id: int, data: PolicyVehicleCreate, current_user: User | None
     ) -> InsurancePolicyResponse:
         """Add one vehicle. Its explicit share GROWS the policy premium by the
-        same amount, which leaves every sibling's effective share untouched."""
+        same amount, which leaves every sibling's effective share untouched. A
+        vehicle attached WITHOUT a share joins the even split, which by
+        definition re-divides whatever the unset siblings were sharing; that is
+        a policy write, which is what this method requires."""
+        await self._lock(policy_id)
         access = await self._resolve_access(current_user)
         policy = await self._load_writable(policy_id, access)
         link = await self._new_link(policy, data, current_user)
@@ -601,6 +652,7 @@ class InsuranceService:
         data: PolicyVehicleUpdate,
         current_user: User | None,
     ) -> InsurancePolicyResponse:
+        await self._lock(policy_id)
         access = await self._resolve_access(current_user)
         policy = await self._load_readable(policy_id, access)
         link = next((item for item in policy.vehicle_links if item.id == link_id), None)
@@ -633,6 +685,7 @@ class InsuranceService:
     ) -> InsurancePolicyResponse:
         """Remove one vehicle, and its effective share from the policy premium,
         so every remaining vehicle keeps exactly the share it had."""
+        await self._lock(policy_id)
         access = await self._resolve_access(current_user)
         policy = await self._load_writable(policy_id, access)
         link = next((item for item in policy.vehicle_links if item.id == link_id), None)
@@ -690,6 +743,7 @@ class InsuranceService:
         self, policy_id: int, data: InsurancePolicyRenew, current_user: User | None
     ) -> InsurancePolicyResponse:
         """Create the next term. The old term is never modified."""
+        await self._lock(policy_id)
         access = await self._resolve_access(current_user)
         old = await self._load_writable(policy_id, access)
         if await self._has_successor(old.id):
@@ -705,16 +759,19 @@ class InsuranceService:
         total = data.premium_amount if "premium_amount" in sent else old.premium_amount
 
         carried = [link for link in old.vehicle_links if link.effective_to is None]
-        pairs = [(link.id, link.premium_share) for link in carried]
-        shares = (
-            rescale_shares(pairs, old.premium_amount, total)
-            if total != old.premium_amount
-            else dict(pairs)
+        # Proportions are taken against what the CARRIED vehicles cost, not the
+        # old premium: a vehicle that left mid-term took its share with it, and
+        # scaling a survivor's 400 by 700/600 when only 400 of that 600 is still
+        # on the policy would ask for 466.67 of a 700 premium it alone covers.
+        old_effective = effective_shares(
+            old.premium_amount, [(link.id, link.premium_share) for link in old.vehicle_links]
         )
-        # A vehicle that left mid-term took its share with it; without it the
-        # carried explicit shares no longer describe the whole premium.
-        if len(carried) != len(old.vehicle_links) and total == old.premium_amount:
-            shares = {link.id: None for link in carried}
+        carried_base = sum(
+            (old_effective[link.id] or Decimal("0") for link in carried), Decimal("0")
+        )
+        pairs = [(link.id, link.premium_share) for link in carried]
+        nothing_changed = total == old.premium_amount and len(carried) == len(old.vehicle_links)
+        shares = dict(pairs) if nothing_changed else rescale_shares(pairs, carried_base, total)
 
         new = InsurancePolicy(
             provider=old.provider,
@@ -757,6 +814,7 @@ class InsuranceService:
         """Switch insurers: a new policy takes over this one's vehicles. The new
         insurer's coverages differ, so only the vehicles and their coverage type
         carry over, on an even split."""
+        await self._lock(policy_id)
         access = await self._resolve_access(current_user)
         old = await self._load_writable(policy_id, access)
         if await self._has_successor(old.id):
@@ -786,14 +844,21 @@ class InsuranceService:
             previous_policy_id=old.id,
         )
         self.db.add(new)
-        for link in old.vehicle_links:
-            if link.effective_to is not None and data.end_old_on is None:
-                continue
-            if wanted is not None and link.vin not in wanted:
-                continue
-            new.vehicle_links.append(
-                InsurancePolicyVehicle(vin=link.vin, policy_type=link.policy_type)
-            )
+        if data.vehicles is not None:
+            # The form's full vehicle list: the new insurer's coverages, entered
+            # in the same step. Each vehicle needs write access, as on create.
+            for vehicle in data.vehicles:
+                await self._new_link(new, vehicle, current_user)
+        else:
+            for link in old.vehicle_links:
+                if link.effective_to is not None and data.end_old_on is None:
+                    continue
+                if wanted is not None and link.vin not in wanted:
+                    continue
+                new.vehicle_links.append(
+                    InsurancePolicyVehicle(vin=link.vin, policy_type=link.policy_type)
+                )
+        self._check_allocation(new)
         await self._commit("replacing insurance policy")
         logger.info("Replaced insurance policy %s with %s", old.id, new.id)
         return await self._respond(new.id, access)

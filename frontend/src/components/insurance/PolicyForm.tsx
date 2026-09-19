@@ -91,9 +91,18 @@ export default function PolicyForm({ mode, policy, initialVin, onClose, onSucces
   const [endOldOn, setEndOldOn] = useState('')
 
   // A creator can hold a policy that covers vehicles they can no longer see.
-  // Sending a vehicle list would then REMOVE the hidden ones, so the vehicle
-  // editor is locked and `vehicles` is left out of the save entirely.
-  const vehiclesLocked = isEdit && (policy?.other_vehicle_count ?? 0) > 0
+  // Sending a vehicle list would then REMOVE the hidden ones (on edit) or leave
+  // them off the new policy (on a switch), so the vehicle editor is locked and
+  // no vehicle list is sent at all: the backend then keeps or carries them all.
+  const vehiclesLocked = (isEdit || isReplace) && (policy?.other_vehicle_count ?? 0) > 0
+  // Vehicles the user can see but not write: shown, never editable here.
+  const readOnlyVins = useMemo(
+    () =>
+      new Set(
+        isEdit ? (policy?.vehicles ?? []).filter((v) => !v.can_edit).map((v) => v.vin) : []
+      ),
+    [isEdit, policy]
+  )
 
   // Zod bakes its messages in at construction, so the schema is rebuilt when
   // the language changes. Only the resolver depends on it, so a rebuild can't
@@ -150,7 +159,10 @@ export default function PolicyForm({ mode, policy, initialVin, onClose, onSucces
     },
   })
 
-  const { fields: vehicleRows, append, remove } = useFieldArray({ control, name: 'vehicles' })
+  const { fields: vehicleRows, append, remove, update } = useFieldArray({
+    control,
+    name: 'vehicles',
+  })
   const watchedVehicles = useWatch({ control, name: 'vehicles' })
   const watchedPremium = useWatch({ control, name: 'premium_amount' })
 
@@ -179,7 +191,10 @@ export default function PolicyForm({ mode, policy, initialVin, onClose, onSucces
   const allocated = explicit.reduce<number>((sum, share) => sum + (share ?? 0), 0)
   const unsetCount = explicit.filter((share) => share === null).length
   const hasPremium = Number.isFinite(premium) && watchedPremium !== undefined && watchedPremium !== null
-  const evenSplit = hasPremium && unsetCount > 0 ? Math.max(premium - allocated, 0) / unsetCount : null
+  const remainderCents = Math.round(Math.max(premium - allocated, 0) * 100)
+  const evenSplit =
+    hasPremium && unsetCount > 0 ? Math.floor(remainderCents / unsetCount) / 100 : null
+  const splitIsExact = unsetCount > 0 && remainderCents % unsetCount === 0
   const overAllocated = hasPremium && allocated > premium + 0.004
   const underAllocated =
     hasPremium && unsetCount === 0 && explicit.length > 0 && Math.abs(allocated - premium) > 0.004
@@ -203,17 +218,19 @@ export default function PolicyForm({ mode, policy, initialVin, onClose, onSucces
 
     const parsedType =
       data.policy_type && POLICY_TYPE_VALUES.includes(data.policy_type) ? data.policy_type : ''
-    const already = new Set(vehicleRows.map((row) => row.vin))
     for (const vehicle of parsed.vehicles) {
-      if (!vehicle.matched || already.has(vehicle.vin)) continue
-      append(
-        emptyVehicle(vehicle.vin, {
-          policy_type: parsedType,
-          premium_share: vehicle.premium_share ? Number(vehicle.premium_share) : undefined,
-          deductible: vehicle.deductible ? Number(vehicle.deductible) : undefined,
-          coverage_limits: data.coverage_limits ?? '',
-        })
-      )
+      if (!vehicle.matched) continue
+      const parsedRow = emptyVehicle(vehicle.vin, {
+        policy_type: parsedType,
+        premium_share: vehicle.premium_share ? Number(vehicle.premium_share) : undefined,
+        deductible: vehicle.deductible ? Number(vehicle.deductible) : undefined,
+        coverage_limits: data.coverage_limits ?? '',
+      })
+      // The vehicle whose tab opened the form is attached already: it takes
+      // the document's figures rather than being skipped for being there.
+      const at = vehicleRows.findIndex((row) => row.vin === vehicle.vin)
+      if (at === -1) append(parsedRow)
+      else update(at, parsedRow)
     }
   }
 
@@ -242,26 +259,40 @@ export default function PolicyForm({ mode, policy, initialVin, onClose, onSucces
         notes: data.notes || null,
       }
 
+      // Create-shaped rows: a vehicle joins a NEW policy for its whole term.
+      const joining = vehicles.map(({ effective_to: _unused, ...vehicle }) => vehicle)
+
       if (isReplace && policy) {
         await replaceMutation.mutateAsync({
           id: policy.id,
           ...base,
-          vins: data.vehicles.map((vehicle) => vehicle.vin),
+          // The new insurer's coverages go in with the switch. With hidden
+          // vehicles nothing is sent, so the backend carries every vehicle.
+          ...(vehiclesLocked ? {} : { vehicles: joining }),
           end_old_on: endOldOn || null,
         })
       } else if (isEdit && policy) {
+        // With the vehicle list locked the shares cannot be resent, so a
+        // premium change must say what happens to them, or a policy whose
+        // shares are all fixed could never have its premium corrected.
+        const premiumChanged =
+          (data.premium_amount ?? null) !==
+          (policy.premium_amount != null ? Number(policy.premium_amount) : null)
         await updateMutation.mutateAsync({
           id: policy.id,
           ...base,
           fields: cleanFields(data.fields),
-          ...(vehiclesLocked ? {} : { vehicles }),
+          ...(vehiclesLocked
+            ? premiumChanged
+              ? { share_strategy: 'rescale' as const }
+              : {}
+            : { vehicles }),
         })
       } else {
         await createMutation.mutateAsync({
           ...base,
           fields: cleanFields(data.fields),
-          // Create has no mid-term removal: a vehicle joins for the whole term.
-          vehicles: vehicles.map(({ effective_to: _unused, ...vehicle }) => vehicle),
+          vehicles: joining,
         })
       }
 
@@ -437,6 +468,7 @@ export default function PolicyForm({ mode, policy, initialVin, onClose, onSucces
                 suggestions={SUGGESTED_POLICY_FIELDS}
                 disabled={isSubmitting}
                 idPrefix="policy-field"
+                errors={errors.fields}
               />
             </fieldset>
           )}
@@ -453,6 +485,9 @@ export default function PolicyForm({ mode, policy, initialVin, onClose, onSucces
                 )}
                 {vehicleRows.map((row, index) => {
                   const rowErrors = errors.vehicles?.[index]
+                  // Visible but not writable: shown for context, never editable.
+                  const rowLocked = readOnlyVins.has(row.vin)
+                  const rowDisabled = isSubmitting || rowLocked
                   return (
                     <div
                       key={row.id}
@@ -462,16 +497,20 @@ export default function PolicyForm({ mode, policy, initialVin, onClose, onSucces
                         <span className="font-medium text-text">
                           {nameByVin.get(row.vin) ?? row.vin}
                         </span>
-                        <IconButton
-                          icon={Trash2}
-                          label={t('insurance.removeVehicle')}
-                          variant="ghost"
-                          size="sm"
-                          disabled={isSubmitting}
-                          onClick={() => remove(index)}
-                        />
+                        {rowLocked ? (
+                          <span className="text-xs text-text-mute">{t('insurance.vehicleReadOnly')}</span>
+                        ) : (
+                          <IconButton
+                            icon={Trash2}
+                            label={t('insurance.removeVehicle')}
+                            variant="ghost"
+                            size="sm"
+                            disabled={rowDisabled}
+                            onClick={() => remove(index)}
+                          />
+                        )}
                       </div>
-                      <div className={`grid gap-4 ${isReplace ? 'grid-cols-1' : 'grid-cols-3'}`}>
+                      <div className="grid gap-4 grid-cols-3">
                         <Field
                           id={`vehicle-${index}-type`}
                           label={t('insurance.policyType')}
@@ -481,7 +520,7 @@ export default function PolicyForm({ mode, policy, initialVin, onClose, onSucces
                           <Select
                             id={`vehicle-${index}-type`}
                             {...register(`vehicles.${index}.policy_type`)}
-                            disabled={isSubmitting}
+                            disabled={rowDisabled}
                             invalid={!!rowErrors?.policy_type}
                             placeholder={t('common:selectType')}
                             options={POLICY_TYPES.map((option) => ({
@@ -490,8 +529,6 @@ export default function PolicyForm({ mode, policy, initialVin, onClose, onSucces
                             }))}
                           />
                         </Field>
-                        {!isReplace && (
-                          <>
                             <Field
                               id={`vehicle-${index}-share`}
                               label={t('insurance.vehicleShare')}
@@ -501,12 +538,14 @@ export default function PolicyForm({ mode, policy, initialVin, onClose, onSucces
                                 id={`vehicle-${index}-share`}
                                 {...registerDecimal(register, `vehicles.${index}.premium_share`)}
                                 placeholder={
-                                  evenSplit != null
-                                    ? t('insurance.evenSplit', { amount: money(evenSplit) })
-                                    : t('insurance.evenSplitUnknown')
+                                  evenSplit == null
+                                    ? t('insurance.evenSplitUnknown')
+                                    : splitIsExact
+                                      ? t('insurance.evenSplit', { amount: money(evenSplit) })
+                                      : t('insurance.evenSplitAbout', { amount: money(evenSplit) })
                                 }
                                 invalid={!!rowErrors?.premium_share}
-                                disabled={isSubmitting}
+                                disabled={rowDisabled}
                               />
                             </Field>
                             <Field
@@ -519,14 +558,10 @@ export default function PolicyForm({ mode, policy, initialVin, onClose, onSucces
                                 {...registerDecimal(register, `vehicles.${index}.deductible`)}
                                 placeholder={t('insuranceForm.deductiblePlaceholder')}
                                 invalid={!!rowErrors?.deductible}
-                                disabled={isSubmitting}
+                                disabled={rowDisabled}
                               />
                             </Field>
-                          </>
-                        )}
                       </div>
-                      {!isReplace && (
-                        <>
                           <Field
                             id={`vehicle-${index}-coverage`}
                             label={t('insurance.coverageLimits')}
@@ -536,7 +571,7 @@ export default function PolicyForm({ mode, policy, initialVin, onClose, onSucces
                               rows={2}
                               {...register(`vehicles.${index}.coverage_limits`)}
                               placeholder={t('insuranceForm.coverageLimitsPlaceholder')}
-                              disabled={isSubmitting}
+                              disabled={rowDisabled}
                             />
                           </Field>
                           <NamedFieldsEditor
@@ -544,8 +579,9 @@ export default function PolicyForm({ mode, policy, initialVin, onClose, onSucces
                             register={register}
                             name={`vehicles.${index}.fields`}
                             suggestions={SUGGESTED_VEHICLE_FIELDS}
-                            disabled={isSubmitting}
+                            disabled={rowDisabled}
                             idPrefix={`vehicle-${index}-field`}
+                            errors={rowErrors?.fields}
                           />
                           {isEdit && (
                             <Field
@@ -557,17 +593,15 @@ export default function PolicyForm({ mode, policy, initialVin, onClose, onSucces
                                 id={`vehicle-${index}-effective-to`}
                                 type="date"
                                 {...register(`vehicles.${index}.effective_to`)}
-                                disabled={isSubmitting}
+                                disabled={rowDisabled}
                               />
                             </Field>
                           )}
-                        </>
-                      )}
                     </div>
                   )
                 })}
 
-                {!isReplace && hasPremium && vehicleRows.length > 0 && (
+                {hasPremium && vehicleRows.length > 0 && (
                   <p
                     role={overAllocated || underAllocated ? 'alert' : undefined}
                     className={`text-sm ${

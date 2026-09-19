@@ -259,3 +259,77 @@ async def test_the_json_backup_carries_insurance_with_named_fields_at_both_level
         Decimal("500.00"),
     )
     assert [(f.label, f.value) for f in link.fields] == [("Collision Deductible", "$500")]
+
+
+async def test_an_import_never_joins_another_owners_policy(
+    client, db_session, auth_headers, non_admin_user
+):
+    # CB-R1-H4: the migration keeps owners apart; the importer did not. The
+    # importing user here is an ADMIN, who can see and write every policy.
+    other = "INSIMPEXP00000003"
+    db_session.add(
+        Vehicle(vin=other, user_id=non_admin_user["id"], nickname="Theirs", vehicle_type="Car")
+    )
+    theirs = InsurancePolicy(
+        provider="Progressive",
+        policy_number="P-100",
+        start_date=date(2026, 1, 1),
+        end_date=date(2026, 7, 1),
+        premium_amount=Decimal("500.00"),
+        premium_frequency="Semi-Annual",
+        created_by_user_id=non_admin_user["id"],
+    )
+    theirs.vehicle_links.append(InsurancePolicyVehicle(vin=other, policy_type="Liability"))
+    db_session.add(theirs)
+    await db_session.commit()
+    try:
+        await _import_csv(
+            client,
+            auth_headers,
+            RAM,
+            ROW.format(type="Full Coverage", premium="320.00", deductible="", notes=""),
+        )
+
+        policies = await _policies(db_session)
+        assert len(policies) == 2, "a look-alike policy of another owner is not this one"
+        assert {tuple(sorted(_shares(p))) for p in policies} == {(other,), (RAM,)}
+        untouched = next(p for p in policies if other in _shares(p))
+        assert untouched.premium_amount == Decimal("500.00")
+    finally:
+        await db_session.execute(delete(InsurancePolicy))
+        await db_session.execute(delete(Vehicle).where(Vehicle.vin == other))
+        await db_session.commit()
+
+
+async def test_the_json_backup_keeps_the_date_a_vehicle_left_the_policy(
+    client, db_session, auth_headers
+):
+    # CB-R1-H5: a restore put a vehicle that LEFT the policy back on it for
+    # the whole term.
+    policy = InsurancePolicy(
+        provider="Progressive",
+        policy_number="P-LEFT",
+        start_date=date(2026, 1, 1),
+        end_date=date(2026, 7, 1),
+    )
+    policy.vehicle_links.append(
+        InsurancePolicyVehicle(vin=RAM, policy_type="Liability", effective_to=date(2026, 3, 1))
+    )
+    db_session.add(policy)
+    await db_session.commit()
+
+    backup = (await client.get(f"/api/export/vehicles/{RAM}/json", headers=auth_headers)).json()
+    assert backup["insurance_policies"][0]["effective_to"] == "2026-03-01"
+
+    await db_session.execute(delete(InsurancePolicy))
+    await db_session.commit()
+    await client.post(
+        f"/api/import/vehicles/{RAM}/json",
+        files={
+            "file": ("backup.json", io.BytesIO(json.dumps(backup).encode()), "application/json")
+        },
+        headers=auth_headers,
+    )
+
+    (restored,) = await _policies(db_session)
+    assert restored.vehicle_links[0].effective_to == date(2026, 3, 1)

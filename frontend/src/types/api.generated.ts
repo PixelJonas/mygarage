@@ -10880,6 +10880,11 @@ export interface components {
              */
             start_date: string;
             /**
+             * Vehicles
+             * @description The new policy's vehicles WITH the new insurer's coverages. When present it replaces `vins`; omit both to carry every vehicle over by type only
+             */
+            vehicles?: components["schemas"]["PolicyVehicleCreate"][] | null;
+            /**
              * Vins
              * @description Vehicles to carry over; omit to carry every vehicle
              */

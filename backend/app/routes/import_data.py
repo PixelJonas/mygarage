@@ -61,6 +61,7 @@ from app.models import (
     WarrantyRecord,
 )
 from app.models.user import User
+from app.models.vehicle import Vehicle
 from app.models.vendor import Vendor
 from app.schemas.fuel import _validate_diesel_grade, _validate_octane
 from app.services import maintenance_service
@@ -295,7 +296,31 @@ async def _import_insurance_row(
         .unique()
         .all()
     )
-    readable = [p for p in candidates if access.can_read(p)]
+    # THE OWNER BOUNDARY, same as migration 107's merge key: a row joins a
+    # policy only when every vehicle already on it belongs to this vehicle's
+    # owner (an empty policy counts by its creator). Without it an admin
+    # importing two owners' look-alike files would weld them into one policy,
+    # and each owner would gain a window into, and a say over, the other's.
+    owner_id = await db.scalar(select(Vehicle.user_id).where(Vehicle.vin == vin))
+    linked_vins = {link.vin for p in candidates for link in p.vehicle_links}
+    owners = (
+        dict(
+            (
+                await db.execute(
+                    select(Vehicle.vin, Vehicle.user_id).where(Vehicle.vin.in_(linked_vins))
+                )
+            ).all()
+        )
+        if linked_vins
+        else {}
+    )
+
+    def _same_owner(policy: InsurancePolicy) -> bool:
+        if not policy.vehicle_links:
+            return policy.created_by_user_id == owner_id
+        return all(owners.get(link.vin) == owner_id for link in policy.vehicle_links)
+
+    readable = [p for p in candidates if access.can_read(p) and _same_owner(p)]
     if skip_duplicates and any(link.vin == vin for p in readable for link in p.vehicle_links):
         return False
 
@@ -352,6 +377,7 @@ async def _import_insurance_row(
             deductible=row["deductible"],
             coverage_limits=row["coverage_limits"],
             notes=row["notes"],
+            effective_to=row.get("effective_to"),
         )
         target.vehicle_links.append(link)
         for order, item in enumerate(row.get("fields") or []):
@@ -1809,6 +1835,11 @@ async def import_vehicle_json(
                     "fields": entry.get("fields") or [],
                     "policy_fields": entry.get("policy_fields") or [],
                     "policy_notes": entry.get("policy_notes"),
+                    "effective_to": (
+                        datetime.fromisoformat(entry["effective_to"]).date()
+                        if entry.get("effective_to")
+                        else None
+                    ),
                 },
                 insurance_created,
                 skip_duplicates=True,

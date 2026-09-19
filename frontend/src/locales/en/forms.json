@@ -154,7 +154,7 @@
     "saveAction": "save the policy",
     "selectFrequency": "Select frequency...",
     "switchTitle": "Switch Insurer",
-    "switchExplain": "The new policy takes over the vehicles from {{provider}}. Coverages are not carried over, since a new insurer's differ; add them after saving.",
+    "switchExplain": "The new policy takes over the vehicles from {{provider}}. Enter the new insurer's coverages below; the old policy's are not carried over.",
     "policyPremium": "Policy premium",
     "policyPremiumHint": "For the whole policy, per billing period.",
     "endOldOn": "End the old policy on",
@@ -190,7 +190,10 @@
     "addToExistingTitle": "Add to Existing Policy",
     "existingPolicy": "Policy",
     "choosePolicy": "Choose a policy",
-    "attachShareHint": "Optional. It is added to the policy premium, so the other vehicles' shares stay the same."
+    "attachShareHint": "Optional. It is added to the policy premium, so the other vehicles' shares stay the same.",
+    "evenSplitAbout": "Even split: about {{amount}}",
+    "vehicleReadOnly": "View only",
+    "fieldIncomplete": "Give this field both a label and a value, or remove it."
   },
   "modal": {
     "acceptTelemetry": "Accept telemetry data from WiCAN devices",

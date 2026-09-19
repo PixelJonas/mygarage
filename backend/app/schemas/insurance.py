@@ -33,9 +33,9 @@ class PolicyVehicleCreate(BaseModel):
     vin: str = Field(..., min_length=17, max_length=17)
     policy_type: PolicyType
     premium_share: Decimal | None = Field(
-        None, ge=0, description="Per-period share; omit for an even split"
+        None, ge=0, decimal_places=2, description="Per-period share; omit for an even split"
     )
-    deductible: Decimal | None = Field(None, ge=0)
+    deductible: Decimal | None = Field(None, ge=0, decimal_places=2)
     coverage_limits: str | None = None
     notes: str | None = None
     fields: list[NamedField] = Field(default_factory=list)
@@ -50,8 +50,8 @@ class PolicyVehicleUpdate(BaseModel):
     """
 
     policy_type: PolicyType | None = None
-    premium_share: Decimal | None = Field(None, ge=0)
-    deductible: Decimal | None = Field(None, ge=0)
+    premium_share: Decimal | None = Field(None, ge=0, decimal_places=2)
+    deductible: Decimal | None = Field(None, ge=0, decimal_places=2)
     coverage_limits: str | None = None
     notes: str | None = None
     effective_to: date_type | None = None
@@ -64,8 +64,8 @@ class PolicyVehicleUpsert(BaseModel):
 
     vin: str = Field(..., min_length=17, max_length=17)
     policy_type: PolicyType
-    premium_share: Decimal | None = Field(None, ge=0)
-    deductible: Decimal | None = Field(None, ge=0)
+    premium_share: Decimal | None = Field(None, ge=0, decimal_places=2)
+    deductible: Decimal | None = Field(None, ge=0, decimal_places=2)
     coverage_limits: str | None = None
     notes: str | None = None
     effective_to: date_type | None = None
@@ -116,7 +116,10 @@ class InsurancePolicyCreate(_PolicyDates):
     start_date: date_type
     end_date: date_type
     premium_amount: Decimal | None = Field(
-        None, ge=0, description="Whole-policy amount per premium_frequency period"
+        None,
+        ge=0,
+        decimal_places=2,
+        description="Whole-policy amount per premium_frequency period",
     )
     premium_frequency: PremiumFrequency | None = None
     notes: str | None = None
@@ -131,7 +134,7 @@ class InsurancePolicyUpdate(_PolicyDates):
     policy_number: str | None = Field(None, min_length=1, max_length=50)
     start_date: date_type | None = None
     end_date: date_type | None = None
-    premium_amount: Decimal | None = Field(None, ge=0)
+    premium_amount: Decimal | None = Field(None, ge=0, decimal_places=2)
     premium_frequency: PremiumFrequency | None = None
     notes: str | None = None
     fields: list[NamedField] | None = None
@@ -154,7 +157,7 @@ class InsurancePolicyRenew(_PolicyDates):
 
     start_date: date_type | None = Field(None, description="Default: the current end_date")
     end_date: date_type | None = Field(None, description="Default: the same term length")
-    premium_amount: Decimal | None = Field(None, ge=0)
+    premium_amount: Decimal | None = Field(None, ge=0, decimal_places=2)
     premium_frequency: PremiumFrequency | None = None
     notes: str | None = None
 
@@ -166,11 +169,16 @@ class InsurancePolicyReplace(_PolicyDates):
     policy_number: str = Field(..., min_length=1, max_length=50)
     start_date: date_type
     end_date: date_type
-    premium_amount: Decimal | None = Field(None, ge=0)
+    premium_amount: Decimal | None = Field(None, ge=0, decimal_places=2)
     premium_frequency: PremiumFrequency | None = None
     notes: str | None = None
     vins: list[str] | None = Field(
         None, description="Vehicles to carry over; omit to carry every vehicle"
+    )
+    vehicles: list[PolicyVehicleCreate] | None = Field(
+        None,
+        description="The new policy's vehicles WITH the new insurer's coverages. When "
+        "present it replaces `vins`; omit both to carry every vehicle over by type only",
     )
     end_old_on: date_type | None = Field(
         None, description="Shorten the old policy to this date for a mid-term switch"
