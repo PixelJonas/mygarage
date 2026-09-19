@@ -288,6 +288,22 @@ describe('PolicyForm — code-review regressions', () => {
     expect(payload).not.toHaveProperty('vins')
   })
 
+  it('switching insurers with a vehicle the user can only READ carries everything over instead of failing (CF-R2-M1)', async () => {
+    const user = userEvent.setup()
+    const policy = existing()
+    policy.vehicles![1] = { ...policy.vehicles![1], can_edit: false }
+    render(<PolicyForm mode="replace" policy={policy} onClose={vi.fn()} onSuccess={vi.fn()} />)
+    expect(screen.getByText('insurance.vehiclesLocked')).toBeInTheDocument()
+    await user.type(screen.getByLabelText('insurance.provider *'), 'GEICO')
+    await user.type(screen.getByLabelText('insurance.policyNumber *'), 'G-7')
+    await user.type(screen.getByLabelText('common:endDate *'), '2027-01-01')
+    await user.click(screen.getByRole('button', { name: 'common:create' }))
+
+    await waitFor(() => expect(replaceMutateAsync).toHaveBeenCalledTimes(1))
+    // Creating a link needs write access to the vehicle; carrying one does not.
+    expect(replaceMutateAsync.mock.calls[0][0]).not.toHaveProperty('vehicles')
+  })
+
   it("switching insurers saves the NEW insurer's coverage edits instead of discarding them (CF-R1-H2)", async () => {
     const user = userEvent.setup()
     render(<PolicyForm mode="replace" policy={existing()} onClose={vi.fn()} onSuccess={vi.fn()} />)

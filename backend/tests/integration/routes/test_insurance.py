@@ -664,3 +664,34 @@ class TestCodeReviewRegressions:
             "Liability",
             "1000.00",
         )
+
+    async def test_a_creator_who_can_only_read_a_vehicle_can_still_switch_insurers(
+        self, client, db_session, reader_headers, reader_user, owned_vehicle, owner_headers
+    ):
+        # CF-R2-M1: CREATING a link needs write on the vehicle, so an explicit
+        # vehicle list 403s for this user. CARRYING every vehicle over does not,
+        # which is what the form sends when it cannot edit a vehicle.
+        old = await _create(client, owner_headers, [_on(owned_vehicle.vin, deductible="500.00")])
+        row = await db_session.get(InsurancePolicy, old["id"])
+        row.created_by_user_id = reader_user.id
+        await db_session.commit()
+        today = household_today()
+        switch = {
+            "provider": "GEICO",
+            "policy_number": "G-9",
+            "start_date": today.isoformat(),
+            "end_date": (today + timedelta(days=180)).isoformat(),
+        }
+
+        explicit = await client.post(
+            f"{API}/{old['id']}/replace",
+            json=switch | {"vehicles": [_on(owned_vehicle.vin)]},
+            headers=reader_headers,
+        )
+        assert explicit.status_code == 403
+
+        carried = await client.post(
+            f"{API}/{old['id']}/replace", json=switch, headers=reader_headers
+        )
+        assert carried.status_code == 201, carried.text
+        assert [v["vin"] for v in carried.json()["vehicles"]] == [owned_vehicle.vin]

@@ -333,3 +333,47 @@ async def test_the_json_backup_keeps_the_date_a_vehicle_left_the_policy(
 
     (restored,) = await _policies(db_session)
     assert restored.vehicle_links[0].effective_to == date(2026, 3, 1)
+
+
+async def test_the_importers_refuse_a_fraction_of_a_cent(client, db_session, auth_headers):
+    # CB-R1-H3: the API schema's whole-cents rule does not reach an importer,
+    # which builds ORM rows directly. Two 0.005 rows summed to a 0.01 premium
+    # and were then STORED as two 0.01 shares.
+    result = await _import_csv(
+        client,
+        auth_headers,
+        RAM,
+        ROW.format(type="Full Coverage", premium="0.005", deductible="", notes=""),
+        ROW.format(type="Full Coverage", premium="10.00", deductible="0.001", notes="").replace(
+            "P-100", "P-101"
+        ),
+    )
+    assert result["success_count"] == 0 and result["error_count"] == 2, result
+    assert "whole number of cents" in " ".join(result["errors"])
+    assert await _policies(db_session) == []
+
+    backup = {
+        "export_version": "7",
+        "units": "metric",
+        "vehicle": {"vin": RAM},
+        "insurance_policies": [
+            {
+                "provider": "Progressive",
+                "policy_number": "P-JSONCENT",
+                "start_date": "2026-01-01",
+                "end_date": "2026-07-01",
+                "policy_type": "Liability",
+                "premium_share": 0.005,
+            }
+        ],
+    }
+    restored = await client.post(
+        f"/api/import/vehicles/{RAM}/json",
+        files={
+            "file": ("backup.json", io.BytesIO(json.dumps(backup).encode()), "application/json")
+        },
+        headers=auth_headers,
+    )
+    assert restored.status_code == 200, restored.text
+    assert restored.json()["insurance_policies"]["errors"] == 1, restored.json()
+    assert await _policies(db_session) == []

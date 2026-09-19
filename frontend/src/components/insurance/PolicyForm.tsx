@@ -94,7 +94,14 @@ export default function PolicyForm({ mode, policy, initialVin, onClose, onSucces
   // Sending a vehicle list would then REMOVE the hidden ones (on edit) or leave
   // them off the new policy (on a switch), so the vehicle editor is locked and
   // no vehicle list is sent at all: the backend then keeps or carries them all.
-  const vehiclesLocked = (isEdit || isReplace) && (policy?.other_vehicle_count ?? 0) > 0
+  //
+  // A switch is stricter still: it CREATES links, which takes write access to
+  // every vehicle, so one the user can only read would 403 the whole switch.
+  // Carrying everything over by type needs no such access, so that is what a
+  // locked switch does.
+  const vehiclesLocked =
+    ((isEdit || isReplace) && (policy?.other_vehicle_count ?? 0) > 0) ||
+    (isReplace && (policy?.vehicles ?? []).some((vehicle) => !vehicle.can_edit))
   // Vehicles the user can see but not write: shown, never editable here.
   const readOnlyVins = useMemo(
     () =>

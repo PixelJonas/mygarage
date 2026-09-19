@@ -161,7 +161,7 @@
     "endOldOnHint": "Only for a mid-term switch. Leave blank to let the old policy run to its end date.",
     "policyDetails": "Policy details",
     "coveredVehicles": "Covered vehicles",
-    "vehiclesLocked": "This policy covers vehicles you do not have access to, so its vehicle list cannot be edited here.",
+    "vehiclesLocked": "This policy covers vehicles you cannot edit, so its vehicle list is locked here. Every vehicle stays on the policy.",
     "noVehiclesYet": "No vehicles yet. Add the vehicles this policy covers.",
     "removeVehicle": "Remove vehicle from policy",
     "vehicleShare": "Share of premium",

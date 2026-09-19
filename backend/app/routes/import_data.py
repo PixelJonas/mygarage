@@ -249,6 +249,17 @@ class _InsuranceRowError(ValueError):
     """An insurance row that cannot be imported, with a user-facing reason."""
 
 
+def _whole_cents(value: Decimal | None, column: str) -> Decimal | None:
+    """The amount, or a row error when it has a fraction of a cent."""
+    if value is None:
+        return None
+    if value != value.quantize(Decimal("0.01")):
+        raise _InsuranceRowError(f"{column} must be a whole number of cents")
+    if value < 0:
+        raise _InsuranceRowError(f"{column} must not be negative")
+    return value
+
+
 async def _import_insurance_row(
     db: AsyncSession,
     access: Any,
@@ -272,7 +283,11 @@ async def _import_insurance_row(
     """
     provider = (row["provider"] or "").strip()
     number = (row["policy_number"] or "").strip()
-    premium: Decimal | None = row["premium"]
+    # Importers build ORM rows directly, so the API schema's whole-cents rule
+    # does not reach them: 0.005 + 0.005 adds up to a 0.01 premium here and is
+    # then STORED as two 0.01 shares, which no longer fit it.
+    premium: Decimal | None = _whole_cents(row["premium"], "Premium")
+    row["deductible"] = _whole_cents(row["deductible"], "Deductible")
     frequency = row["premium_frequency"]
 
     candidates = (
@@ -289,6 +304,12 @@ async def _import_insurance_row(
                     else InsurancePolicy.premium_frequency == frequency,
                 )
                 .order_by(InsurancePolicy.id)
+                # Two imports for DIFFERENT vehicles hold different vehicle locks
+                # on PostgreSQL yet can target the same policy, and both add to
+                # its premium: lock the policy rows before reading their money.
+                # (SQLite imports already hold the database write lock, and
+                # `with_for_update` compiles away there.)
+                .with_for_update(of=InsurancePolicy)
                 .execution_options(populate_existing=True)
             )
         )

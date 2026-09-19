@@ -712,12 +712,18 @@ class InsuranceService:
         so every vehicle that stays keeps exactly the share it had. The caller
         has already authorized the transfer itself.
         """
+        # The same serialisation as every other writer: this rewrites premiums,
+        # and an import or an edit racing it would validate against stale money.
+        # SQLite takes the database write lock; elsewhere the rows are locked by
+        # the SELECT itself (`with_for_update` compiles away on SQLite).
+        await self._lock()
         policies = (
             (
                 await self.db.execute(
                     select(InsurancePolicy)
                     .join(InsurancePolicyVehicle)
                     .where(InsurancePolicyVehicle.vin == vin)
+                    .with_for_update(of=InsurancePolicy)
                     .execution_options(populate_existing=True)
                 )
             )
