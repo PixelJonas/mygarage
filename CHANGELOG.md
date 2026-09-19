@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Production images now install from `uv.lock`, so they no longer resolve a different dependency set on every build.
+- Registered the four models missing from `app.models`, which left the ORM registry incomplete for anything importing it directly.
+
+### Build
+- Backend dependencies bumped, including granian 2.8.3, starlette 1.6.0, sqlalchemy 2.0.54, numpy 2.5.3, ruff 0.16.8 and pyright 1.1.414.
+
 ## [3.5.0] - 2026-09-18
 
 ### Added
