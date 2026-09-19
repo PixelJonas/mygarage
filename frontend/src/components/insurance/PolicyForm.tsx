@@ -459,7 +459,12 @@ export default function PolicyForm({ mode, policy, initialVin, onClose, onSucces
                 id="end_old_on"
                 type="date"
                 value={endOldOn}
-                onChange={(event) => setEndOldOn(event.target.value)}
+                onChange={(event) => {
+                  setEndOldOn(event.target.value)
+                  // A mid-term switch starts the day the old policy ends; the
+                  // backend refuses a new policy that overlaps the old one.
+                  if (event.target.value) setValue('start_date', event.target.value)
+                }}
                 disabled={isSubmitting}
               />
             </Field>
@@ -487,6 +492,11 @@ export default function PolicyForm({ mode, policy, initialVin, onClose, onSucces
               <p className="text-sm text-text-mute">{t('insurance.vehiclesLocked')}</p>
             ) : (
               <>
+                {isReplace && policy && vehicleRows.length < startingVehicles.length && (
+                  <p className="text-sm text-text-dim">
+                    {t('insurance.partialSwitch', { provider: policy.provider })}
+                  </p>
+                )}
                 {vehicleRows.length === 0 && (
                   <p className="text-sm text-text-mute">{t('insurance.noVehiclesYet')}</p>
                 )}

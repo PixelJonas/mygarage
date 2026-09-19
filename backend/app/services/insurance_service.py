@@ -762,6 +762,14 @@ class InsuranceService:
         end = data.end_date or (start + (old.end_date - old.start_date))
         if end < start:
             raise HTTPException(status_code=422, detail="end_date must not be before start_date")
+        if start < old.end_date:
+            # An overlapping "next term" leaves both terms active at once, and
+            # analytics accrues both premiums for the overlap.
+            raise HTTPException(
+                status_code=422,
+                detail="The next term cannot start before the current one ends "
+                f"({old.end_date.isoformat()})",
+            )
         total = data.premium_amount if "premium_amount" in sent else old.premium_amount
 
         carried = [link for link in old.vehicle_links if link.effective_to is None]
@@ -817,9 +825,19 @@ class InsuranceService:
     async def replace(
         self, policy_id: int, data: InsurancePolicyReplace, current_user: User | None
     ) -> InsurancePolicyResponse:
-        """Switch insurers: a new policy takes over this one's vehicles. The new
-        insurer's coverages differ, so only the vehicles and their coverage type
-        carry over, on an even split."""
+        """Switch insurers: a new policy takes over vehicles from this one.
+
+        The SWITCH DATE is `end_old_on` for a mid-term switch, else the old
+        policy's own end. Only vehicles still covered on that date can move, and
+        the new policy may not start before it: an overlap leaves both terms
+        active and accrues both premiums.
+
+        A FULL switch (every still-covered vehicle moves) supersedes the old
+        policy, which ends on the switch date. A PARTIAL one (the car moves to a
+        new insurer, the truck stays) supersedes nothing: the old policy lives
+        on and stays renewable, the moved vehicles simply leave it on the switch
+        date, and the new policy starts a chain of its own.
+        """
         await self._lock(policy_id)
         access = await self._resolve_access(current_user)
         old = await self._load_writable(policy_id, access)
@@ -827,17 +845,34 @@ class InsuranceService:
             raise HTTPException(
                 status_code=409, detail="This policy already has a following term or replacement"
             )
-        if data.end_old_on is not None:
-            if not (old.start_date <= data.end_old_on <= old.end_date):
-                raise HTTPException(
-                    status_code=422, detail="end_old_on must fall within the old policy's term"
-                )
-            old.end_date = data.end_old_on
-            for link in old.vehicle_links:
-                if link.effective_to is not None and link.effective_to > old.end_date:
-                    link.effective_to = None
+        if data.end_old_on is not None and not (old.start_date <= data.end_old_on <= old.end_date):
+            raise HTTPException(
+                status_code=422, detail="end_old_on must fall within the old policy's term"
+            )
+        switch_date = data.end_old_on or old.end_date
+        if data.start_date < switch_date:
+            raise HTTPException(
+                status_code=422,
+                detail="The new policy starts before the old one ends. For a mid-term switch, "
+                "set the date the old policy ends (end_old_on)",
+            )
 
-        wanted = None if data.vins is None else {v.upper().strip() for v in data.vins}
+        # A vehicle whose cover ended earlier in the term is not on the policy
+        # any more and does not follow it to the new insurer.
+        covered = [
+            link
+            for link in old.vehicle_links
+            if link.effective_to is None or link.effective_to > switch_date
+        ]
+        if data.vehicles is not None:
+            moving = {vehicle.vin.upper().strip() for vehicle in data.vehicles}
+        elif data.vins is not None:
+            moving = {vin.upper().strip() for vin in data.vins}
+        else:
+            moving = {link.vin for link in covered}
+        staying = [link for link in covered if link.vin not in moving]
+        is_full_switch = not staying
+
         new = InsurancePolicy(
             provider=data.provider.strip(),
             policy_number=data.policy_number.strip(),
@@ -847,7 +882,7 @@ class InsuranceService:
             premium_frequency=data.premium_frequency,
             notes=data.notes,
             created_by_user_id=access.user_id,
-            previous_policy_id=old.id,
+            previous_policy_id=old.id if is_full_switch else None,
         )
         self.db.add(new)
         if data.vehicles is not None:
@@ -856,15 +891,31 @@ class InsuranceService:
             for vehicle in data.vehicles:
                 await self._new_link(new, vehicle, current_user)
         else:
+            for link in covered:
+                if link.vin in moving:
+                    new.vehicle_links.append(
+                        InsurancePolicyVehicle(vin=link.vin, policy_type=link.policy_type)
+                    )
+
+        if is_full_switch:
+            old.end_date = switch_date
             for link in old.vehicle_links:
-                if link.effective_to is not None and data.end_old_on is None:
-                    continue
-                if wanted is not None and link.vin not in wanted:
-                    continue
-                new.vehicle_links.append(
-                    InsurancePolicyVehicle(vin=link.vin, policy_type=link.policy_type)
-                )
+                if link.effective_to is not None and link.effective_to > old.end_date:
+                    link.effective_to = None
+        else:
+            # The old policy carries on for the vehicles that stay. The ones that
+            # moved stop costing there from the switch date, and a later renewal
+            # of the old policy will not carry them (it skips departed links).
+            for link in covered:
+                if link.vin in moving:
+                    link.effective_to = switch_date
+
         self._check_allocation(new)
         await self._commit("replacing insurance policy")
-        logger.info("Replaced insurance policy %s with %s", old.id, new.id)
+        logger.info(
+            "%s insurance policy %s with %s",
+            "Replaced" if is_full_switch else "Moved vehicles off",
+            old.id,
+            new.id,
+        )
         return await self._respond(new.id, access)

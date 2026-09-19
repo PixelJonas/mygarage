@@ -645,6 +645,7 @@ class TestCodeReviewRegressions:
                 "start_date": today.isoformat(),
                 "end_date": (today + timedelta(days=180)).isoformat(),
                 "premium_amount": "500.00",
+                "end_old_on": today.isoformat(),
                 "vehicles": [
                     _on(
                         owned_vehicle.vin,
@@ -681,6 +682,7 @@ class TestCodeReviewRegressions:
             "policy_number": "G-9",
             "start_date": today.isoformat(),
             "end_date": (today + timedelta(days=180)).isoformat(),
+            "end_old_on": today.isoformat(),
         }
 
         explicit = await client.post(
@@ -695,3 +697,108 @@ class TestCodeReviewRegressions:
         )
         assert carried.status_code == 201, carried.text
         assert [v["vin"] for v in carried.json()["vehicles"]] == [owned_vehicle.vin]
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+class TestPrReviewRegressions:
+    """The three findings from the PR #177 review."""
+
+    @staticmethod
+    def _switch(today, **over) -> dict:
+        return {
+            "provider": "GEICO",
+            "policy_number": "G-PR",
+            "start_date": (today + timedelta(days=150)).isoformat(),
+            "end_date": (today + timedelta(days=330)).isoformat(),
+            "premium_amount": "250.00",
+        } | over
+
+    async def test_moving_one_vehicle_to_a_new_insurer_leaves_the_old_policy_alive(
+        self, client, owner_headers, owned_vehicle, second_vehicle
+    ):
+        # P1: the new policy superseded the WHOLE old one, so the vehicle left
+        # behind could never be renewed and its expiry reminder went silent.
+        old = await _create(client, owner_headers, [_on(owned_vehicle.vin), _on(SECOND_VIN)])
+        today = household_today()
+
+        moved = await client.post(
+            f"{API}/{old['id']}/replace",
+            json=self._switch(today, vins=[SECOND_VIN]),
+            headers=owner_headers,
+        )
+        assert moved.status_code == 201, moved.text
+        assert [v["vin"] for v in moved.json()["vehicles"]] == [SECOND_VIN]
+        assert moved.json()["previous_policy_id"] is None, "a partial move supersedes nothing"
+
+        still = (await client.get(f"{API}/{old['id']}", headers=owner_headers)).json()
+        assert still["has_successor"] is False
+        assert still["status"] == "active"
+        # The moved vehicle stops costing on the old policy from the switch date.
+        by_vin = {v["vin"]: v for v in still["vehicles"]}
+        assert by_vin[SECOND_VIN]["effective_to"] == old["end_date"]
+        assert by_vin[owned_vehicle.vin]["effective_to"] is None
+
+        # ...and the old policy can still be renewed, for the vehicle that stayed.
+        renewed = await client.post(f"{API}/{old['id']}/renew", json={}, headers=owner_headers)
+        assert renewed.status_code == 201, renewed.text
+        assert [v["vin"] for v in renewed.json()["vehicles"]] == [owned_vehicle.vin]
+
+    async def test_a_mid_term_switch_does_not_bring_back_a_vehicle_that_already_left(
+        self, client, owner_headers, owned_vehicle, second_vehicle
+    ):
+        # P2: with `end_old_on` and no explicit list, EVERY link was carried,
+        # including one whose cover ended earlier in the term.
+        old = await _create(client, owner_headers, [_on(owned_vehicle.vin), _on(SECOND_VIN)])
+        today = household_today()
+        left_on = (today - timedelta(days=10)).isoformat()
+        edited = await client.put(
+            f"{API}/{old['id']}",
+            json={"vehicles": [_on(owned_vehicle.vin), _on(SECOND_VIN, effective_to=left_on)]},
+            headers=owner_headers,
+        )
+        assert edited.status_code == 200, edited.text
+
+        switched = await client.post(
+            f"{API}/{old['id']}/replace",
+            json=self._switch(today, start_date=today.isoformat(), end_old_on=today.isoformat()),
+            headers=owner_headers,
+        )
+
+        assert switched.status_code == 201, switched.text
+        assert [v["vin"] for v in switched.json()["vehicles"]] == [owned_vehicle.vin]
+        # Every still-covered vehicle moved, so this one DOES supersede the old policy.
+        assert switched.json()["previous_policy_id"] == old["id"]
+
+    async def test_a_renewal_or_switch_may_not_overlap_the_term_it_follows(
+        self, client, owner_headers, owned_vehicle
+    ):
+        # P2: an overlapping successor left both terms active, and analytics
+        # accrued both premiums for the overlap.
+        old = await _create(client, owner_headers, [_on(owned_vehicle.vin)])
+        today = household_today()
+
+        early = await client.post(
+            f"{API}/{old['id']}/renew",
+            json={
+                "start_date": today.isoformat(),
+                "end_date": (today + timedelta(days=180)).isoformat(),
+            },
+            headers=owner_headers,
+        )
+        assert early.status_code == 422, early.text
+
+        overlapping_switch = await client.post(
+            f"{API}/{old['id']}/replace",
+            json=self._switch(today, start_date=today.isoformat()),
+            headers=owner_headers,
+        )
+        assert overlapping_switch.status_code == 422, overlapping_switch.text
+
+        # Ending the old policy on the switch date is how a mid-term switch is said.
+        clean = await client.post(
+            f"{API}/{old['id']}/replace",
+            json=self._switch(today, start_date=today.isoformat(), end_old_on=today.isoformat()),
+            headers=owner_headers,
+        )
+        assert clean.status_code == 201, clean.text

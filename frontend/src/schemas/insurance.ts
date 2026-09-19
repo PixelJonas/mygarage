@@ -117,7 +117,9 @@ export const makeInsuranceSchema = (t: TFunction) =>
 export type InsuranceFormData = z.output<ReturnType<typeof makeInsuranceSchema>>
 export type PolicyVehicleFormData = InsuranceFormData['vehicles'][number]
 
-export const makeRenewSchema = (t: TFunction) =>
+/** `currentEnd` is the term being renewed: the next one may not start before
+ *  it ends, or both would be active at once and both premiums would accrue. */
+export const makeRenewSchema = (t: TFunction, currentEnd: string) =>
   z
     .object({
       start_date: z.string().min(1, t('common:validation.date.required')),
@@ -127,6 +129,10 @@ export const makeRenewSchema = (t: TFunction) =>
     .refine((data) => data.end_date >= data.start_date, {
       path: ['end_date'],
       message: t('forms:insurance.endBeforeStart'),
+    })
+    .refine((data) => !data.start_date || data.start_date >= currentEnd, {
+      path: ['start_date'],
+      message: t('forms:insurance.renewOverlaps'),
     })
 
 export type RenewFormData = z.output<ReturnType<typeof makeRenewSchema>>

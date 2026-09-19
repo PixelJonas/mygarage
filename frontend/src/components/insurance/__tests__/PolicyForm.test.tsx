@@ -253,7 +253,8 @@ describe('PolicyForm — edit and replace', () => {
       id: 7,
       provider: 'GEICO',
       policy_number: 'G-7',
-      start_date: '2026-07-01',
+      // Follows "end the old policy on": a switch may not overlap the old term.
+      start_date: '2026-06-15',
       end_date: '2027-01-01',
       premium_amount: null,
       premium_frequency: 'Semi-Annual',
@@ -302,6 +303,19 @@ describe('PolicyForm — code-review regressions', () => {
     await waitFor(() => expect(replaceMutateAsync).toHaveBeenCalledTimes(1))
     // Creating a link needs write access to the vehicle; carrying one does not.
     expect(replaceMutateAsync.mock.calls[0][0]).not.toHaveProperty('vehicles')
+  })
+
+  it('a mid-term switch starts the new policy the day the old one ends, and says where removed vehicles go (PR #177 review)', async () => {
+    const user = userEvent.setup()
+    render(<PolicyForm mode="replace" policy={existing()} onClose={vi.fn()} onSuccess={vi.fn()} />)
+    expect(screen.queryByText('insurance.partialSwitch')).not.toBeInTheDocument()
+
+    await user.type(screen.getByLabelText('insurance.endOldOn'), '2026-06-15')
+    // The backend refuses a new policy that overlaps the old one.
+    expect(screen.getByLabelText('common:startDate *')).toHaveValue('2026-06-15')
+
+    await user.click(screen.getAllByRole('button', { name: 'insurance.removeVehicle' })[1])
+    expect(screen.getByText('insurance.partialSwitch')).toBeInTheDocument()
   })
 
   it("switching insurers saves the NEW insurer's coverage edits instead of discarding them (CF-R1-H2)", async () => {

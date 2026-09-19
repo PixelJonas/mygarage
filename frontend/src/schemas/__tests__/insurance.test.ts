@@ -93,12 +93,25 @@ describe('Insurance policy schema', () => {
 })
 
 describe('Renew schema', () => {
-  const renew = makeRenewSchema(t)
+  const renew = makeRenewSchema(t, '2026-07-01')
 
-  it('needs both dates in order, and takes an optional premium', () => {
+  it('needs both dates in order', () => {
     expect(renew.safeParse({ start_date: '2026-07-01', end_date: '2027-01-01' }).success).toBe(true)
     expect(renew.safeParse({ start_date: '2026-07-01', end_date: '2026-06-01' }).success).toBe(false)
     expect(renew.safeParse({ start_date: '', end_date: '2027-01-01' }).success).toBe(false)
+  })
+
+  it('refuses a next term that starts before the current one ends (PR #177 review)', () => {
+    const result = renew.safeParse({ start_date: '2026-06-30', end_date: '2027-01-01' })
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error.issues.map((issue) => issue.message)).toContain('forms:insurance.renewOverlaps')
+    }
+    // The shared boundary day is how declarations pages print adjacent terms.
+    expect(renew.safeParse({ start_date: '2026-07-01', end_date: '2027-01-01' }).success).toBe(true)
+  })
+
+  it('takes an optional premium', () => {
     expect(
       renew.safeParse({ start_date: '2026-07-01', end_date: '2027-01-01', premium_amount: 684 }).success
     ).toBe(true)

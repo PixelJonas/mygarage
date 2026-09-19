@@ -30,10 +30,9 @@ const DAY_MS = 86_400_000
 export default function RenewPolicyDialog({ policy, onClose, onSuccess }: RenewPolicyDialogProps) {
   const { t } = useTranslation('forms')
   const renewMutation = useRenewInsurancePolicy()
-  const schema = useMemo(() => makeRenewSchema(t), [t])
-
   // The next term starts where this one ends and runs the same length.
   const start = formatDateForInput(policy.end_date)
+  const schema = useMemo(() => makeRenewSchema(t, start), [t, start])
   const termDays = Math.round(
     (Date.parse(`${policy.end_date}T00:00:00Z`) - Date.parse(`${policy.start_date}T00:00:00Z`)) /
       DAY_MS

@@ -193,7 +193,9 @@
     "attachShareHint": "Optional. It is added to the policy premium, so the other vehicles' shares stay the same.",
     "evenSplitAbout": "Even split: about {{amount}}",
     "vehicleReadOnly": "View only",
-    "fieldIncomplete": "Give this field both a label and a value, or remove it."
+    "fieldIncomplete": "Give this field both a label and a value, or remove it.",
+    "renewOverlaps": "The next term cannot start before the current one ends",
+    "partialSwitch": "Vehicles you remove here stay on {{provider}}, which carries on for them and can still be renewed."
   },
   "modal": {
     "acceptTelemetry": "Accept telemetry data from WiCAN devices",
