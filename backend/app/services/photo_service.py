@@ -18,9 +18,11 @@ logger = logging.getLogger(__name__)
 
 HEIF_SUPPORTED = False
 try:
-    import pillow_heif  # type: ignore
+    # See file_upload_service: pillow-heif 1.7.0 has py.typed but no `__all__`,
+    # so the package root re-export is not a public export to a type checker.
+    from pillow_heif.as_plugin import register_heif_opener
 
-    pillow_heif.register_heif_opener()
+    register_heif_opener()
     HEIF_SUPPORTED = True
 except Exception:  # pragma: no cover - optional dependency
     pass
