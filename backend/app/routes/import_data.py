@@ -96,7 +96,12 @@ from app.utils.csv_units import (
 from app.utils.def_sync import ensure_def_capable
 from app.utils.file_validation import validate_csv_upload
 from app.utils.household_time import household_today
-from app.utils.insurance_coverages import COVERAGE_BY_KEY, coverage_row, parse_coverage_lines
+from app.utils.insurance_coverages import (
+    COVERAGE_BY_KEY,
+    coverage_row,
+    parse_coverage_lines,
+    place_leftovers,
+)
 from app.utils.logging_utils import sanitize_for_log
 from app.utils.maintenance_types import classify
 from app.utils.odometer_tolerance import KM_STEP, LITRE_STEP, conversion_tolerance
@@ -262,12 +267,6 @@ def _whole_cents(value: Decimal | None, column: str) -> Decimal | None:
     return value
 
 
-#: The named-field columns a converted leftover has to fit
-#: (`InsurancePolicyField.label` / `.value`).
-_FIELD_LABEL_MAX = 60
-_FIELD_VALUE_MAX = 255
-
-
 def _coverages_from_rows(raw: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """The standard coverages of a schema-8 backup entry.
 
@@ -304,11 +303,9 @@ def _coverages_from_text(text: str | None) -> tuple[list[dict[str, Any]], list[d
     produced rather than only its coverage rows.
     """
     parse = parse_coverage_lines(text)
-    fields = [
-        {"label": label[:_FIELD_LABEL_MAX], "value": value[:_FIELD_VALUE_MAX]}
-        for label, value in parse.fields
-    ]
-    return [coverage_row(item) for item in parse.coverages], fields, parse.notes
+    leftover_fields, kept_prose = place_leftovers(parse)
+    fields = [{"label": label, "value": value} for label, value in leftover_fields]
+    return [coverage_row(item) for item in parse.coverages], fields, kept_prose
 
 
 def _merge_converted(row: dict[str, Any], text: str | None) -> None:

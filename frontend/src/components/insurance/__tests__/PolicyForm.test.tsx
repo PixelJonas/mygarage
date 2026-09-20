@@ -148,6 +148,28 @@ describe('PolicyForm — create', () => {
     ])
   })
 
+  it('lets a bad amount be undone by unticking the coverage it was typed under', async () => {
+    // Left behind, the hidden value keeps failing validation from a row that
+    // is no longer on screen to show why the save does nothing.
+    const user = userEvent.setup()
+    render(<PolicyForm mode="create" onClose={vi.fn()} onSuccess={vi.fn()} />)
+    await fillPolicy(user)
+    await addVehicle(user, RAM, 'Full Coverage', 0)
+
+    await user.click(screen.getByLabelText('forms:insuranceCoverages.collision'))
+    await user.type(
+      screen.getByLabelText('forms:insurance.deductible', {
+        selector: '#vehicle-0-coverage-collision-deductible',
+      }),
+      '-1'
+    )
+    await user.click(screen.getByLabelText('forms:insuranceCoverages.collision'))
+    await user.click(screen.getByRole('button', { name: 'common:create' }))
+
+    await waitFor(() => expect(createMutateAsync).toHaveBeenCalledTimes(1))
+    expect(createMutateAsync.mock.calls[0][0].vehicles[0].coverages).toEqual([])
+  })
+
   it('sends a coverage carried with no amounts as a bare row', async () => {
     const user = userEvent.setup()
     render(<PolicyForm mode="create" onClose={vi.fn()} onSuccess={vi.fn()} />)

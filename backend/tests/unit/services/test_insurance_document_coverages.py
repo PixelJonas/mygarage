@@ -94,3 +94,19 @@ def test_a_page_with_no_vin_sections_still_reads_document_coverages():
     data = GenericInsuranceParser().parse_document(flat)
     assert set(_by_key(data.coverages)) == {"bodily_injury", "roadside_assistance"}
     assert data.vehicle_coverages == {}
+
+
+def test_a_vehicle_whose_section_lists_none_is_not_given_anothers():
+    """THE REGRESSION. The document-wide read is dominated by whichever
+    vehicle the page listed first, so falling back for a vehicle that HAS a
+    section would post the first vehicle's coverage against the second."""
+    page = f"""VIN {RAM} 2021 Ram 1500
+Collision $500 deductible
+
+VIN {MIRAGE} 2017 Mitsubishi Mirage
+Liability only, see endorsement
+"""
+    data = ProgressiveInsuranceParser().parse_document(page)
+    assert "collision" in _by_key(data.vehicle_coverages[RAM])
+    # Keyed, and empty: its own section is the answer for it.
+    assert data.vehicle_coverages[MIRAGE] == []

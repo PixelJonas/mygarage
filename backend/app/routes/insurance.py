@@ -254,7 +254,13 @@ async def parse_insurance_pdf(
                     "vehicle_name": attachable.get(vin),
                     "premium_share": figures.get("premium_amount"),
                     "deductible": figures.get("deductible"),
-                    "coverages": per_vehicle_coverages.get(vin) or document_coverages,
+                    # `in`, not `or`: a vehicle whose own section listed no
+                    # coverage gets none, never the next vehicle's.
+                    "coverages": (
+                        per_vehicle_coverages[vin]
+                        if vin in per_vehicle_coverages
+                        else document_coverages
+                    ),
                 }
             )
 

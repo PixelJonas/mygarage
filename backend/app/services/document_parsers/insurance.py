@@ -128,16 +128,20 @@ class InsuranceDocumentParser(BaseDocumentParser):
 
     def _fill_coverages(self, data: InsuranceData, text: str) -> None:
         """Document-wide coverages, plus per-vehicle ones where a page has
-        sections. A vehicle with no section of its own falls back to the
-        document's, which is the best the page offers for it."""
+        sections. Only a vehicle with NO section of its own falls back to the
+        document-wide read, which is the best the page offers for it."""
         data.coverages = coverage_payload(parse_coverage_lines(text).coverages)
         for found_vin in data.vehicles_found:
             section = self._vin_section(text, found_vin)
-            if not section:
+            if section is None:
                 continue
-            coverages = parse_coverage_lines(section).coverages
-            if coverages:
-                data.vehicle_coverages[found_vin.upper()] = coverage_payload(coverages)
+            # Keyed even when the section names no coverage, so the caller can
+            # tell "this vehicle's own section listed none" from "this vehicle
+            # has no section". Falling back for the first would hand it the
+            # coverages of whichever vehicle the page listed first.
+            data.vehicle_coverages[found_vin.upper()] = coverage_payload(
+                parse_coverage_lines(section).coverages
+            )
 
     @staticmethod
     def _vin_section(text: str, vin: str) -> str | None:

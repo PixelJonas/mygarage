@@ -252,6 +252,14 @@ _TYPE_CHECK = "policy_type IN ({})".format(", ".join(f"'{t}'" for t in POLICY_TY
 _FREQ_CHECK = "premium_frequency IN ({})".format(", ".join(f"'{f}'" for f in PREMIUM_FREQUENCIES))
 
 
+#: `create_all` runs BEFORE the migrations and builds any missing table from
+#: the CURRENT ORM, which (since migration 108) has no `coverage_limits`. A
+#: database upgrading from before 107 therefore arrives here with a links
+#: table this migration is about to write a missing column into, and 107 is
+#: FATAL, so that failure stops the app from starting at all.
+_ENSURE_TEXT_COLUMN = "ALTER TABLE insurance_policy_vehicles ADD COLUMN coverage_limits TEXT"
+
+
 def _links_ddl(serial: str, timestamp: str) -> str:
     return f"""
         CREATE TABLE IF NOT EXISTS insurance_policy_vehicles (
@@ -379,6 +387,9 @@ def _run_sqlite(engine) -> None:
                 """
             )
             cur.execute(_links_ddl("INTEGER PRIMARY KEY AUTOINCREMENT", "DATETIME"))
+            columns = {r[1] for r in cur.execute("PRAGMA table_info(insurance_policy_vehicles)")}
+            if "coverage_limits" not in columns:
+                cur.execute(_ENSURE_TEXT_COLUMN)
             cur.execute(_fields_ddl("INTEGER PRIMARY KEY AUTOINCREMENT"))
 
             for policy in policies:
@@ -471,6 +482,7 @@ def _run_postgres(engine) -> None:
             )
         )
         conn.execute(text(_links_ddl("SERIAL PRIMARY KEY", "TIMESTAMP")))
+        conn.execute(text(_ENSURE_TEXT_COLUMN.replace("ADD COLUMN", "ADD COLUMN IF NOT EXISTS")))
         conn.execute(text(_fields_ddl("SERIAL PRIMARY KEY")))
 
         survivors = [p["id"] for p in policies]

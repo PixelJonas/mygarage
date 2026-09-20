@@ -9,17 +9,22 @@ with `insurance_coverages`: one row per coverage from the catalogue in
 
 FATAL, because the ORM no longer maps `coverage_limits`.
 
-NOTHING IS DISCARDED. Each line of the old text goes to one of three places,
-decided by the same parser the PDF import uses:
+WHERE EACH LINE GOES, decided by the same parser the PDF import uses:
 
 1. a line the catalogue recognises -> an `insurance_coverages` row
 2. a leftover that splits into a label and an amount -> a named field on that
    vehicle, appended after any it already has
-3. a leftover with no amount at all -> appended to that vehicle's notes,
-   verbatim
+3. anything else, including a leftover too long for the named-field columns
+   -> appended to that vehicle's notes, verbatim
 
-So every word a user could read before the upgrade is still on that vehicle
-after it, and the ones that were already structured data become structured.
+A line is only read as a coverage when the read is unambiguous: one that says
+a coverage is NOT carried, or that names a second coverage, is kept whole
+under (3) rather than guessed at.
+
+What this does NOT keep is prose trailing a line that WAS read as a coverage
+("Collision $500 deductible, waived for hit-and-run" keeps the $500 and drops
+the condition). The conversion is best-effort on free text, which is why the
+release notes and the wiki both say to open each policy once afterwards.
 """
 
 import os
@@ -28,7 +33,7 @@ from typing import Any
 
 from sqlalchemy import create_engine, inspect, text
 
-from app.utils.insurance_coverages import coverage_row, parse_coverage_lines
+from app.utils.insurance_coverages import coverage_row, parse_coverage_lines, place_leftovers
 
 FATAL = True
 
@@ -51,10 +56,11 @@ def plan_conversion(links: list[dict[str, Any]]) -> list[dict[str, Any]]:
         parse = parse_coverage_lines(link.get("coverage_limits"))
         if not (parse.coverages or parse.fields or parse.notes):
             continue
+        converted_fields, kept_prose = place_leftovers(parse)
 
         notes = link.get("notes") or ""
-        if parse.notes:
-            notes = "\n".join(filter(None, [notes.rstrip(), *parse.notes]))
+        if kept_prose:
+            notes = "\n".join(filter(None, [notes.rstrip(), *kept_prose]))
 
         planned.append(
             {
@@ -63,15 +69,14 @@ def plan_conversion(links: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "coverages": [coverage_row(item) for item in parse.coverages],
                 "fields": [
                     {
-                        # `insurance_policy_fields.label` / `.value` widths.
-                        "label": label[:60],
-                        "value": value[:255],
+                        "label": label,
+                        "value": value,
                         "sort_order": link.get("next_sort_order", 0) + offset,
                     }
-                    for offset, (label, value) in enumerate(parse.fields)
+                    for offset, (label, value) in enumerate(converted_fields)
                 ],
                 "notes": notes or None,
-                "notes_changed": bool(parse.notes),
+                "notes_changed": bool(kept_prose),
             }
         )
     return planned

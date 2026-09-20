@@ -16,6 +16,7 @@ from app.utils.insurance_coverages import (
     ParsedCoverage,
     format_coverage_lines,
     parse_coverage_lines,
+    place_leftovers,
 )
 
 PROGRESSIVE = """Liability to Others $315
@@ -291,3 +292,70 @@ class TestSlotsAreTheOneDefinition:
 
     def test_a_parsed_coverage_reads_its_slots_from_the_catalogue(self):
         assert ParsedCoverage("glass").slots() == COVERAGE_BY_KEY["glass"].slots()
+
+
+class TestReviewRegressions:
+    """Defects found reviewing the finished change."""
+
+    def test_a_label_before_its_amount_reaches_the_right_slot(self):
+        """Pages label either side of the figure. Reading only what FOLLOWS an
+        amount put "deductible $500 premium $299" in backwards."""
+        item = parsed("Collision deductible $500 premium $299")["collision"]
+        assert item.deductible == Decimal("500")
+        assert item.premium == Decimal("299")
+
+    def test_a_label_after_its_amount_still_reaches_the_right_slot(self):
+        item = parsed("Uninsured Motorist Property Damage $100,000 each accident $250 deductible")[
+            "uninsured_property_damage"
+        ]
+        assert item.limit_primary == Decimal("100000")
+        assert item.deductible == Decimal("250")
+
+    def test_one_gap_cannot_label_both_of_the_amounts_beside_it(self):
+        item = parsed("Bodily Injury $100,000 each person/$300,000 each accident")["bodily_injury"]
+        assert item.limit_primary == Decimal("100000")
+        assert item.limit_secondary == Decimal("300000")
+
+    def test_a_line_naming_two_coverages_is_kept_whole_instead_of_guessed(self):
+        """ "Bodily Injury: 100000/300000, Property Damage: 50000" used to read
+        as bodily injury with property damage's limit as its PREMIUM."""
+        result = parse_coverage_lines("Bodily Injury: 100000/300000, Property Damage: 50000")
+        assert result.coverages == []
+        assert result.fields == [("Bodily Injury", "100000/300000, Property Damage: 50000")]
+
+    def test_a_coverage_naming_itself_twice_is_not_ambiguous(self):
+        """ "Comprehensive Window Glass" mentions glass twice; that is one
+        coverage, not two."""
+        assert "glass" in parsed("Comprehensive Window Glass $0 glass")
+
+    def test_a_coverage_said_not_to_be_carried_is_not_recorded_as_carried(self):
+        for line in (
+            "Collision not covered",
+            "Collision - no coverage",
+            "Rental Reimbursement declined",
+            "Glass not included",
+        ):
+            result = parse_coverage_lines(line)
+            assert result.coverages == [], line
+            assert result.fields or result.notes, line
+
+
+class TestPlacingLeftovers:
+    """Where a line the catalogue does not know ends up."""
+
+    def test_a_line_that_fits_becomes_a_named_field(self):
+        fields, notes = place_leftovers(parse_coverage_lines("Roof Protection Plus $5,000"))
+        assert fields == [("Roof Protection Plus", "$5,000")]
+        assert notes == []
+
+    def test_a_line_too_long_for_the_column_is_kept_whole_as_prose(self):
+        """The column it came from is about to be dropped, so cutting it short
+        here is permanent."""
+        label = "L" * 80
+        fields, notes = place_leftovers(parse_coverage_lines(f"{label} $5"))
+        assert fields == []
+        assert notes == [f"{label} $5"]
+
+    def test_an_unpriced_line_is_prose_either_way(self):
+        fields, notes = place_leftovers(parse_coverage_lines("Disappearing Deductibles"))
+        assert (fields, notes) == ([], ["Disappearing Deductibles"])

@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Garage analytics counts insurance by billing frequency and date, per vehicle and per month.
 - A transferred vehicle leaves the previous owner's policies.
 - Insurance `test-parse` is admin only.
-- **BREAKING:** a vehicle's `coverage_limits` text is replaced by `coverages`. Existing text is converted at upgrade: recognised lines become coverages, priced leftovers become named fields, the rest stays in that vehicle's notes.
+- **BREAKING:** a vehicle's `coverage_limits` text is replaced by `coverages`. Existing text is converted at upgrade: recognised lines become coverages, priced leftovers become named fields, the rest stays in that vehicle's notes. Check each policy once afterwards.
 - Policy cards show every figure as a label above its value and pack them across the card, instead of three columns stretched over the page.
 - JSON backup schema version 8. Version 7 backups still restore; their coverage text is converted the same way.
 

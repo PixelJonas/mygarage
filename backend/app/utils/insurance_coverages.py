@@ -253,6 +253,28 @@ def _normalize(line: str) -> str:
     return re.sub(r"\s+", " ", line.strip().lstrip("-•*·• ").strip()).lower()
 
 
+#: A line saying a coverage is NOT carried. Recording it as carried would
+#: state the opposite of what the page says, so such a line is kept whole
+#: instead of being read as a coverage.
+_NOT_CARRIED = re.compile(
+    r"\b(?:not\s+(?:covered|included|carried|applicable|purchased)|no\s+coverage|declined|"
+    r"excluded|waived\s+entirely)\b"
+)
+
+
+def _names_another_coverage(remainder: str, key: str) -> bool:
+    """True when what follows the matched phrase names a DIFFERENT coverage.
+
+    One line holding two coverages ("Bodily Injury: 100/300, Property Damage:
+    50") cannot be split reliably, and reading it as the first one silently
+    files the second one's limit in a spare slot. Such a line is kept whole.
+    """
+    return any(
+        other != key and re.search(rf"\b{re.escape(phrase)}\b", remainder)
+        for phrase, other in _PHRASES
+    )
+
+
 def _match_phrase(normalized: str) -> tuple[str, str] | None:
     """The coverage a line opens with, and the text left after its phrase."""
     for phrase, key in _PHRASES:
@@ -264,44 +286,65 @@ def _match_phrase(normalized: str) -> tuple[str, str] | None:
 def _read_amounts(remainder: str, parsed: ParsedCoverage) -> None:
     """Fill `parsed`'s slots from the amounts in `remainder`.
 
-    Two passes, because a declarations line qualifies some of its amounts and
-    leaves the rest to column order. Qualified amounts ("$300,000 each
-    accident", "$500 deductible") go to the slot whose own words claim them,
-    wherever on the line they appear; whatever is left fills the remaining
-    slots in the order the page prints its columns, which is limits, then
-    deductible, then premium.
+    A declarations page labels its figures on EITHER side: "$100,000 each
+    person" puts the words after, "deductible $500" puts them before. So each
+    amount is offered the gap that precedes it and the gap that follows it,
+    and a gap goes to whichever amount it is written against: a slot's words
+    ENDING a gap label the amount after it, words STARTING a gap label the
+    amount before it. A gap is claimed once, so one "premium" between two
+    figures cannot price both.
+
+    Whatever is left fills the remaining slots in the order the page prints
+    its columns, which is limits, then deductible, then premium.
     """
     slots = COVERAGE_BY_KEY[parsed.key].slots()
     matches = list(_AMOUNT.finditer(remainder))
     if not matches:
         return
 
-    # An amount's qualifier is the words between it and the next amount.
-    spans = [
-        (
-            match,
-            remainder[
-                match.end() : (matches[i + 1].start() if i + 1 < len(matches) else len(remainder))
-            ],
-        )
-        for i, match in enumerate(matches)
-    ]
+    # gaps[i] is the text before amount i; gaps[len] is the trailing text.
+    bounds = [0] + [m.end() for m in matches]
+    gaps = [remainder[bounds[i] : m.start()] for i, m in enumerate(matches)]
+    gaps.append(remainder[matches[-1].end() :])
+    taken: set[int] = set()
 
-    unclaimed = []
-    for match, qualifier in spans:
-        value = _to_decimal(match.group(1))
-        if value is None:
-            continue
-        claimed = next(
+    def _slot_ending(text: str) -> str | None:
+        stripped = text.strip().rstrip(":-,").strip()
+        return next(
             (
                 name
                 for name, slot in slots
-                if any(q in qualifier for q in slot.qualifiers) and getattr(parsed, name) is None
+                if any(stripped.endswith(q) for q in slot.qualifiers)
+                and getattr(parsed, name) is None
             ),
             None,
         )
+
+    def _slot_starting(text: str) -> str | None:
+        stripped = text.strip().lstrip(":-,").strip()
+        return next(
+            (
+                name
+                for name, slot in slots
+                if any(stripped.startswith(q) for q in slot.qualifiers)
+                and getattr(parsed, name) is None
+            ),
+            None,
+        )
+
+    unclaimed = []
+    for index, match in enumerate(matches):
+        value = _to_decimal(match.group(1))
+        if value is None:
+            continue
+        claimed = None
+        if index not in taken and (name := _slot_ending(gaps[index])):
+            claimed, gap = name, index
+        elif index + 1 not in taken and (name := _slot_starting(gaps[index + 1])):
+            claimed, gap = name, index + 1
         if claimed:
             setattr(parsed, claimed, value)
+            taken.add(gap)
         else:
             unclaimed.append(value)
 
@@ -350,8 +393,15 @@ def parse_coverage_lines(text: str | None) -> CoverageParse:
         line = raw_line.strip().lstrip("-•*·• ").strip()
         if not line:
             continue
-        normalized = _normalize(raw_line)
+        normalized = _normalize(line)
         matched = _match_phrase(normalized)
+        if matched is not None and (
+            _NOT_CARRIED.search(normalized) or _names_another_coverage(matched[1], matched[0])
+        ):
+            # Understood well enough to know it must NOT become a row: the line
+            # either says the coverage is not carried, or names a second
+            # coverage whose figures would land in the first one's spare slots.
+            matched = None
         if matched is None:
             split = _split_leftover(line)
             if split:
@@ -434,6 +484,29 @@ def coverage_text(rows: list[Any]) -> str:
     ]
     items.sort(key=lambda item: COVERAGE_ORDER[item.key])
     return format_coverage_lines(items)
+
+
+#: `insurance_policy_fields.label` / `.value`. Here rather than at each
+#: writer because it is a placement rule, not a schema detail: it decides
+#: whether a leftover line can be a field at all.
+FIELD_LABEL_MAX = 60
+FIELD_VALUE_MAX = 255
+
+
+def place_leftovers(parse: CoverageParse) -> tuple[list[tuple[str, str]], list[str]]:
+    """Leftover lines as named fields, plus the prose that cannot be one.
+
+    A line too long for the named-field columns is kept WHOLE as prose rather
+    than silently cut short: the column it came from is about to be dropped,
+    so a truncation here is permanent.
+    """
+    fields, notes = [], list(parse.notes)
+    for label, value in parse.fields:
+        if len(label) <= FIELD_LABEL_MAX and len(value) <= FIELD_VALUE_MAX:
+            fields.append((label, value))
+        else:
+            notes.append(f"{label} {value}")
+    return fields, notes
 
 
 def coverage_row(item: ParsedCoverage) -> dict[str, Any]:

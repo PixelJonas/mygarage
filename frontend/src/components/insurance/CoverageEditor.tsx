@@ -1,5 +1,11 @@
 import { useTranslation } from 'react-i18next'
-import { useWatch, type Control, type FieldErrors, type UseFormRegister } from 'react-hook-form'
+import {
+  useWatch,
+  type Control,
+  type FieldErrors,
+  type UseFormRegister,
+  type UseFormSetValue,
+} from 'react-hook-form'
 import type { CoverageFormData, InsuranceFormData } from '../../schemas/insurance'
 import type { CoverageKey } from '../../types/insurance'
 import { COVERAGES, coverageSlots } from '../../constants/insuranceCoverages'
@@ -13,6 +19,7 @@ type CoverageErrors = NonNullable<
 interface CoverageEditorProps {
   control: Control<InsuranceFormData>
   register: UseFormRegister<InsuranceFormData>
+  setValue: UseFormSetValue<InsuranceFormData>
   name: CoveragesPath
   disabled?: boolean
   /** Distinguishes the inputs of several vehicles' editors on one form. */
@@ -39,6 +46,7 @@ interface CoverageEditorProps {
 export default function CoverageEditor({
   control,
   register,
+  setValue,
   name,
   disabled = false,
   idPrefix,
@@ -58,6 +66,7 @@ export default function CoverageEditor({
         if (!meta) return null
         const included = !!row?.included
         const rowErrors = errors?.[position]
+        const { onChange, ...tick } = register(`${name}.${position}.included`)
 
         return (
           <div key={key} className={`rounded-lg px-3 py-2 ${included ? 'bg-surface-2' : ''}`}>
@@ -65,7 +74,20 @@ export default function CoverageEditor({
               id={`${idPrefix}-${key}`}
               label={t(meta.labelKey)}
               disabled={disabled}
-              {...register(`${name}.${position}.included`)}
+              {...tick}
+              onChange={async (event) => {
+                await onChange(event)
+                // Untick and the amounts go with it. Left behind, an invalid
+                // one keeps blocking the save from a row that is no longer
+                // on screen to show its error.
+                if (!event.target.checked) {
+                  for (const [slotName] of coverageSlots(key)) {
+                    setValue(`${name}.${position}.${slotName}`, undefined, {
+                      shouldValidate: true,
+                    })
+                  }
+                }
+              }}
             />
             {included && (
               <div className="mt-2 grid gap-3 grid-cols-[repeat(auto-fill,minmax(9rem,1fr))]">

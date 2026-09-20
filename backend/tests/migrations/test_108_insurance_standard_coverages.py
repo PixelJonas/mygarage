@@ -25,8 +25,15 @@ Roadside Assistance
 Disappearing Deductibles"""
 
 
+def _load_107():
+    return _load_module("107_household_insurance_policies")
+
+
 def _load():
-    name = "108_insurance_standard_coverages"
+    return _load_module("108_insurance_standard_coverages")
+
+
+def _load_module(name: str):
     path = Path(_m.__file__).parent / f"{name}.py"
     spec = importlib.util.spec_from_file_location(name, path)
     mod = importlib.util.module_from_spec(spec)
@@ -351,3 +358,79 @@ def test_plan_leaves_notes_alone_when_every_line_was_understood():
 def test_plan_starts_the_notes_when_a_vehicle_had_none():
     planned = _plan("Disappearing Deductibles")
     assert planned[0]["notes"] == "Disappearing Deductibles"
+
+
+def test_107_still_runs_when_create_all_built_the_link_table_first(engine_for_migration):
+    """Upgrading from a release BEFORE 107 must not break at startup.
+
+    `create_all` runs before the migrations and builds
+    `insurance_policy_vehicles` from the CURRENT ORM, which no longer has
+    `coverage_limits`. Migration 107 then has to move the legacy text into a
+    table that was made without the column it writes to, and 107 is FATAL, so
+    failing there stops the app from starting at all.
+    """
+    _dialect, engine, _url = engine_for_migration
+    is_pg = engine.dialect.name == "postgresql"
+    serial = "SERIAL PRIMARY KEY" if is_pg else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    stamp = "TIMESTAMP" if is_pg else "DATETIME"
+    with engine.begin() as conn:
+        conn.execute(text("CREATE TABLE users (id INTEGER PRIMARY KEY, username VARCHAR(50))"))
+        conn.execute(
+            text(
+                "CREATE TABLE vehicles (vin VARCHAR(17) PRIMARY KEY, "
+                "user_id INTEGER REFERENCES users(id), nickname VARCHAR(50))"
+            )
+        )
+        # The PRE-107 shape: one policy row per vehicle, carrying the text.
+        conn.execute(
+            text(
+                f"CREATE TABLE insurance_policies (id {serial}, "
+                "vin VARCHAR(17) NOT NULL REFERENCES vehicles(vin) ON DELETE CASCADE, "
+                "provider VARCHAR(100) NOT NULL, policy_number VARCHAR(50) NOT NULL, "
+                "policy_type VARCHAR(30) NOT NULL, start_date DATE NOT NULL, "
+                "end_date DATE NOT NULL, premium_amount NUMERIC(10,2), "
+                "premium_frequency VARCHAR(20), deductible NUMERIC(10,2), "
+                f"coverage_limits TEXT, notes TEXT, created_at {stamp}, "
+                f"last_notified_at {stamp})"
+            )
+        )
+        # What create_all makes from TODAY's ORM: no coverage_limits.
+        conn.execute(
+            text(
+                f"CREATE TABLE insurance_policy_vehicles (id {serial}, "
+                "policy_id INTEGER NOT NULL REFERENCES insurance_policies(id) ON DELETE CASCADE, "
+                "vin VARCHAR(17) NOT NULL REFERENCES vehicles(vin) ON DELETE CASCADE, "
+                "policy_type VARCHAR(30) NOT NULL, premium_share NUMERIC(10,2), "
+                "deductible NUMERIC(10,2), notes TEXT, effective_to DATE, "
+                f"created_at {stamp})"
+            )
+        )
+        conn.execute(
+            text(
+                f"CREATE TABLE insurance_policy_fields (id {serial}, policy_id INTEGER NOT NULL, "
+                "policy_vehicle_id INTEGER, label VARCHAR(60) NOT NULL, "
+                "value VARCHAR(255) NOT NULL, sort_order INTEGER NOT NULL DEFAULT 0)"
+            )
+        )
+        conn.execute(text("INSERT INTO users (id, username) VALUES (1, 'jamey')"))
+        conn.execute(
+            text("INSERT INTO vehicles (vin, user_id, nickname) VALUES (:a, 1, 'Ram')"),
+            {"a": RAM},
+        )
+        conn.execute(
+            text(
+                "INSERT INTO insurance_policies (vin, provider, policy_number, policy_type, "
+                "start_date, end_date, premium_amount, premium_frequency, deductible, "
+                "coverage_limits) VALUES (:vin, 'Progressive', 'P-1', 'Full Coverage', "
+                "'2026-01-01', '2026-07-01', '600.00', 'Semi-Annual', '500.00', :limits)"
+            ),
+            {"vin": RAM, "limits": PROGRESSIVE},
+        )
+
+    _load_107().upgrade(engine)
+    _load().upgrade(engine)
+
+    # Both ran, and the vehicle's coverage survived the whole path.
+    with engine.begin() as conn:
+        link_id = conn.execute(text("SELECT id FROM insurance_policy_vehicles")).scalar()
+    assert set(_coverages(engine, link_id)) >= {"bodily_injury", "comprehensive"}

@@ -82,10 +82,19 @@ class CoverageEntry(BaseModel):
 
     @model_validator(mode="after")
     def _only_the_slots_this_coverage_has(self):
-        allowed = {name for name, _slot in COVERAGE_BY_KEY[self.coverage_key].slots()}
+        slots = dict(COVERAGE_BY_KEY[self.coverage_key].slots())
         for name in ("limit_primary", "limit_secondary", "deductible", "premium"):
-            if getattr(self, name) is not None and name not in allowed:
+            value = getattr(self, name)
+            if value is None:
+                continue
+            slot = slots.get(name)
+            if slot is None:
                 raise ValueError(f"{self.coverage_key} has no {name}")
+            # A count slot is a number of days, not money. Accepting 30.5 here
+            # would store what the flat exports, which write counts whole,
+            # cannot render back.
+            if slot.kind == "count" and value != value.to_integral_value():
+                raise ValueError(f"{self.coverage_key} {name} must be a whole number")
         return self
 
 

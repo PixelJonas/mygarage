@@ -584,6 +584,7 @@ export default function PolicyForm({ mode, policy, initialVin, onClose, onSucces
                           <CoverageEditor
                             control={control}
                             register={register}
+                            setValue={setValue}
                             name={`vehicles.${index}.coverages`}
                             disabled={rowDisabled}
                             idPrefix={`vehicle-${index}-coverage`}

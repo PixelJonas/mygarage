@@ -900,6 +900,42 @@ class TestStandardCoverages:
         assert response.status_code == 422, response.text
         assert "collision" in response.text
 
+    async def test_a_fractional_count_is_refused(
+        self, client: AsyncClient, auth_headers, owned_vehicle
+    ):
+        """ "Maximum days" is a count; the flat exports write counts whole, so
+        a fraction accepted here could not be exported and read back."""
+        response = await client.post(
+            API,
+            json=_body(
+                [
+                    _on(
+                        owned_vehicle.vin,
+                        coverages=[_coverage("rental_reimbursement", limit_secondary="30.50")],
+                    )
+                ]
+            ),
+            headers=auth_headers,
+        )
+        assert response.status_code == 422, response.text
+
+    async def test_a_whole_count_is_accepted(
+        self, client: AsyncClient, auth_headers, owned_vehicle
+    ):
+        policy = await _create(
+            client,
+            auth_headers,
+            [
+                _on(
+                    owned_vehicle.vin,
+                    coverages=[
+                        _coverage("rental_reimbursement", limit_primary="50", limit_secondary="30")
+                    ],
+                )
+            ],
+        )
+        assert policy["vehicles"][0]["coverages"][0]["limit_secondary"] == "30.00"
+
     async def test_a_key_outside_the_catalogue_is_refused(
         self, client: AsyncClient, auth_headers, owned_vehicle
     ):
