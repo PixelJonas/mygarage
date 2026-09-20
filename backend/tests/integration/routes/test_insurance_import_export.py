@@ -549,3 +549,45 @@ async def test_an_import_refuses_a_coverage_amount_it_cannot_store(
     assert response.status_code == 200, response.text
     assert response.json()["insurance_policies"]["errors"] == 1, response.json()
     assert await _policies(db_session) == []
+
+
+async def test_an_import_refuses_a_fractional_count(
+    client: AsyncClient, db_session: AsyncSession, auth_headers
+):
+    """A count slot is a number of days, not money.
+
+    30.5 satisfies the whole-cents rule that guards the money slots, so it used
+    to be stored, and the flat exports write a count with no decimals: the next
+    export of this policy said 30 without anyone touching it.
+    """
+    backup = {
+        "export_version": "8",
+        "units": "metric",
+        "vehicle": {"vin": RAM},
+        "insurance_policies": [
+            {
+                "provider": "Progressive",
+                "policy_number": "P-HALFDAY",
+                "start_date": "2026-01-01",
+                "end_date": "2026-07-01",
+                "policy_type": "Liability",
+                "coverages": [
+                    {
+                        "coverage_key": "rental_reimbursement",
+                        "limit_primary": 50.0,
+                        "limit_secondary": 30.5,
+                    }
+                ],
+            }
+        ],
+    }
+    response = await client.post(
+        f"/api/import/vehicles/{RAM}/json",
+        files={
+            "file": ("backup.json", io.BytesIO(json.dumps(backup).encode()), "application/json")
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["insurance_policies"]["errors"] == 1, response.json()
+    assert await _policies(db_session) == []

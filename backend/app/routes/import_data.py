@@ -267,13 +267,25 @@ def _whole_cents(value: Decimal | None, column: str) -> Decimal | None:
     return value
 
 
+def _whole_count(value: Decimal, column: str) -> Decimal:
+    """A count slot's value, or a row error when it has a fraction.
+
+    A count is a number of days, not money, so the whole-cents rule lets 30.5
+    through. The flat exports write a count with no decimals, which turns a
+    stored 30.5 into 30 the next time the policy is exported.
+    """
+    if value != value.to_integral_value():
+        raise _InsuranceRowError(f"{column} must be a whole number")
+    return value
+
+
 def _coverages_from_rows(raw: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """The standard coverages of a schema-8 backup entry.
 
     Importers build ORM rows directly, so the API schema's rules do not reach
     them and are re-applied here from the same catalogue: a slot the catalogue
     does not give a coverage is an error rather than a silently dropped amount,
-    and every figure must be a whole number of cents.
+    every money figure is a whole number of cents, and a count is whole.
     """
     rows = []
     for item in raw:
@@ -282,14 +294,18 @@ def _coverages_from_rows(raw: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if coverage is None:
             logger.warning("Import: unknown insurance coverage %s, skipped", sanitize_for_log(key))
             continue
-        allowed = {name for name, _slot in coverage.slots()}
+        slots = dict(coverage.slots())
         values = {}
         for name in ("limit_primary", "limit_secondary", "deductible", "premium"):
             value = item.get(name)
             value = Decimal(str(value)) if value is not None else None
-            if value is not None and name not in allowed:
+            slot = slots.get(name)
+            column = f"{coverage.label} {name}"
+            if value is not None and slot is None:
                 raise _InsuranceRowError(f"{key} has no {name}")
-            values[name] = _whole_cents(value, f"{coverage.label} {name}")
+            if value is not None and slot is not None and slot.kind == "count":
+                value = _whole_count(value, column)
+            values[name] = _whole_cents(value, column)
         rows.append({"coverage_key": key, **values})
     return rows
 

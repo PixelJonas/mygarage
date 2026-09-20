@@ -708,7 +708,7 @@ class InsuranceService:
         policy = await self._load_writable(policy_id, access)
         await self.db.delete(policy)
         await self._commit("deleting insurance policy")
-        logger.info("Deleted insurance policy %s", policy_id)
+        logger.info("Deleted insurance policy %s", sanitize_for_log(policy_id))
 
     async def attach_vehicle(
         self, policy_id: int, data: PolicyVehicleCreate, current_user: User | None
@@ -899,7 +899,11 @@ class InsuranceService:
             # Same insurer, next term: the coverages carry. (A SWITCH does not
             # carry them, which is why `replace` builds its links from the
             # request instead of from these.)
-            self._set_coverages(copy, [CoverageEntry.model_validate(c) for c in link.coverages])
+            # _coverage_responses, not the stored rows: a key from a newer
+            # catalogue met after a downgrade drops out of the read the same
+            # way, and validating it here answered 500 and left the household
+            # with no next term at all.
+            self._set_coverages(copy, _coverage_responses(link))
             self._set_fields(new, copy, [NamedField.model_validate(f) for f in link.fields])
         policy_level = [NamedField.model_validate(f) for f in old.fields]
         for order, item in enumerate(policy_level):

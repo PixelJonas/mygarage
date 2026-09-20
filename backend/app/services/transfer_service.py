@@ -141,7 +141,7 @@ class TransferService:
             logger.info(
                 "Vehicle %s transferred from user %s to user %s by admin %s "
                 "(removed from %d insurance policy(ies))",
-                vin,
+                sanitize_for_log(vin),
                 from_user_id,
                 to_user.id,
                 current_user.username,

@@ -12,10 +12,10 @@ from decimal import Decimal
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.insurance import InsurancePolicy
+from app.models.insurance import InsuranceCoverage, InsurancePolicy
 from app.models.user import User
 from app.models.vehicle import Vehicle
 from app.utils.household_time import household_today
@@ -1014,6 +1014,50 @@ class TestStandardCoverages:
         coverages = response.json()["vehicles"][0]["coverages"]
         assert [c["coverage_key"] for c in coverages] == ["collision", "roadside_assistance"]
         assert coverages[0]["deductible"] == "500.00"
+
+    async def test_renewing_tolerates_a_coverage_key_outside_the_catalogue(
+        self, client: AsyncClient, auth_headers, owned_vehicle, db_session: AsyncSession
+    ):
+        """A key a newer catalogue added, met after a downgrade.
+
+        Reading such a policy already drops the row rather than failing the
+        whole read. Renewing validated the STORED rows against the catalogue
+        instead, so it answered 500 and the household got no next term at all.
+        """
+        policy = await _create(
+            client,
+            auth_headers,
+            [
+                _on(
+                    owned_vehicle.vin,
+                    coverages=[
+                        _coverage("collision", deductible="500.00"),
+                        _coverage("glass"),
+                    ],
+                )
+            ],
+        )
+        # A downgrade is the only way to get such a row, so write it the way a
+        # downgrade leaves it: in the table, behind the schema's back.
+        await db_session.execute(
+            update(InsuranceCoverage)
+            .where(InsuranceCoverage.coverage_key == "glass")
+            .values(coverage_key="pet_injury")
+        )
+        await db_session.commit()
+
+        read = await client.get(f"{API}/{policy['id']}", headers=auth_headers)
+        assert read.status_code == 200, read.text
+        assert [c["coverage_key"] for c in read.json()["vehicles"][0]["coverages"]] == ["collision"]
+
+        response = await client.post(
+            f"{API}/{policy['id']}/renew",
+            json={"premium_amount": "700.00"},
+            headers=auth_headers,
+        )
+        assert response.status_code == 201, response.text
+        carried = response.json()["vehicles"][0]["coverages"]
+        assert [c["coverage_key"] for c in carried] == ["collision"]
 
     async def test_switching_insurers_does_not_carry_the_old_coverages(
         self, client: AsyncClient, auth_headers, owned_vehicle
