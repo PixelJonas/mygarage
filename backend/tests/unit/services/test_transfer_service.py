@@ -4,9 +4,11 @@ Unit tests for vehicle transfer service.
 Tests vehicle ownership transfers between users.
 """
 
+import logging
+
 import pytest
 import pytest_asyncio
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.models.user import User
 from app.models.vehicle import Vehicle
@@ -165,6 +167,55 @@ class TestTransferVehicle:
         # Verify vehicle ownership changed
         await db_session.refresh(transfer_vehicle)
         assert transfer_vehicle.user_id == recipient_user.id
+
+    async def test_the_transfer_log_line_cannot_be_forged_through_the_vin(
+        self, db_session, admin_user, recipient_user, caplog
+    ):
+        """The VIN arrives from the request and is named in the transfer log.
+
+        Nothing constrains a VIN's alphabet in the database, so an unsanitised
+        one writes whatever it likes into the log, including a second line that
+        reads like a transfer that never happened.
+        """
+        forged = "FORGED\nLOG1234567"
+        db_session.add(
+            Vehicle(
+                vin=forged,
+                user_id=admin_user.id,
+                nickname="Forged",
+                vehicle_type="Car",
+                year=2020,
+                make="Toyota",
+                model="Camry",
+            )
+        )
+        await db_session.commit()
+        try:
+            service = TransferService(db_session)
+            request = VehicleTransferRequest(
+                to_user_id=recipient_user.id,
+                transfer_notes="Forged",
+                data_included={"service_records": True},
+            )
+            with caplog.at_level(logging.INFO, logger="app.services.transfer_service"):
+                await service.transfer_vehicle(
+                    vin=forged,
+                    transfer_request=request,
+                    current_user=admin_user,
+                )
+            lines = [
+                r.getMessage() for r in caplog.records if "transferred from user" in r.getMessage()
+            ]
+            assert lines, [r.getMessage() for r in caplog.records]
+            assert "\n" not in lines[0], lines[0]
+            assert "FORGED\\nLOG1234567" in lines[0], lines[0]
+        finally:
+            # Tests share one database, so the forged rows go again.
+            await db_session.execute(
+                delete(VehicleTransfer).where(VehicleTransfer.vehicle_vin == forged)
+            )
+            await db_session.execute(delete(Vehicle).where(Vehicle.vin == forged))
+            await db_session.commit()
 
     async def test_transfer_vehicle_non_admin_rejected(
         self, db_session, regular_user, recipient_user, transfer_vehicle

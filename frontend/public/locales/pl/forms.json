@@ -99,7 +99,6 @@
     "partialFilledAt": "Podaj datę i godzinę tankowania albo wyczyść oba pola."
   },
   "insurance": {
-    "coverageLimits": "Limity ochrony",
     "createTitle": "Dodaj ubezpieczenie",
     "deductible": "Udział własny",
     "editTitle": "Edytuj ubezpieczenie",

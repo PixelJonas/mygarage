@@ -8,6 +8,8 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
+from app.utils.insurance_coverages import coverage_payload, parse_coverage_lines
+
 from .base import BaseDocumentParser, DocumentData, DocumentType
 
 logger = logging.getLogger(__name__)
@@ -32,7 +34,6 @@ class InsuranceData(DocumentData):
     premium_amount: Decimal | None = None
     premium_frequency: str | None = None  # Monthly/Quarterly/Semi-Annual/Annual
     deductible: Decimal | None = None
-    coverage_limits: str | None = None
 
     # Vehicle info
     vehicles_found: list[str] = field(default_factory=list)
@@ -40,6 +41,14 @@ class InsuranceData(DocumentData):
     #: find a per-vehicle section. A household policy covers several vehicles,
     #: so the target VIN's figures alone discard most of the declarations page.
     vehicle_details: dict[str, dict[str, Decimal]] = field(default_factory=dict)
+    #: Standard coverages read off the WHOLE document, for vehicles with no
+    #: section of their own. Mapped onto the catalogue in
+    #: `app.utils.insurance_coverages`.
+    coverages: list[dict[str, str | None]] = field(default_factory=list)
+    #: Per-VIN standard coverages, where the page gives that vehicle a section.
+    #: Kept apart from `vehicle_details`, which is money only and is
+    #: stringified wholesale on the way out.
+    vehicle_coverages: dict[str, list[dict[str, str | None]]] = field(default_factory=dict)
 
     # Notes
     notes: str | None = None
@@ -63,12 +72,13 @@ class InsuranceData(DocumentData):
                 "premium_amount": str(self.premium_amount) if self.premium_amount else None,
                 "premium_frequency": self.premium_frequency,
                 "deductible": str(self.deductible) if self.deductible else None,
-                "coverage_limits": self.coverage_limits,
+                "coverages": self.coverages,
                 "vehicles_found": self.vehicles_found,
                 "vehicle_details": {
                     vin: {name: str(amount) for name, amount in figures.items()}
                     for vin, figures in self.vehicle_details.items()
                 },
+                "vehicle_coverages": self.vehicle_coverages,
                 "notes": self.notes,
                 "field_confidence": self.field_confidence,
             }
@@ -101,6 +111,47 @@ class InsuranceDocumentParser(BaseDocumentParser):
     def parse(self, text: str, *, target_vin: str | None = None, **kwargs: Any) -> InsuranceData:
         """Parse insurance document text."""
         pass
+
+    def parse_document(
+        self, text: str, *, target_vin: str | None = None, **kwargs: Any
+    ) -> InsuranceData:
+        """Parse, then read the standard coverages off the page.
+
+        Reading coverages matches PHRASES, not layouts, so it is the same work
+        for every insurer and belongs here rather than inside any one parser.
+        Callers use this, not `parse`, or the four providers that never
+        implemented a coverage read would return none at all.
+        """
+        data = self.parse(text, target_vin=target_vin, **kwargs)
+        self._fill_coverages(data, text)
+        return data
+
+    def _fill_coverages(self, data: InsuranceData, text: str) -> None:
+        """Document-wide coverages, plus per-vehicle ones where a page has
+        sections. Only a vehicle with NO section of its own falls back to the
+        document-wide read, which is the best the page offers for it."""
+        data.coverages = coverage_payload(parse_coverage_lines(text).coverages)
+        for found_vin in data.vehicles_found:
+            section = self._vin_section(text, found_vin)
+            if section is None:
+                continue
+            # Keyed even when the section names no coverage, so the caller can
+            # tell "this vehicle's own section listed none" from "this vehicle
+            # has no section". Falling back for the first would hand it the
+            # coverages of whichever vehicle the page listed first.
+            data.vehicle_coverages[found_vin.upper()] = coverage_payload(
+                parse_coverage_lines(section).coverages
+            )
+
+    @staticmethod
+    def _vin_section(text: str, vin: str) -> str | None:
+        """The part of the page that belongs to one VIN, up to the next one."""
+        match = re.search(
+            rf"VIN\s+{re.escape(vin)}.*?(?=VIN\s+[A-HJ-NPR-Z0-9]{{17}}|$)",
+            text,
+            re.IGNORECASE | re.DOTALL,
+        )
+        return match.group(0) if match else None
 
     def _parse_date(self, date_str: str) -> str | None:
         """Parse various date formats to YYYY-MM-DD."""
@@ -175,7 +226,7 @@ class InsuranceDocumentParser(BaseDocumentParser):
         # Secondary fields (40 points)
         if data.deductible:
             score += 10
-        if data.coverage_limits:
+        if data.coverages:
             score += 10
         if data.policy_type and data.policy_type != "Other":
             score += 10
@@ -283,11 +334,6 @@ class ProgressiveInsuranceParser(InsuranceDocumentParser):
         # Determine policy type
         data.policy_type = self._determine_policy_type(text)
 
-        # Extract coverage limits
-        data.coverage_limits = self._extract_coverage_limits(text)
-        if data.coverage_limits:
-            data.field_confidence["coverage_limits"] = "medium"
-
         # Calculate confidence
         data.confidence_score = self._calculate_confidence(data)
 
@@ -315,13 +361,8 @@ class ProgressiveInsuranceParser(InsuranceDocumentParser):
         """Extract vehicle-specific data for a given VIN."""
         data = {}
 
-        # Find section for this VIN
-        vin_pattern = rf"VIN\s+{re.escape(vin)}.*?(?=VIN\s+[A-HJ-NPR-Z0-9]{{17}}|$)"
-        match = re.search(vin_pattern, text, re.IGNORECASE | re.DOTALL)
-
-        if match:
-            section = match.group(0)
-
+        section = self._vin_section(text, vin)
+        if section:
             # Extract vehicle premium
             vehicle_premium = self._extract_pattern(section, self.PATTERNS["vehicle_premium"])
             if vehicle_premium:
@@ -333,19 +374,6 @@ class ProgressiveInsuranceParser(InsuranceDocumentParser):
                 data["deductible"] = self._parse_currency(deductible)
 
         return data
-
-    def _extract_coverage_limits(self, text: str) -> str | None:
-        """Extract coverage limit information."""
-        pattern = r"(\$?\d{2,3},?\d{3})\s+each\s+person.*?(\$?\d{2,3},?\d{3})\s+each\s+accident.*?(\$?\d{2,3},?\d{3})\s+each\s+accident"
-        match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
-
-        if match:
-            bi_person = match.group(1).replace("$", "").replace(",", "")
-            bi_accident = match.group(2).replace("$", "").replace(",", "")
-            pd = match.group(3).replace("$", "").replace(",", "")
-            return f"Bodily Injury: {bi_person}/{bi_accident}, Property Damage: {pd}"
-
-        return None
 
 
 class StateFarmInsuranceParser(InsuranceDocumentParser):

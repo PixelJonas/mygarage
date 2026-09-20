@@ -441,7 +441,6 @@
     "addFirstPolicy": "Ajouter votre première police d'assurance",
     "addPolicy": "Ajouter une police d'assurance",
     "confirmDelete": "Voulez-vous vraiment supprimer cette police d'assurance ?",
-    "coverageLimits": "Limites de couverture",
     "deductible": "Franchise",
     "deleteError": "Impossible de supprimer la police d'assurance",
     "endDate": "Date de fin",
@@ -1331,7 +1330,6 @@
     "premiumAmount": "Montant de la prime",
     "premiumFrequency": "Fréquence de la prime",
     "deductible": "Franchise",
-    "coverageLimits": "Limites de couverture",
     "notes": "Notes"
   },
   "hoursList": {

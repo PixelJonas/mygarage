@@ -33,6 +33,7 @@ from app.services.fuel_service import resolve_station_names
 from app.services.service_visit_service import service_visit_cost_load_options
 from app.utils.csv_emission import apply_unit_set, marker_for
 from app.utils.csv_safe import sanitize_csv_row
+from app.utils.insurance_coverages import coverage_text
 from app.utils.insurance_shares import effective_shares
 from app.utils.render_context import render_context_for_request
 
@@ -75,8 +76,12 @@ limiter = Limiter(key_func=get_remote_address)
 #   fuel records (same additive treatment as the v3→v4 fuel columns).
 # - JSON "7": additive `insurance_policies` list (household insurance,
 #   migration 107). The CSV shape is unchanged, so its version is too.
+# - JSON "8": each insurance entry carries `coverages` (the standard coverage
+#   catalogue, migration 108) in place of the `coverage_limits` text box. The
+#   CSV keeps its `Coverage Limits` column, now rendered from those rows and
+#   read back through the same parser, so its shape and version are unchanged.
 CSV_SCHEMA_VERSION = "7"
-JSON_SCHEMA_VERSION = "7"
+JSON_SCHEMA_VERSION = "8"
 EXPORT_UNITS = "metric"
 
 
@@ -610,8 +615,13 @@ async def export_warranties_csv(
 #: Reaching a policy THROUGH one of its links does not eager-load the policy's
 #: own collections: SQLAlchemy will not walk back down the relationship it just
 #: came up. Spell them out, or the first read is an async lazy load.
+#: The sibling links are loaded only so `_insurance_share` can read their ids
+#: and shares; `noload` keeps each of them from dragging its own coverages,
+#: which this export never reads off a sibling.
 _INSURANCE_LINK_LOADS = (
-    selectinload(InsurancePolicyVehicle.policy).selectinload(InsurancePolicy.vehicle_links),
+    selectinload(InsurancePolicyVehicle.policy)
+    .selectinload(InsurancePolicy.vehicle_links)
+    .noload(InsurancePolicyVehicle.coverages),
     selectinload(InsurancePolicyVehicle.policy).selectinload(InsurancePolicy.all_fields),
 )
 
@@ -680,7 +690,7 @@ async def export_insurance_csv(
                 f"{share:.2f}" if share is not None else "",
                 policy.premium_frequency or "",
                 f"{link.deductible:.2f}" if link.deductible is not None else "",
-                link.coverage_limits or "",
+                coverage_text(link.coverages),
                 link.notes or "",
             ]
         )
@@ -953,7 +963,20 @@ async def export_vehicle_json(
                 "policy_type": link.policy_type,
                 "premium_share": _insurance_share(link),
                 "deductible": float(link.deductible) if link.deductible is not None else None,
-                "coverage_limits": link.coverage_limits,
+                "coverages": [
+                    {
+                        "coverage_key": c.coverage_key,
+                        "limit_primary": float(c.limit_primary)
+                        if c.limit_primary is not None
+                        else None,
+                        "limit_secondary": float(c.limit_secondary)
+                        if c.limit_secondary is not None
+                        else None,
+                        "deductible": float(c.deductible) if c.deductible is not None else None,
+                        "premium": float(c.premium) if c.premium is not None else None,
+                    }
+                    for c in link.coverages
+                ],
                 "notes": link.notes,
                 # Without it a restore silently puts a vehicle that LEFT the
                 # policy back on it for the whole term.

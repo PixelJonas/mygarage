@@ -19,8 +19,8 @@ const vehicle = (over: Partial<PolicyVehicle>): PolicyVehicle => ({
   premium_share: null,
   effective_share: '320.00',
   deductible: '500.00',
-  coverage_limits: null,
   notes: null,
+  coverages: [],
   effective_to: null,
   fields: [{ label: 'Collision Deductible', value: '$500' }],
   can_edit: true,
@@ -118,5 +118,61 @@ describe('PolicyCard', () => {
     expect(screen.getByText('vehicles:insurancePolicies.statusUpcoming')).toBeInTheDocument()
     rerender(<PolicyCard policy={policy({ status: 'expired' })} {...handlers()} />)
     expect(screen.getByText('vehicles:insurancePolicies.statusExpired')).toBeInTheDocument()
+  })
+
+  describe('standard coverages', () => {
+    const withCoverages = (coverages: PolicyVehicle['coverages']) =>
+      policy({ vehicles: [vehicle({ coverages, fields: [], deductible: null })] })
+
+    it('shows each coverage as a label above its amounts, like a named field', () => {
+      render(
+        <PolicyCard
+          policy={withCoverages([
+            {
+              coverage_key: 'bodily_injury',
+              limit_primary: '100000',
+              limit_secondary: '300000',
+              premium: '55',
+            },
+          ])}
+          {...handlers()}
+        />
+      )
+      const label = screen.getByText('forms:insuranceCoverages.bodilyInjury')
+      const cell = label.closest('div') as HTMLElement
+      // The amount and the words that qualify it are separate, so the label
+      // and the value never run together as they did in the old text box.
+      expect(within(cell).getByText('forms:insuranceCoverages.slots.eachPerson')).toBeInTheDocument()
+      expect(within(cell).getByText('forms:insuranceCoverages.slots.eachAccident')).toBeInTheDocument()
+      expect(within(cell).getByText('forms:insuranceCoverages.slots.premium')).toBeInTheDocument()
+    })
+
+    it('reads a coverage with no amounts as included, not as blank', () => {
+      render(<PolicyCard policy={withCoverages([{ coverage_key: 'roadside_assistance' }])} {...handlers()} />)
+      expect(screen.getByText('forms:insuranceCoverages.roadsideAssistance')).toBeInTheDocument()
+      expect(screen.getByText('forms:insuranceCoverages.included')).toBeInTheDocument()
+    })
+
+    it('shows a count limit as a plain number, not as money', () => {
+      render(
+        <PolicyCard
+          policy={withCoverages([
+            { coverage_key: 'rental_reimbursement', limit_primary: '50', limit_secondary: '30' },
+          ])}
+          {...handlers()}
+        />
+      )
+      const cell = screen.getByText('forms:insuranceCoverages.rentalReimbursement')
+        .closest('div') as HTMLElement
+      expect(within(cell).getByText('30')).toBeInTheDocument()
+    })
+
+    it('renders nothing for a coverage the catalogue does not know', () => {
+      // Only a hand-edited database or a downgrade can produce one; it must
+      // not take the card down with it.
+      const unknown = [{ coverage_key: 'flood' }] as unknown as PolicyVehicle['coverages']
+      render(<PolicyCard policy={withCoverages(unknown)} {...handlers()} />)
+      expect(screen.getByText('Ram')).toBeInTheDocument()
+    })
   })
 })

@@ -12,6 +12,7 @@ from app.models.external_vehicle import ExternalVehicle
 from app.models.fuel import FuelRecord
 from app.models.hours import HoursRecord
 from app.models.insurance import (
+    InsuranceCoverage,
     InsurancePolicy,
     InsurancePolicyField,
     InsurancePolicyVehicle,
@@ -70,6 +71,7 @@ __all__ = [
     "VehiclePhoto",
     "Document",
     "WarrantyRecord",
+    "InsuranceCoverage",
     "InsurancePolicy",
     "InsurancePolicyField",
     "InsurancePolicyVehicle",

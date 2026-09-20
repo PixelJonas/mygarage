@@ -128,7 +128,6 @@
     "chargeLocationPlaceholder": "Nicht erfasst"
   },
   "insurance": {
-    "coverageLimits": "Deckungssummen",
     "createTitle": "Versicherungspolice hinzufügen",
     "deductible": "Selbstbeteiligung",
     "editTitle": "Versicherungspolice bearbeiten",
@@ -829,8 +828,7 @@
     "providerPlaceholder": "z. B. HUK-Coburg, Allianz",
     "policyNumberPlaceholder": "z. B. INS-12345",
     "premiumAmountPlaceholder": "z. B. 150.00",
-    "deductiblePlaceholder": "z. B. 500.00",
-    "coverageLimitsPlaceholder": "z. B. 100 Mio. Pauschal / Personenschäden / Sachschäden"
+    "deductiblePlaceholder": "z. B. 500.00"
   },
   "billingEntryForm": {
     "electric": "Elektro",

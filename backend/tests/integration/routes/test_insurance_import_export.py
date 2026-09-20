@@ -234,7 +234,7 @@ async def test_the_json_backup_carries_insurance_with_named_fields_at_both_level
 
     exported = await client.get(f"/api/export/vehicles/{RAM}/json", headers=auth_headers)
     backup = exported.json()
-    assert backup["export_version"] == "7"
+    assert backup["export_version"] == "8"
     (entry,) = backup["insurance_policies"]
     assert entry["premium_share"] == 300.0, "the vehicle's EFFECTIVE share, not the policy total"
 
@@ -376,4 +376,218 @@ async def test_the_importers_refuse_a_fraction_of_a_cent(client, db_session, aut
     )
     assert restored.status_code == 200, restored.text
     assert restored.json()["insurance_policies"]["errors"] == 1, restored.json()
+    assert await _policies(db_session) == []
+
+
+async def test_the_json_backup_carries_the_standard_coverages(
+    client: AsyncClient, db_session: AsyncSession, auth_headers
+):
+    """A restore has to reproduce the coverage rows, not just their totals."""
+    created = await client.post(
+        "/api/insurance/policies",
+        json={
+            "provider": "Progressive",
+            "policy_number": "P-COV",
+            "start_date": "2026-01-01",
+            "end_date": "2026-07-01",
+            "premium_amount": "600.00",
+            "premium_frequency": "Semi-Annual",
+            "vehicles": [
+                {
+                    "vin": RAM,
+                    "policy_type": "Full Coverage",
+                    "coverages": [
+                        {
+                            "coverage_key": "bodily_injury",
+                            "limit_primary": "100000.00",
+                            "limit_secondary": "300000.00",
+                            "premium": "55.00",
+                        },
+                        {"coverage_key": "roadside_assistance"},
+                    ],
+                }
+            ],
+        },
+        headers=auth_headers,
+    )
+    assert created.status_code == 201, created.text
+
+    backup = (await client.get(f"/api/export/vehicles/{RAM}/json", headers=auth_headers)).json()
+    (entry,) = backup["insurance_policies"]
+    assert [c["coverage_key"] for c in entry["coverages"]] == [
+        "bodily_injury",
+        "roadside_assistance",
+    ]
+
+    await db_session.execute(delete(InsurancePolicy))
+    await db_session.commit()
+    restored = await client.post(
+        f"/api/import/vehicles/{RAM}/json",
+        files={
+            "file": ("backup.json", io.BytesIO(json.dumps(backup).encode()), "application/json")
+        },
+        headers=auth_headers,
+    )
+    assert restored.status_code == 200, restored.text
+
+    policies = await _policies(db_session)
+    (link,) = policies[0].vehicle_links
+    rows = {c.coverage_key: c for c in link.coverages}
+    assert set(rows) == {"bodily_injury", "roadside_assistance"}
+    assert rows["bodily_injury"].limit_secondary == Decimal("300000.00")
+    assert rows["bodily_injury"].premium == Decimal("55.00")
+    assert rows["roadside_assistance"].premium is None
+
+
+async def test_a_version_7_backup_converts_its_coverage_text(
+    client: AsyncClient, db_session: AsyncSession, auth_headers
+):
+    """The release before this one wrote one text box. Restoring that file has
+    to land the same rows an in-place upgrade (migration 108) would have."""
+    backup = {
+        "export_version": "7",
+        "units": "metric",
+        "vehicle": {"vin": RAM},
+        "insurance_policies": [
+            {
+                "provider": "Progressive",
+                "policy_number": "P-LEGACY",
+                "start_date": "2026-01-01",
+                "end_date": "2026-07-01",
+                "policy_type": "Full Coverage",
+                "premium_share": 600.0,
+                "coverage_limits": (
+                    "Bodily Injury Liability $100,000 each person/$300,000 each accident\n"
+                    "Roadside Assistance\n"
+                    "Roof Protection Plus $5,000\n"
+                    "Disappearing Deductibles"
+                ),
+            }
+        ],
+    }
+    restored = await client.post(
+        f"/api/import/vehicles/{RAM}/json",
+        files={
+            "file": ("backup.json", io.BytesIO(json.dumps(backup).encode()), "application/json")
+        },
+        headers=auth_headers,
+    )
+    assert restored.status_code == 200, restored.text
+
+    policies = await _policies(db_session)
+    (link,) = policies[0].vehicle_links
+    rows = {c.coverage_key: c for c in link.coverages}
+    assert set(rows) == {"bodily_injury", "roadside_assistance"}
+    assert rows["bodily_injury"].limit_primary == Decimal("100000.00")
+    # Parity with migration 108, which is what the docstring promises: a
+    # priced leftover becomes a named field, an unpriced one stays prose.
+    assert [(f.label, f.value) for f in link.fields] == [("Roof Protection Plus", "$5,000")]
+    assert link.notes == "Disappearing Deductibles"
+
+
+async def test_the_csv_column_round_trips_the_coverages(
+    client: AsyncClient, db_session: AsyncSession, auth_headers
+):
+    """The flat export keeps its Coverage Limits column, now written from the
+    rows and read back through the same parser: no amount may move."""
+    limits = "Bodily Injury Liability $100,000 each person/$300,000 each accident"
+    row = (
+        "Progressive,P-CSV,Full Coverage,2026-01-01,2026-07-01,600.00,Semi-Annual,"
+        f'500.00,"{limits}",imported'
+    )
+    await _import_csv(client, auth_headers, RAM, row)
+
+    exported = await client.get(f"/api/export/vehicles/{RAM}/insurance/csv", headers=auth_headers)
+    assert exported.status_code == 200, exported.text
+    assert "each person" in exported.text
+
+    await db_session.execute(delete(InsurancePolicy))
+    await db_session.commit()
+    response = await client.post(
+        f"/api/import/vehicles/{RAM}/insurance/csv",
+        files={"file": ("insurance.csv", exported.text, "text/csv")},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+
+    policies = await _policies(db_session)
+    (link,) = policies[0].vehicle_links
+    (coverage,) = link.coverages
+    assert coverage.coverage_key == "bodily_injury"
+    assert (coverage.limit_primary, coverage.limit_secondary) == (
+        Decimal("100000.00"),
+        Decimal("300000.00"),
+    )
+
+
+async def test_an_import_refuses_a_coverage_amount_it_cannot_store(
+    client: AsyncClient, db_session: AsyncSession, auth_headers
+):
+    """Importers build rows directly, so the API's slot rule is re-applied."""
+    backup = {
+        "export_version": "8",
+        "units": "metric",
+        "vehicle": {"vin": RAM},
+        "insurance_policies": [
+            {
+                "provider": "Progressive",
+                "policy_number": "P-BADSLOT",
+                "start_date": "2026-01-01",
+                "end_date": "2026-07-01",
+                "policy_type": "Liability",
+                "coverages": [{"coverage_key": "collision", "limit_primary": 100.0}],
+            }
+        ],
+    }
+    response = await client.post(
+        f"/api/import/vehicles/{RAM}/json",
+        files={
+            "file": ("backup.json", io.BytesIO(json.dumps(backup).encode()), "application/json")
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["insurance_policies"]["errors"] == 1, response.json()
+    assert await _policies(db_session) == []
+
+
+async def test_an_import_refuses_a_fractional_count(
+    client: AsyncClient, db_session: AsyncSession, auth_headers
+):
+    """A count slot is a number of days, not money.
+
+    30.5 satisfies the whole-cents rule that guards the money slots, so it used
+    to be stored, and the flat exports write a count with no decimals: the next
+    export of this policy said 30 without anyone touching it.
+    """
+    backup = {
+        "export_version": "8",
+        "units": "metric",
+        "vehicle": {"vin": RAM},
+        "insurance_policies": [
+            {
+                "provider": "Progressive",
+                "policy_number": "P-HALFDAY",
+                "start_date": "2026-01-01",
+                "end_date": "2026-07-01",
+                "policy_type": "Liability",
+                "coverages": [
+                    {
+                        "coverage_key": "rental_reimbursement",
+                        "limit_primary": 50.0,
+                        "limit_secondary": 30.5,
+                    }
+                ],
+            }
+        ],
+    }
+    response = await client.post(
+        f"/api/import/vehicles/{RAM}/json",
+        files={
+            "file": ("backup.json", io.BytesIO(json.dumps(backup).encode()), "application/json")
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["insurance_policies"]["errors"] == 1, response.json()
     assert await _policies(db_session) == []

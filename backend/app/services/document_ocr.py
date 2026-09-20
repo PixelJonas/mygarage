@@ -74,7 +74,9 @@ class DocumentOCRService:
 
         # Parse the document
         try:
-            data = parser.parse(text, target_vin=target_vin)
+            # parse_document, not parse: the standard coverage read lives on
+            # the insurance base class and serves every provider.
+            data = parser.parse_document(text, target_vin=target_vin)
             result = data.to_dict()
             result["success"] = True
             result["validation_warnings"] = data.get_validation_warnings()
@@ -141,8 +143,9 @@ class DocumentOCRService:
             result["parser_name"] = parser.PARSER_NAME
             result["provider_detected"] = getattr(parser, "PROVIDER_NAME", None)
 
-            # Parse
-            data = parser.parse(text, target_vin=target_vin)
+            # Parse (parse_document so the debug view shows the same
+            # coverages the real import would attach).
+            data = parser.parse_document(text, target_vin=target_vin)
             result["extracted_data"] = data.to_dict()
             result["validation_warnings"] = data.get_validation_warnings()
             result["success"] = True

@@ -8404,6 +8404,68 @@ export interface components {
             twelve_month_projection: string;
         };
         /**
+         * CoverageEntry
+         * @description One standard coverage on one vehicle.
+         *
+         *     Sending the entry at all is what says the coverage is carried, so every
+         *     amount may be omitted (roadside assistance usually has none). A slot the
+         *     catalogue does not give this coverage is REJECTED rather than ignored: a
+         *     stored "each accident" limit on a coverage whose card has no such line
+         *     would be money no screen ever shows.
+         *
+         *     `premium` is what the declarations page charges for this coverage alone.
+         *     It is a record of the bill, NOT part of the allocation: the policy premium
+         *     and the per-vehicle shares are what analytics and the even split work from,
+         *     so editing it moves no money between vehicles and needs only write access
+         *     to the vehicle it is on.
+         */
+        "CoverageEntry-Input": {
+            /**
+             * Coverage Key
+             * @enum {string}
+             */
+            coverage_key: "bodily_injury" | "property_damage" | "uninsured_bodily_injury" | "uninsured_property_damage" | "personal_injury_protection" | "medical_payments" | "comprehensive" | "collision" | "glass" | "rental_reimbursement" | "roadside_assistance" | "loan_lease_gap" | "custom_equipment";
+            /** Deductible */
+            deductible?: number | string | null;
+            /** Limit Primary */
+            limit_primary?: number | string | null;
+            /** Limit Secondary */
+            limit_secondary?: number | string | null;
+            /** Premium */
+            premium?: number | string | null;
+        };
+        /**
+         * CoverageEntry
+         * @description One standard coverage on one vehicle.
+         *
+         *     Sending the entry at all is what says the coverage is carried, so every
+         *     amount may be omitted (roadside assistance usually has none). A slot the
+         *     catalogue does not give this coverage is REJECTED rather than ignored: a
+         *     stored "each accident" limit on a coverage whose card has no such line
+         *     would be money no screen ever shows.
+         *
+         *     `premium` is what the declarations page charges for this coverage alone.
+         *     It is a record of the bill, NOT part of the allocation: the policy premium
+         *     and the per-vehicle shares are what analytics and the even split work from,
+         *     so editing it moves no money between vehicles and needs only write access
+         *     to the vehicle it is on.
+         */
+        "CoverageEntry-Output": {
+            /**
+             * Coverage Key
+             * @enum {string}
+             */
+            coverage_key: "bodily_injury" | "property_damage" | "uninsured_bodily_injury" | "uninsured_property_damage" | "personal_injury_protection" | "medical_payments" | "comprehensive" | "collision" | "glass" | "rental_reimbursement" | "roadside_assistance" | "loan_lease_gap" | "custom_equipment";
+            /** Deductible */
+            deductible?: string | null;
+            /** Limit Primary */
+            limit_primary?: string | null;
+            /** Limit Secondary */
+            limit_secondary?: string | null;
+            /** Premium */
+            premium?: string | null;
+        };
+        /**
          * DEFAnalytics
          * @description DEF analytics and consumption predictions (metric canonical).
          */
@@ -12665,8 +12727,8 @@ export interface components {
          * @description Attach one vehicle to a policy.
          */
         PolicyVehicleCreate: {
-            /** Coverage Limits */
-            coverage_limits?: string | null;
+            /** Coverages */
+            coverages?: components["schemas"]["CoverageEntry-Input"][];
             /** Deductible */
             deductible?: number | string | null;
             /** Fields */
@@ -12696,8 +12758,8 @@ export interface components {
              * @default false
              */
             can_edit: boolean;
-            /** Coverage Limits */
-            coverage_limits?: string | null;
+            /** Coverages */
+            coverages?: components["schemas"]["CoverageEntry-Output"][];
             /** Deductible */
             deductible?: string | null;
             /**
@@ -12734,8 +12796,8 @@ export interface components {
          *     vehicles, so the route demands write access to the whole policy for them.
          */
         PolicyVehicleUpdate: {
-            /** Coverage Limits */
-            coverage_limits?: string | null;
+            /** Coverages */
+            coverages?: components["schemas"]["CoverageEntry-Input"][] | null;
             /** Deductible */
             deductible?: number | string | null;
             /** Effective To */
@@ -12755,8 +12817,11 @@ export interface components {
          *     `InsurancePolicyUpdate.vehicles`). Matched to an existing link by VIN.
          */
         PolicyVehicleUpsert: {
-            /** Coverage Limits */
-            coverage_limits?: string | null;
+            /**
+             * Coverages
+             * @description Omit to leave an existing vehicle's coverages alone
+             */
+            coverages?: components["schemas"]["CoverageEntry-Input"][] | null;
             /** Deductible */
             deductible?: number | string | null;
             /** Effective To */

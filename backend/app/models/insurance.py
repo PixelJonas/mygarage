@@ -107,7 +107,6 @@ class InsurancePolicyVehicle(Base):
     #: leave (see `app.utils.insurance_shares`).
     premium_share: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     deductible: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
-    coverage_limits: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
     #: Set when the vehicle leaves the policy mid-term; NULL = the whole term.
     effective_to: Mapped[date | None] = mapped_column(Date)
@@ -122,6 +121,17 @@ class InsurancePolicyVehicle(Base):
         back_populates="policy_vehicle",
         cascade="all, delete-orphan",
         order_by="InsurancePolicyField.sort_order, InsurancePolicyField.id",
+        lazy="selectin",
+    )
+    #: The standard coverages carried on this vehicle. Ordered by id here
+    #: because the DISPLAY order is the catalogue's
+    #: (`app.utils.insurance_coverages.COVERAGES`), which no column can
+    #: express; the API sorts by it on the way out.
+    coverages: Mapped[list[InsuranceCoverage]] = relationship(
+        "InsuranceCoverage",
+        back_populates="policy_vehicle",
+        cascade="all, delete-orphan",
+        order_by="InsuranceCoverage.id",
         lazy="selectin",
     )
 
@@ -159,6 +169,48 @@ class InsurancePolicyField(Base):
     )
 
     __table_args__ = (Index("idx_insurance_policy_fields_policy", "policy_id"),)
+
+
+class InsuranceCoverage(Base):
+    """One standard coverage carried on one vehicle's link.
+
+    The catalogue of coverage keys, what each one's two limit slots mean and
+    which of them hold money rather than a count all live in
+    `app.utils.insurance_coverages`. THE ROW'S EXISTENCE is the fact that the
+    coverage is carried; its amounts are how much, and all four may be NULL
+    (roadside assistance, typically).
+
+    Deliberately NO CHECK constraint on `coverage_key`, breaking with
+    `policy_type` next door: the catalogue is expected to grow, and on SQLite a
+    CHECK would make every addition a table rebuild. The key is validated at
+    the API boundary by a pydantic `Literal`, which also generates the
+    frontend's union type, so a drifting catalogue fails the build.
+    """
+
+    __tablename__ = "insurance_coverages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    policy_vehicle_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("insurance_policy_vehicles.id", ondelete="CASCADE"), nullable=False
+    )
+    coverage_key: Mapped[str] = mapped_column(String(40), nullable=False)
+    #: The two generic limit slots. What they mean is per-coverage: "each
+    #: person"/"each accident" for liability, "each day"/"maximum days" for
+    #: rental reimbursement, a single limit for custom equipment.
+    limit_primary: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    limit_secondary: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    #: This coverage's own deductible, beneath the link's headline one.
+    deductible: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    #: What the declarations page charges for this coverage alone.
+    premium: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+
+    policy_vehicle: Mapped[InsurancePolicyVehicle] = relationship(
+        "InsurancePolicyVehicle", back_populates="coverages"
+    )
+
+    __table_args__ = (
+        UniqueConstraint("policy_vehicle_id", "coverage_key", name="uq_insurance_coverage"),
+    )
 
 
 from app.models.vehicle import Vehicle

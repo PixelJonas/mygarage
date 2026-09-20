@@ -16,6 +16,11 @@ export type PolicyVehicleCreate = components['schemas']['PolicyVehicleCreate']
 export type PolicyVehicleUpsert = components['schemas']['PolicyVehicleUpsert']
 export type PolicyHistoryEntry = components['schemas']['PolicyHistoryEntry']
 export type NamedField = components['schemas']['NamedField']
+export type Coverage = components['schemas']['CoverageEntry-Output']
+/** The standard coverage catalogue's keys, straight from the backend's
+ *  `Literal`. `constants/insuranceCoverages.ts` is typed against this, so a
+ *  coverage added there and not here (or the reverse) fails the build. */
+export type CoverageKey = Coverage['coverage_key']
 export type PolicyStatusFilter = 'current' | 'active' | 'upcoming' | 'expired' | 'all'
 
 // ============================================================================
@@ -30,6 +35,9 @@ export interface ParsedPolicyVehicle {
   vehicle_name: string | null
   premium_share: string | null
   deductible: string | null
+  /** The standard coverages read off this vehicle's section, or off the
+   *  document as a whole when it has no section of its own. */
+  coverages: Coverage[]
 }
 
 export interface InsurancePDFParseResponse {
@@ -43,7 +51,6 @@ export interface InsurancePDFParseResponse {
     premium_amount: string | null
     premium_frequency: string | null
     deductible: string | null
-    coverage_limits: string | null
     notes: string | null
   }
   /** Every VIN on the document, with its own figures where the parser finds them. */

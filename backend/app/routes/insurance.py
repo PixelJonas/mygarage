@@ -238,6 +238,11 @@ async def parse_insurance_pdf(
 
         attachable = await InsuranceService(db).attachable_vehicles(current_user)
         details = parsed.get("vehicle_details", {})
+        per_vehicle_coverages = parsed.get("vehicle_coverages", {})
+        # A page that lists its coverages once, above the vehicles, still has
+        # to fill each vehicle's form: the document-wide read is the fallback
+        # for any vehicle with no section of its own.
+        document_coverages = parsed.get("coverages") or []
         vehicles = []
         for found in parsed.get("vehicles_found", []):
             vin = found.upper()
@@ -249,6 +254,13 @@ async def parse_insurance_pdf(
                     "vehicle_name": attachable.get(vin),
                     "premium_share": figures.get("premium_amount"),
                     "deductible": figures.get("deductible"),
+                    # `in`, not `or`: a vehicle whose own section listed no
+                    # coverage gets none, never the next vehicle's.
+                    "coverages": (
+                        per_vehicle_coverages[vin]
+                        if vin in per_vehicle_coverages
+                        else document_coverages
+                    ),
                 }
             )
 
@@ -269,7 +281,6 @@ async def parse_insurance_pdf(
                 "premium_amount": parsed.get("premium_amount"),
                 "premium_frequency": parsed.get("premium_frequency"),
                 "deductible": parsed.get("deductible"),
-                "coverage_limits": parsed.get("coverage_limits"),
                 "notes": parsed.get("notes"),
             },
             "vehicles": vehicles,

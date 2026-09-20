@@ -99,7 +99,6 @@
     "partialFilledAt": "Укажите дату и время заправки или очистите оба поля."
   },
   "insurance": {
-    "coverageLimits": "Лимиты покрытия",
     "createTitle": "Добавить страховку",
     "deductible": "Франшиза",
     "editTitle": "Редактировать страховку",

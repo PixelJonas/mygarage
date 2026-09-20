@@ -502,7 +502,6 @@
     "addFirstPolicy": "Füge deine erste Versicherungspolice hinzu",
     "addPolicy": "Versicherungspolice hinzufügen",
     "confirmDelete": "Bist du sicher, dass du diese Versicherungspolice löschen möchtest?",
-    "coverageLimits": "Deckungssummen",
     "deductible": "Selbstbeteiligung",
     "deleteError": "Versicherungspolice konnte nicht gelöscht werden",
     "endDate": "Enddatum",
@@ -1437,7 +1436,6 @@
     "premiumAmount": "Prämienbetrag",
     "premiumFrequency": "Zahlungsweise der Prämie",
     "deductible": "Selbstbeteiligung",
-    "coverageLimits": "Deckungssummen",
     "notes": "Notizen"
   },
   "hoursList": {

@@ -32,6 +32,8 @@ import {
   SUGGESTED_VEHICLE_FIELDS,
 } from '../../schemas/insurance'
 import InsurancePDFUpload from '../InsurancePDFUpload'
+import { coverageRows, coveragesToApi } from '../../constants/insuranceCoverages'
+import CoverageEditor from './CoverageEditor'
 import NamedFieldsEditor from './NamedFieldsEditor'
 import {
   useCreateInsurancePolicy,
@@ -66,9 +68,9 @@ function emptyVehicle(vin: string, over: Partial<PolicyVehicleFormData> = {}): P
     policy_type: '',
     premium_share: undefined,
     deductible: undefined,
-    coverage_limits: '',
     notes: '',
     effective_to: '',
+    coverages: coverageRows(),
     fields: [],
     ...over,
   }
@@ -123,8 +125,8 @@ export default function PolicyForm({ mode, policy, initialVin, onClose, onSucces
           policy_type: vehicle.policy_type,
           premium_share: vehicle.premium_share != null ? Number(vehicle.premium_share) : undefined,
           deductible: vehicle.deductible != null ? Number(vehicle.deductible) : undefined,
-          coverage_limits: vehicle.coverage_limits ?? '',
           notes: vehicle.notes ?? '',
+          coverages: coverageRows(vehicle.coverages ?? []),
           effective_to: vehicle.effective_to ?? '',
           fields: (vehicle.fields ?? []).map((field) => ({ ...field })),
         })
@@ -231,7 +233,7 @@ export default function PolicyForm({ mode, policy, initialVin, onClose, onSucces
         policy_type: parsedType,
         premium_share: vehicle.premium_share ? Number(vehicle.premium_share) : undefined,
         deductible: vehicle.deductible ? Number(vehicle.deductible) : undefined,
-        coverage_limits: data.coverage_limits ?? '',
+        coverages: coverageRows(vehicle.coverages),
       })
       // The vehicle whose tab opened the form is attached already: it takes
       // the document's figures rather than being skipped for being there.
@@ -250,9 +252,9 @@ export default function PolicyForm({ mode, policy, initialVin, onClose, onSucces
         policy_type: vehicle.policy_type as PolicyVehicleCreate['policy_type'],
         premium_share: vehicle.premium_share ?? null,
         deductible: vehicle.deductible ?? null,
-        coverage_limits: vehicle.coverage_limits || null,
         notes: vehicle.notes || null,
         effective_to: vehicle.effective_to || null,
+        coverages: coveragesToApi(vehicle.coverages),
         fields: cleanFields(vehicle.fields),
       }))
       const base = {
@@ -579,18 +581,15 @@ export default function PolicyForm({ mode, policy, initialVin, onClose, onSucces
                               />
                             </Field>
                       </div>
-                          <Field
-                            id={`vehicle-${index}-coverage`}
-                            label={t('insurance.coverageLimits')}
-                          >
-                            <Textarea
-                              id={`vehicle-${index}-coverage`}
-                              rows={2}
-                              {...register(`vehicles.${index}.coverage_limits`)}
-                              placeholder={t('insuranceForm.coverageLimitsPlaceholder')}
-                              disabled={rowDisabled}
-                            />
-                          </Field>
+                          <CoverageEditor
+                            control={control}
+                            register={register}
+                            setValue={setValue}
+                            name={`vehicles.${index}.coverages`}
+                            disabled={rowDisabled}
+                            idPrefix={`vehicle-${index}-coverage`}
+                            errors={rowErrors?.coverages}
+                          />
                           <NamedFieldsEditor
                             control={control}
                             register={register}

@@ -5,12 +5,32 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.utils.insurance_coverages import COVERAGE_BY_KEY
 
 PolicyType = Literal["Liability", "Comprehensive", "Collision", "Full Coverage", "Minimum", "Other"]
 PremiumFrequency = Literal["Monthly", "Quarterly", "Semi-Annual", "Annual"]
 PolicyStatus = Literal["upcoming", "active", "expired"]
 ShareStrategy = Literal["rescale", "reset_even"]
+#: The standard coverage catalogue. Spelled out rather than built from
+#: `COVERAGE_KEYS` so pyright and the generated TypeScript union both see real
+#: literals; `test_the_literal_matches_the_catalogue` keeps the two in step.
+CoverageKey = Literal[
+    "bodily_injury",
+    "property_damage",
+    "uninsured_bodily_injury",
+    "uninsured_property_damage",
+    "personal_injury_protection",
+    "medical_payments",
+    "comprehensive",
+    "collision",
+    "glass",
+    "rental_reimbursement",
+    "roadside_assistance",
+    "loan_lease_gap",
+    "custom_equipment",
+]
 
 
 class NamedField(BaseModel):
@@ -20,6 +40,79 @@ class NamedField(BaseModel):
     value: str = Field(..., min_length=1, max_length=255)
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class CoverageEntry(BaseModel):
+    """One standard coverage on one vehicle.
+
+    Sending the entry at all is what says the coverage is carried, so every
+    amount may be omitted (roadside assistance usually has none). A slot the
+    catalogue does not give this coverage is REJECTED rather than ignored: a
+    stored "each accident" limit on a coverage whose card has no such line
+    would be money no screen ever shows.
+
+    `premium` is what the declarations page charges for this coverage alone.
+    It is a record of the bill, NOT part of the allocation: the policy premium
+    and the per-vehicle shares are what analytics and the even split work from,
+    so editing it moves no money between vehicles and needs only write access
+    to the vehicle it is on.
+    """
+
+    coverage_key: CoverageKey
+    limit_primary: Decimal | None = Field(None, ge=0, decimal_places=2)
+    limit_secondary: Decimal | None = Field(None, ge=0, decimal_places=2)
+    deductible: Decimal | None = Field(None, ge=0, decimal_places=2)
+    premium: Decimal | None = Field(None, ge=0, decimal_places=2)
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        # The catalogue's SHAPE, published so the frontend's copy of it can be
+        # checked rather than trusted. Without this the two can disagree
+        # silently and destructively: a slot the backend has and the frontend
+        # lacks renders no input, and saving the form then clears the stored
+        # amount. `frontend/src/constants/__tests__/insuranceCoverages.test.ts`
+        # compares against it.
+        json_schema_extra={
+            "x-coverage-slots": {
+                key: {name: slot.kind for name, slot in coverage.slots()}
+                for key, coverage in COVERAGE_BY_KEY.items()
+            }
+        },
+    )
+
+    @model_validator(mode="after")
+    def _only_the_slots_this_coverage_has(self):
+        slots = dict(COVERAGE_BY_KEY[self.coverage_key].slots())
+        for name in ("limit_primary", "limit_secondary", "deductible", "premium"):
+            value = getattr(self, name)
+            if value is None:
+                continue
+            slot = slots.get(name)
+            if slot is None:
+                raise ValueError(f"{self.coverage_key} has no {name}")
+            # A count slot is a number of days, not money. Accepting 30.5 here
+            # would store what the flat exports, which write counts whole,
+            # cannot render back.
+            if slot.kind == "count" and value != value.to_integral_value():
+                raise ValueError(f"{self.coverage_key} {name} must be a whole number")
+        return self
+
+
+def no_repeated_coverage(entries: list[CoverageEntry] | None) -> list[CoverageEntry] | None:
+    """Reject a vehicle carrying the same coverage twice.
+
+    The database's UNIQUE would catch it as a 409 at commit time, after the
+    premium arithmetic has already run; this says which key, before anything
+    is written. A plain function attached per schema, the way the reminder and
+    maintenance schemas share their validators, so the check names the field it
+    guards instead of riding on a base class a schema can forget to inherit.
+    """
+    seen = set()
+    for entry in entries or []:
+        if entry.coverage_key in seen:
+            raise ValueError(f"{entry.coverage_key} is listed more than once")
+        seen.add(entry.coverage_key)
+    return entries
 
 
 # ---------------------------------------------------------------------------
@@ -36,9 +129,11 @@ class PolicyVehicleCreate(BaseModel):
         None, ge=0, decimal_places=2, description="Per-period share; omit for an even split"
     )
     deductible: Decimal | None = Field(None, ge=0, decimal_places=2)
-    coverage_limits: str | None = None
     notes: str | None = None
+    coverages: list[CoverageEntry] = Field(default_factory=list)
     fields: list[NamedField] = Field(default_factory=list)
+
+    _check_coverages = field_validator("coverages")(no_repeated_coverage)
 
 
 class PolicyVehicleUpdate(BaseModel):
@@ -52,10 +147,12 @@ class PolicyVehicleUpdate(BaseModel):
     policy_type: PolicyType | None = None
     premium_share: Decimal | None = Field(None, ge=0, decimal_places=2)
     deductible: Decimal | None = Field(None, ge=0, decimal_places=2)
-    coverage_limits: str | None = None
     notes: str | None = None
     effective_to: date_type | None = None
+    coverages: list[CoverageEntry] | None = None
     fields: list[NamedField] | None = None
+
+    _check_coverages = field_validator("coverages")(no_repeated_coverage)
 
 
 class PolicyVehicleUpsert(BaseModel):
@@ -66,12 +163,16 @@ class PolicyVehicleUpsert(BaseModel):
     policy_type: PolicyType
     premium_share: Decimal | None = Field(None, ge=0, decimal_places=2)
     deductible: Decimal | None = Field(None, ge=0, decimal_places=2)
-    coverage_limits: str | None = None
     notes: str | None = None
     effective_to: date_type | None = None
+    coverages: list[CoverageEntry] | None = Field(
+        None, description="Omit to leave an existing vehicle's coverages alone"
+    )
     fields: list[NamedField] | None = Field(
         None, description="Omit to leave an existing vehicle's named fields alone"
     )
+
+    _check_coverages = field_validator("coverages")(no_repeated_coverage)
 
 
 class PolicyVehicleResponse(BaseModel):
@@ -86,9 +187,10 @@ class PolicyVehicleResponse(BaseModel):
         None, description="What this vehicle costs per period: explicit, or the even split"
     )
     deductible: Decimal | None = None
-    coverage_limits: str | None = None
     notes: str | None = None
     effective_to: date_type | None = None
+    #: In catalogue order, which IS the display order.
+    coverages: list[CoverageEntry] = Field(default_factory=list)
     fields: list[NamedField] = Field(default_factory=list)
     can_edit: bool = False
 

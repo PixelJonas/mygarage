@@ -2569,6 +2569,292 @@
         "title": "CostProjection",
         "type": "object"
       },
+      "CoverageEntry-Input": {
+        "description": "One standard coverage on one vehicle.\n\nSending the entry at all is what says the coverage is carried, so every\namount may be omitted (roadside assistance usually has none). A slot the\ncatalogue does not give this coverage is REJECTED rather than ignored: a\nstored \"each accident\" limit on a coverage whose card has no such line\nwould be money no screen ever shows.\n\n`premium` is what the declarations page charges for this coverage alone.\nIt is a record of the bill, NOT part of the allocation: the policy premium\nand the per-vehicle shares are what analytics and the even split work from,\nso editing it moves no money between vehicles and needs only write access\nto the vehicle it is on.",
+        "properties": {
+          "coverage_key": {
+            "enum": [
+              "bodily_injury",
+              "property_damage",
+              "uninsured_bodily_injury",
+              "uninsured_property_damage",
+              "personal_injury_protection",
+              "medical_payments",
+              "comprehensive",
+              "collision",
+              "glass",
+              "rental_reimbursement",
+              "roadside_assistance",
+              "loan_lease_gap",
+              "custom_equipment"
+            ],
+            "title": "Coverage Key",
+            "type": "string"
+          },
+          "deductible": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deductible"
+          },
+          "limit_primary": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit Primary"
+          },
+          "limit_secondary": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit Secondary"
+          },
+          "premium": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Premium"
+          }
+        },
+        "required": [
+          "coverage_key"
+        ],
+        "title": "CoverageEntry",
+        "type": "object",
+        "x-coverage-slots": {
+          "bodily_injury": {
+            "limit_primary": "money",
+            "limit_secondary": "money",
+            "premium": "money"
+          },
+          "collision": {
+            "deductible": "money",
+            "premium": "money"
+          },
+          "comprehensive": {
+            "deductible": "money",
+            "premium": "money"
+          },
+          "custom_equipment": {
+            "deductible": "money",
+            "limit_primary": "money",
+            "premium": "money"
+          },
+          "glass": {
+            "deductible": "money",
+            "premium": "money"
+          },
+          "loan_lease_gap": {
+            "premium": "money"
+          },
+          "medical_payments": {
+            "limit_primary": "money",
+            "premium": "money"
+          },
+          "personal_injury_protection": {
+            "deductible": "money",
+            "limit_primary": "money",
+            "premium": "money"
+          },
+          "property_damage": {
+            "limit_primary": "money",
+            "premium": "money"
+          },
+          "rental_reimbursement": {
+            "limit_primary": "money",
+            "limit_secondary": "count",
+            "premium": "money"
+          },
+          "roadside_assistance": {
+            "premium": "money"
+          },
+          "uninsured_bodily_injury": {
+            "limit_primary": "money",
+            "limit_secondary": "money",
+            "premium": "money"
+          },
+          "uninsured_property_damage": {
+            "deductible": "money",
+            "limit_primary": "money",
+            "premium": "money"
+          }
+        }
+      },
+      "CoverageEntry-Output": {
+        "description": "One standard coverage on one vehicle.\n\nSending the entry at all is what says the coverage is carried, so every\namount may be omitted (roadside assistance usually has none). A slot the\ncatalogue does not give this coverage is REJECTED rather than ignored: a\nstored \"each accident\" limit on a coverage whose card has no such line\nwould be money no screen ever shows.\n\n`premium` is what the declarations page charges for this coverage alone.\nIt is a record of the bill, NOT part of the allocation: the policy premium\nand the per-vehicle shares are what analytics and the even split work from,\nso editing it moves no money between vehicles and needs only write access\nto the vehicle it is on.",
+        "properties": {
+          "coverage_key": {
+            "enum": [
+              "bodily_injury",
+              "property_damage",
+              "uninsured_bodily_injury",
+              "uninsured_property_damage",
+              "personal_injury_protection",
+              "medical_payments",
+              "comprehensive",
+              "collision",
+              "glass",
+              "rental_reimbursement",
+              "roadside_assistance",
+              "loan_lease_gap",
+              "custom_equipment"
+            ],
+            "title": "Coverage Key",
+            "type": "string"
+          },
+          "deductible": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deductible"
+          },
+          "limit_primary": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit Primary"
+          },
+          "limit_secondary": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit Secondary"
+          },
+          "premium": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Premium"
+          }
+        },
+        "required": [
+          "coverage_key"
+        ],
+        "title": "CoverageEntry",
+        "type": "object",
+        "x-coverage-slots": {
+          "bodily_injury": {
+            "limit_primary": "money",
+            "limit_secondary": "money",
+            "premium": "money"
+          },
+          "collision": {
+            "deductible": "money",
+            "premium": "money"
+          },
+          "comprehensive": {
+            "deductible": "money",
+            "premium": "money"
+          },
+          "custom_equipment": {
+            "deductible": "money",
+            "limit_primary": "money",
+            "premium": "money"
+          },
+          "glass": {
+            "deductible": "money",
+            "premium": "money"
+          },
+          "loan_lease_gap": {
+            "premium": "money"
+          },
+          "medical_payments": {
+            "limit_primary": "money",
+            "premium": "money"
+          },
+          "personal_injury_protection": {
+            "deductible": "money",
+            "limit_primary": "money",
+            "premium": "money"
+          },
+          "property_damage": {
+            "limit_primary": "money",
+            "premium": "money"
+          },
+          "rental_reimbursement": {
+            "limit_primary": "money",
+            "limit_secondary": "count",
+            "premium": "money"
+          },
+          "roadside_assistance": {
+            "premium": "money"
+          },
+          "uninsured_bodily_injury": {
+            "limit_primary": "money",
+            "limit_secondary": "money",
+            "premium": "money"
+          },
+          "uninsured_property_damage": {
+            "deductible": "money",
+            "limit_primary": "money",
+            "premium": "money"
+          }
+        }
+      },
       "DEFAnalytics": {
         "description": "DEF analytics and consumption predictions (metric canonical).",
         "properties": {
@@ -12783,16 +13069,12 @@
       "PolicyVehicleCreate": {
         "description": "Attach one vehicle to a policy.",
         "properties": {
-          "coverage_limits": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Coverage Limits"
+          "coverages": {
+            "items": {
+              "$ref": "#/components/schemas/CoverageEntry-Input"
+            },
+            "title": "Coverages",
+            "type": "array"
           },
           "deductible": {
             "anyOf": [
@@ -12879,16 +13161,12 @@
             "title": "Can Edit",
             "type": "boolean"
           },
-          "coverage_limits": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Coverage Limits"
+          "coverages": {
+            "items": {
+              "$ref": "#/components/schemas/CoverageEntry-Output"
+            },
+            "title": "Coverages",
+            "type": "array"
           },
           "deductible": {
             "anyOf": [
@@ -12987,16 +13265,19 @@
       "PolicyVehicleUpdate": {
         "description": "Edit one vehicle's place on a policy.\n\n`fields` omitted leaves the named fields alone; present (even empty)\nreplaces them. `premium_share` and `effective_to` move money between\nvehicles, so the route demands write access to the whole policy for them.",
         "properties": {
-          "coverage_limits": {
+          "coverages": {
             "anyOf": [
               {
-                "type": "string"
+                "items": {
+                  "$ref": "#/components/schemas/CoverageEntry-Input"
+                },
+                "type": "array"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Coverage Limits"
+            "title": "Coverages"
           },
           "deductible": {
             "anyOf": [
@@ -13093,16 +13374,20 @@
       "PolicyVehicleUpsert": {
         "description": "One vehicle in the policy form's FULL vehicle list (see\n`InsurancePolicyUpdate.vehicles`). Matched to an existing link by VIN.",
         "properties": {
-          "coverage_limits": {
+          "coverages": {
             "anyOf": [
               {
-                "type": "string"
+                "items": {
+                  "$ref": "#/components/schemas/CoverageEntry-Input"
+                },
+                "type": "array"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Coverage Limits"
+            "description": "Omit to leave an existing vehicle's coverages alone",
+            "title": "Coverages"
           },
           "deductible": {
             "anyOf": [

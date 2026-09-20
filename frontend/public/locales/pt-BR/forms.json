@@ -99,7 +99,6 @@
     }
   },
   "insurance": {
-    "coverageLimits": "Limites de cobertura",
     "createTitle": "Adicionar seguro",
     "deductible": "Franquia",
     "editTitle": "Editar seguro",

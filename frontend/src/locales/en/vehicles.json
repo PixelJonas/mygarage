@@ -594,7 +594,6 @@
     "addFirstPolicy": "Add Your First Insurance Policy",
     "addPolicy": "Add Insurance Policy",
     "confirmDelete": "Are you sure you want to delete this insurance policy?",
-    "coverageLimits": "Coverage Limits",
     "deductible": "Deductible",
     "deleteAction": "delete the insurance policy",
     "deleteError": "Failed to delete insurance policy",
@@ -1775,7 +1774,6 @@
     "premiumAmount": "Premium Amount",
     "premiumFrequency": "Premium Frequency",
     "deductible": "Deductible",
-    "coverageLimits": "Coverage Limits",
     "notes": "Notes"
   },
   "maintenanceTypeSelect": {

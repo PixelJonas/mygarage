@@ -140,7 +140,6 @@
     "saveAction": "save the hours record"
   },
   "insurance": {
-    "coverageLimits": "Coverage Limits",
     "createTitle": "Add Insurance Policy",
     "deductible": "Deductible",
     "editTitle": "Edit Insurance Policy",
@@ -195,7 +194,10 @@
     "vehicleReadOnly": "View only",
     "fieldIncomplete": "Give this field both a label and a value, or remove it.",
     "renewOverlaps": "The next term cannot start before the current one ends",
-    "partialSwitch": "Vehicles you remove here stay on {{provider}}, which carries on for them and can still be renewed."
+    "partialSwitch": "Vehicles you remove here stay on {{provider}}, which carries on for them and can still be renewed.",
+    "coverages": "Coverages",
+    "moveFieldUp": "Move field up",
+    "moveFieldDown": "Move field down"
   },
   "modal": {
     "acceptTelemetry": "Accept telemetry data from WiCAN devices",
@@ -920,8 +922,7 @@
     "providerPlaceholder": "e.g., State Farm, GEICO",
     "policyNumberPlaceholder": "e.g., INS-12345",
     "premiumAmountPlaceholder": "e.g., 150.00",
-    "deductiblePlaceholder": "e.g., 500.00",
-    "coverageLimitsPlaceholder": "e.g., 100/300/100 Bodily Injury/Property Damage"
+    "deductiblePlaceholder": "e.g., 500.00"
   },
   "billingEntryForm": {
     "electric": "Electric",
@@ -1031,12 +1032,33 @@
     "agentName": "Agent Name",
     "agentPhone": "Agent Phone",
     "claimsPhone": "Claims Phone",
-    "roadsideAssistance": "Roadside Assistance",
-    "bodilyInjury": "Bodily Injury",
-    "propertyDamage": "Property Damage",
-    "collisionDeductible": "Collision Deductible",
-    "comprehensiveDeductible": "Comprehensive Deductible",
-    "uninsuredMotorist": "Uninsured Motorist",
-    "rentalReimbursement": "Rental Reimbursement"
+    "lienholder": "Lienholder",
+    "garagingAddress": "Garaging Address",
+    "discounts": "Discounts"
+  },
+  "insuranceCoverages": {
+    "bodilyInjury": "Bodily injury liability",
+    "propertyDamage": "Property damage liability",
+    "uninsuredBodilyInjury": "Uninsured motorist - bodily injury",
+    "uninsuredPropertyDamage": "Uninsured motorist - property damage",
+    "personalInjuryProtection": "Personal injury protection",
+    "medicalPayments": "Medical payments",
+    "comprehensive": "Comprehensive",
+    "collision": "Collision",
+    "glass": "Glass",
+    "rentalReimbursement": "Rental reimbursement",
+    "roadsideAssistance": "Roadside assistance",
+    "loanLeaseGap": "Loan/lease gap",
+    "customEquipment": "Custom parts and equipment",
+    "actualCashValue": "Actual cash value",
+    "included": "Included",
+    "slots": {
+      "eachPerson": "Each person",
+      "eachAccident": "Each accident",
+      "eachDay": "Each day",
+      "maximumDays": "Maximum days",
+      "limit": "Limit",
+      "premium": "Premium"
+    }
   }
 }

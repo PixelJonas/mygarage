@@ -76,13 +76,14 @@ const existing = (over: Partial<InsurancePolicy> = {}): InsurancePolicy => ({
   vehicles: [
     {
       id: 1, vin: RAM, vehicle_name: 'Ram', policy_type: 'Full Coverage', premium_share: '400.00',
-      effective_share: '400.00', deductible: '500.00', coverage_limits: '100/300', notes: null,
-      effective_to: null, fields: [{ label: 'Collision Deductible', value: '$500' }], can_edit: true,
+      effective_share: '400.00', deductible: '500.00', notes: null, effective_to: null,
+      coverages: [{ coverage_key: 'collision', deductible: '500.00' }],
+      fields: [{ label: 'Lienholder', value: 'Ally' }], can_edit: true,
     },
     {
       id: 2, vin: MIRAGE, vehicle_name: 'Mirage', policy_type: 'Liability', premium_share: '200.00',
-      effective_share: '200.00', deductible: null, coverage_limits: null, notes: null,
-      effective_to: null, fields: [], can_edit: true,
+      effective_share: '200.00', deductible: null, notes: null,
+      effective_to: null, coverages: [], fields: [], can_edit: true,
     },
   ],
   other_vehicle_count: 0,
@@ -113,12 +114,82 @@ describe('PolicyForm — create', () => {
       notes: null,
       fields: [],
       vehicles: [
-        { vin: RAM, policy_type: 'Full Coverage', premium_share: 400, deductible: 500, coverage_limits: null, notes: null, fields: [] },
+        { vin: RAM, policy_type: 'Full Coverage', premium_share: 400, deductible: 500, notes: null, coverages: [], fields: [] },
         // No share typed: null, so the backend splits what the Ram leaves.
-        { vin: MIRAGE, policy_type: 'Liability', premium_share: null, deductible: null, coverage_limits: null, notes: null, fields: [] },
+        { vin: MIRAGE, policy_type: 'Liability', premium_share: null, deductible: null, notes: null, coverages: [], fields: [] },
       ],
     })
     expect(updateMutateAsync).not.toHaveBeenCalled()
+  })
+
+  it('sends a coverage only once it is ticked, with the amounts typed under it', async () => {
+    const user = userEvent.setup()
+    render(<PolicyForm mode="create" onClose={vi.fn()} onSuccess={vi.fn()} />)
+    await fillPolicy(user)
+    await addVehicle(user, RAM, 'Full Coverage', 0)
+
+    // Unticked, a coverage shows no amounts at all: the checklist stays short.
+    expect(screen.queryByLabelText('forms:insuranceCoverages.slots.premium')).not.toBeInTheDocument()
+
+    await user.click(screen.getByLabelText('forms:insuranceCoverages.collision'))
+    await user.type(screen.getByLabelText('forms:insurance.deductible', { selector: '#vehicle-0-coverage-collision-deductible' }), '500')
+    await user.click(screen.getByRole('button', { name: 'common:create' }))
+
+    await waitFor(() => expect(createMutateAsync).toHaveBeenCalledTimes(1))
+    const { vehicles } = createMutateAsync.mock.calls[0][0]
+    expect(vehicles[0].coverages).toEqual([
+      {
+        coverage_key: 'collision',
+        limit_primary: null,
+        limit_secondary: null,
+        deductible: '500',
+        premium: null,
+      },
+    ])
+  })
+
+  it('lets a bad amount be undone by unticking the coverage it was typed under', async () => {
+    // Left behind, the hidden value keeps failing validation from a row that
+    // is no longer on screen to show why the save does nothing.
+    const user = userEvent.setup()
+    render(<PolicyForm mode="create" onClose={vi.fn()} onSuccess={vi.fn()} />)
+    await fillPolicy(user)
+    await addVehicle(user, RAM, 'Full Coverage', 0)
+
+    await user.click(screen.getByLabelText('forms:insuranceCoverages.collision'))
+    await user.type(
+      screen.getByLabelText('forms:insurance.deductible', {
+        selector: '#vehicle-0-coverage-collision-deductible',
+      }),
+      '-1'
+    )
+    await user.click(screen.getByLabelText('forms:insuranceCoverages.collision'))
+    await user.click(screen.getByRole('button', { name: 'common:create' }))
+
+    await waitFor(() => expect(createMutateAsync).toHaveBeenCalledTimes(1))
+    expect(createMutateAsync.mock.calls[0][0].vehicles[0].coverages).toEqual([])
+  })
+
+  it('sends a coverage carried with no amounts as a bare row', async () => {
+    const user = userEvent.setup()
+    render(<PolicyForm mode="create" onClose={vi.fn()} onSuccess={vi.fn()} />)
+    await fillPolicy(user)
+    await addVehicle(user, RAM, 'Full Coverage', 0)
+
+    await user.click(screen.getByLabelText('forms:insuranceCoverages.roadsideAssistance'))
+    await user.click(screen.getByRole('button', { name: 'common:create' }))
+
+    await waitFor(() => expect(createMutateAsync).toHaveBeenCalledTimes(1))
+    const { vehicles } = createMutateAsync.mock.calls[0][0]
+    expect(vehicles[0].coverages).toEqual([
+      {
+        coverage_key: 'roadside_assistance',
+        limit_primary: null,
+        limit_secondary: null,
+        deductible: null,
+        premium: null,
+      },
+    ])
   })
 
   it("starts with the vehicle attached when opened from that vehicle's tab", () => {
@@ -147,11 +218,11 @@ describe('PolicyForm — create', () => {
       data: {
         provider: 'Progressive', policy_number: 'P-PDF', policy_type: 'Full Coverage',
         start_date: '2026-01-01', end_date: '2026-07-01', premium_amount: '600.00',
-        premium_frequency: 'Semi-Annual', deductible: null, coverage_limits: null, notes: null,
+        premium_frequency: 'Semi-Annual', deductible: null,  notes: null,
       },
       vehicles: [
-        { vin: RAM, matched: true, vehicle_name: 'Ram', premium_share: '320.00', deductible: '500.00' },
-        { vin: 'NOTINGARAGE000003', matched: false, vehicle_name: null, premium_share: '99.00', deductible: null },
+        { vin: RAM, matched: true, vehicle_name: 'Ram', premium_share: '320.00', deductible: '500.00', coverages: [{ coverage_key: 'collision', deductible: '500.00' }] },
+        { vin: 'NOTINGARAGE000003', matched: false, vehicle_name: null, premium_share: '99.00', deductible: null, coverages: [] },
       ],
       confidence: {}, confidence_score: 90, parser_used: 'progressive', warnings: [],
     }
@@ -164,7 +235,8 @@ describe('PolicyForm — create', () => {
     const payload = createMutateAsync.mock.calls[0][0]
     expect(payload.policy_number).toBe('P-PDF')
     expect(payload.vehicles).toEqual([
-      { vin: RAM, policy_type: 'Full Coverage', premium_share: 320, deductible: 500, coverage_limits: null, notes: null, fields: [] },
+      { vin: RAM, policy_type: 'Full Coverage', premium_share: 320, deductible: 500, notes: null,
+        coverages: [{ coverage_key: 'collision', limit_primary: null, limit_secondary: null, deductible: '500', premium: null }], fields: [] },
     ])
   })
 })
@@ -200,6 +272,31 @@ describe('PolicyForm — allocation feedback', () => {
 })
 
 describe('PolicyForm — edit and replace', () => {
+  it('lets a named field be moved to where it belongs and saves that order', async () => {
+    const user = userEvent.setup()
+    const twoFields = existing({
+      fields: [
+        { label: 'Agent Phone', value: '555-0100' },
+        { label: 'Claims Phone', value: '555-0199' },
+      ],
+    })
+    render(<PolicyForm mode="edit" policy={twoFields} onClose={vi.fn()} onSuccess={vi.fn()} />)
+
+    // The first field cannot go up and the last cannot go down: there is
+    // nowhere for them to go, and a no-op button reads as a broken one.
+    const up = screen.getAllByRole('button', { name: 'insurance.moveFieldUp' })
+    expect(up[0]).toBeDisabled()
+    await user.click(up[1])
+    await user.click(screen.getByRole('button', { name: 'common:update' }))
+
+    await waitFor(() => expect(updateMutateAsync).toHaveBeenCalledTimes(1))
+    expect(updateMutateAsync.mock.calls[0][0].fields).toEqual([
+      { label: 'Claims Phone', value: '555-0199' },
+      { label: 'Agent Phone', value: '555-0100' },
+    ])
+  })
+
+
   it('edit sends the premium and the COMPLETE vehicle list together, keeping text it does not show', async () => {
     const user = userEvent.setup()
     render(<PolicyForm mode="edit" policy={existing()} onClose={vi.fn()} onSuccess={vi.fn()} />)
@@ -213,12 +310,21 @@ describe('PolicyForm — edit and replace', () => {
     expect(payload.vehicles).toEqual([
       {
         vin: RAM, policy_type: 'Full Coverage', premium_share: 400, deductible: 500,
-        coverage_limits: '100/300', notes: null, effective_to: null,
-        fields: [{ label: 'Collision Deductible', value: '$500' }],
+        notes: null, effective_to: null,
+        coverages: [
+          {
+            coverage_key: 'collision',
+            limit_primary: null,
+            limit_secondary: null,
+            deductible: '500',
+            premium: null,
+          },
+        ],
+        fields: [{ label: 'Lienholder', value: 'Ally' }],
       },
       {
         vin: MIRAGE, policy_type: 'Liability', premium_share: 200, deductible: null,
-        coverage_limits: null, notes: null, effective_to: null, fields: [],
+        notes: null, effective_to: null, coverages: [], fields: [],
       },
     ])
   })
@@ -262,8 +368,8 @@ describe('PolicyForm — edit and replace', () => {
       // The vehicles go with their coverage TYPE prefilled and everything else
       // blank: a new insurer's deductibles and limits are not the old one's.
       vehicles: [
-        { vin: RAM, policy_type: 'Full Coverage', premium_share: null, deductible: null, coverage_limits: null, notes: null, fields: [] },
-        { vin: MIRAGE, policy_type: 'Liability', premium_share: null, deductible: null, coverage_limits: null, notes: null, fields: [] },
+        { vin: RAM, policy_type: 'Full Coverage', premium_share: null, deductible: null, notes: null, coverages: [], fields: [] },
+        { vin: MIRAGE, policy_type: 'Liability', premium_share: null, deductible: null, notes: null, coverages: [], fields: [] },
       ],
       end_old_on: '2026-06-15',
     })
@@ -368,9 +474,9 @@ describe('PolicyForm — code-review regressions', () => {
       data: {
         provider: 'Progressive', policy_number: 'P-PDF', policy_type: 'Liability',
         start_date: '2026-01-01', end_date: '2026-07-01', premium_amount: '280.00',
-        premium_frequency: 'Semi-Annual', deductible: null, coverage_limits: null, notes: null,
+        premium_frequency: 'Semi-Annual', deductible: null,  notes: null,
       },
-      vehicles: [{ vin: MIRAGE, matched: true, vehicle_name: 'Mirage', premium_share: '280.00', deductible: '250.00' }],
+      vehicles: [{ vin: MIRAGE, matched: true, vehicle_name: 'Mirage', premium_share: '280.00', deductible: '250.00', coverages: [] }],
       confidence: {}, confidence_score: 90, parser_used: 'progressive', warnings: [],
     }
     render(<PolicyForm mode="create" initialVin={MIRAGE} onClose={vi.fn()} onSuccess={vi.fn()} />)
@@ -380,7 +486,7 @@ describe('PolicyForm — code-review regressions', () => {
 
     await waitFor(() => expect(createMutateAsync).toHaveBeenCalledTimes(1))
     expect(createMutateAsync.mock.calls[0][0].vehicles).toEqual([
-      { vin: MIRAGE, policy_type: 'Liability', premium_share: 280, deductible: 250, coverage_limits: null, notes: null, fields: [] },
+      { vin: MIRAGE, policy_type: 'Liability', premium_share: 280, deductible: 250, notes: null, coverages: [], fields: [] },
     ])
   })
 
