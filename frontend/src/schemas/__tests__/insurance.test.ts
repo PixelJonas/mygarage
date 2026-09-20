@@ -11,6 +11,7 @@ const schema = makeInsuranceSchema(t)
 const vehicle = (over: Record<string, unknown> = {}) => ({
   vin: 'RAMVIN00000000001',
   policy_type: 'Full Coverage',
+  coverages: [],
   fields: [],
   ...over,
 })

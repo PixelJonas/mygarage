@@ -18,20 +18,28 @@ Every route goes through `_Access`, so these rules live in one place.
 """
 
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 from fastapi import HTTPException
 from sqlalchemy import select, text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.insurance import InsurancePolicy, InsurancePolicyField, InsurancePolicyVehicle
+from app.models.insurance import (
+    InsuranceCoverage,
+    InsurancePolicy,
+    InsurancePolicyField,
+    InsurancePolicyVehicle,
+)
 from app.models.user import User
 from app.models.vehicle import Vehicle
 from app.models.vehicle_share import VehicleShare
 from app.schemas.insurance import (
+    CoverageEntry,
     InsurancePolicyCreate,
     InsurancePolicyRenew,
     InsurancePolicyReplace,
@@ -48,6 +56,7 @@ from app.schemas.insurance import (
 from app.services.auth import get_vehicle_or_403
 from app.services.vehicle_lock import LOCK_BUSY_DETAIL, is_lock_contention
 from app.utils.household_time import household_today
+from app.utils.insurance_coverages import COVERAGE_BY_KEY, COVERAGE_ORDER
 from app.utils.insurance_shares import (
     AllocationError,
     effective_shares,
@@ -120,6 +129,41 @@ def _vehicle_name(vehicle: Vehicle | None, vin: str) -> str:
         return vehicle.nickname
     parts = [str(p) for p in (vehicle.year, vehicle.make, vehicle.model) if p]
     return " ".join(parts) or vin
+
+
+def _coverage_tuples(rows: Iterable[Any]) -> list[tuple]:
+    """Coverages as comparable values, in catalogue order.
+
+    Duck-typed on the five columns, so a stored row and a request entry both
+    go through it: that is what lets the "this vehicle is unchanged" test in
+    `_apply_vehicles` compare the two without a second projection drifting
+    from this one.
+    """
+    known = [row for row in rows if row.coverage_key in COVERAGE_BY_KEY]
+    known.sort(key=lambda row: COVERAGE_ORDER[row.coverage_key])
+    return [
+        (row.coverage_key, row.limit_primary, row.limit_secondary, row.deductible, row.premium)
+        for row in known
+    ]
+
+
+def _coverage_responses(link: InsurancePolicyVehicle) -> list[CoverageEntry]:
+    """One vehicle's coverages in CATALOGUE order, which is the display order.
+
+    A key outside the catalogue can only come from a hand-edited database or a
+    downgrade. It is dropped rather than returned, because `CoverageEntry`
+    would reject it and take the whole policy read down with it.
+    """
+    unknown = [c.coverage_key for c in link.coverages if c.coverage_key not in COVERAGE_BY_KEY]
+    if unknown:
+        logger.warning(
+            "Ignoring insurance coverage key(s) outside the catalogue on link %s: %s",
+            link.id,
+            sanitize_for_log(", ".join(sorted(set(unknown)))),
+        )
+    known = [c for c in link.coverages if c.coverage_key in COVERAGE_BY_KEY]
+    known.sort(key=lambda row: COVERAGE_ORDER[row.coverage_key])
+    return [CoverageEntry.model_validate(row) for row in known]
 
 
 class InsuranceService:
@@ -251,8 +295,8 @@ class InsuranceService:
                     premium_share=link.premium_share,
                     effective_share=shares.get(link.id),
                     deductible=link.deductible,
-                    coverage_limits=link.coverage_limits,
                     notes=link.notes,
+                    coverages=_coverage_responses(link),
                     effective_to=link.effective_to,
                     fields=[NamedField.model_validate(f) for f in link.fields],
                     can_edit=access.can_write_vin(link.vin),
@@ -416,6 +460,40 @@ class InsuranceService:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @staticmethod
+    def _set_coverages(link: InsurancePolicyVehicle, entries: list[CoverageEntry]) -> None:
+        """Replace one vehicle's standard coverages.
+
+        Wholesale, like `_set_fields`: the form always sends the complete set,
+        and a coverage the user removed has to be gone rather than kept by an
+        absent key. Duplicate keys are rejected by the schema before here.
+
+        Reconciled BY KEY rather than cleared and rebuilt, because
+        `(policy_vehicle_id, coverage_key)` is unique and one flush is free to
+        order the new INSERT before the old DELETE: re-sending a vehicle
+        unchanged would then be a constraint violation.
+        """
+        wanted = {entry.coverage_key: entry for entry in entries}
+        for existing in list(link.coverages):
+            entry = wanted.pop(existing.coverage_key, None)
+            if entry is None:
+                link.coverages.remove(existing)
+                continue
+            existing.limit_primary = entry.limit_primary
+            existing.limit_secondary = entry.limit_secondary
+            existing.deductible = entry.deductible
+            existing.premium = entry.premium
+        for entry in wanted.values():
+            link.coverages.append(
+                InsuranceCoverage(
+                    coverage_key=entry.coverage_key,
+                    limit_primary=entry.limit_primary,
+                    limit_secondary=entry.limit_secondary,
+                    deductible=entry.deductible,
+                    premium=entry.premium,
+                )
+            )
+
+    @staticmethod
     def _set_fields(
         policy: InsurancePolicy,
         link: InsurancePolicyVehicle | None,
@@ -452,11 +530,12 @@ class InsuranceService:
             policy_type=data.policy_type,
             premium_share=data.premium_share,
             deductible=data.deductible,
-            coverage_limits=data.coverage_limits,
             notes=data.notes,
             effective_to=getattr(data, "effective_to", None),
         )
         policy.vehicle_links.append(link)
+        if data.coverages:
+            self._set_coverages(link, data.coverages)
         if data.fields:
             self._set_fields(policy, link, data.fields)
         return link
@@ -580,8 +659,11 @@ class InsuranceService:
                 link.policy_type == item.policy_type
                 and link.premium_share == item.premium_share
                 and link.deductible == item.deductible
-                and (link.coverage_limits or None) == (item.coverage_limits or None)
                 and (link.notes or None) == (item.notes or None)
+                and (
+                    item.coverages is None
+                    or _coverage_tuples(link.coverages) == _coverage_tuples(item.coverages)
+                )
                 and link.effective_to == item.effective_to
                 and (
                     item.fields is None
@@ -601,9 +683,10 @@ class InsuranceService:
             link.policy_type = item.policy_type
             link.premium_share = item.premium_share
             link.deductible = item.deductible
-            link.coverage_limits = item.coverage_limits
             link.notes = item.notes
             link.effective_to = item.effective_to
+            if item.coverages is not None:
+                self._set_coverages(link, item.coverages)
             if item.fields is not None:
                 self._set_fields(policy, link, item.fields)
         self._check_effective_to(policy)
@@ -661,6 +744,7 @@ class InsuranceService:
 
         changes = data.model_dump(exclude_unset=True)
         fields = changes.pop("fields", None)
+        coverages = changes.pop("coverages", None)
         if _FINANCIAL_LINK_FIELDS & changes.keys() and not access.can_write(policy):
             raise HTTPException(
                 status_code=403,
@@ -673,6 +757,8 @@ class InsuranceService:
             changes.pop("policy_type")
         for name, value in changes.items():
             setattr(link, name, value)
+        if coverages is not None:
+            self._set_coverages(link, data.coverages or [])
         if fields is not None:
             self._set_fields(policy, link, data.fields or [])
         self._check_effective_to(policy)
@@ -807,10 +893,13 @@ class InsuranceService:
                 policy_type=link.policy_type,
                 premium_share=shares[link.id],
                 deductible=link.deductible,
-                coverage_limits=link.coverage_limits,
                 notes=link.notes,
             )
             new.vehicle_links.append(copy)
+            # Same insurer, next term: the coverages carry. (A SWITCH does not
+            # carry them, which is why `replace` builds its links from the
+            # request instead of from these.)
+            self._set_coverages(copy, [CoverageEntry.model_validate(c) for c in link.coverages])
             self._set_fields(new, copy, [NamedField.model_validate(f) for f in link.fields])
         policy_level = [NamedField.model_validate(f) for f in old.fields]
         for order, item in enumerate(policy_level):

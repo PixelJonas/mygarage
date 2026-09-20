@@ -802,3 +802,237 @@ class TestPrReviewRegressions:
             headers=owner_headers,
         )
         assert clean.status_code == 201, clean.text
+
+
+def _coverage(key: str, **over) -> dict:
+    return {"coverage_key": key, **over}
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+class TestStandardCoverages:
+    """The catalogue in `app.utils.insurance_coverages`, over the API.
+
+    A coverage ROW means the coverage is carried; its amounts say how much. The
+    order they come back in is the catalogue's, never the order they were sent,
+    so two vehicles on one policy can never render their coverage in a
+    different sequence.
+    """
+
+    async def test_a_vehicle_keeps_the_coverages_it_was_created_with(
+        self, client: AsyncClient, auth_headers, owned_vehicle
+    ):
+        policy = await _create(
+            client,
+            auth_headers,
+            [
+                _on(
+                    owned_vehicle.vin,
+                    coverages=[
+                        _coverage(
+                            "bodily_injury",
+                            limit_primary="100000.00",
+                            limit_secondary="300000.00",
+                            premium="55.00",
+                        ),
+                        _coverage("roadside_assistance"),
+                    ],
+                )
+            ],
+        )
+        coverages = policy["vehicles"][0]["coverages"]
+        assert [c["coverage_key"] for c in coverages] == ["bodily_injury", "roadside_assistance"]
+        assert coverages[0]["limit_secondary"] == "300000.00"
+        # Carried, unpriced: the row alone is the fact.
+        assert coverages[1]["limit_primary"] is None
+
+    async def test_coverages_come_back_in_catalogue_order(
+        self, client: AsyncClient, auth_headers, owned_vehicle
+    ):
+        policy = await _create(
+            client,
+            auth_headers,
+            [
+                _on(
+                    owned_vehicle.vin,
+                    coverages=[
+                        _coverage("roadside_assistance"),
+                        _coverage("collision", deductible="500.00"),
+                        _coverage("bodily_injury", limit_primary="100000.00"),
+                    ],
+                )
+            ],
+        )
+        assert [c["coverage_key"] for c in policy["vehicles"][0]["coverages"]] == [
+            "bodily_injury",
+            "collision",
+            "roadside_assistance",
+        ]
+
+    async def test_an_amount_the_coverage_has_no_slot_for_is_refused(
+        self, client: AsyncClient, auth_headers, owned_vehicle
+    ):
+        """Stored, it would be money no screen ever shows."""
+        response = await client.post(
+            API,
+            json=_body(
+                [_on(owned_vehicle.vin, coverages=[_coverage("collision", limit_primary="100.00")])]
+            ),
+            headers=auth_headers,
+        )
+        assert response.status_code == 422, response.text
+
+    async def test_the_same_coverage_twice_is_refused_by_name(
+        self, client: AsyncClient, auth_headers, owned_vehicle
+    ):
+        response = await client.post(
+            API,
+            json=_body(
+                [
+                    _on(
+                        owned_vehicle.vin,
+                        coverages=[_coverage("collision"), _coverage("collision")],
+                    )
+                ]
+            ),
+            headers=auth_headers,
+        )
+        assert response.status_code == 422, response.text
+        assert "collision" in response.text
+
+    async def test_a_key_outside_the_catalogue_is_refused(
+        self, client: AsyncClient, auth_headers, owned_vehicle
+    ):
+        response = await client.post(
+            API,
+            json=_body([_on(owned_vehicle.vin, coverages=[_coverage("flood")])]),
+            headers=auth_headers,
+        )
+        assert response.status_code == 422, response.text
+
+    async def test_editing_a_vehicle_replaces_its_coverages_wholesale(
+        self, client: AsyncClient, auth_headers, owned_vehicle
+    ):
+        """A coverage the user removed has to be gone, not merely unmentioned."""
+        policy = await _create(
+            client,
+            auth_headers,
+            [
+                _on(
+                    owned_vehicle.vin,
+                    coverages=[_coverage("collision", deductible="500.00"), _coverage("glass")],
+                )
+            ],
+        )
+        link = policy["vehicles"][0]
+        response = await client.patch(
+            f"{API}/{policy['id']}/vehicles/{link['id']}",
+            json={"coverages": [_coverage("collision", deductible="1000.00")]},
+            headers=auth_headers,
+        )
+        assert response.status_code == 200, response.text
+        coverages = response.json()["vehicles"][0]["coverages"]
+        assert [c["coverage_key"] for c in coverages] == ["collision"]
+        assert coverages[0]["deductible"] == "1000.00"
+
+    async def test_omitting_coverages_on_a_patch_leaves_them_alone(
+        self, client: AsyncClient, auth_headers, owned_vehicle
+    ):
+        policy = await _create(
+            client,
+            auth_headers,
+            [_on(owned_vehicle.vin, coverages=[_coverage("collision", deductible="500.00")])],
+        )
+        link = policy["vehicles"][0]
+        response = await client.patch(
+            f"{API}/{policy['id']}/vehicles/{link['id']}",
+            json={"notes": "just a note"},
+            headers=auth_headers,
+        )
+        assert response.status_code == 200, response.text
+        assert len(response.json()["vehicles"][0]["coverages"]) == 1
+
+    async def test_renewing_carries_the_coverages_into_the_next_term(
+        self, client: AsyncClient, auth_headers, owned_vehicle
+    ):
+        """Same insurer, next term: the coverage is the thing that does not change."""
+        policy = await _create(
+            client,
+            auth_headers,
+            [
+                _on(
+                    owned_vehicle.vin,
+                    coverages=[
+                        _coverage("collision", deductible="500.00", premium="299.00"),
+                        _coverage("roadside_assistance"),
+                    ],
+                )
+            ],
+        )
+        response = await client.post(
+            f"{API}/{policy['id']}/renew",
+            json={"premium_amount": "700.00"},
+            headers=auth_headers,
+        )
+        assert response.status_code == 201, response.text
+        coverages = response.json()["vehicles"][0]["coverages"]
+        assert [c["coverage_key"] for c in coverages] == ["collision", "roadside_assistance"]
+        assert coverages[0]["deductible"] == "500.00"
+
+    async def test_switching_insurers_does_not_carry_the_old_coverages(
+        self, client: AsyncClient, auth_headers, owned_vehicle
+    ):
+        """A new insurer writes new coverage; carrying the old would invent it."""
+        policy = await _create(
+            client,
+            auth_headers,
+            [_on(owned_vehicle.vin, coverages=[_coverage("collision", deductible="500.00")])],
+        )
+        today = household_today()
+        response = await client.post(
+            f"{API}/{policy['id']}/replace",
+            json={
+                "provider": "State Farm",
+                "policy_number": "SF-1",
+                "start_date": (today + timedelta(days=150)).isoformat(),
+                "end_date": (today + timedelta(days=330)).isoformat(),
+            },
+            headers=auth_headers,
+        )
+        assert response.status_code == 201, response.text
+        assert response.json()["vehicles"][0]["coverages"] == []
+
+    async def test_an_untouched_vehicle_needs_no_write_access(
+        self, client: AsyncClient, auth_headers, owned_vehicle
+    ):
+        """The form resends every vehicle; resending identical coverages is not
+        an edit, so a reader-on-one-vehicle creator can still fix the provider."""
+        policy = await _create(
+            client,
+            auth_headers,
+            [
+                _on(
+                    owned_vehicle.vin,
+                    coverages=[
+                        _coverage("bodily_injury", limit_primary="100000.00"),
+                        _coverage("collision", deductible="500.00"),
+                    ],
+                )
+            ],
+        )
+        resent = [
+            _on(
+                owned_vehicle.vin,
+                coverages=[
+                    _coverage("collision", deductible="500.00"),
+                    _coverage("bodily_injury", limit_primary="100000.00"),
+                ],
+            )
+        ]
+        response = await client.put(
+            f"{API}/{policy['id']}",
+            json={"provider": "Progressive Direct", "vehicles": resent},
+            headers=auth_headers,
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["provider"] == "Progressive Direct"

@@ -11,8 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Household insurance: one policy covers many vehicles, each listed beneath it with its own coverage type, premium share and deductible.
 - Insurance page for the whole garage; a vehicle's Insurance tab shows the same policies with that vehicle in full.
 - Renew a policy as soon as the notice arrives (it stays Upcoming until it starts), switch insurers, and review the history of prior terms with the premium change.
-- Named fields on a policy or on one vehicle's coverage, with common labels one tap away.
-- PDF import attaches every vehicle on the declarations page that is in the garage.
+- Named fields on a policy or on one vehicle's coverage, with common labels one tap away, in an order you choose.
+- Standard coverages per vehicle: a fixed checklist from bodily injury to roadside assistance, each with its limits, deductible and premium.
+- PDF import attaches every vehicle on the declarations page that is in the garage, with its coverages filled in.
 - JSON backups include insurance.
 
 ### Changed
@@ -22,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Garage analytics counts insurance by billing frequency and date, per vehicle and per month.
 - A transferred vehicle leaves the previous owner's policies.
 - Insurance `test-parse` is admin only.
+- **BREAKING:** a vehicle's `coverage_limits` text is replaced by `coverages`. Existing text is converted at upgrade: recognised lines become coverages, priced leftovers become named fields, the rest stays in that vehicle's notes.
+- Policy cards show every figure as a label above its value and pack them across the card, instead of three columns stretched over the page.
+- JSON backup schema version 8. Version 7 backups still restore; their coverage text is converted the same way.
 
 ### Fixed
 - Production images now install from `uv.lock`, so they no longer resolve a different dependency set on every build.
@@ -29,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Build
 - Migration 107: household insurance policies (FATAL; back up first).
+- Migration 108: standard insurance coverages (FATAL; back up first).
 - Backend dependencies bumped, including granian 2.8.3, starlette 1.6.0, sqlalchemy 2.0.54, numpy 2.5.3, ruff 0.16.8 and pyright 1.1.414.
 
 ## [3.5.0] - 2026-09-18

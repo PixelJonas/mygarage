@@ -1,4 +1,4 @@
-import { Plus, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, Plus, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import {
   useFieldArray,
@@ -27,8 +27,13 @@ interface NamedFieldsEditorProps {
 }
 
 /**
- * User-named label/value pairs. Most policies carry the same handful of
- * details, so the common ones are one tap; anything else is typed.
+ * User-named label/value pairs, for anything the standard coverage catalogue
+ * does not carry. Most policies want the same handful of details, so the
+ * common ones are one tap; anything else is typed.
+ *
+ * The ORDER is the user's: these render in the order they are listed here, on
+ * the card as well as in the form, so a field can be put where it belongs
+ * rather than where it happened to be added. `sort_order` persists it.
  */
 export default function NamedFieldsEditor({
   control,
@@ -40,7 +45,7 @@ export default function NamedFieldsEditor({
   errors,
 }: NamedFieldsEditorProps) {
   const { t } = useTranslation('forms')
-  const { fields, append, remove } = useFieldArray({ control, name })
+  const { fields, append, remove, move } = useFieldArray({ control, name })
   // The LIVE values, not the field-array snapshot: a user who retypes a
   // suggested label by hand should stop being offered it, and one who renames
   // a chip's label should get the chip back.
@@ -75,6 +80,22 @@ export default function NamedFieldsEditor({
                 invalid={!!rowError?.value}
                 disabled={disabled}
                 className="flex-1"
+              />
+              <IconButton
+                icon={ChevronUp}
+                label={t('insurance.moveFieldUp')}
+                variant="ghost"
+                size="sm"
+                disabled={disabled || index === 0}
+                onClick={() => move(index, index - 1)}
+              />
+              <IconButton
+                icon={ChevronDown}
+                label={t('insurance.moveFieldDown')}
+                variant="ghost"
+                size="sm"
+                disabled={disabled || index === fields.length - 1}
+                onClick={() => move(index, index + 1)}
               />
               <IconButton
                 icon={X}

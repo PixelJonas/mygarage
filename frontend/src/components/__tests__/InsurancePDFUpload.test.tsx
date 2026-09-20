@@ -23,7 +23,7 @@ beforeEach(() => vi.clearAllMocks())
 
 const emptyData = {
   provider: null, policy_number: null, policy_type: null, start_date: null, end_date: null,
-  premium_amount: null, premium_frequency: null, deductible: null, coverage_limits: null, notes: null,
+  premium_amount: null, premium_frequency: null, deductible: null, notes: null,
 }
 
 // B3/M6: the hidden <input type=file> is reachable through the sr-only <label htmlFor> the restyle

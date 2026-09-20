@@ -105,7 +105,6 @@
     "filledAtTimeOnlyHint": "Optionnel. Utilise la date ci-dessus ; nécessaire pour l'auto-remplissage depuis votre dernier trajet."
   },
   "insurance": {
-    "coverageLimits": "Limites de couverture",
     "createTitle": "Ajouter une police d'assurance",
     "deductible": "Franchise",
     "editTitle": "Modifier la police d'assurance",
@@ -774,8 +773,7 @@
     "providerPlaceholder": "ex. State Farm, GEICO",
     "policyNumberPlaceholder": "ex. INS-12345",
     "premiumAmountPlaceholder": "ex. 150.00",
-    "deductiblePlaceholder": "ex. 500.00",
-    "coverageLimitsPlaceholder": "ex. 100/300/100 blessures corporelles/dommages matériels"
+    "deductiblePlaceholder": "ex. 500.00"
   },
   "billingEntryForm": {
     "electric": "Électricité",

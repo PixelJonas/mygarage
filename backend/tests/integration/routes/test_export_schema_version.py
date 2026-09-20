@@ -300,13 +300,14 @@ class TestCSVSchemaVersionAlsoAppliesToUnitBearingPairs:
 
 
 class TestJSONExportVersionUnchanged:
-    """The JSON backup's `export_version` is the current JSON literal ("7" since
-    the household `insurance_policies` list; "6" was the #164 fuel-grade keys).
+    """The JSON backup's `export_version` is the current JSON literal ("8" since
+    insurance entries carry `coverages`; "7" was the household
+    `insurance_policies` list, "6" the #164 fuel-grade keys).
 
     Proves JSON_SCHEMA_VERSION did not silently move alongside CSV_SCHEMA_VERSION.
     """
 
-    async def test_json_export_emits_schema_version_7(
+    async def test_json_export_emits_schema_version_8(
         self, client: AsyncClient, auth_headers, test_user, db_session
     ):
         from app.models.hours import HoursRecord
@@ -328,7 +329,7 @@ class TestJSONExportVersionUnchanged:
         assert response.status_code == 200, response.text
 
         data = response.json()
-        assert data["export_version"] == "7"
+        assert data["export_version"] == "8"
         assert data["units"] == "metric"
         matching = [r for r in data["hours_records"] if r["date"] == "2026-05-05"]
         assert len(matching) == 1

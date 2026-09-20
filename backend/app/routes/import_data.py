@@ -49,6 +49,7 @@ from app.models import (
     DEFRecord,
     FuelRecord,
     HoursRecord,
+    InsuranceCoverage,
     InsurancePolicy,
     InsurancePolicyField,
     InsurancePolicyVehicle,
@@ -95,6 +96,7 @@ from app.utils.csv_units import (
 from app.utils.def_sync import ensure_def_capable
 from app.utils.file_validation import validate_csv_upload
 from app.utils.household_time import household_today
+from app.utils.insurance_coverages import COVERAGE_BY_KEY, coverage_row, parse_coverage_lines
 from app.utils.logging_utils import sanitize_for_log
 from app.utils.maintenance_types import classify
 from app.utils.odometer_tolerance import KM_STEP, LITRE_STEP, conversion_tolerance
@@ -260,6 +262,65 @@ def _whole_cents(value: Decimal | None, column: str) -> Decimal | None:
     return value
 
 
+#: The named-field columns a converted leftover has to fit
+#: (`InsurancePolicyField.label` / `.value`).
+_FIELD_LABEL_MAX = 60
+_FIELD_VALUE_MAX = 255
+
+
+def _coverages_from_rows(raw: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The standard coverages of a schema-8 backup entry.
+
+    Importers build ORM rows directly, so the API schema's rules do not reach
+    them and are re-applied here from the same catalogue: a slot the catalogue
+    does not give a coverage is an error rather than a silently dropped amount,
+    and every figure must be a whole number of cents.
+    """
+    rows = []
+    for item in raw:
+        key = item.get("coverage_key")
+        coverage = COVERAGE_BY_KEY.get(key)
+        if coverage is None:
+            logger.warning("Import: unknown insurance coverage %s, skipped", sanitize_for_log(key))
+            continue
+        allowed = {name for name, _slot in coverage.slots()}
+        values = {}
+        for name in ("limit_primary", "limit_secondary", "deductible", "premium"):
+            value = item.get(name)
+            value = Decimal(str(value)) if value is not None else None
+            if value is not None and name not in allowed:
+                raise _InsuranceRowError(f"{key} has no {name}")
+            values[name] = _whole_cents(value, f"{coverage.label} {name}")
+        rows.append({"coverage_key": key, **values})
+    return rows
+
+
+def _coverages_from_text(text: str | None) -> tuple[list[dict[str, Any]], list[dict], list[str]]:
+    """A free-text coverage box as coverages, named fields and leftover prose.
+
+    The CSV column and a schema-7 backup both carry one text box, read here
+    through the SAME parser migration 108 uses AND placed the same way, so a
+    restored old backup lands exactly what an in-place upgrade would have
+    produced rather than only its coverage rows.
+    """
+    parse = parse_coverage_lines(text)
+    fields = [
+        {"label": label[:_FIELD_LABEL_MAX], "value": value[:_FIELD_VALUE_MAX]}
+        for label, value in parse.fields
+    ]
+    return [coverage_row(item) for item in parse.coverages], fields, parse.notes
+
+
+def _merge_converted(row: dict[str, Any], text: str | None) -> None:
+    """Fold a text box's conversion into a row that may already carry its own
+    named fields and notes; nothing the box held is dropped."""
+    coverages, fields, notes = _coverages_from_text(text)
+    row["coverages"] = coverages
+    row["fields"] = [*(row.get("fields") or []), *fields]
+    if notes:
+        row["notes"] = "\n".join(filter(None, [(row.get("notes") or "").rstrip(), *notes])) or None
+
+
 async def _import_insurance_row(
     db: AsyncSession,
     access: Any,
@@ -396,11 +457,12 @@ async def _import_insurance_row(
             policy_type=row["policy_type"],
             premium_share=premium,
             deductible=row["deductible"],
-            coverage_limits=row["coverage_limits"],
             notes=row["notes"],
             effective_to=row.get("effective_to"),
         )
         target.vehicle_links.append(link)
+        for coverage in row.get("coverages") or []:
+            link.coverages.append(InsuranceCoverage(**coverage))
         for order, item in enumerate(row.get("fields") or []):
             target.all_fields.append(
                 InsurancePolicyField(
@@ -1206,22 +1268,25 @@ async def import_insurance_csv(
 
     for row_num, row in enumerate(csv_reader, start=2):
         try:
+            record = {
+                "provider": row.get("Provider", ""),
+                "policy_number": row.get("Policy Number", ""),
+                "policy_type": row.get("Type", "").strip() or None,
+                "start_date": parse_date(row.get("Start Date", "")),
+                "end_date": parse_date(row.get("End Date", "")),
+                "premium": parse_decimal(row.get("Premium", "")),
+                "premium_frequency": row.get("Premium Frequency", "").strip() or None,
+                "deductible": parse_decimal(row.get("Deductible", "")),
+                "notes": row.get("Notes", "").strip() or None,
+            }
+            # The flat file has one Coverage Limits column: converted whole,
+            # the way migration 108 converts the column it replaced.
+            _merge_converted(record, row.get("Coverage Limits", "").strip() or None)
             imported = await _import_insurance_row(
                 db,
                 access,
                 vin,
-                {
-                    "provider": row.get("Provider", ""),
-                    "policy_number": row.get("Policy Number", ""),
-                    "policy_type": row.get("Type", "").strip() or None,
-                    "start_date": parse_date(row.get("Start Date", "")),
-                    "end_date": parse_date(row.get("End Date", "")),
-                    "premium": parse_decimal(row.get("Premium", "")),
-                    "premium_frequency": row.get("Premium Frequency", "").strip() or None,
-                    "deductible": parse_decimal(row.get("Deductible", "")),
-                    "coverage_limits": row.get("Coverage Limits", "").strip() or None,
-                    "notes": row.get("Notes", "").strip() or None,
-                },
+                record,
                 created_in_run,
                 skip_duplicates,
             )
@@ -1838,30 +1903,36 @@ async def import_vehicle_json(
         try:
             premium = entry.get("premium_share")
             deductible = entry.get("deductible")
+            record = {
+                "provider": entry["provider"],
+                "policy_number": entry["policy_number"],
+                "policy_type": entry.get("policy_type"),
+                "start_date": datetime.fromisoformat(entry["start_date"]).date(),
+                "end_date": datetime.fromisoformat(entry["end_date"]).date(),
+                "premium": Decimal(str(premium)) if premium is not None else None,
+                "premium_frequency": entry.get("premium_frequency"),
+                "deductible": Decimal(str(deductible)) if deductible is not None else None,
+                "coverages": _coverages_from_rows(entry.get("coverages") or []),
+                "notes": entry.get("notes"),
+                "fields": entry.get("fields") or [],
+                "policy_fields": entry.get("policy_fields") or [],
+                "policy_notes": entry.get("policy_notes"),
+                "effective_to": (
+                    datetime.fromisoformat(entry["effective_to"]).date()
+                    if entry.get("effective_to")
+                    else None
+                ),
+            }
+            # Schema 7 and older carried one coverage text box instead. It is
+            # converted whole, so a restored old backup lands what an in-place
+            # upgrade would have: the rows, the named fields AND the prose.
+            if entry.get("coverages") is None:
+                _merge_converted(record, entry.get("coverage_limits"))
             imported = await _import_insurance_row(
                 db,
                 insurance_access,
                 vin,
-                {
-                    "provider": entry["provider"],
-                    "policy_number": entry["policy_number"],
-                    "policy_type": entry.get("policy_type"),
-                    "start_date": datetime.fromisoformat(entry["start_date"]).date(),
-                    "end_date": datetime.fromisoformat(entry["end_date"]).date(),
-                    "premium": Decimal(str(premium)) if premium is not None else None,
-                    "premium_frequency": entry.get("premium_frequency"),
-                    "deductible": Decimal(str(deductible)) if deductible is not None else None,
-                    "coverage_limits": entry.get("coverage_limits"),
-                    "notes": entry.get("notes"),
-                    "fields": entry.get("fields") or [],
-                    "policy_fields": entry.get("policy_fields") or [],
-                    "policy_notes": entry.get("policy_notes"),
-                    "effective_to": (
-                        datetime.fromisoformat(entry["effective_to"]).date()
-                        if entry.get("effective_to")
-                        else None
-                    ),
-                },
+                record,
                 insurance_created,
                 skip_duplicates=True,
             )

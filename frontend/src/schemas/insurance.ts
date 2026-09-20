@@ -53,16 +53,15 @@ export const SUGGESTED_POLICY_FIELDS = [
   'forms:insuranceFieldLabels.agentName',
   'forms:insuranceFieldLabels.agentPhone',
   'forms:insuranceFieldLabels.claimsPhone',
-  'forms:insuranceFieldLabels.roadsideAssistance',
 ] as const
 
+/** Deliberately none of the standard coverages: those have their own inputs
+ *  in the coverage editor now, and offering them here as free text would give
+ *  a vehicle two places to hold its collision deductible. */
 export const SUGGESTED_VEHICLE_FIELDS = [
-  'forms:insuranceFieldLabels.bodilyInjury',
-  'forms:insuranceFieldLabels.propertyDamage',
-  'forms:insuranceFieldLabels.collisionDeductible',
-  'forms:insuranceFieldLabels.comprehensiveDeductible',
-  'forms:insuranceFieldLabels.uninsuredMotorist',
-  'forms:insuranceFieldLabels.rentalReimbursement',
+  'forms:insuranceFieldLabels.lienholder',
+  'forms:insuranceFieldLabels.garagingAddress',
+  'forms:insuranceFieldLabels.discounts',
 ] as const
 
 const amountField = (t: TFunction) =>
@@ -80,15 +79,32 @@ const namedFieldSchema = (t: TFunction) =>
     value: z.string().trim().min(1, t('common:required')).max(255),
   })
 
+/** One row of the standard coverage checklist.
+ *
+ *  The form carries EVERY catalogue coverage, included or not, so the checklist
+ *  maps one-to-one onto stable array indices; `PolicyForm` drops the unticked
+ *  ones on submit. A coverage the catalogue gives no such slot keeps
+ *  `undefined` there and is stripped the same way, because the API rejects an
+ *  amount it has nowhere to show. */
+const coverageSchema = (t: TFunction) =>
+  z.object({
+    coverage_key: z.string().min(1),
+    included: z.boolean(),
+    limit_primary: amountField(t),
+    limit_secondary: amountField(t),
+    deductible: amountField(t),
+    premium: amountField(t),
+  })
+
 const policyVehicleSchema = (t: TFunction) =>
   z.object({
     vin: z.string().min(1),
     policy_type: z.string().min(1, t('common:validation.policyType.required')),
     premium_share: amountField(t),
     deductible: amountField(t),
-    coverage_limits: z.string().optional(),
     notes: z.string().optional(),
     effective_to: z.string().optional(),
+    coverages: z.array(coverageSchema(t)),
     fields: z.array(namedFieldSchema(t)),
   })
 
@@ -116,6 +132,7 @@ export const makeInsuranceSchema = (t: TFunction) =>
 // the same shared.ts factories.
 export type InsuranceFormData = z.output<ReturnType<typeof makeInsuranceSchema>>
 export type PolicyVehicleFormData = InsuranceFormData['vehicles'][number]
+export type CoverageFormData = PolicyVehicleFormData['coverages'][number]
 
 /** `currentEnd` is the term being renewed: the next one may not start before
  *  it ends, or both would be active at once and both premiums would accrue. */

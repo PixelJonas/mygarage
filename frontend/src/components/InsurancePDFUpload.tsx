@@ -21,7 +21,9 @@ const CONFIDENCE_TONE: Record<'high' | 'medium' | 'low', Tone> = {
  * Domain verified against the `data` block built by parse_insurance_pdf in
  * backend/app/routes/insurance.py (provider, policy_number, policy_type,
  * start_date, end_date, premium_amount, premium_frequency, deductible,
- * coverage_limits, notes), which matches InsurancePDFParseResponse. Keys are
+ * notes), which matches InsurancePDFParseResponse. The standard coverages are
+ * NOT here: they are per vehicle, and the form shows them in its own
+ * checklist rather than as a parsed policy-level field. Keys are
  * explicit literals, never built by interpolation, so
  * scripts/validate-i18n-usage.ts can resolve them statically. A field the
  * backend adds later falls through to humanizeFieldName below so it still
@@ -36,7 +38,6 @@ const INSURANCE_FIELD_KEYS: Record<string, string> = {
   premium_amount: 'insuranceFields.premiumAmount',
   premium_frequency: 'insuranceFields.premiumFrequency',
   deductible: 'insuranceFields.deductible',
-  coverage_limits: 'insuranceFields.coverageLimits',
   notes: 'insuranceFields.notes',
 }
 
