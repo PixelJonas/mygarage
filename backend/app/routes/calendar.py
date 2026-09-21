@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
-from sqlalchemy import desc, or_, select
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -21,9 +21,8 @@ from app.models import (
     WarrantyRecord,
 )
 from app.models.user import User
-from app.models.vehicle_share import VehicleShare
 from app.schemas.calendar import CalendarEvent, CalendarResponse, CalendarSummary
-from app.services.auth import require_auth
+from app.services.auth import require_auth, visible_vehicles_filter
 from app.services.reminder_service import (
     calculate_hours_driving_rate,
     calculate_smart_estimated_date,
@@ -81,15 +80,9 @@ async def get_calendar_events(
 
     # Get vehicles scoped to current user (owned + shared), or all for admins
     vehicle_query = select(Vehicle)
-    if current_user is not None and not current_user.is_admin:
-        shared_vins = (
-            select(VehicleShare.vehicle_vin)
-            .where(VehicleShare.user_id == current_user.id)
-            .scalar_subquery()
-        )
-        vehicle_query = vehicle_query.where(
-            or_(Vehicle.user_id == current_user.id, Vehicle.vin.in_(shared_vins))
-        )
+    scope = visible_vehicles_filter(current_user)
+    if scope is not None:
+        vehicle_query = vehicle_query.where(scope)
     vehicles_result = await db.execute(vehicle_query)
     vehicles_dict = {v.vin: v for v in vehicles_result.scalars().all()}
 
