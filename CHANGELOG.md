@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Save a vehicle's recurring reminders as a pack and apply it to other vehicles; rename, delete or save a vehicle over one (#165).
+- Change any interval while applying a pack, instead of editing each reminder afterwards (#165).
 - Household insurance: one policy covers many vehicles, each listed beneath it with its own coverage type, premium share and deductible.
 - Insurance page for the whole garage; a vehicle's Insurance tab shows the same policies with that vehicle in full.
 - Renew a policy as soon as the notice arrives (it stays Upcoming until it starts), switch insurers, and review the history of prior terms with the premium change.
@@ -34,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Build
 - Migration 107: household insurance policies (FATAL; back up first).
 - Migration 108: standard insurance coverages (FATAL; back up first).
+- Migration 109: saved reminder pack tables (additive).
 - Backend dependencies bumped, including granian 2.8.3, starlette 1.6.0, sqlalchemy 2.0.54, numpy 2.5.3, ruff 0.16.8 and pyright 1.1.414.
 
 ## [3.5.0] - 2026-09-18

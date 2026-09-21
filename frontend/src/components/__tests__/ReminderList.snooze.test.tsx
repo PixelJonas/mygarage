@@ -27,6 +27,7 @@ vi.mock('../../hooks/useReminders', () => ({
   useDeleteReminder: () => ({ mutateAsync: vi.fn() }),
   useReminderDuplicates: () => ({ data: [] }),
   useReminderPacks: () => ({ data: [] }),
+  useDeletePack: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useSnoozeReminder: () => ({ mutateAsync: snoozeMock, isPending: false }),
   useUnsnoozeReminder: () => ({ mutateAsync: unsnoozeMock, isPending: false }),
 }))

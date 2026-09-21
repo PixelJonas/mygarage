@@ -1866,7 +1866,8 @@
     },
     "supersedes": "{{count}} other reminders for the same item will be marked superseded.",
     "supersedes_one": "{{count}} other reminder for the same item will be marked superseded.",
-    "supersedes_other": "{{count}} other reminders for the same item will be marked superseded."
+    "supersedes_other": "{{count}} other reminders for the same item will be marked superseded.",
+    "recalculating": "Recalculating the plan…"
   },
   "duplicates": {
     "title": "Duplicate reminders: {{label}}",
@@ -1899,5 +1900,33 @@
     "showHistory": "Show past policies",
     "hideHistory": "Hide past policies",
     "addToExisting": "Add to existing policy"
+  },
+  "savePack": {
+    "title": "Save as pack",
+    "intro": "Save this vehicle's recurring reminders so you can apply the same standard to another vehicle.",
+    "name": "Pack name",
+    "namePlaceholder": "Truck standard",
+    "description": "Description",
+    "descriptionPlaceholder": "What this standard covers",
+    "vehicleTypes": "Suits these vehicle types",
+    "vehicleTypesHint": "Leave all unticked to offer it on every vehicle.",
+    "include": "Include",
+    "noRules": "This vehicle has no recurring reminders to save. Add one with a repeat interval first.",
+    "nothingChecked": "Tick at least one reminder.",
+    "action": "Save pack",
+    "saved": "Pack saved",
+    "overwritten": "Pack updated",
+    "cannotInclude": "Cannot go in a pack: {{reason}}",
+    "reasonTypeless": "it has no maintenance type",
+    "reasonRepeatedType": "another reminder already covers this maintenance type"
+  },
+  "packList": {
+    "saved": "Saved",
+    "rename": "Rename",
+    "renameTitle": "Rename pack",
+    "renamed": "Pack renamed",
+    "delete": "Delete",
+    "deleteConfirm": "Delete the pack “{{name}}”? Reminders already created from it are not affected.",
+    "deleted": "Pack deleted"
   }
 }

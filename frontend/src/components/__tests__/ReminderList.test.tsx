@@ -15,6 +15,7 @@ vi.mock('../../hooks/useReminders', () => ({
   useDeleteReminder: () => ({ mutateAsync: deleteMock }),
   useReminderDuplicates: () => ({ data: [] }),
   useReminderPacks: () => ({ data: [] }),
+  useDeletePack: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }))
 // The completion dialog is its own component with its own tests; here only
 // the fact that Mark done OPENS it with the exact reminder matters.

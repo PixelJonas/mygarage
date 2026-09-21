@@ -36,6 +36,7 @@ from app.schemas.maintenance import (
     AnchorProposal,
     ApplyPackPreview,
     DuplicateGroup,
+    IntervalOverride,
     MaintenanceRuleCreate,
     MaintenanceRuleUpdate,
     PackItemPlan,
@@ -1241,6 +1242,45 @@ async def _validate_anchor_choices(
     return chosen
 
 
+def _validate_overrides(
+    pack: ReminderPackDetail,
+    overrides: dict[str, IntervalOverride | None] | None,
+) -> dict[str, IntervalOverride]:
+    """Every named key is a pack item. Unknown keys are a 422, as for anchors.
+
+    An item the caller did not name is absent from the result and keeps the
+    pack's own intervals, so an untouched form sends nothing and behaves exactly
+    as it did before overrides existed.
+    """
+    if not overrides:
+        return {}
+    keys = {item.key for item in pack.reminders}
+    chosen: dict[str, IntervalOverride] = {}
+    for key, override in overrides.items():
+        if key not in keys:
+            raise HTTPException(status_code=422, detail=f"Unknown pack item '{key}'")
+        if override is not None:
+            chosen[key] = override
+    return chosen
+
+
+def _overridden(item: ReminderPackItem, override: IntervalOverride) -> ReminderPackItem:
+    """The pack item as the caller just retyped it.
+
+    A copy, never a mutation: `pack.reminders` is the resolved pack and
+    `apply_pack` plans each item after the preview already planned it, so
+    editing the item in place would leak one call's override into the next.
+    """
+    return item.model_copy(
+        update={
+            "interval_km": override.interval_km,
+            "interval_months": override.interval_months,
+            "interval_days": override.interval_days,
+            "interval_hours": override.interval_hours,
+        }
+    )
+
+
 async def _plan_item(
     db: AsyncSession,
     vin: str,
@@ -1249,13 +1289,22 @@ async def _plan_item(
     today: date,
     *,
     for_preview: bool,
+    override: IntervalOverride | None = None,
 ) -> PackItemPlan:
     """What applying `item` would do. Reads only.
 
     `for_preview` adds the lists only the dialog shows (the typed history and
     the untyped candidates); `apply_pack` plans without them.
+
+    `override` is intervals the caller typed while applying. It is substituted
+    BEFORE anything is planned, because the plan reads the intervals: the anchor
+    proposal, a `skip` verdict and the "a newer typed service completes this"
+    branch all depend on them, so overriding afterwards would preview one thing
+    and do another.
     """
     assert item.key is not None
+    if override is not None:
+        item = _overridden(item, override)
     maintenance_type = resolve_type(item.maintenance_type, item.title) or item.key
     intervals: HasIntervals = item
     plan = PackItemPlan(
@@ -1277,8 +1326,15 @@ async def _plan_item(
     if rule is not None:
         plan.rule_id = rule.id
         plan.rule_action = "reuse" if rule.is_active else "reactivate"
-        if rule.is_active:
-            # The vehicle's own intervals win over the pack's.
+        if rule.is_active and override is None:
+            # The vehicle's own intervals win over the pack's, so re-applying a
+            # pack does not undo a schedule the owner has tuned.
+            #
+            # An OVERRIDE is not the pack's value: the caller typed it a moment
+            # ago, so it wins over the rule as well and this branch stands down.
+            # Without the `override is None` guard the override is substituted
+            # above, discarded here, and then previewed and persisted as the old
+            # number, which is the failure the reuse-override test exists for.
             plan.interval_km = rule.interval_km
             plan.interval_months = rule.interval_months
             plan.interval_days = rule.interval_days
@@ -1404,6 +1460,7 @@ async def plan_pack(
     vin: str,
     pack: ReminderPackDetail,
     anchors: dict[str, AnchorChoice | None] | None,
+    overrides: dict[str, IntervalOverride | None] | None = None,
     *,
     today: date | None = None,
 ) -> ApplyPackPreview:
@@ -1411,8 +1468,17 @@ async def plan_pack(
     if today is None:
         today = household_today()
     chosen = await _validate_anchor_choices(db, vin, pack, anchors)
+    typed = _validate_overrides(pack, overrides)
     items = [
-        await _plan_item(db, vin, item, chosen.get(item.key or ""), today, for_preview=True)
+        await _plan_item(
+            db,
+            vin,
+            item,
+            chosen.get(item.key or ""),
+            today,
+            for_preview=True,
+            override=typed.get(item.key or ""),
+        )
         for item in pack.reminders
     ]
     return ApplyPackPreview(pack_id=pack.id, pack_name=pack.name, items=items)
@@ -1423,6 +1489,7 @@ async def apply_pack(
     vin: str,
     pack: ReminderPackDetail,
     anchors: dict[str, AnchorChoice | None] | None,
+    overrides: dict[str, IntervalOverride | None] | None = None,
     *,
     today: date | None = None,
 ) -> list[Reminder]:
@@ -1435,13 +1502,17 @@ async def apply_pack(
         today = household_today()
     await lock_vehicle_for_write(db, vin)
     chosen = await _validate_anchor_choices(db, vin, pack, anchors)
+    typed = _validate_overrides(pack, overrides)
     results: list[Reminder] = []
     for item in pack.reminders:
         assert item.key is not None
         choice = chosen.get(item.key)
-        plan = await _plan_item(db, vin, item, choice, today, for_preview=False)
+        override = typed.get(item.key)
+        plan = await _plan_item(db, vin, item, choice, today, for_preview=False, override=override)
         if plan.rule_action == "skip":
             continue
+        if override is not None:
+            item = _overridden(item, override)
         # 1. A chosen untyped line item is typed: that is what makes the choice durable.
         if choice is not None and choice.line_item is not None:
             if choice.line_item.maintenance_type != plan.maintenance_type:
@@ -1458,7 +1529,11 @@ async def apply_pack(
             source_pack_id=pack.id,
             source_pack_key=item.key,
             notes=item.notes,
-            update_intervals=False,
+            # An override is the caller's instruction, so it is written to the
+            # rule; the pack's own values still leave an existing rule alone.
+            # Without this the override is planned and previewed correctly and
+            # then never persisted.
+            update_intervals=override is not None,
         )
         rule = resolution.rule
         # 3. Adopt loose reminders of the type when the rule has none.

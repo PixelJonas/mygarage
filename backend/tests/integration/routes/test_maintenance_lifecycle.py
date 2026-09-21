@@ -33,7 +33,7 @@ from app.models.service_visit import ServiceVisit
 from app.models.vehicle import Vehicle
 from app.schemas.maintenance import ReminderCompleteRequest
 from app.services import maintenance_service
-from app.services.reminder_pack_service import get_pack
+from app.services.reminder_pack_service import builtin_pack
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -836,7 +836,7 @@ class TestMConcurrency:
         self, client, auth_headers, test_sessionmaker
     ):
         vin = await _vehicle(client, auth_headers)
-        pack = get_pack("oil_and_filter")
+        pack = builtin_pack("oil_and_filter")
 
         async def _race():
             async with test_sessionmaker() as db:

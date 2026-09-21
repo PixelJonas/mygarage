@@ -7,22 +7,55 @@
  * supersedes, and the resulting due values. The owner can point an item at
  * an untyped line item (which types it) or say the work was done today, and
  * then confirm. Nothing is written until Apply.
+ *
+ * The intervals are editable here too (issue #165: "define a standard, and then
+ * override it upon creating a reminder"). An override is not a display tweak: it
+ * is re-previewed, because the plan reads the intervals and the anchor proposal
+ * or a skip reason can change with them. So Apply waits for the preview to catch
+ * up rather than acting on a stale plan.
  */
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Package } from 'lucide-react'
 import { toast } from 'sonner'
 import FormModalWrapper from './FormModalWrapper'
-import { Button, Chip, Mono } from './ui'
+import { Button, Chip, Field, Mono, NumberInput } from './ui'
 import { describeDue } from './RecurrenceFields'
 import { useApplyPack, usePackPreview } from '../hooks/useReminders'
 import { useUnitFormat } from '../hooks/useUnitFormat'
 import { useDateLocale } from '../hooks/useDateLocale'
 import { formatDateForDisplay } from '../utils/dateUtils'
 import { getActionErrorMessage } from '../utils/httpErrorHandler'
-import type { AnchorChoices } from '../services/reminderService'
+import { canonicalFromUnitField, seedUnitField } from '../utils/unitFormat'
+import { parseDecimalInput } from '../utils/decimalInput'
+import { getActiveLocale } from '../constants/i18n'
+import type { AnchorChoices, IntervalOverrides } from '../services/reminderService'
 import type { AnchorCandidate, AnchorChoice, PackItemPlan } from '../types/reminder'
+
+/** Whole-number interval fields, with the label the rule form already uses. */
+const COUNT_FIELDS = [
+  ['interval_months', 'forms:recurrence.everyMonths'],
+  ['interval_days', 'forms:recurrence.everyDays'],
+  ['interval_hours', 'forms:recurrence.everyHours'],
+] as const
+
+type OverrideDraft = NonNullable<IntervalOverrides[string]>
+
+/** A wire decimal as a number. Money and intervals arrive as strings so no
+ *  precision is lost in transit; the unit helpers and the inputs want numbers. */
+const num = (value: string | number | null | undefined): number | null =>
+  value == null ? null : Number(value)
+
+/** Debounce a value so typing does not fire a preview request per keystroke. */
+function useDebounced<T>(value: T, ms: number): T {
+  const [settled, setSettled] = useState(value)
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(value), ms)
+    return () => clearTimeout(timer)
+  }, [value, ms])
+  return settled
+}
 
 interface ApplyPackDialogProps {
   vin: string
@@ -37,9 +70,23 @@ export default function ApplyPackDialog({ vin, packId, packName, onClose, onAppl
   const u = useUnitFormat()
   const dateLocale = useDateLocale()
   const [anchors, setAnchors] = useState<AnchorChoices>({})
+  const [overrides, setOverrides] = useState<IntervalOverrides>({})
   const [error, setError] = useState<string | null>(null)
-  const { data: preview, isLoading, error: previewError } = usePackPreview(vin, packId, anchors)
+  // The typed text per item per field, kept beside the parsed override so a
+  // half-typed "10." survives a re-render and a locale separator is not eaten.
+  const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({})
+  const settledOverrides = useDebounced(overrides, 300)
+  const settling = settledOverrides !== overrides
+  const {
+    data: preview,
+    isLoading,
+    error: previewError,
+    isFetching,
+  } = usePackPreview(vin, packId, anchors, settledOverrides)
   const applyMutation = useApplyPack(vin)
+  // Applying against a plan that has not caught up is how a skip reason gets
+  // ignored, so the button waits for both the debounce and the refetch.
+  const planIsStale = settling || isFetching
 
   const fmtDate = (value: string | null | undefined) =>
     value ? formatDateForDisplay(value, undefined, dateLocale) : null
@@ -56,10 +103,43 @@ export default function ApplyPackDialog({ vin, packId, packName, onClose, onAppl
     })
   }
 
+  /**
+   * Patch one interval of one item.
+   *
+   * Seeded from the item's CURRENT planned values, because an override replaces
+   * all four intervals at once: sending only the field that changed would null
+   * the others and quietly turn a distance-and-calendar rule into a
+   * distance-only one.
+   *
+   * Clearing every field drops the override entirely rather than sending an
+   * empty one. The schema refuses that (a rule with no interval cannot exist),
+   * and reverting to the pack's value is the only other reading of "I cleared
+   * it all".
+   */
+  const patchOverride = (item: PackItemPlan, field: keyof OverrideDraft, raw: number | null) => {
+    setOverrides((prev) => {
+      const base: OverrideDraft =
+        prev[item.key] ?? {
+          interval_km: num(item.interval_km),
+          interval_months: item.interval_months ?? null,
+          interval_days: item.interval_days ?? null,
+          interval_hours: num(item.interval_hours),
+        }
+      const next: OverrideDraft = { ...base, [field]: raw }
+      const copy = { ...prev }
+      if (Object.values(next).some((v) => v != null)) copy[item.key] = next
+      else delete copy[item.key]
+      return copy
+    })
+  }
+
+  const setDraft = (key: string, field: string, text: string) =>
+    setDrafts((prev) => ({ ...prev, [key]: { ...prev[key], [field]: text } }))
+
   const handleApply = async () => {
     setError(null)
     try {
-      await applyMutation.mutateAsync({ packId, anchors })
+      await applyMutation.mutateAsync({ packId, anchors, overrides })
       toast.success(t('reminderList.packApplied'))
       onApplied()
     } catch (err) {
@@ -139,6 +219,49 @@ export default function ApplyPackDialog({ vin, packId, packName, onClose, onAppl
                 {t('applyPack.choiceDoneToday')}
               </label>
             </fieldset>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {item.interval_km != null && (
+                <Field
+                  id={`override-${item.key}-km`}
+                  label={t('forms:recurrence.everyDistance')}
+                  unit={u.distance.label}
+                >
+                  <NumberInput
+                    id={`override-${item.key}-km`}
+                    value={
+                      drafts[item.key]?.interval_km ??
+                      seedUnitField(num(item.interval_km), u.distance).display
+                    }
+                    onChange={(e) => {
+                      setDraft(item.key, 'interval_km', e.target.value)
+                      // Through the same helpers the rule form uses, so a
+                      // vehicle in miles types miles and the API still gets km.
+                      const km = canonicalFromUnitField(
+                        e.target.value,
+                        seedUnitField(num(item.interval_km), u.distance),
+                        u.distance,
+                      )
+                      patchOverride(item, 'interval_km', km ?? null)
+                    }}
+                    disabled={applyMutation.isPending}
+                  />
+                </Field>
+              )}
+              {COUNT_FIELDS.filter(([field]) => item[field] != null).map(([field, labelKey]) => (
+                <Field key={field} id={`override-${item.key}-${field}`} label={t(labelKey)}>
+                  <NumberInput
+                    id={`override-${item.key}-${field}`}
+                    value={drafts[item.key]?.[field] ?? String(item[field] ?? '')}
+                    onChange={(e) => {
+                      setDraft(item.key, field, e.target.value)
+                      const parsed = parseDecimalInput(e.target.value, getActiveLocale())
+                      patchOverride(item, field, parsed.kind === 'value' ? parsed.value : null)
+                    }}
+                    disabled={applyMutation.isPending}
+                  />
+                </Field>
+              ))}
+            </div>
             {due && (
               <p className="text-xs text-text">
                 {t('reminderList.due')}: <Mono size="xs" tone="accent">{due}</Mono>
@@ -164,7 +287,7 @@ export default function ApplyPackDialog({ vin, packId, packName, onClose, onAppl
           <Button
             onClick={() => void handleApply()}
             loading={applyMutation.isPending}
-            disabled={applyMutation.isPending || !preview}
+            disabled={applyMutation.isPending || !preview || planIsStale}
           >
             {t('reminderList.applyPack')}
           </Button>
@@ -179,6 +302,9 @@ export default function ApplyPackDialog({ vin, packId, packName, onClose, onAppl
           </p>
         )}
         {isLoading && <p className="text-sm text-text-mute">{t('applyPack.loading')}</p>}
+        {!isLoading && planIsStale && (
+          <p className="text-sm text-text-mute">{t('applyPack.recalculating')}</p>
+        )}
         {previewError && <p role="alert" className="text-sm text-danger">{t('applyPack.previewFailed')}</p>}
         {preview && <ul className="space-y-3">{preview.items.map(renderItem)}</ul>}
       </div>

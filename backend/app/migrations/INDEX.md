@@ -119,3 +119,4 @@ migrations must swallow their own operational errors.
 | `106_repair_odometer_sync_duplicates` | Repair odometer rows duplicated by pre-fix auto-sync date edits (issue #171). |
 | `107_household_insurance_policies` | **FATAL** — Make an insurance policy a household record that covers many vehicles. |
 | `108_insurance_standard_coverages` | **FATAL** — Turn each vehicle's free-text coverage limits into standard coverage rows. |
+| `109_user_defined_reminder_packs` | Add the tables that hold user-saved reminder packs. |

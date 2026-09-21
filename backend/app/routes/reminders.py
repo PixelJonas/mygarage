@@ -23,7 +23,13 @@ from app.schemas.reminder import (
     ReminderSnoozeRequest,
     ReminderUpdate,
 )
-from app.schemas.reminder_pack import ApplyReminderPackRequest, ReminderPackSummary
+from app.schemas.reminder_pack import (
+    ApplyReminderPackRequest,
+    ReminderPackDetail,
+    ReminderPackSummary,
+    RenameReminderPackRequest,
+    SaveReminderPackRequest,
+)
 from app.services import maintenance_service, reminder_pack_service, reminder_service
 from app.services.auth import get_vehicle_or_403, require_auth
 from app.services.vehicle_lock import lock_vehicle_for_write
@@ -40,10 +46,64 @@ async def list_reminder_packs(
     vehicle_type: str | None = Query(
         None, description="Filter packs applicable to this vehicle type"
     ),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_auth),
 ):
-    """List built-in reminder packs available to apply to a vehicle."""
-    return reminder_pack_service.list_packs(vehicle_type=vehicle_type)
+    """List the reminder packs available to apply to a vehicle.
+
+    Built-in and saved packs in one list. A saved pack is marked `is_custom`, and
+    `can_edit` says whether this caller may change it.
+    """
+    return await reminder_pack_service.list_packs(
+        db, vehicle_type=vehicle_type, current_user=current_user
+    )
+
+
+@packs_router.post("", response_model=ReminderPackDetail, status_code=201)
+async def save_reminder_pack(
+    body: SaveReminderPackRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_auth),
+):
+    """Save one vehicle's chosen maintenance rules as a reusable pack.
+
+    Needs WRITE access to the source vehicle, not read: the pack is visible to
+    every user of the instance, so this publishes that vehicle's schedule.
+    """
+    return await reminder_pack_service.save_pack_from_vehicle(db, body, current_user)
+
+
+@packs_router.put("/{pack_id}", response_model=ReminderPackDetail)
+async def overwrite_reminder_pack(
+    pack_id: str,
+    body: SaveReminderPackRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_auth),
+):
+    """Replace a saved pack's contents from a vehicle, keeping its id."""
+    return await reminder_pack_service.overwrite_pack(db, pack_id, body, current_user)
+
+
+@packs_router.patch("/{pack_id}", response_model=ReminderPackDetail)
+async def rename_reminder_pack(
+    pack_id: str,
+    body: RenameReminderPackRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_auth),
+):
+    """Rename a saved pack. Its id does not change, so rules it created keep
+    pointing at it."""
+    return await reminder_pack_service.rename_pack(db, pack_id, body.name, current_user)
+
+
+@packs_router.delete("/{pack_id}", status_code=204)
+async def delete_reminder_pack(
+    pack_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_auth),
+):
+    """Delete a saved pack. Rules it already created are left alone."""
+    await reminder_pack_service.delete_pack(db, pack_id, current_user)
 
 
 @router.get("", response_model=list[ReminderResponse])
@@ -106,7 +166,9 @@ async def preview_reminder_pack(
     """What applying the pack would do: rules, anchors, adoptions, thresholds. No writes."""
     vin = vin.upper().strip()
     await get_vehicle_or_403(vin, current_user, db)  # tripwire: read-only
-    return await reminder_pack_service.preview_pack(vin, body.pack_id, db, body.anchors)
+    return await reminder_pack_service.preview_pack(
+        vin, body.pack_id, db, body.anchors, body.overrides
+    )
 
 
 @router.post("/apply-pack", response_model=list[ReminderResponse], status_code=201)
@@ -123,7 +185,9 @@ async def apply_reminder_pack(
     """
     vin = vin.upper().strip()
     await get_vehicle_or_403(vin, current_user, db, require_write=True)
-    return await reminder_pack_service.apply_pack(vin, body.pack_id, db, body.anchors)
+    return await reminder_pack_service.apply_pack(
+        vin, body.pack_id, db, body.anchors, body.overrides
+    )
 
 
 @router.post("/reconcile", response_model=list[ReminderResponse])

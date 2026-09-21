@@ -131,7 +131,14 @@ describe('ApplyPackDialog', () => {
     const { onApplied } = renderDialog()
     fireEvent.click(screen.getByRole('button', { name: 'reminderList.applyPack' }))
     await waitFor(() => expect(applyMock).toHaveBeenCalledTimes(1))
-    expect(applyMock.mock.calls[0][0]).toStrictEqual({ packId: 'oil_and_filter', anchors: {} })
+    expect(applyMock.mock.calls[0][0]).toStrictEqual({
+      packId: 'oil_and_filter',
+      anchors: {},
+      // Empty, not seeded from the preview: an item nobody typed in must keep
+      // the pack's value, and a seeded override would silently overwrite the
+      // destination vehicle's own intervals on every apply.
+      overrides: {},
+    })
     expect(onApplied).toHaveBeenCalled()
   })
 
@@ -145,6 +152,7 @@ describe('ApplyPackDialog', () => {
     expect(applyMock.mock.calls[0][0]).toStrictEqual({
       packId: 'oil_and_filter',
       anchors: { oil_filter: { done_today: false, line_item_id: 70 } },
+      overrides: {},
     })
   })
 

@@ -10,15 +10,22 @@ import type {
   ApplyPackPreview,
   DuplicateGroup,
   MaintenanceTypeOption,
+  IntervalOverride,
+  MaintenanceRuleResponse,
   Reminder,
   ReminderCompleteRequest,
   ReminderCompleteResponse,
   ReminderCreate,
+  ReminderPackDetail,
   ReminderPackSummary,
   ReminderUpdate,
+  SavePackBody,
 } from '../types/reminder'
 
 export type AnchorChoices = Record<string, AnchorChoice | null>
+/** Intervals the user retyped while applying, keyed by pack item key. An item
+ *  they did not touch is absent, so it keeps the pack's own value. */
+export type IntervalOverrides = Record<string, IntervalOverride | null>
 
 export const reminderService = {
   async list(vin: string, status?: string): Promise<Reminder[]> {
@@ -74,26 +81,66 @@ export const reminderService = {
     return data
   },
 
+  /** The vehicle's maintenance rules. The save-as-pack dialog needs the RULES,
+   *  not the reminders: a rule is what a pack item becomes, and a rule with no
+   *  pending reminder (a mileage rule on a vehicle with no reading) still counts. */
+  async listRules(vin: string): Promise<MaintenanceRuleResponse[]> {
+    const { data } = await api.get<MaintenanceRuleResponse[]>(
+      `/vehicles/${vin}/maintenance-rules`,
+    )
+    return data
+  },
+
   async listPacks(vehicleType?: string | null): Promise<ReminderPackSummary[]> {
     const params = vehicleType ? { vehicle_type: vehicleType } : undefined
     const { data } = await api.get<ReminderPackSummary[]>('/reminder-packs', { params })
     return data
   },
 
-  async previewPack(vin: string, packId: string, anchors?: AnchorChoices): Promise<ApplyPackPreview> {
+  async previewPack(
+    vin: string,
+    packId: string,
+    anchors?: AnchorChoices,
+    overrides?: IntervalOverrides,
+  ): Promise<ApplyPackPreview> {
     const { data } = await api.post<ApplyPackPreview>(
       `/vehicles/${vin}/reminders/apply-pack/preview`,
-      { pack_id: packId, anchors: anchors ?? null },
+      { pack_id: packId, anchors: anchors ?? null, overrides: overrides ?? null },
     )
     return data
   },
 
-  async applyPack(vin: string, packId: string, anchors?: AnchorChoices): Promise<Reminder[]> {
+  async applyPack(
+    vin: string,
+    packId: string,
+    anchors?: AnchorChoices,
+    overrides?: IntervalOverrides,
+  ): Promise<Reminder[]> {
     const { data } = await api.post<Reminder[]>(`/vehicles/${vin}/reminders/apply-pack`, {
       pack_id: packId,
       anchors: anchors ?? null,
+      overrides: overrides ?? null,
     })
     return data
+  },
+
+  async savePack(body: SavePackBody): Promise<ReminderPackDetail> {
+    const { data } = await api.post<ReminderPackDetail>('/reminder-packs', body)
+    return data
+  },
+
+  async overwritePack(packId: string, body: SavePackBody): Promise<ReminderPackDetail> {
+    const { data } = await api.put<ReminderPackDetail>(`/reminder-packs/${packId}`, body)
+    return data
+  },
+
+  async renamePack(packId: string, name: string): Promise<ReminderPackDetail> {
+    const { data } = await api.patch<ReminderPackDetail>(`/reminder-packs/${packId}`, { name })
+    return data
+  },
+
+  async deletePack(packId: string): Promise<void> {
+    await api.delete(`/reminder-packs/${packId}`)
   },
 
   async duplicates(vin: string): Promise<DuplicateGroup[]> {
