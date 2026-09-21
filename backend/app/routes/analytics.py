@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -35,7 +35,6 @@ from app.models.insurance import InsurancePolicy, InsurancePolicyVehicle
 from app.models.service_line_item import ServiceLineItem
 from app.models.spot_rental import SpotRental
 from app.models.user import User
-from app.models.vehicle_share import VehicleShare
 from app.schemas.analytics import (
     AnomalyAlert,
     CategoryChange,
@@ -66,7 +65,7 @@ from app.schemas.analytics import (
 )
 from app.services import analytics_service
 from app.services.analytics_service.tires import tire_readiness
-from app.services.auth import get_vehicle_or_403, require_auth
+from app.services.auth import get_vehicle_or_403, require_auth, visible_vehicles_filter
 from app.services.def_service import DEFRecordService
 from app.services.fuel_service import calculate_average_hours_economy
 from app.services.odometer_service import latest_odometer_km_and_date
@@ -989,14 +988,9 @@ async def get_garage_analytics(
         selectinload(Vehicle.tax_records),
     )
 
-    # Scope to owned + shared vehicles for non-admin users
-    if current_user is not None and not current_user.is_admin:
-        shared_vins = (
-            select(VehicleShare.vehicle_vin)
-            .where(VehicleShare.user_id == current_user.id)
-            .scalar_subquery()
-        )
-        query = query.where(or_(Vehicle.user_id == current_user.id, Vehicle.vin.in_(shared_vins)))
+    scope = visible_vehicles_filter(current_user)
+    if scope is not None:
+        query = query.where(scope)
 
     vehicles_result = await db.execute(query)
     vehicles = vehicles_result.scalars().all()

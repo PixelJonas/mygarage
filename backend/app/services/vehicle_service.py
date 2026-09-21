@@ -21,7 +21,6 @@ from app.models.service_visit import ServiceVisit
 from app.models.tax import TaxRecord
 from app.models.user import User
 from app.models.vehicle import Vehicle
-from app.models.vehicle_share import VehicleShare
 from app.schemas.vehicle import VehicleCreate, VehicleUpdate
 from app.services.hours_service import set_manual_current_hours
 from app.utils.logging_utils import sanitize_for_log
@@ -82,21 +81,13 @@ class VehicleService:
             Tuple of (vehicles list, total count)
         """
         try:
-            # Build ownership filter (shared across results + count queries)
-            # If auth is disabled, show all vehicles
-            # Admin users see all vehicles
-            # Non-admin users see their own vehicles + shared vehicles
-            ownership_filter = None
-            if current_user is not None and not current_user.is_admin:
-                shared_vins_subquery = (
-                    select(VehicleShare.vehicle_vin)
-                    .where(VehicleShare.user_id == current_user.id)
-                    .scalar_subquery()
-                )
-                ownership_filter = or_(
-                    Vehicle.user_id == current_user.id,
-                    Vehicle.vin.in_(shared_vins_subquery),
-                )
+            # One filter for the results query AND the count below it: a scoped
+            # list reported with an unscoped total leaks how many vehicles exist.
+            # Imported here, not at module scope, like every other auth import in
+            # this file.
+            from app.services.auth import visible_vehicles_filter
+
+            ownership_filter = visible_vehicles_filter(current_user)
 
             # Get vehicles with pagination
             query = select(Vehicle).order_by(Vehicle.created_at.desc())

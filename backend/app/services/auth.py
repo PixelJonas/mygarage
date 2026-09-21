@@ -12,7 +12,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from joserfc import jwt
 from joserfc.errors import JoseError
 from joserfc.jwk import OctKey
-from sqlalchemy import or_, select
+from sqlalchemy import ColumnElement, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -364,27 +364,54 @@ async def require_auth(
     return await get_current_user(request, db, token)
 
 
+def visible_vehicles_filter(current_user: User | None) -> ColumnElement[bool] | None:
+    """The WHERE that scopes a vehicle query to the vehicles this caller may see.
+
+    `None` means no restriction, and it covers two cases that must stay together:
+    `auth_mode='none'`, where there is no identity to scope by, and an admin, who
+    sees the whole garage. A caller that treats `None` as "deny" locks the default
+    configuration shut; one that forgets the admin half hides the garage from the
+    only account that is supposed to see all of it.
+
+    Everyone else sees owned plus shared.
+
+    ★ IT RETURNS A CONDITION RATHER THAN APPLYING ONE, because the four callers do
+    not share a query. Each adds its own eager loads and its own archived-vehicle
+    rule, and `VehicleService.list_vehicles` applies this same condition twice, to
+    a results query and to the COUNT beside it, where a scoped list with an
+    unscoped total would leak how many vehicles exist.
+
+    This rule grew byte-identical copies twice before, in search and in the
+    notification inbox, and BOTH copies omitted the admin branch: an admin could
+    open a vehicle's page but could not find it in search or receive its reminder
+    alerts. That is the failure this function exists to make unrepeatable, so
+    prefer calling it over restating the condition, even where restating it looks
+    shorter.
+    """
+    if current_user is None or current_user.is_admin:
+        return None
+    shared_vins = (
+        select(VehicleShare.vehicle_vin)
+        .where(VehicleShare.user_id == current_user.id)
+        .scalar_subquery()
+    )
+    return or_(Vehicle.user_id == current_user.id, Vehicle.vin.in_(shared_vins))
+
+
 async def accessible_vehicles(db: AsyncSession, current_user: User | None) -> list[Vehicle]:
     """Every non-archived vehicle this caller may see, in one query.
 
-    The access rule mirrors ``VehicleService.list_vehicles``: auth disabled or an
-    admin sees all, everyone else sees owned plus shared. Search and the
-    notification inbox each grew their own byte-identical copy of this, and both
-    copies omitted the admin branch, so an admin could open a vehicle's page but
-    could not find it in search or receive its reminder alerts.
+    The access rule is `visible_vehicles_filter`; see it for why the admin and
+    auth-disabled cases share a branch.
 
     Archived vehicles are excluded: both callers surface live alerts and live
     search hits, and an archived vehicle is neither.
     """
     # tripwire: read-only
     query = select(Vehicle).where(Vehicle.archived_at.is_(None))
-    if current_user is not None and not current_user.is_admin:
-        shared_vins = (
-            select(VehicleShare.vehicle_vin)
-            .where(VehicleShare.user_id == current_user.id)
-            .scalar_subquery()
-        )
-        query = query.where(or_(Vehicle.user_id == current_user.id, Vehicle.vin.in_(shared_vins)))
+    scope = visible_vehicles_filter(current_user)
+    if scope is not None:
+        query = query.where(scope)
     return list((await db.execute(query)).scalars().all())
 
 
