@@ -1816,8 +1816,8 @@
   {
    "path": "src/components/vehicle-detail/VehicleHero.tsx",
    "disposition": "audited",
-   "digest": "43d958cc640829f5ed105c403d00ae7680d808ff385634b6d6206fdb15d18106",
-   "reason": "gate-detectable unit decisions, recorded not asserted clean (plan 3b task 1 ordering). Task 6 migrated its binary distance read sites onto the resolved `units.distance` token (useUnitFormat), so nothing here reads a distance through a system collapsed from volume.",
+   "digest": "5eded58cb8e6e1ba06d0b7fb29a3524404d12fcae8ec360e9e8d2be51fd51d82",
+   "reason": "gate-detectable unit decisions, recorded not asserted clean (plan 3b task 1 ordering). Task 6 migrated its binary distance read sites onto the resolved `units.distance` token (useUnitFormat), so nothing here reads a distance through a system collapsed from volume. Re-reviewed 2026-09-21 for issue #179: the bottom text overlay lost `pointer-events-none`, which was blocking selection of the VIN it contains. Presentation only. The odometer and hours chips in that same overlay still render through `useUnitFormat()` exactly as before, so the unit reasoning this row records is untouched; nothing about which unit is chosen, how it is converted or how it is labelled changed.",
    "tests": [
     "components/__tests__/distanceReadSites.mixedUnits.test.tsx",
     "components/vehicle-detail/__tests__/VehicleHero.test.tsx"
