@@ -12,6 +12,7 @@ export type ReminderUpdate = components['schemas']['ReminderUpdate']
 export type RecurrenceSpec = components['schemas']['RecurrenceSpec']
 export type AnchorSpec = components['schemas']['AnchorSpec']
 export type MaintenanceRuleSummary = components['schemas']['MaintenanceRuleSummary']
+export type MaintenanceRuleResponse = components['schemas']['MaintenanceRuleResponse']
 export type MaintenanceTypeOption = components['schemas']['MaintenanceTypeResponse']
 export type ReminderCompleteRequest = components['schemas']['ReminderCompleteRequest']
 export type ReminderCompleteResponse = components['schemas']['ReminderCompleteResponse']
@@ -21,6 +22,9 @@ export type AnchorChoice = components['schemas']['AnchorChoice']
 export type AnchorCandidate = components['schemas']['AnchorCandidate']
 export type DuplicateGroup = components['schemas']['DuplicateGroup']
 export type ReminderPackSummary = components['schemas']['ReminderPackSummary']
+export type ReminderPackDetail = components['schemas']['ReminderPackDetail']
+export type IntervalOverride = components['schemas']['IntervalOverride']
+export type SavePackBody = components['schemas']['SaveReminderPackRequest']
 
 // ============================================================================
 // Section B: Hand-maintained frontend-only types

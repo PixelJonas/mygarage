@@ -27,6 +27,7 @@ vi.mock('../../hooks/useReminders', () => ({
   useDeleteReminder: () => ({ mutateAsync: vi.fn().mockResolvedValue(undefined) }),
   useReminderDuplicates: () => ({ data: [] }),
   useReminderPacks: () => ({ data: [] }),
+  useDeletePack: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }))
 vi.mock('../../hooks/useLatestMileage', () => ({ useLatestMileage: () => ({ data: null }) }))
 const useLatestHoursMock = vi.fn(() => ({ data: null as number | null }))

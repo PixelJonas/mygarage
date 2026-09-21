@@ -49,6 +49,20 @@ class RecurrenceSpec(BaseModel):
         return self
 
 
+class IntervalOverride(RecurrenceSpec):
+    """Intervals the caller typed while applying a pack, for one item.
+
+    Subclasses `RecurrenceSpec` so the rules a rule obeys (at least one
+    interval, never distance and hours together) are enforced from one place
+    rather than restated here.
+
+    An override is not the pack's value, it is a number the caller typed just
+    now, so it wins over BOTH the pack's own interval and the destination
+    vehicle's existing rule. See `maintenance_service._plan_item`: without that
+    second part the override is planned, previewed, and then dropped on a reuse.
+    """
+
+
 class AnchorSpec(BaseModel):
     """A hand-entered anchor: when and at what reading the work was last done."""
 

@@ -131,7 +131,14 @@ describe('ApplyPackDialog', () => {
     const { onApplied } = renderDialog()
     fireEvent.click(screen.getByRole('button', { name: 'reminderList.applyPack' }))
     await waitFor(() => expect(applyMock).toHaveBeenCalledTimes(1))
-    expect(applyMock.mock.calls[0][0]).toStrictEqual({ packId: 'oil_and_filter', anchors: {} })
+    expect(applyMock.mock.calls[0][0]).toStrictEqual({
+      packId: 'oil_and_filter',
+      anchors: {},
+      // Empty, not seeded from the preview: an item nobody typed in must keep
+      // the pack's value, and a seeded override would silently overwrite the
+      // destination vehicle's own intervals on every apply.
+      overrides: {},
+    })
     expect(onApplied).toHaveBeenCalled()
   })
 
@@ -145,6 +152,7 @@ describe('ApplyPackDialog', () => {
     expect(applyMock.mock.calls[0][0]).toStrictEqual({
       packId: 'oil_and_filter',
       anchors: { oil_filter: { done_today: false, line_item_id: 70 } },
+      overrides: {},
     })
   })
 
@@ -184,5 +192,82 @@ describe('ApplyPackDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'reminderList.applyPack' }))
     expect(await screen.findByRole('alert')).toBeInTheDocument()
     expect(onApplied).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * Typing into an interval, which is the "override it upon creating a reminder"
+ * half of #165.
+ *
+ * The intervals are rendered by the shared `RecurrenceFields`, so what is tested
+ * here is the dialog's own part: an untouched form sends nothing, a typed value
+ * becomes a complete override, and clearing every field withdraws the override
+ * rather than sending an empty one the API would refuse.
+ */
+describe('retyping an interval before applying', () => {
+  const months = () => screen.getByLabelText(/recurrence\.everyMonths/)
+  const apply = () => screen.getByRole('button', { name: 'reminderList.applyPack' })
+
+  /** Type, then wait for the debounced re-preview to land. */
+  async function settle() {
+    await waitFor(() => expect(apply()).toBeEnabled())
+  }
+
+  it('will not apply against a plan that has not caught up', async () => {
+    renderDialog()
+
+    fireEvent.change(months(), { target: { value: '12' } })
+
+    // An override changes the PLAN, not just a number on screen: the anchor
+    // proposal and any skip reason are recomputed. Applying in between would
+    // act on the previous plan.
+    expect(apply()).toBeDisabled()
+    await settle()
+    expect(apply()).toBeEnabled()
+  })
+
+  it('sends the whole override, not just the field that changed', async () => {
+    renderDialog()
+
+    fireEvent.change(months(), { target: { value: '12' } })
+    await settle()
+    fireEvent.click(apply())
+
+    await waitFor(() => expect(applyMock).toHaveBeenCalledTimes(1))
+    // All four, because an override REPLACES the intervals: sending months
+    // alone would null the 8,000 km the pack carries.
+    expect(applyMock.mock.calls[0][0].overrides).toEqual({
+      oil_filter: {
+        interval_km: 8000,
+        interval_months: 12,
+        interval_days: null,
+        interval_hours: null,
+      },
+    })
+  })
+
+  it('withdraws the override when every field is cleared', async () => {
+    renderDialog()
+
+    fireEvent.change(months(), { target: { value: '12' } })
+    fireEvent.change(months(), { target: { value: '' } })
+    fireEvent.change(screen.getByLabelText(/recurrence\.everyDistance/), { target: { value: '' } })
+    await settle()
+    fireEvent.click(apply())
+
+    await waitFor(() => expect(applyMock).toHaveBeenCalledTimes(1))
+    // Not `{oil_filter: {all nulls}}`: a rule with no interval cannot exist, so
+    // the only other reading of "I cleared it all" is the pack's own value.
+    expect(applyMock.mock.calls[0][0].overrides).toEqual({})
+  })
+
+  it('leaves an item nobody typed into out of the request', async () => {
+    renderDialog()
+
+    fireEvent.change(months(), { target: { value: '12' } })
+    await settle()
+
+    // The pack's other items are untouched, so only the edited key is sent.
+    expect(Object.keys(previewMock.mock.calls.at(-1)?.[3] ?? {})).toEqual(['oil_filter'])
   })
 })

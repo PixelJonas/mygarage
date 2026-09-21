@@ -7,22 +7,67 @@
  * supersedes, and the resulting due values. The owner can point an item at
  * an untyped line item (which types it) or say the work was done today, and
  * then confirm. Nothing is written until Apply.
+ *
+ * The intervals are editable here too (issue #165: "define a standard, and then
+ * override it upon creating a reminder"). An override is not a display tweak: it
+ * is re-previewed, because the plan reads the intervals and the anchor proposal
+ * or a skip reason can change with them. So Apply waits for the preview to catch
+ * up rather than acting on a stale plan.
  */
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Package } from 'lucide-react'
 import { toast } from 'sonner'
 import FormModalWrapper from './FormModalWrapper'
 import { Button, Chip, Mono } from './ui'
-import { describeDue } from './RecurrenceFields'
+import RecurrenceFields, { describeDue } from './RecurrenceFields'
 import { useApplyPack, usePackPreview } from '../hooks/useReminders'
 import { useUnitFormat } from '../hooks/useUnitFormat'
 import { useDateLocale } from '../hooks/useDateLocale'
 import { formatDateForDisplay } from '../utils/dateUtils'
 import { getActionErrorMessage } from '../utils/httpErrorHandler'
-import type { AnchorChoices } from '../services/reminderService'
-import type { AnchorCandidate, AnchorChoice, PackItemPlan } from '../types/reminder'
+import { readNumber } from '../utils/decimalSafe'
+import type { AnchorChoices, IntervalOverrides } from '../services/reminderService'
+import type {
+  AnchorCandidate,
+  AnchorChoice,
+  PackItemPlan,
+  RecurrenceDraft,
+} from '../types/reminder'
+
+/**
+ * The item's planned intervals as a recurrence draft.
+ *
+ * `readNumber` rather than `Number`: the wire sends decimals as strings so no
+ * precision is lost in transit, and it maps both empty and unparseable to
+ * undefined where `Number` would hand `0` and `NaN` to a unit converter.
+ */
+const draftOf = (item: PackItemPlan): RecurrenceDraft => ({
+  interval_km: readNumber(item.interval_km),
+  interval_months: readNumber(item.interval_months),
+  interval_days: readNumber(item.interval_days),
+  interval_hours: readNumber(item.interval_hours),
+})
+
+/** A draft as the wire wants it: the form leaves a cleared field undefined, the
+ *  API expects an explicit null. */
+const overrideOf = (draft: RecurrenceDraft): NonNullable<IntervalOverrides[string]> => ({
+  interval_km: draft.interval_km ?? null,
+  interval_months: draft.interval_months ?? null,
+  interval_days: draft.interval_days ?? null,
+  interval_hours: draft.interval_hours ?? null,
+})
+
+/** Debounce a value so typing does not fire a preview request per keystroke. */
+function useDebounced<T>(value: T, ms: number): T {
+  const [settled, setSettled] = useState(value)
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(value), ms)
+    return () => clearTimeout(timer)
+  }, [value, ms])
+  return settled
+}
 
 interface ApplyPackDialogProps {
   vin: string
@@ -37,9 +82,20 @@ export default function ApplyPackDialog({ vin, packId, packName, onClose, onAppl
   const u = useUnitFormat()
   const dateLocale = useDateLocale()
   const [anchors, setAnchors] = useState<AnchorChoices>({})
+  const [overrides, setOverrides] = useState<IntervalOverrides>({})
   const [error, setError] = useState<string | null>(null)
-  const { data: preview, isLoading, error: previewError } = usePackPreview(vin, packId, anchors)
+  const settledOverrides = useDebounced(overrides, 300)
+  const settling = settledOverrides !== overrides
+  const {
+    data: preview,
+    isLoading,
+    error: previewError,
+    isFetching,
+  } = usePackPreview(vin, packId, anchors, settledOverrides)
   const applyMutation = useApplyPack(vin)
+  // Applying against a plan that has not caught up is how a skip reason gets
+  // ignored, so the button waits for both the debounce and the refetch.
+  const planIsStale = settling || isFetching
 
   const fmtDate = (value: string | null | undefined) =>
     value ? formatDateForDisplay(value, undefined, dateLocale) : null
@@ -56,10 +112,30 @@ export default function ApplyPackDialog({ vin, packId, packName, onClose, onAppl
     })
   }
 
+  /**
+   * Record the intervals the user typed for one item.
+   *
+   * `RecurrenceFields` emits the whole draft, so an override always carries all
+   * four intervals and there is no way to null the three the user did not touch.
+   *
+   * A draft with nothing left in it drops the override entirely rather than
+   * sending an empty one: the schema refuses that (a rule with no interval
+   * cannot exist), and reverting to the pack's value is the only other reading
+   * of "I cleared it all".
+   */
+  const setOverride = (key: string, draft: RecurrenceDraft) => {
+    setOverrides((prev) => {
+      const next = { ...prev }
+      if (Object.values(draft).some((v) => v != null)) next[key] = overrideOf(draft)
+      else delete next[key]
+      return next
+    })
+  }
+
   const handleApply = async () => {
     setError(null)
     try {
-      await applyMutation.mutateAsync({ packId, anchors })
+      await applyMutation.mutateAsync({ packId, anchors, overrides })
       toast.success(t('reminderList.packApplied'))
       onApplied()
     } catch (err) {
@@ -72,6 +148,18 @@ export default function ApplyPackDialog({ vin, packId, packName, onClose, onAppl
 
   const renderItem = (item: PackItemPlan) => {
     const choice = anchors[item.key] ?? undefined
+    // What the user has typed for this item, if anything. The preview already
+    // reflects it, so `draftOf(item)` is the same values; reading the override
+    // first keeps the fields steady while a re-preview is in flight.
+    const typed = overrides[item.key]
+    const overridden: RecurrenceDraft | undefined = typed
+      ? {
+          interval_km: typed.interval_km == null ? undefined : Number(typed.interval_km),
+          interval_months: typed.interval_months ?? undefined,
+          interval_days: typed.interval_days ?? undefined,
+          interval_hours: typed.interval_hours == null ? undefined : Number(typed.interval_hours),
+        }
+      : undefined
     const supersedes = item.supersede_reminder_ids ?? []
     const untyped = item.untyped_candidates ?? []
     const due = describeDue(item, (km) => u.distance.format(km), (iso) => fmtDate(iso) ?? '', t)
@@ -139,6 +227,20 @@ export default function ApplyPackDialog({ vin, packId, packName, onClose, onAppl
                 {t('applyPack.choiceDoneToday')}
               </label>
             </fieldset>
+            {/* The rule form's own interval editor, not a copy of it: same
+                labels, same units, same rounding, and it keeps each field's
+                typed text internally so a half-typed value survives the
+                re-preview. `key` is the item, so the fields remount only when
+                the plan is for a different item. */}
+            <RecurrenceFields
+              key={item.key}
+              idPrefix={`override-${item.key}`}
+              value={overridden ?? draftOf(item)}
+              onChange={(draft) => setOverride(item.key, draft)}
+              tracksDistance={item.interval_hours == null}
+              tracksHours={item.interval_hours != null}
+              disabled={applyMutation.isPending}
+            />
             {due && (
               <p className="text-xs text-text">
                 {t('reminderList.due')}: <Mono size="xs" tone="accent">{due}</Mono>
@@ -164,7 +266,7 @@ export default function ApplyPackDialog({ vin, packId, packName, onClose, onAppl
           <Button
             onClick={() => void handleApply()}
             loading={applyMutation.isPending}
-            disabled={applyMutation.isPending || !preview}
+            disabled={applyMutation.isPending || !preview || planIsStale}
           >
             {t('reminderList.applyPack')}
           </Button>
@@ -179,6 +281,9 @@ export default function ApplyPackDialog({ vin, packId, packName, onClose, onAppl
           </p>
         )}
         {isLoading && <p className="text-sm text-text-mute">{t('applyPack.loading')}</p>}
+        {!isLoading && planIsStale && (
+          <p className="text-sm text-text-mute">{t('applyPack.recalculating')}</p>
+        )}
         {previewError && <p role="alert" className="text-sm text-danger">{t('applyPack.previewFailed')}</p>}
         {preview && <ul className="space-y-3">{preview.items.map(renderItem)}</ul>}
       </div>

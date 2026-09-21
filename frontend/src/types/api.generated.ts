@@ -3136,15 +3136,54 @@ export interface paths {
         };
         /**
          * List Reminder Packs
-         * @description List built-in reminder packs available to apply to a vehicle.
+         * @description List the reminder packs available to apply to a vehicle.
+         *
+         *     Built-in and saved packs in one list. A saved pack is marked `is_custom`, and
+         *     `can_edit` says whether this caller may change it.
          */
         get: operations["list_reminder_packs_api_reminder_packs_get"];
         put?: never;
-        post?: never;
+        /**
+         * Save Reminder Pack
+         * @description Save one vehicle's chosen maintenance rules as a reusable pack.
+         *
+         *     Needs WRITE access to the source vehicle, not read: the pack is visible to
+         *     every user of the instance, so this publishes that vehicle's schedule.
+         */
+        post: operations["save_reminder_pack_api_reminder_packs_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/reminder-packs/{pack_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Overwrite Reminder Pack
+         * @description Replace a saved pack's contents from a vehicle, keeping its id.
+         */
+        put: operations["overwrite_reminder_pack_api_reminder_packs__pack_id__put"];
+        post?: never;
+        /**
+         * Delete Reminder Pack
+         * @description Delete a saved pack. Rules it already created are left alone.
+         */
+        delete: operations["delete_reminder_pack_api_reminder_packs__pack_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename Reminder Pack
+         * @description Rename a saved pack. Its id does not change, so rules it created keep
+         *     pointing at it.
+         */
+        patch: operations["rename_reminder_pack_api_reminder_packs__pack_id__patch"];
         trace?: never;
     };
     "/api/search": {
@@ -7736,11 +7775,20 @@ export interface components {
          *
          *     ``anchors`` maps a pack item key to the caller's anchor choice; an item
          *     not named keeps the preview's proposal.
+         *
+         *     ``overrides`` maps a pack item key to intervals the caller typed, keyed the
+         *     same way. An item not named keeps the pack's own intervals, so an untouched
+         *     form sends nothing. An unknown key is a 422, the same answer ``anchors``
+         *     gives.
          */
         ApplyReminderPackRequest: {
             /** Anchors */
             anchors?: {
                 [key: string]: components["schemas"]["AnchorChoice"] | null;
+            } | null;
+            /** Overrides */
+            overrides?: {
+                [key: string]: components["schemas"]["IntervalOverride"] | null;
             } | null;
             /** Pack Id */
             pack_id: string;
@@ -11044,6 +11092,29 @@ export interface components {
             vehicles?: components["schemas"]["PolicyVehicleUpsert"][] | null;
         };
         /**
+         * IntervalOverride
+         * @description Intervals the caller typed while applying a pack, for one item.
+         *
+         *     Subclasses `RecurrenceSpec` so the rules a rule obeys (at least one
+         *     interval, never distance and hours together) are enforced from one place
+         *     rather than restated here.
+         *
+         *     An override is not the pack's value, it is a number the caller typed just
+         *     now, so it wins over BOTH the pack's own interval and the destination
+         *     vehicle's existing rule. See `maintenance_service._plan_item`: without that
+         *     second part the override is planned, previewed, and then dropped on a reuse.
+         */
+        IntervalOverride: {
+            /** Interval Days */
+            interval_days?: number | null;
+            /** Interval Hours */
+            interval_hours?: number | string | null;
+            /** Interval Km */
+            interval_km?: number | string | null;
+            /** Interval Months */
+            interval_months?: number | null;
+        };
+        /**
          * LastLocationResponse
          * @description Schema for GET .../livelink/location/last.
          */
@@ -13147,14 +13218,69 @@ export interface components {
             title: string;
         };
         /**
-         * ReminderPackSummary
-         * @description Pack metadata returned by list endpoint.
+         * ReminderPackDetail
+         * @description Full pack definition including reminder templates.
          */
-        ReminderPackSummary: {
+        ReminderPackDetail: {
             /** Description */
             description: string;
             /** Id */
             id: string;
+            /** Name */
+            name: string;
+            /** Reminders */
+            reminders: components["schemas"]["ReminderPackItem"][];
+            /**
+             * Vehicle Types
+             * @description Applicable vehicle types; empty means all types
+             */
+            vehicle_types?: string[];
+        };
+        /**
+         * ReminderPackItem
+         * @description A single maintenance rule template inside a pack.
+         */
+        ReminderPackItem: {
+            /** Interval Days */
+            interval_days?: number | null;
+            /** Interval Hours */
+            interval_hours?: string | null;
+            /** Interval Km */
+            interval_km?: string | null;
+            /** Interval Months */
+            interval_months?: number | null;
+            /** Key */
+            key?: string | null;
+            /** Maintenance Type */
+            maintenance_type?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Reminder Type */
+            reminder_type?: string | null;
+            /** Title */
+            title: string;
+        };
+        /**
+         * ReminderPackSummary
+         * @description Pack metadata returned by list endpoint.
+         */
+        ReminderPackSummary: {
+            /**
+             * Can Edit
+             * @description This caller may rename, overwrite or delete it; always false for built-ins
+             * @default false
+             */
+            can_edit: boolean;
+            /** Description */
+            description: string;
+            /** Id */
+            id: string;
+            /**
+             * Is Custom
+             * @description Saved on this instance rather than shipped with the app
+             * @default false
+             */
+            is_custom: boolean;
             /** Name */
             name: string;
             /**
@@ -13283,6 +13409,52 @@ export interface components {
             reminder_type?: ("date" | "mileage" | "both" | "smart" | "hours") | null;
             /** Title */
             title?: string | null;
+        };
+        /**
+         * RenameReminderPackRequest
+         * @description Rename a saved pack.
+         *
+         *     Only the name. `pack_id` is deliberately immutable: rules record it in
+         *     `source_pack_id`, so changing it would orphan the link from a rule back to
+         *     the pack that made it.
+         */
+        RenameReminderPackRequest: {
+            /** Name */
+            name: string;
+        };
+        /**
+         * SaveReminderPackRequest
+         * @description Save (or overwrite) a pack from one vehicle's maintenance rules.
+         *
+         *     The rules named must be active and on `vin`, and each must be savable: the
+         *     service refuses a typeless rule and the second rule of a repeated type,
+         *     because the apply pipeline resolves an item to a rule by `maintenance_type`
+         *     and would silently retype or collapse them. That check needs the database,
+         *     so it lives in `reminder_pack_service`, not here.
+         */
+        SaveReminderPackRequest: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Name */
+            name: string;
+            /**
+             * Rule Ids
+             * @description Maintenance rules to include
+             */
+            rule_ids: number[];
+            /**
+             * Vehicle Types
+             * @description Applicable vehicle types; empty means all types
+             */
+            vehicle_types?: ("Car" | "Truck" | "SUV" | "Motorcycle" | "ATV" | "RV" | "Trailer" | "FifthWheel" | "TravelTrailer" | "Electric" | "Hybrid" | "Boat" | "UTV" | "Snowmobile" | "Bicycle" | "EBike")[];
+            /**
+             * Vin
+             * @description Vehicle to read the rules from
+             */
+            vin: string;
         };
         /**
          * SdConfigResponse
@@ -23365,6 +23537,138 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReminderPackSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_reminder_pack_api_reminder_packs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveReminderPackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderPackDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    overwrite_reminder_pack_api_reminder_packs__pack_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pack_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveReminderPackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderPackDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_reminder_pack_api_reminder_packs__pack_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pack_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_reminder_pack_api_reminder_packs__pack_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pack_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameReminderPackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderPackDetail"];
                 };
             };
             /** @description Validation Error */

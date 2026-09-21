@@ -45,7 +45,9 @@ class MaintenanceRule(Base):
     `source_pack_key`), 'manual' (the reminder form) or 'service' (a line
     item's recurrence). A rule made from a pack is the vehicle's own copy: its
     intervals may be edited without touching the pack, and re-applying the
-    pack leaves an existing rule of the same type alone.
+    pack leaves an existing rule of the same type alone. The one exception is an
+    interval the caller retypes while applying, which is their instruction and
+    overwrites this rule (see `maintenance_service._plan_item`).
 
     Exactly one usage interval (`interval_km` or `interval_hours`) may be set
     alongside the calendar interval; the request schemas enforce that, the

@@ -12,7 +12,7 @@
 
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Bell, Plus, Check, X, Edit, Trash2, Clock, Gauge, Zap, Timer, Package, Repeat, GitMerge } from 'lucide-react'
+import { Bell, Plus, Check, X, Edit, Trash2, Clock, Gauge, Zap, Timer, Package, PackagePlus, Repeat, GitMerge } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   useReminders,
@@ -20,6 +20,7 @@ import {
   useDeleteReminder,
   useReminderDuplicates,
   useReminderPacks,
+  useDeletePack,
 } from '../hooks/useReminders'
 import { useLatestMileage } from '../hooks/useLatestMileage'
 import { useLatestHours } from '../hooks/useLatestHours'
@@ -27,7 +28,10 @@ import { formatDateForDisplay } from '../utils/dateUtils'
 import { useDateLocale } from '../hooks/useDateLocale'
 import ReminderForm from './ReminderForm'
 import CompleteReminderDialog from './CompleteReminderDialog'
+import { getActionErrorMessage } from '../utils/httpErrorHandler'
 import ApplyPackDialog from './ApplyPackDialog'
+import SavePackDialog from './SavePackDialog'
+import RenamePackDialog from './RenamePackDialog'
 import ReconcileDuplicatesDialog from './ReconcileDuplicatesDialog'
 import SnoozeReminderDialog from './SnoozeReminderDialog'
 import { describeRecurrence } from './RecurrenceFields'
@@ -75,6 +79,13 @@ export default function ReminderList({ vin, onStatsChanged }: ReminderListProps)
   const [completing, setCompleting] = useState<Reminder | undefined>()
   const [selectedPack, setSelectedPack] = useState('')
   const [previewingPack, setPreviewingPack] = useState<{ id: string; name: string } | undefined>()
+  //   false        = closed
+  //   true         = saving a NEW pack
+  //   {id, name}   = saving this vehicle OVER that pack
+  const [savingPack, setSavingPack] = useState<true | { id: string; name: string } | false>(
+    false,
+  )
+  const [renamingPack, setRenamingPack] = useState<{ id: string; name: string } | undefined>()
   const [reviewingGroup, setReviewingGroup] = useState<DuplicateGroup | undefined>()
   const [snoozing, setSnoozing] = useState<Reminder | undefined>()
   const [vehicle, setVehicle] = useState<Vehicle | null>(null)
@@ -99,6 +110,7 @@ export default function ReminderList({ vin, onStatsChanged }: ReminderListProps)
     secondary_usage_enabled: vehicle?.secondary_usage_enabled,
   })
   const { data: packs = [] } = useReminderPacks(vehicle?.vehicle_type ?? null)
+  const deletePackMutation = useDeletePack()
 
   const formatDate = (dateStr: string | null | undefined): string => {
     if (!dateStr) return '-'
@@ -140,6 +152,21 @@ export default function ReminderList({ vin, onStatsChanged }: ReminderListProps)
   const handleFormClose = () => {
     setShowForm(false)
     setEditingReminder(undefined)
+  }
+
+  /** The chosen pack, when it is one this user may change. Rename and delete
+   *  hang off the selection rather than off a separate management screen. */
+  const editablePack = packs.find((p) => p.id === selectedPack && p.is_custom && p.can_edit)
+
+  const handleDeletePack = async (packId: string, name: string) => {
+    if (!window.confirm(t('packList.deleteConfirm', { name }))) return
+    try {
+      await deletePackMutation.mutateAsync(packId)
+      setSelectedPack('')
+      toast.success(t('packList.deleted'))
+    } catch (err) {
+      toast.error(getActionErrorMessage(err, t('packList.delete')))
+    }
   }
 
   const openPackPreview = () => {
@@ -189,31 +216,73 @@ export default function ReminderList({ vin, onStatsChanged }: ReminderListProps)
         </Button>
       </div>
 
-      {packs.length > 0 && (
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="min-w-[220px] flex-1">
-            <Select
-              id="reminder-pack"
-              aria-label={t('reminderList.applyPackAria')}
-              value={selectedPack}
-              onChange={(e) => setSelectedPack(e.target.value)}
-              options={[
-                { value: '', label: t('reminderList.choosePack') },
-                ...packs.map((p) => ({ value: p.id, label: p.name })),
-              ]}
-            />
-          </div>
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={Package}
-            disabled={!selectedPack}
-            onClick={openPackPreview}
-          >
-            {t('reminderList.applyPack')}
-          </Button>
-        </div>
-      )}
+      <div className="flex flex-wrap items-end gap-2">
+        {packs.length > 0 && (
+          <>
+            <div className="min-w-[220px] flex-1">
+              <Select
+                id="reminder-pack"
+                aria-label={t('reminderList.applyPackAria')}
+                value={selectedPack}
+                onChange={(e) => setSelectedPack(e.target.value)}
+                options={[
+                  { value: '', label: t('reminderList.choosePack') },
+                  // One list, built-in and saved together, with the saved ones
+                  // marked. Two sections would stop mattering the moment you
+                  // have your own.
+                  ...packs.map((p) => ({
+                    value: p.id,
+                    label: p.is_custom ? `${p.name} (${t('packList.saved')})` : p.name,
+                  })),
+                ]}
+              />
+            </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={Package}
+              disabled={!selectedPack}
+              onClick={openPackPreview}
+            >
+              {t('reminderList.applyPack')}
+            </Button>
+          </>
+        )}
+        {/* Routine action, on the primary surface, away from anything
+            destructive. Offered whether or not any pack exists yet: saving the
+            first one is exactly when the list is empty. */}
+        <Button variant="secondary" size="sm" icon={PackagePlus} onClick={() => setSavingPack(true)}>
+          {t('savePack.title')}
+        </Button>
+        {editablePack && (
+          <>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={PackagePlus}
+              onClick={() => setSavingPack({ id: editablePack.id, name: editablePack.name })}
+            >
+              {t('packList.overwrite')}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={Edit}
+              onClick={() => setRenamingPack({ id: editablePack.id, name: editablePack.name })}
+            >
+              {t('packList.rename')}
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              icon={Trash2}
+              onClick={() => void handleDeletePack(editablePack.id, editablePack.name)}
+            >
+              {t('packList.delete')}
+            </Button>
+          </>
+        )}
+      </div>
 
       {duplicateGroups.length > 0 && (
         <div className="rounded-lg border border-warning bg-warning/10 p-3 space-y-2">
@@ -391,6 +460,26 @@ export default function ReminderList({ vin, onStatsChanged }: ReminderListProps)
           reminder={snoozing}
           onClose={() => setSnoozing(undefined)}
           onSuccess={() => { setSnoozing(undefined); onStatsChanged?.() }}
+        />
+      )}
+
+      {savingPack && (
+        <SavePackDialog
+          vin={vin}
+          vehicleType={vehicle?.vehicle_type}
+          existingPackId={savingPack === true ? undefined : savingPack.id}
+          existingName={savingPack === true ? undefined : savingPack.name}
+          onClose={() => setSavingPack(false)}
+          onSaved={() => setSavingPack(false)}
+        />
+      )}
+
+      {renamingPack && (
+        <RenamePackDialog
+          packId={renamingPack.id}
+          currentName={renamingPack.name}
+          onClose={() => setRenamingPack(undefined)}
+          onRenamed={() => setRenamingPack(undefined)}
         />
       )}
 
