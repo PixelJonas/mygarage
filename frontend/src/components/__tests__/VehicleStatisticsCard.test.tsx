@@ -183,10 +183,11 @@ describe('VehicleStatisticsCard', () => {
         />
       )
       // 235.2145833/8 = 29.4 and /12 = 19.6, at the mpg_us adapter's one
-      // decimal. Both must be on screen and the towing one must be the labelled
-      // extra, not the headline.
+      // decimal. 19.6 is the COMBINED figure (every cycle, towing included),
+      // which is why the label reads "including towing" and not "towing": it
+      // is not the towing-only economy and must not be read as one.
       expect(screen.getByText('29.4 MPG')).toBeInTheDocument()
-      expect(screen.getByText(/vehicleStats\.towing.*19\.6 MPG/)).toBeInTheDocument()
+      expect(screen.getByText(/vehicleStats\.includingTowing.*19\.6 MPG/)).toBeInTheDocument()
     })
 
     it('shows no towing line for a vehicle that never tows', () => {
@@ -204,7 +205,7 @@ describe('VehicleStatisticsCard', () => {
         />
       )
       expect(screen.getByText('29.4 MPG')).toBeInTheDocument()
-      expect(screen.queryByText(/vehicleStats\.towing/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/vehicleStats\.includingTowing/)).not.toBeInTheDocument()
     })
 
     it('labels the figure when every fill-up was towing', () => {

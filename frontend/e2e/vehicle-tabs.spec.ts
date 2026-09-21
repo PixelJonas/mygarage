@@ -21,10 +21,16 @@ test.describe('Vehicle Detail — Tab Navigation', () => {
     await expect(overviewTab).toBeVisible()
     await expect(overviewTab).toHaveAttribute('aria-selected', 'true')
 
-    // Basic Information section should be visible
-    await expect(page.getByText('Basic Information')).toBeVisible({ timeout: 5000 })
+    // ★ BY HEADING ROLE, not by text. Each editable card now also holds a
+    // focus-revealed "Edit <section>" button (issue #179), so a loose text
+    // query for 'Basic Information' matches the card title AND that button's
+    // label and trips strict mode. The role query says what this case actually
+    // means: the card is on screen.
+    await expect(
+      page.getByRole('heading', { name: 'Basic Information' })
+    ).toBeVisible({ timeout: 5000 })
     // Purchase + MSRP were folded into one "Pricing" card.
-    await expect(page.getByText('Pricing', { exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Pricing', exact: true })).toBeVisible()
   })
 
   test('Media tab — cycles through sub-tabs', async ({ page }) => {

@@ -62,9 +62,14 @@ function VehicleStatisticsCard({ stats, selectMode = false, selected = false, on
   const usage = getUsageTracking(stats)
 
   // Fuel economy and towing (issue #181). The headline figure EXCLUDES towing,
-  // matching the vehicle's own Fuel tab; the towing-inclusive figure is a
-  // smaller line beneath it, and only when it differs, so a vehicle that never
+  // matching the vehicle's own Fuel tab; the second line is EVERY cycle with
+  // towing included, and shows only when it differs, so a vehicle that never
   // tows shows one number and no explaining.
+  //
+  // ★ THE SECOND LINE IS NOT THE TOWING-ONLY FIGURE and must not be labelled as
+  // one. With 8 L/100km ordinary and 16 towing it reads 12, the mean of both, so
+  // a "Towing:" label would present the combined average as the towing result.
+  // Hence `includingTowing`.
   //
   // A vehicle whose every fill-up was hauling has NO non-towing figure. Hiding
   // the strip would hide a number it genuinely has, so the towing-inclusive one
@@ -312,7 +317,7 @@ function VehicleStatisticsCard({ stats, selectMode = false, selected = false, on
                 )}
                 {showTowingLine && (
                   <div className="mt-1 text-xs text-text-mute">
-                    {t('vehicleStats.towing')}: {u.consumption.formatPrimary(parseFloat(String(economyWithTowing)))}
+                    {t('vehicleStats.includingTowing')}: {u.consumption.formatPrimary(parseFloat(String(economyWithTowing)))}
                   </div>
                 )}
               </div>
