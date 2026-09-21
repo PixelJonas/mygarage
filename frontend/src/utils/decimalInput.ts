@@ -37,9 +37,27 @@ const NON_NUMERIC = /[^\d.,+-]/g
 const groupingWellFormed = (parts: string[]): boolean =>
   parts[0] !== '' && parts[0].length <= 3 && parts.slice(1).every(p => p.length === 3)
 
+const separators = new Map<string, string>()
+
+/**
+ * The character this locale writes a decimal point with.
+ *
+ * Cached because `parseDecimalInput` reaches it on the ambiguous-separator path,
+ * which means once per keystroke in every `NumberInput` on screen, and it built a
+ * whole `Intl.NumberFormat` each time only to read ONE character out of it. The
+ * RESULT is cached rather than the formatter (so this does not use
+ * `numberFormatCache`): a single character is cheaper to keep than the machine
+ * that produced it, and nothing else here needs that machine.
+ *
+ * Keyed on the locale, which is the only thing the answer depends on.
+ */
 export function localeDecimalSeparator(locale: string): string {
+  const cached = separators.get(locale)
+  if (cached !== undefined) return cached
   const parts = new Intl.NumberFormat(locale).formatToParts(1.1)
-  return parts.find(p => p.type === 'decimal')?.value ?? '.'
+  const separator = parts.find(p => p.type === 'decimal')?.value ?? '.'
+  separators.set(locale, separator)
+  return separator
 }
 
 export function parseDecimalInput(raw: string, locale: string): DecimalParseResult {

@@ -32,6 +32,7 @@
 // whether that table reads `UnitConverter` before the class binding leaves its
 // temporal dead zone. `import type` is erased, so no cycle exists at runtime.
 import type { UnitSet } from '@/types/units';
+import { cachedCurrencyFormat } from './numberFormatCache';
 
 export type UnitSystem = 'imperial' | 'metric';
 export type GallonStandard = 'us' | 'uk';
@@ -689,12 +690,9 @@ export class UnitFormatter {
     // and a litre set's factor is 1, so the metric pass-through is the same
     // expression rather than a branch.
     const value = costPerLiter * UnitConverter.LITERS_PER_VOLUME_UNIT[units.volume];
-    return new Intl.NumberFormat(locale, {
-      style: 'currency',
-      currency: currencyCode,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(value);
+    // The VOLUME unit is deliberately absent from the cache key: it is
+    // multiplied into `value` above and the formatter never sees it.
+    return cachedCurrencyFormat(locale, currencyCode, 2).format(value);
   }
 
   // ★ `formatCostPerDistance` and `getCostPerDistanceLabel` USED TO BE HERE,
