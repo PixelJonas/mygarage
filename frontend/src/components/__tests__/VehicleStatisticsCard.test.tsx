@@ -81,6 +81,8 @@ const STATS: VehicleStatistics = {
   overdue_maintenance_count: 0,
   average_l_per_100km: null,
   recent_l_per_100km: null,
+  average_l_per_100km_with_towing: null,
+  recent_l_per_100km_with_towing: null,
   archived_at: null,
   archived_visible: false,
   is_shared_with_me: false,
@@ -108,6 +110,67 @@ describe('VehicleStatisticsCard', () => {
       screen.getByRole('button', { name: /vehicleStatisticsCardExtra\.viewDetails/ }),
     )
     expect(mockNavigate).toHaveBeenCalledWith('/vehicles/1HGBH41JXMN109186')
+  })
+
+  describe('towing (#181)', () => {
+    const distance = {
+      usage_unit: 'distance' as const,
+      total_odometer_records: 1,
+      latest_odometer_km: '5000',
+    }
+
+    it('headlines the non-towing figure and shows the towing one beneath', () => {
+      render(
+        <VehicleStatisticsCard
+          stats={{
+            ...STATS,
+            ...distance,
+            average_l_per_100km: '8.00',
+            average_l_per_100km_with_towing: '12.00',
+          }}
+        />
+      )
+      // 235.2145833/8 = 29.4 and /12 = 19.6, at the mpg_us adapter's one
+      // decimal. Both must be on screen and the towing one must be the labelled
+      // extra, not the headline.
+      expect(screen.getByText('29.4 MPG')).toBeInTheDocument()
+      expect(screen.getByText(/vehicleStats\.towing.*19\.6 MPG/)).toBeInTheDocument()
+    })
+
+    it('shows no towing line for a vehicle that never tows', () => {
+      // The two passes agree, so a second line would repeat the first. This is
+      // the "not to clutter the display of vehicles that don't tow" half of the
+      // request, and it is the case almost every vehicle is in.
+      render(
+        <VehicleStatisticsCard
+          stats={{
+            ...STATS,
+            ...distance,
+            average_l_per_100km: '8.00',
+            average_l_per_100km_with_towing: '8.00',
+          }}
+        />
+      )
+      expect(screen.getByText('29.4 MPG')).toBeInTheDocument()
+      expect(screen.queryByText(/vehicleStats\.towing/)).not.toBeInTheDocument()
+    })
+
+    it('labels the figure when every fill-up was towing', () => {
+      // No non-towing figure exists. Showing nothing would hide a number the
+      // vehicle really has, so the towing-inclusive one headlines AND says so.
+      render(
+        <VehicleStatisticsCard
+          stats={{
+            ...STATS,
+            ...distance,
+            average_l_per_100km: null,
+            average_l_per_100km_with_towing: '10.00',
+          }}
+        />
+      )
+      expect(screen.getByText('23.5 MPG')).toBeInTheDocument()
+      expect(screen.getByText('vehicleStats.towingAll')).toBeInTheDocument()
+    })
   })
 
   it('shows the odometer row and MPG strip for a distance-tracked vehicle', () => {

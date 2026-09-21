@@ -59,6 +59,24 @@ function VehicleStatisticsCard({ stats, selectMode = false, selected = false, on
   }
 
   const usage = getUsageTracking(stats)
+
+  // Fuel economy and towing (issue #181). The headline figure EXCLUDES towing,
+  // matching the vehicle's own Fuel tab; the towing-inclusive figure is a
+  // smaller line beneath it, and only when it differs, so a vehicle that never
+  // tows shows one number and no explaining.
+  //
+  // A vehicle whose every fill-up was hauling has NO non-towing figure. Hiding
+  // the strip would hide a number it genuinely has, so the towing-inclusive one
+  // headlines instead and says so; an unlabelled towing figure in the headline
+  // is the bug being fixed, so that case must never fall through silently.
+  const economyWithTowing = stats.average_l_per_100km_with_towing
+  const headlineEconomy = stats.average_l_per_100km ?? economyWithTowing
+  const headlineIsTowing = stats.average_l_per_100km == null && economyWithTowing != null
+  const headlineRecent =
+    stats.average_l_per_100km == null ? stats.recent_l_per_100km_with_towing : stats.recent_l_per_100km
+  const showTowingLine =
+    !headlineIsTowing && economyWithTowing != null && economyWithTowing !== stats.average_l_per_100km
+
   const hasActivity =
     stats.total_service_records > 0 ||
     stats.total_fuel_records > 0 ||
@@ -252,10 +270,10 @@ function VehicleStatisticsCard({ stats, selectMode = false, selected = false, on
             vehicles. A dual-tracking vehicle shows both. Each names the unit
             the reader's own resolved set chose, so the strip cannot disagree
             with the odometer row above it. */}
-        {((usage.tracksDistance && stats.average_l_per_100km) ||
+        {((usage.tracksDistance && headlineEconomy) ||
           (usage.tracksHours && stats.average_l_per_hr)) && (
           <div className="space-y-3 border-t border-border pt-3">
-            {usage.tracksDistance && stats.average_l_per_100km && (
+            {usage.tracksDistance && headlineEconomy && (
               <div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -267,12 +285,20 @@ function VehicleStatisticsCard({ stats, selectMode = false, selected = false, on
                     </span>
                   </div>
                   <Mono size="lg" weight="bold" tone="accent">
-                    {u.consumption.formatPrimary(parseFloat(String(stats.average_l_per_100km)))}
+                    {u.consumption.formatPrimary(parseFloat(String(headlineEconomy)))}
                   </Mono>
                 </div>
-                {stats.recent_l_per_100km && stats.recent_l_per_100km !== stats.average_l_per_100km && (
+                {headlineIsTowing && (
+                  <div className="mt-1 text-xs text-text-mute">{t('vehicleStats.towingAll')}</div>
+                )}
+                {headlineRecent && headlineRecent !== headlineEconomy && (
                   <div className="mt-1 text-xs text-text-mute">
-                    {t('vehicleStats.recent')}: {u.consumption.formatPrimary(parseFloat(String(stats.recent_l_per_100km)))}
+                    {t('vehicleStats.recent')}: {u.consumption.formatPrimary(parseFloat(String(headlineRecent)))}
+                  </div>
+                )}
+                {showTowingLine && (
+                  <div className="mt-1 text-xs text-text-mute">
+                    {t('vehicleStats.towing')}: {u.consumption.formatPrimary(parseFloat(String(economyWithTowing)))}
                   </div>
                 )}
               </div>

@@ -48,9 +48,20 @@ class VehicleStatistics(BaseModel):
     upcoming_maintenance_count: int
     overdue_maintenance_count: int
 
-    # Fuel statistics (metric-canonical: L/100km)
+    # Fuel statistics (metric-canonical: L/100km).
+    #
+    # These two EXCLUDE towing fill-ups, matching
+    # `calculate_average_l_per_100km`'s default and the vehicle's own Fuel tab.
+    # Null when the vehicle has no non-towing figure at all, which is reachable:
+    # a dedicated tow rig may have hauled on every fill-up.
     average_l_per_100km: Decimal | None = None
     recent_l_per_100km: Decimal | None = None
+    # The same two over EVERY fill-up, towing included (issue #181). Sent
+    # unconditionally rather than only when it differs, so the comparison lives
+    # where `recent_l_per_100km` is already compared against the average: in the
+    # card that decides whether a second line is worth the space.
+    average_l_per_100km_with_towing: Decimal | None = None
+    recent_l_per_100km_with_towing: Decimal | None = None
 
     # Archive status
     archived_at: datetime | None = None

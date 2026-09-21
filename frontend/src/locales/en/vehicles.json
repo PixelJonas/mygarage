@@ -1235,7 +1235,9 @@
     "recent": "Recent",
     "recentActivity": "Recent Activity",
     "service": "Service",
-    "upcoming": "{{count}} Upcoming"
+    "upcoming": "{{count}} Upcoming",
+    "towing": "Towing",
+    "towingAll": "Every fill-up towing"
   },
   "vehicleTypeLabels": {
     "Car": "Car",

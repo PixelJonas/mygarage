@@ -41,6 +41,27 @@ router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 PHOTO_DIR = Path("/data/photos")
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
 
+#: How many full-tank fill-ups the "recent" economy figure averages over.
+_RECENT_WINDOW = 3
+
+
+def _economy_pair(values: list[Decimal]) -> tuple[Decimal | None, Decimal | None]:
+    """The all-time and recent means of a list of per-full-tank figures.
+
+    A helper because the towing-inclusive figures need exactly the same two
+    means as the non-towing ones, and issue #181 would have been two copies of
+    this arithmetic that could round or window differently.
+
+    Returns ``(None, None)`` for an empty list, which is a real case: a vehicle
+    with no non-towing fill-up at all has no non-towing economy.
+    """
+    if not values:
+        return None, None
+    average = round(sum(values) / Decimal(len(values)), 2)
+    window = values[-_RECENT_WINDOW:]
+    recent = round(sum(window) / Decimal(len(window)), 2)
+    return average, recent
+
 
 async def calculate_vehicle_stats(
     db: AsyncSession,
@@ -144,15 +165,21 @@ async def calculate_vehicle_stats(
         .order_by(FuelRecord.odometer_km.asc(), FuelRecord.date.asc())
     )
     fuel_records_list = list(fuel_records_result.scalars().all())
-    l_per_100km_values = [value for _, value in compute_full_tank_economy(fuel_records_list)]
 
-    average_l_per_100km: Decimal | None = None
-    recent_l_per_100km: Decimal | None = None
-    if l_per_100km_values:
-        average_l_per_100km = round(sum(l_per_100km_values) / Decimal(len(l_per_100km_values)), 2)
-        # Recent L/100km is the average of the last 3 full-tank fill-ups.
-        recent_window = l_per_100km_values[-3:]
-        recent_l_per_100km = round(sum(recent_window) / Decimal(len(recent_window)), 2)
+    # ★ TWO PASSES OVER ONE QUERY, AND THE DEFAULT IS THE BUG (issue #181).
+    # `compute_full_tank_economy` defaults to `exclude_hauling=False` while
+    # `calculate_average_l_per_100km`, which the vehicle's own Fuel tab uses,
+    # defaults to True. This route passed no argument, so the home page quoted a
+    # towing-inclusive figure with nothing saying so, and a vehicle that tows
+    # read worse here than on its own page. The headline now excludes towing and
+    # the towing-inclusive figure is reported alongside it.
+    daily_values = [
+        value for _, value in compute_full_tank_economy(fuel_records_list, exclude_hauling=True)
+    ]
+    towing_values = [value for _, value in compute_full_tank_economy(fuel_records_list)]
+
+    average_l_per_100km, recent_l_per_100km = _economy_pair(daily_values)
+    average_l_per_100km_with_towing, recent_l_per_100km_with_towing = _economy_pair(towing_values)
 
     # Get main photo URL from Vehicle.main_photo field
     main_photo_url: str | None = None
@@ -192,6 +219,8 @@ async def calculate_vehicle_stats(
         overdue_maintenance_count=overdue_count or 0,
         average_l_per_100km=average_l_per_100km,
         recent_l_per_100km=recent_l_per_100km,
+        average_l_per_100km_with_towing=average_l_per_100km_with_towing,
+        recent_l_per_100km_with_towing=recent_l_per_100km_with_towing,
         archived_at=vehicle.archived_at,
         archived_visible=vehicle.archived_visible,
         is_shared_with_me=is_shared_with_me,
