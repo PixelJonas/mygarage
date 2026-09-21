@@ -5,6 +5,10 @@ interface CardProps {
   padding?: 'none' | 'sm' | 'md'
   /** Hover lift + accent border. Requires onClick; renders a <button>. */
   interactive?: boolean
+  /**
+   * Click handler. On an `interactive` card this is the <button>'s; on a plain
+   * card it is the container's, which keeps the card's own text selectable.
+   */
   onClick?: () => void
   /** For masonry/column layouts that must not split a card. */
   breakInside?: boolean
@@ -52,5 +56,15 @@ export default function Card({
     )
   }
 
-  return <div className={classes}>{children}</div>
+  // A NON-interactive card may still carry a click handler, and the difference
+  // matters: `interactive` wraps the children in a <button>, and text inside a
+  // button cannot be long-pressed to select on a phone. The vehicle info cards
+  // are click-to-edit and full of values a reader wants to copy (issue #179),
+  // so they take this branch and supply their own keyboard route. See
+  // `vehicle-detail/EditableCard`.
+  return (
+    <div className={classes} onClick={onClick}>
+      {children}
+    </div>
+  )
 }

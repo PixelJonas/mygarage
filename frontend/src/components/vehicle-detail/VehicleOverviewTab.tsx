@@ -2,7 +2,7 @@ import { lazy, Suspense, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Calendar } from 'lucide-react'
 import { Card, CardHeader, Mono } from '../ui'
-import CardEditOverlay, { EDITABLE_CARD_CLASS } from './CardEditOverlay'
+import EditableCard from './EditableCard'
 import type { VehicleCardKey } from './VehicleFieldsDrawer'
 import type { Vehicle } from '../../types/vehicle'
 import { NON_MOTORIZED_TYPES } from '../../schemas/vehicle'
@@ -80,21 +80,19 @@ export default function VehicleOverviewTab({
     return formatDateForDisplay(dateString, { year: 'numeric', month: 'long', day: 'numeric' }, dateLocale)
   }
 
-  // Click-to-edit overlay for the four editable info cards. `sectionKey` is the
-  // card-title translation key, reused as the overlay's accessible name.
-  const editOverlay = (card: VehicleCardKey, sectionKey: string) =>
-    onEditCard && (
-      <CardEditOverlay
-        label={t('detail.cardEdit.title', { section: t(sectionKey) })}
-        onClick={() => onEditCard(card)}
-      />
-    )
+  // Click-to-edit props for the four editable info cards. `sectionKey` is the
+  // card-title translation key, reused as the edit action's accessible name.
+  // Returned as props rather than as an element so the card's click target and
+  // its keyboard control can never be wired separately (issue #179).
+  const editProps = (card: VehicleCardKey, sectionKey: string) => ({
+    label: t('detail.cardEdit.title', { section: t(sectionKey) }),
+    onEdit: onEditCard ? () => onEditCard(card) : undefined,
+  })
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       {/* Basic Information */}
-      <Card breakInside className={onEditCard ? EDITABLE_CARD_CLASS : ''}>
-        {editOverlay('basic', 'detail.basicInformation')}
+      <EditableCard breakInside {...editProps('basic', 'detail.basicInformation')}>
         <CardHeader title={t('detail.basicInformation')} />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div><p className="text-sm text-text-mute">{t('edit.year')}</p><p className="font-medium text-text">{vehicle.year || t('detail.notSpecified')}</p></div>
@@ -110,11 +108,10 @@ export default function VehicleOverviewTab({
           )}
           <div><p className="text-sm text-text-mute">{t('wizard.vin')}</p><Mono size="sm" variant="vin" className="block">{vehicle.vin}</Mono></div>
         </div>
-      </Card>
+      </EditableCard>
 
       {/* Vehicle Details (VIN-decoded) */}
-      <Card breakInside className={onEditCard ? EDITABLE_CARD_CLASS : ''}>
-        {editOverlay('details', 'detail.vehicleDetails')}
+      <EditableCard breakInside {...editProps('details', 'detail.vehicleDetails')}>
         <CardHeader title={t('detail.vehicleDetails')} />
         {hasDetails ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -130,12 +127,11 @@ export default function VehicleOverviewTab({
         ) : (
           <p className="text-sm text-text-mute">{t('detail.cardEmpty')}</p>
         )}
-      </Card>
+      </EditableCard>
 
       {/* Powertrain (motorized only) */}
       {isMotorized && (
-        <Card breakInside className={onEditCard ? EDITABLE_CARD_CLASS : ''}>
-          {editOverlay('powertrain', 'detail.powertrain')}
+        <EditableCard breakInside {...editProps('powertrain', 'detail.powertrain')}>
           <CardHeader title={t('detail.powertrain')} />
           {hasPowertrain ? (
             <div className="space-y-3">
@@ -161,16 +157,15 @@ export default function VehicleOverviewTab({
           ) : (
             <p className="text-sm text-text-mute">{t('detail.cardEmpty')}</p>
           )}
-        </Card>
+        </EditableCard>
       )}
 
-      {/* Pricing — purchase, sale (if sold), and MSRP folded into one card. When
-          editable the whole card is the click target via a transparent overlay
-          button (Card is `relative`) — no visible corner control. Clicking
-          anywhere opens the sidecar; the values below stay real, screen-reader-
-          readable content, and the overlay button is the keyboard/AT action. */}
-      <Card breakInside className={onEditPricing ? EDITABLE_CARD_CLASS : ''}>
-        {onEditPricing && <CardEditOverlay label={t('detail.pricing.editTitle')} onClick={onEditPricing} />}
+      {/* Pricing: purchase, sale (if sold), and MSRP folded into one card. When
+          editable the whole card is the click target and there is no visible
+          corner control. Clicking anywhere opens the sidecar; the values stay
+          real, selectable, screen-reader-readable content, and a focus-revealed
+          button is the keyboard/AT action. See EditableCard. */}
+      <EditableCard breakInside label={t('detail.pricing.editTitle')} onEdit={onEditPricing}>
         {/* Purchase/sale beside MSRP rather than stacked above it — the two
             blocks are each narrow and short, so side by side roughly halves
             the card's height. Each column carries its own CardHeader, so the
@@ -217,7 +212,7 @@ export default function VehicleOverviewTab({
             </div>
           )}
         </div>
-      </Card>
+      </EditableCard>
 
       {/* Last Known Location (Card shell; leaflet body unchanged — hex removal is P6d/P7) */}
       {lastLocation != null && (
@@ -264,8 +259,7 @@ export default function VehicleOverviewTab({
       )}
 
       {/* Warranty */}
-      <Card breakInside className={onEditCard ? EDITABLE_CARD_CLASS : ''}>
-        {editOverlay('warranty', 'detail.warranty')}
+      <EditableCard breakInside {...editProps('warranty', 'detail.warranty')}>
         <CardHeader title={t('detail.warranty')} />
         {hasWarranty ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -275,7 +269,7 @@ export default function VehicleOverviewTab({
         ) : (
           <p className="text-sm text-text-mute">{t('detail.cardEmpty')}</p>
         )}
-      </Card>
+      </EditableCard>
 
       {/* Environmental Ratings */}
       {(vehicle.environmental_rating_ghg || vehicle.environmental_rating_smog) && (

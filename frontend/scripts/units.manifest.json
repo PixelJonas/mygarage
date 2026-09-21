@@ -1591,8 +1591,8 @@
   {
    "path": "src/components/ui/Card.tsx",
    "disposition": "no unit behaviour",
-   "digest": "8f5dab8fcae810bbcdae07caefc6880c789b73b464b91a0f8f212e849d464cbb",
-   "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched NONE of them."
+   "digest": "515dfe787817fb7b52a6849ebf2e2cea23c26fc741da85a5274b57f9264b7ae1",
+   "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched NONE of them. Re-reviewed 2026-09-21 for issue #179: the non-interactive branch now forwards `onClick` to its container div. Presentation and event wiring only; this file still holds no figure, unit or conversion."
   },
   {
    "path": "src/components/ui/CardHeader.tsx",
@@ -1763,10 +1763,10 @@
    "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched NONE of them."
   },
   {
-   "path": "src/components/vehicle-detail/CardEditOverlay.tsx",
+   "path": "src/components/vehicle-detail/EditableCard.tsx",
    "disposition": "no unit behaviour",
-   "digest": "16e31042f455b5e26aec599f5e9ee9fa21d337194a2daaca47336577f59abc5f",
-   "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched 1 of them; every hit was read in context and none is a unit decision or a unit-bearing quantity."
+   "digest": "6e6ec7f843a96290d6f0e91c2cc73475b3c8ad7500b3eeecebfba6b4efa086e8",
+   "reason": "NEW 2026-09-21, replacing src/components/vehicle-detail/CardEditOverlay.tsx (issue #179), whose row carried the same conclusion about the same responsibility: make an info card one click-to-edit target. It renders no value of any kind. It holds a card's click handler, a focus-revealed button for keyboard and screen-reader users, and the guard that stops a click which merely ends a text selection from opening the editor. The predecessor's own hardcoded-string scan found one hit, read in context and not a unit decision; this file has no user-visible string at all, since its only label is passed in already translated."
   },
   {
    "path": "src/components/vehicle-detail/EquipmentDrawer.tsx",
@@ -1789,8 +1789,8 @@
   {
    "path": "src/components/vehicle-detail/TrailerTowPanel.tsx",
    "disposition": "no unit behaviour",
-   "digest": "e14237e6f64d11e3e7a414c48f3b9787747f788440774d891e1369688b6b69ff",
-   "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched 1 of them; every hit was read in context and none is a unit decision or a unit-bearing quantity."
+   "digest": "9f94939ddf3cf0b19c412faa56dc557dab631e99f8cdebbc883f17ed59c4c891",
+   "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched 1 of them; every hit was read in context and none is a unit decision or a unit-bearing quantity. Re-reviewed 2026-09-21 for issue #179: the click-to-edit overlay is gone. This card now takes its edit handler from EditableCard, so nothing is stacked over the card's own values and they can be selected and copied. No figure, unit or conversion in this file changed."
   },
   {
    "path": "src/components/vehicle-detail/VehicleActionsToolbar.tsx",
@@ -1838,8 +1838,8 @@
   {
    "path": "src/components/vehicle-detail/VehicleOverviewTab.tsx",
    "disposition": "audited",
-   "digest": "64e0b59ba476e8f32b619dd98ff65a02d9c3d7967a4a27e9d695b8d9a22f9152",
-   "reason": "no binary unit decision left. Task 6b migrated the fuel-economy and fuel-rate family onto the resolved `units.consumption` and `units.volume` tokens (31 sites over 4 files, enumerated by `scripts/enumerate-fuel-consumption.ts`), and `UnitFormatter.formatFuelEconomy`, `getFuelEconomyUnit`, `formatFuelRate` and `getFuelRateUnit` were deleted once `unitsBinaryApiSurface.test.ts` reported all four as dead. Its three EPA figures (city, highway, combined) were the file's only unit behaviour and had no test at all; task 6b added mixed-set render tests for both directions, plus one pinning that they use `formatPrimary` and never append a counterpart.",
+   "digest": "3f5f4a54df32afdb37622b113063099615ce2eefbac6df2af16bdae0dfbb1624",
+   "reason": "no binary unit decision left. Task 6b migrated the fuel-economy and fuel-rate family onto the resolved `units.consumption` and `units.volume` tokens (31 sites over 4 files, enumerated by `scripts/enumerate-fuel-consumption.ts`), and `UnitFormatter.formatFuelEconomy`, `getFuelEconomyUnit`, `formatFuelRate` and `getFuelRateUnit` were deleted once `unitsBinaryApiSurface.test.ts` reported all four as dead. Its three EPA figures (city, highway, combined) were the file's only unit behaviour and had no test at all; task 6b added mixed-set render tests for both directions, plus one pinning that they use `formatPrimary` and never append a counterpart. Re-reviewed 2026-09-21 for issue #179: the click-to-edit overlay is gone. This card now takes its edit handler from EditableCard, so nothing is stacked over the card's own values and they can be selected and copied. No figure, unit or conversion in this file changed.",
    "tests": [
     "components/vehicle-detail/__tests__/VehicleOverviewTab.test.tsx"
    ]
@@ -1853,8 +1853,8 @@
   {
    "path": "src/components/vehicle-detail/VehicleSpecsPanel.tsx",
    "disposition": "audited",
-   "digest": "dbcd5f615d194037bd9c8fcb8f9189814c947ed2442c9d175d81ba96a13cdf11",
-   "reason": "lug-nut torque through useUnitFormat with seeded origins, and oil capacity through useOilCapacityFormat for the reason recorded on src/utils/oilCapacityUnit.ts: the resolved set has no quart token, and reading oil through the fuel adapter stored 3.785x over. Canonical storage is liters and Nm. The first version branched on `useUnitPreference().system`, which is collapsed out of VOLUME (spec D8), so a reader on litres with lb-ft was shown Nm: the same disagreement issue #152 was filed about, and it is pinned by a test using exactly that mixed set. Entry uses `readUnitField`, the locale-aware sibling of `canonicalFromUnitField`: this form's numeric controls are NumberInput, which renders type=\"text\" with inputMode=\"decimal\", so a comma-locale reader types `4,5` and canonicalFromUnitField's Number() would read NaN. The untouched-field rule is shared rather than reimplemented, via `unitFieldUnchanged`, so an untouched field posts back the canonical value it was seeded from and a round trip through gallons cannot drift the record. Both editor labels interpolate the resolved unit; the hardcoded 'gal'/'L' pair and the binary getTorqueUnit call are gone.",
+   "digest": "a6fc4eb7cc84178bfeefbc8afc51769cb3927ac7e23281a2fce946df0d5eb160",
+   "reason": "lug-nut torque through useUnitFormat with seeded origins, and oil capacity through useOilCapacityFormat for the reason recorded on src/utils/oilCapacityUnit.ts: the resolved set has no quart token, and reading oil through the fuel adapter stored 3.785x over. Canonical storage is liters and Nm. The first version branched on `useUnitPreference().system`, which is collapsed out of VOLUME (spec D8), so a reader on litres with lb-ft was shown Nm: the same disagreement issue #152 was filed about, and it is pinned by a test using exactly that mixed set. Entry uses `readUnitField`, the locale-aware sibling of `canonicalFromUnitField`: this form's numeric controls are NumberInput, which renders type=\"text\" with inputMode=\"decimal\", so a comma-locale reader types `4,5` and canonicalFromUnitField's Number() would read NaN. The untouched-field rule is shared rather than reimplemented, via `unitFieldUnchanged`, so an untouched field posts back the canonical value it was seeded from and a round trip through gallons cannot drift the record. Both editor labels interpolate the resolved unit; the hardcoded 'gal'/'L' pair and the binary getTorqueUnit call are gone. Re-reviewed 2026-09-21 for issue #179: the click-to-edit overlay is gone. This card now takes its edit handler from EditableCard, so nothing is stacked over the card's own values and they can be selected and copied. No figure, unit or conversion in this file changed.",
    "tests": [
     "components/vehicle-detail/__tests__/VehicleSpecsPanel.test.tsx"
    ]
