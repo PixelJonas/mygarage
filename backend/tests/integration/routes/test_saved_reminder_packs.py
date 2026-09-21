@@ -309,6 +309,92 @@ class TestChangingASavedPack:
         assert body["description"] == "now with tires"
         assert body["vehicle_types"] == ["Truck"]
 
+    async def test_overwrite_can_keep_a_maintenance_type_it_already_had(
+        self, client: AsyncClient, auth_headers
+    ):
+        """The ordinary "save this vehicle over the pack again" case.
+
+        `item_key` IS the maintenance type, so a retained type means the new row
+        and the row it replaces share `(pack_id, item_key)`. SQLAlchemy orders the
+        INSERTs before the delete-orphan DELETEs, so the unique constraint fires
+        and a 500 comes back. The test above replaces oil with tires, a completely
+        different key, which is why it never saw this.
+        """
+        await _vehicle(client, auth_headers, SOURCE_VIN)
+        oil = await _rule(client, auth_headers, SOURCE_VIN)
+        tires = await _rule(
+            client,
+            auth_headers,
+            SOURCE_VIN,
+            maintenance_type="tire_rotation",
+            title="Tire Rotation",
+        )
+        pack_id = (await _save(client, auth_headers, SOURCE_VIN, [oil["id"]])).json()["id"]
+
+        again = await client.put(
+            f"{PACKS}/{pack_id}",
+            json={
+                "vin": SOURCE_VIN,
+                "name": "Truck Standard",
+                "description": "oil kept, tires added",
+                "vehicle_types": ["Truck"],
+                "rule_ids": [oil["id"], tires["id"]],
+            },
+            headers=auth_headers,
+        )
+        assert again.status_code == 200, again.text
+        assert sorted(i["maintenance_type"] for i in again.json()["reminders"]) == [
+            "engine_oil_filter",
+            "tire_rotation",
+        ]
+
+    async def test_overwriting_with_the_identical_contents_is_not_an_error(
+        self, client: AsyncClient, auth_headers
+    ):
+        """The narrowest form of the same bug: every key is retained."""
+        await _vehicle(client, auth_headers, SOURCE_VIN)
+        oil = await _rule(client, auth_headers, SOURCE_VIN)
+        pack_id = (await _save(client, auth_headers, SOURCE_VIN, [oil["id"]])).json()["id"]
+
+        again = await client.put(
+            f"{PACKS}/{pack_id}",
+            json={
+                "vin": SOURCE_VIN,
+                "name": "Truck Standard",
+                "description": "",
+                "vehicle_types": ["Truck"],
+                "rule_ids": [oil["id"]],
+            },
+            headers=auth_headers,
+        )
+        assert again.status_code == 200, again.text
+        assert [i["maintenance_type"] for i in again.json()["reminders"]] == ["engine_oil_filter"]
+
+    async def test_rename_returns_the_packs_items(
+        self, client: AsyncClient, auth_headers, db_session
+    ):
+        """The endpoint answers a full `ReminderPackDetail`, so it has to carry
+        the reminders. Renaming does not touch them, and a client that re-renders
+        from this response would blank the pack's contents on screen.
+
+        ★ `expunge_all` IS THE TEST. Every request in this fixture shares one
+        session, so the pack saved two lines up is still in the identity map with
+        its items loaded, and a `noload` on a later query cannot empty a
+        collection that is already populated. Production gives each request a
+        FRESH session, where `noload` means exactly what it says. Without this
+        line the test passes against the bug.
+        """
+        await _vehicle(client, auth_headers, SOURCE_VIN)
+        oil = await _rule(client, auth_headers, SOURCE_VIN)
+        pack_id = (await _save(client, auth_headers, SOURCE_VIN, [oil["id"]])).json()["id"]
+        db_session.expunge_all()
+
+        renamed = await client.patch(
+            f"{PACKS}/{pack_id}", json={"name": "Fleet Standard"}, headers=auth_headers
+        )
+        assert renamed.status_code == 200, renamed.text
+        assert [i["maintenance_type"] for i in renamed.json()["reminders"]] == ["engine_oil_filter"]
+
     async def test_rename_keeps_the_id_so_rules_still_resolve(
         self, client: AsyncClient, auth_headers, db_session
     ):

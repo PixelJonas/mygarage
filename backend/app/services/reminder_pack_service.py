@@ -23,7 +23,6 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import noload
 
 from app.models.maintenance_rule import MaintenanceRule
 from app.models.reminder_pack import ReminderPack, ReminderPackItemRow
@@ -354,17 +353,17 @@ async def _saved_summaries(
     return summaries
 
 
-async def _saved_or_404(db: AsyncSession, pack_id: str, *, with_items: bool = True) -> ReminderPack:
-    """One saved pack, or 404.
+async def _saved_or_404(db: AsyncSession, pack_id: str) -> ReminderPack:
+    """One saved pack and its items, or 404.
 
-    `with_items=False` for a caller that only touches the pack row: `items` is
-    `lazy="selectin"`, so the default costs a second query that rename does not
-    need. Overwrite and delete both DO need it, the first to replace the
-    collection and the second for the delete-orphan cascade.
+    Items always come along. There WAS a `with_items=False` here, taking the
+    `lazy="selectin"` second query off the rename path, and rename was its only
+    caller. It was wrong: rename answers a full `ReminderPackDetail`, so
+    suppressing the load made every successful rename report `reminders: []` to
+    the client. Saving one query on a once-in-a-while request was never worth a
+    response that lies about the pack's contents.
     """
     query = select(ReminderPack).where(ReminderPack.pack_id == pack_id)
-    if not with_items:
-        query = query.options(noload(ReminderPack.items))
     result = await db.execute(query)
     row = result.scalars().unique().one_or_none()
     if row is None:
@@ -373,7 +372,7 @@ async def _saved_or_404(db: AsyncSession, pack_id: str, *, with_items: bool = Tr
 
 
 async def _writable_or_403(
-    db: AsyncSession, pack_id: str, current_user: User | None, *, with_items: bool = True
+    db: AsyncSession, pack_id: str, current_user: User | None
 ) -> ReminderPack:
     """The saved pack this caller may change, or the right refusal.
 
@@ -386,7 +385,7 @@ async def _writable_or_403(
             status_code=409,
             detail=f"'{pack_id}' is a built-in pack and cannot be changed",
         )
-    row = await _saved_or_404(db, pack_id, with_items=with_items)
+    row = await _saved_or_404(db, pack_id)
     if not may_edit(row, current_user):
         raise HTTPException(
             status_code=403, detail="Only the pack's creator or an admin may change it"
@@ -568,7 +567,18 @@ async def overwrite_pack(
     row.name = data.name
     row.description = data.description
     row.vehicle_types = list(data.vehicle_types)
-    # delete-orphan on the relationship turns this into the DELETEs.
+
+    # ★ THE OLD ITEMS GO IN THEIR OWN FLUSH, BEFORE THE NEW ONES EXIST.
+    # `item_key` IS the maintenance type, so any type the vehicle still carries
+    # means the replacement row collides with the row it replaces on the
+    # `(pack_id, item_key)` unique constraint. SQLAlchemy orders INSERTs ahead of
+    # delete-orphan DELETEs within one flush, so assigning the new collection in a
+    # single step made the ordinary "save this vehicle over the pack again" a 500.
+    # Clearing first turns the DELETEs into their own statement, which is the only
+    # ordering that lets a key survive an overwrite.
+    row.items.clear()
+    await db.flush()
+
     row.items = _items_from_rules(rules)
     await db.commit()
     logger.info(
@@ -589,7 +599,7 @@ async def rename_pack(
     `source_pack_id`, so a new id would orphan every rule this pack has already
     created from the pack that created it.
     """
-    row = await _writable_or_403(db, pack_id, current_user, with_items=False)
+    row = await _writable_or_403(db, pack_id, current_user)
     row.name = name
     await db.commit()
     return _detail_from_row(row)
