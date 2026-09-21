@@ -22,6 +22,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import noload
 
 from app.models.maintenance_rule import MaintenanceRule
 from app.models.reminder_pack import ReminderPack, ReminderPackItemRow
@@ -29,13 +30,13 @@ from app.models.user import User
 from app.schemas.maintenance import AnchorChoice, ApplyPackPreview, IntervalOverride
 from app.schemas.reminder import ReminderResponse
 from app.schemas.reminder_pack import (
+    CUSTOM_PREFIX,
     ReminderPackDetail,
     ReminderPackItem,
     ReminderPackSummary,
     SaveReminderPackRequest,
     custom_pack_id,
     is_custom_pack_id,
-    slugify,
 )
 from app.services import maintenance_service, reminder_service
 from app.services.auth import get_vehicle_or_403
@@ -79,6 +80,18 @@ def _pack_paths() -> dict[str, Path]:
         resolved = _path_within_packs(candidate)
         if resolved is None or not resolved.is_file():
             continue
+        # The `custom-` prefix is what makes a saved pack's id unable to collide
+        # with a file's. `get_pack` routes that prefix to the database and never
+        # looks here, so a file claiming it would list as a built-in and then 404
+        # on apply. Dropping it here is what turns that invariant from a comment
+        # into something enforced.
+        if is_custom_pack_id(candidate.stem):
+            logger.warning(
+                "Ignoring reminder pack %s: the '%s' prefix is reserved for saved packs",
+                sanitize_for_log(candidate.name),
+                CUSTOM_PREFIX,
+            )
+            continue
         index[candidate.stem] = resolved
     return index
 
@@ -120,6 +133,13 @@ def builtin_summaries(vehicle_type: str | None = None) -> list[ReminderPackSumma
             detail = _load_pack_file(path)
         except (OSError, json.JSONDecodeError, ValueError) as exc:
             logger.error("Failed to load reminder pack %s: %s", path.name, sanitize_for_log(exc))
+            continue
+        if is_custom_pack_id(detail.id):
+            logger.warning(
+                "Ignoring reminder pack %s: it declares the reserved '%s' prefix",
+                sanitize_for_log(path.name),
+                CUSTOM_PREFIX,
+            )
             continue
         if vehicle_type and detail.vehicle_types and vehicle_type not in detail.vehicle_types:
             continue
@@ -184,6 +204,8 @@ def builtin_pack(pack_id: str) -> ReminderPackDetail:
         try:
             detail = _load_pack_file(resolved)
         except OSError, json.JSONDecodeError, ValueError:
+            continue
+        if is_custom_pack_id(detail.id):
             continue
         if detail.id == pack_id:
             return detail
@@ -301,7 +323,7 @@ async def _saved_summaries(
     vehicle_type: str | None,
     current_user: User | None,
 ) -> list[ReminderPackSummary]:
-    result = await db.execute(select(ReminderPack).order_by(ReminderPack.name))
+    result = await db.execute(select(ReminderPack))
     summaries = []
     for row in result.scalars().unique().all():
         types = _vehicle_types(row)
@@ -321,15 +343,27 @@ async def _saved_summaries(
     return summaries
 
 
-async def _saved_or_404(db: AsyncSession, pack_id: str) -> ReminderPack:
-    result = await db.execute(select(ReminderPack).where(ReminderPack.pack_id == pack_id))
+async def _saved_or_404(db: AsyncSession, pack_id: str, *, with_items: bool = True) -> ReminderPack:
+    """One saved pack, or 404.
+
+    `with_items=False` for a caller that only touches the pack row: `items` is
+    `lazy="selectin"`, so the default costs a second query that rename does not
+    need. Overwrite and delete both DO need it, the first to replace the
+    collection and the second for the delete-orphan cascade.
+    """
+    query = select(ReminderPack).where(ReminderPack.pack_id == pack_id)
+    if not with_items:
+        query = query.options(noload(ReminderPack.items))
+    result = await db.execute(query)
     row = result.scalars().unique().one_or_none()
     if row is None:
         raise HTTPException(status_code=404, detail=f"Reminder pack '{pack_id}' not found")
     return row
 
 
-async def _writable_or_403(db: AsyncSession, pack_id: str, current_user: User | None):
+async def _writable_or_403(
+    db: AsyncSession, pack_id: str, current_user: User | None, *, with_items: bool = True
+) -> ReminderPack:
     """The saved pack this caller may change, or the right refusal.
 
     A built-in id is a 409, not a 404: the pack plainly exists, it is just not
@@ -341,7 +375,7 @@ async def _writable_or_403(db: AsyncSession, pack_id: str, current_user: User | 
             status_code=409,
             detail=f"'{pack_id}' is a built-in pack and cannot be changed",
         )
-    row = await _saved_or_404(db, pack_id)
+    row = await _saved_or_404(db, pack_id, with_items=with_items)
     if not may_edit(row, current_user):
         raise HTTPException(
             status_code=403, detail="Only the pack's creator or an admin may change it"
@@ -423,18 +457,28 @@ async def savable_rules(db: AsyncSession, vin: str, rule_ids: list[int]) -> list
     return rules
 
 
+def _typed(rule: MaintenanceRule) -> str:
+    """The rule's maintenance type, which `savable_rules` has already guaranteed.
+
+    An assert rather than an `or slugify(title)` fallback: the fallback read as a
+    supported path and could never run, and `slugify` remains the SCHEMA's
+    fallback for pack FILES, which may still declare an item without a type.
+    """
+    assert rule.maintenance_type is not None, "savable_rules refuses a typeless rule"
+    return rule.maintenance_type
+
+
 def _items_from_rules(rules: list[MaintenanceRule]) -> list[ReminderPackItemRow]:
     """Project rules into pack items.
 
     `item_key` is the maintenance type, full stop. It needs no de-duplication
     because `savable_rules` has already refused a typeless rule and a repeated
-    type, which between them are the only ways two items could want the same
-    key. `slugify` stays the fallback in the SCHEMA for pack files, which may
-    still declare an item without a type.
+    type, which between them are the only ways two items could want the same key.
     """
     return [
         ReminderPackItemRow(
-            item_key=rule.maintenance_type or slugify(rule.title),
+            # `savable_rules` refused every typeless rule, so this is the type.
+            item_key=_typed(rule),
             title=rule.title,
             maintenance_type=rule.maintenance_type,
             interval_km=rule.interval_km,
@@ -464,12 +508,9 @@ async def save_pack_from_vehicle(
     rules = await savable_rules(db, data.vin, data.rule_ids)
 
     pack_id = custom_pack_id(data.name)
-    existing = await db.execute(select(ReminderPack).where(ReminderPack.pack_id == pack_id))
-    if existing.scalars().unique().one_or_none() is not None:
-        raise HTTPException(
-            status_code=409,
-            detail=f"A pack named '{data.name}' already exists; overwrite it or choose another name",
-        )
+    # `usable_pack_name` already refused a name with no slug, so this only fires
+    # if a caller bypassed the request schema.
+    assert pack_id, "a validated name always yields a pack id"
 
     row = ReminderPack(
         pack_id=pack_id,
@@ -484,14 +525,13 @@ async def save_pack_from_vehicle(
     try:
         await db.commit()
     except IntegrityError as exc:
-        # Two callers saving the same name at once: the UNIQUE is the authority,
-        # and the pre-check above only shortens the common path.
+        # The UNIQUE on `pack_id` is the only check: a pre-SELECT would be a
+        # round trip on every save and would still lose a two-caller race.
         await db.rollback()
         raise HTTPException(
             status_code=409,
             detail=f"A pack named '{data.name}' already exists; overwrite it or choose another name",
         ) from exc
-    await db.refresh(row)
     logger.info("Saved reminder pack %s with %d item(s)", sanitize_for_log(pack_id), len(row.items))
     return _detail_from_row(row)
 
@@ -520,7 +560,6 @@ async def overwrite_pack(
     # delete-orphan on the relationship turns this into the DELETEs.
     row.items = _items_from_rules(rules)
     await db.commit()
-    await db.refresh(row)
     logger.info(
         "Overwrote reminder pack %s with %d item(s)", sanitize_for_log(pack_id), len(row.items)
     )
@@ -539,10 +578,9 @@ async def rename_pack(
     `source_pack_id`, so a new id would orphan every rule this pack has already
     created from the pack that created it.
     """
-    row = await _writable_or_403(db, pack_id, current_user)
+    row = await _writable_or_403(db, pack_id, current_user, with_items=False)
     row.name = name
     await db.commit()
-    await db.refresh(row)
     return _detail_from_row(row)
 
 

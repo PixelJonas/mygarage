@@ -23,7 +23,6 @@ export type AnchorCandidate = components['schemas']['AnchorCandidate']
 export type DuplicateGroup = components['schemas']['DuplicateGroup']
 export type ReminderPackSummary = components['schemas']['ReminderPackSummary']
 export type ReminderPackDetail = components['schemas']['ReminderPackDetail']
-export type ReminderPackItem = components['schemas']['ReminderPackItem']
 export type IntervalOverride = components['schemas']['IntervalOverride']
 export type SavePackBody = components['schemas']['SaveReminderPackRequest']
 

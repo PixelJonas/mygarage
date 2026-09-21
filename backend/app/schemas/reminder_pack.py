@@ -41,18 +41,17 @@ CUSTOM_PREFIX = "custom-"
 #: has to leave room for the prefix.
 CUSTOM_SLUG_MAX = 64 - len(CUSTOM_PREFIX)
 
-_NAME_SLUG_RE = re.compile(r"[^a-z0-9]+")
-
 
 def pack_slug(name: str) -> str:
     """The slug part of a saved pack's id, or "" when the name has no letters.
 
-    Hyphens rather than underscores, because this is an id in a URL path, and
-    trimmed to `CUSTOM_SLUG_MAX` so `custom-` plus this fits the column that
-    records it on a rule. An empty result is the caller's problem to report: a
-    name of pure punctuation must be a 422, not a pack whose id is `custom-`.
+    Hyphens rather than the underscores `slugify` uses, because this is an id in
+    a URL path, and trimmed to `CUSTOM_SLUG_MAX` so `custom-` plus this fits the
+    column that records it on a rule. An empty result is the caller's problem to
+    report: a name of pure punctuation must be a 422, not a pack whose id is
+    `custom-`.
     """
-    return _NAME_SLUG_RE.sub("-", name.strip().lower()).strip("-")[:CUSTOM_SLUG_MAX].strip("-")
+    return _SLUG_RE.sub("-", name.strip().lower()).strip("-")[:CUSTOM_SLUG_MAX].strip("-")
 
 
 def custom_pack_id(name: str) -> str:
@@ -203,8 +202,7 @@ class SaveReminderPackRequest(BaseModel):
     def no_repeats(cls, value: list) -> list:
         """De-duplicate, keeping order. A repeated rule id would try to write the
         same item key twice and hit the UNIQUE mid-transaction."""
-        seen = set()
-        return [v for v in value if not (v in seen or seen.add(v))]
+        return list(dict.fromkeys(value))
 
 
 class RenameReminderPackRequest(BaseModel):

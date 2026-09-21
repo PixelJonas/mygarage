@@ -79,7 +79,12 @@ export default function ReminderList({ vin, onStatsChanged }: ReminderListProps)
   const [completing, setCompleting] = useState<Reminder | undefined>()
   const [selectedPack, setSelectedPack] = useState('')
   const [previewingPack, setPreviewingPack] = useState<{ id: string; name: string } | undefined>()
-  const [savingPack, setSavingPack] = useState(false)
+  //   false        = closed
+  //   true         = saving a NEW pack
+  //   {id, name}   = saving this vehicle OVER that pack
+  const [savingPack, setSavingPack] = useState<true | { id: string; name: string } | false>(
+    false,
+  )
   const [renamingPack, setRenamingPack] = useState<{ id: string; name: string } | undefined>()
   const [reviewingGroup, setReviewingGroup] = useState<DuplicateGroup | undefined>()
   const [snoozing, setSnoozing] = useState<Reminder | undefined>()
@@ -251,6 +256,14 @@ export default function ReminderList({ vin, onStatsChanged }: ReminderListProps)
         </Button>
         {editablePack && (
           <>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={PackagePlus}
+              onClick={() => setSavingPack({ id: editablePack.id, name: editablePack.name })}
+            >
+              {t('packList.overwrite')}
+            </Button>
             <Button
               variant="secondary"
               size="sm"
@@ -454,6 +467,8 @@ export default function ReminderList({ vin, onStatsChanged }: ReminderListProps)
         <SavePackDialog
           vin={vin}
           vehicleType={vehicle?.vehicle_type}
+          existingPackId={savingPack === true ? undefined : savingPack.id}
+          existingName={savingPack === true ? undefined : savingPack.name}
           onClose={() => setSavingPack(false)}
           onSaved={() => setSavingPack(false)}
         />

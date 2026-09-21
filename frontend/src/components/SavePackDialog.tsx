@@ -141,7 +141,7 @@ export default function SavePackDialog({
 
   return (
     <FormModalWrapper
-      title={t('savePack.title')}
+      title={existingPackId ? t('savePack.overwriteTitle') : t('savePack.title')}
       icon={PackagePlus}
       onClose={onClose}
       width="md"

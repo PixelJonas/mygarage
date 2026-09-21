@@ -147,7 +147,6 @@ async def ensure_rule(
     source_pack_id: str | None = None,
     source_pack_key: str | None = None,
     notes: str | None = None,
-    update_intervals: bool,
 ) -> RuleResolution:
     """The vehicle's rule for a type, reusing or reactivating before creating.
 
@@ -156,9 +155,12 @@ async def ensure_rule(
     already present there is no right answer and the caller gets a 409 (a
     pack plans around it first and skips the item).
 
-    `update_intervals` is False for a pack (an active rule keeps its per-vehicle
-    override) and True for a form or a line item, which state the intervals.
-    An inactive rule always takes the new intervals when it is reactivated.
+    `intervals` are the intervals that WILL apply, and they are written
+    unconditionally. There used to be an `update_intervals` flag here so a pack
+    could leave an active rule's own numbers alone; the caller decides that now,
+    because the caller is the only one that knows whether the user typed an
+    override. `apply_intervals` compares before assigning, so handing back a
+    rule's existing values writes nothing and does not touch `updated_at`.
     """
     if maintenance_type is not None:
         existing = await rules_of_type(db, vin, maintenance_type)
@@ -167,8 +169,7 @@ async def ensure_rule(
         if existing:
             rule = existing[0]
             if rule.is_active:
-                if update_intervals:
-                    apply_intervals(rule, intervals)
+                apply_intervals(rule, intervals)
                 return RuleResolution(rule, "reuse")
             rule.is_active = True
             apply_intervals(rule, intervals)
@@ -850,7 +851,6 @@ async def create_recurring_reminder(db: AsyncSession, vin: str, data: ReminderCr
         intervals=data.recurrence,
         source="manual",
         notes=data.notes,
-        update_intervals=True,
     )
     rule = resolution.rule
     if resolution.action == "reuse":
@@ -944,7 +944,6 @@ async def create_reminder_for_line_item(
         intervals=data.recurrence,
         source="service",
         notes=data.notes,
-        update_intervals=True,
     )
     rule = resolution.rule
     if rule.maintenance_type is None:
@@ -989,7 +988,6 @@ async def update_reminder_recurrence(
             intervals=data.recurrence,
             source="manual",
             notes=reminder.notes,
-            update_intervals=True,
         )
         rule = resolution.rule
         other = await _pending_reminder(db, rule.id)
@@ -1222,16 +1220,9 @@ async def _validate_anchor_choices(
     pack: ReminderPackDetail,
     anchors: dict[str, AnchorChoice | None] | None,
 ) -> dict[str, _Choice]:
-    """Every named key is a pack item and every line item is the vehicle's own."""
-    if not anchors:
-        return {}
-    keys = {item.key for item in pack.reminders}
+    """Every line item is the vehicle's own; `_by_pack_key` vets the keys."""
     chosen: dict[str, _Choice] = {}
-    for key, choice in anchors.items():
-        if key not in keys:
-            raise HTTPException(status_code=422, detail=f"Unknown pack item '{key}'")
-        if choice is None:
-            continue
+    for key, choice in _by_pack_key(pack, anchors).items():
         anchor: Anchor | None = None
         line_item: ServiceLineItem | None = None
         if choice.line_item_id is not None:
@@ -1242,25 +1233,26 @@ async def _validate_anchor_choices(
     return chosen
 
 
-def _validate_overrides(
-    pack: ReminderPackDetail,
-    overrides: dict[str, IntervalOverride | None] | None,
-) -> dict[str, IntervalOverride]:
-    """Every named key is a pack item. Unknown keys are a 422, as for anchors.
+def _by_pack_key[T](pack: ReminderPackDetail, values: dict[str, T | None] | None) -> dict[str, T]:
+    """A caller's per-item map, checked against the pack and stripped of Nones.
 
-    An item the caller did not name is absent from the result and keeps the
-    pack's own intervals, so an untouched form sends nothing and behaves exactly
-    as it did before overrides existed.
+    Anchors and interval overrides are both keyed by pack item key and both owe
+    the caller the same answer for a key the pack does not have. Keeping that in
+    one place means the 422 message exists once: it used to be written out at two
+    call sites with tests asserting the literal on both.
+
+    An item the caller did not name is simply absent, so an untouched form sends
+    nothing and behaves exactly as it did before the feature existed.
     """
-    if not overrides:
+    if not values:
         return {}
     keys = {item.key for item in pack.reminders}
-    chosen: dict[str, IntervalOverride] = {}
-    for key, override in overrides.items():
+    chosen: dict[str, T] = {}
+    for key, value in values.items():
         if key not in keys:
             raise HTTPException(status_code=422, detail=f"Unknown pack item '{key}'")
-        if override is not None:
-            chosen[key] = override
+        if value is not None:
+            chosen[key] = value
     return chosen
 
 
@@ -1468,7 +1460,7 @@ async def plan_pack(
     if today is None:
         today = household_today()
     chosen = await _validate_anchor_choices(db, vin, pack, anchors)
-    typed = _validate_overrides(pack, overrides)
+    typed = _by_pack_key(pack, overrides)
     items = [
         await _plan_item(
             db,
@@ -1502,7 +1494,7 @@ async def apply_pack(
         today = household_today()
     await lock_vehicle_for_write(db, vin)
     chosen = await _validate_anchor_choices(db, vin, pack, anchors)
-    typed = _validate_overrides(pack, overrides)
+    typed = _by_pack_key(pack, overrides)
     results: list[Reminder] = []
     for item in pack.reminders:
         assert item.key is not None
@@ -1511,8 +1503,6 @@ async def apply_pack(
         plan = await _plan_item(db, vin, item, choice, today, for_preview=False, override=override)
         if plan.rule_action == "skip":
             continue
-        if override is not None:
-            item = _overridden(item, override)
         # 1. A chosen untyped line item is typed: that is what makes the choice durable.
         if choice is not None and choice.line_item is not None:
             if choice.line_item.maintenance_type != plan.maintenance_type:
@@ -1524,16 +1514,16 @@ async def apply_pack(
             vin,
             maintenance_type=plan.maintenance_type,
             title=item.title,
-            intervals=item,
             source="pack",
             source_pack_id=pack.id,
             source_pack_key=item.key,
             notes=item.notes,
-            # An override is the caller's instruction, so it is written to the
-            # rule; the pack's own values still leave an existing rule alone.
-            # Without this the override is planned and previewed correctly and
-            # then never persisted.
-            update_intervals=override is not None,
+            # THE PLAN, not the item. `_plan_item` has already decided whose
+            # intervals win: the override's when the caller typed one, otherwise
+            # an active rule's own. Re-deriving that here from `item` plus a flag
+            # was the same decision made twice, and the half that got it wrong is
+            # how an override used to preview correctly and never persist.
+            intervals=plan,
         )
         rule = resolution.rule
         # 3. Adopt loose reminders of the type when the rule has none.

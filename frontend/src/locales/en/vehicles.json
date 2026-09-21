@@ -1918,7 +1918,8 @@
     "overwritten": "Pack updated",
     "cannotInclude": "Cannot go in a pack: {{reason}}",
     "reasonTypeless": "it has no maintenance type",
-    "reasonRepeatedType": "another reminder already covers this maintenance type"
+    "reasonRepeatedType": "another reminder already covers this maintenance type",
+    "overwriteTitle": "Save this vehicle over the pack"
   },
   "packList": {
     "saved": "Saved",
@@ -1927,6 +1928,7 @@
     "renamed": "Pack renamed",
     "delete": "Delete",
     "deleteConfirm": "Delete the pack “{{name}}”? Reminders already created from it are not affected.",
-    "deleted": "Pack deleted"
+    "deleted": "Pack deleted",
+    "overwrite": "Save over"
   }
 }

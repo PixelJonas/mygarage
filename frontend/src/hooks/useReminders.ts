@@ -25,6 +25,7 @@ export function invalidateMaintenanceQueries(queryClient: QueryClient, vin: stri
   for (const key of [
     'reminders',
     'reminderDuplicates',
+    'maintenanceRules',
     'packPreview',
     'serviceVisits',
     'latestMileage',
@@ -138,6 +139,10 @@ export function usePackPreview(
     queryFn: () => reminderService.previewPack(vin, packId as string, anchors, overrides),
     enabled: !!vin && !!packId,
     staleTime: 0,
+    // One preview is a fan-out of per-item queries, and the app refetches on
+    // focus by default. Tabbing away and back does not change the plan, so it
+    // does not need to pay for it again.
+    refetchOnWindowFocus: false,
     // An override changes the plan, not just a displayed number: the anchor
     // proposal and any skip reason are recomputed. Keeping the last plan on
     // screen while the next one loads stops the dialog flashing empty on every
