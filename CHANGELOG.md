@@ -30,6 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - JSON backup schema version 8. Version 7 backups still restore; their coverage text is converted the same way.
 
 ### Fixed
+- Text on the vehicle overview page can be selected and copied again; the click-to-edit cards no longer cover their own values (#179).
+- Home page fuel economy no longer quotes a towing figure as if it were ordinary economy; it shows the non-towing average, with an "Including towing" figure beneath when a vehicle tows (#181).
+- The home page remembers the vehicle sort order for the session (#180).
 - Production images now install from `uv.lock`, so they no longer resolve a different dependency set on every build.
 - Registered the four models missing from `app.models`, which left the ORM registry incomplete for anything importing it directly.
 

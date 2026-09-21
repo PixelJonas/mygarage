@@ -17687,6 +17687,8 @@ export interface components {
             average_cost_per_hr?: string | null;
             /** Average L Per 100Km */
             average_l_per_100km?: string | null;
+            /** Average L Per 100Km With Towing */
+            average_l_per_100km_with_towing?: string | null;
             /** Average L Per Hr */
             average_l_per_hr?: string | null;
             /** Current Hours */
@@ -17720,6 +17722,8 @@ export interface components {
             owner_relationship_custom?: string | null;
             /** Recent L Per 100Km */
             recent_l_per_100km?: string | null;
+            /** Recent L Per 100Km With Towing */
+            recent_l_per_100km_with_towing?: string | null;
             /**
              * Secondary Usage Enabled
              * @default false

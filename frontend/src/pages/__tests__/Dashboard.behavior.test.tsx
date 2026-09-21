@@ -114,7 +114,13 @@ const order = (): string[] =>
   screen.getAllByTestId('vehicle-card').map((el) => el.textContent ?? '')
 
 describe('Dashboard sectioned layout', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    // The sort choice now persists, so it leaks between tests in this file: the
+    // first case below picks newest-first and every later case assumes the
+    // default. Clear it rather than letting test order decide the assertions.
+    sessionStorage.clear()
+  })
 
   it('re-sorts vehicles when a Sort option is chosen', async () => {
     mockDashboard([
@@ -133,6 +139,55 @@ describe('Dashboard sectioned layout', () => {
     await waitFor(() =>
       expect(order()).toEqual(['2022 BMW X', '2020 Chevy X', '2019 Aston X']),
     )
+  })
+
+  it('remembers the chosen sort order across a remount (#180)', async () => {
+    // ★ NEWEST-FIRST, not oldest-first. The default `name` sort keys on
+    // `${year} ${make} ${model}`, so it is year-ASCENDING in practice and an
+    // oldest-first assertion is satisfied by the default. Only a reversal
+    // distinguishes a remembered choice from a forgotten one.
+    const three = [
+      vehicle({ vin: 'A', year: 2019, make: 'Aston', model: 'X' }),
+      vehicle({ vin: 'B', year: 2022, make: 'BMW', model: 'X' }),
+      vehicle({ vin: 'C', year: 2020, make: 'Chevy', model: 'X' }),
+    ]
+    mockDashboard(three)
+    const first = render(<Dashboard />)
+    await waitFor(() =>
+      expect(order()).toEqual(['2019 Aston X', '2020 Chevy X', '2022 BMW X']),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'dashboard.sortVehicles' }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'dashboard.newestFirst' }))
+    await waitFor(() =>
+      expect(order()).toEqual(['2022 BMW X', '2020 Chevy X', '2019 Aston X']),
+    )
+
+    // A remount stands in for the reload in the report: the component is built
+    // fresh, so only something outside React can carry the choice over.
+    first.unmount()
+    mockDashboard(three)
+    render(<Dashboard />)
+
+    await waitFor(() =>
+      expect(order()).toEqual(['2022 BMW X', '2020 Chevy X', '2019 Aston X']),
+    )
+  })
+
+  it('falls back to the default sort when the stored value is not a sort option', async () => {
+    // Storage is shared with whatever else runs in this origin and survives a
+    // deploy, so a stale or hand-edited value must not put the list in a state
+    // no menu item matches. Fed in REVERSE of name order, because an unmatched
+    // sort option falls through `sortVehicles` and leaves the input order: that
+    // is what distinguishes "fell back to name" from "did not sort at all".
+    sessionStorage.setItem('mygarage:dashboard:sortBy', 'by-vibes')
+    mockDashboard([
+      vehicle({ vin: 'B', year: 2022, make: 'BMW', model: 'X' }),
+      vehicle({ vin: 'A', year: 2019, make: 'Aston', model: 'X' }),
+    ])
+    render(<Dashboard />)
+
+    await waitFor(() => expect(order()).toEqual(['2019 Aston X', '2022 BMW X']))
   })
 
   it('splits owned and shared vehicles into sections regardless of Family & Friends', async () => {

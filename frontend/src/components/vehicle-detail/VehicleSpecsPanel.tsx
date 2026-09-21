@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Droplets, Wrench } from 'lucide-react'
 import { toast } from 'sonner'
-import { Card, CardHeader, Button, Field, Input, NumberInput, Textarea, Mono } from '../ui'
+import { CardHeader, Button, Field, Input, NumberInput, Textarea, Mono } from '../ui'
 import FormModalWrapper from '../FormModalWrapper'
-import CardEditOverlay, { EDITABLE_CARD_CLASS } from './CardEditOverlay'
+import EditableCard from './EditableCard'
 import vehicleService from '../../services/vehicleService'
 import { emptyToNull, str } from '../../utils/formUtils'
 import { parseDecimalInput } from '../../utils/decimalInput'
@@ -210,11 +210,7 @@ export default function VehicleSpecsPanel({
 
   return (
     <>
-      <Card breakInside className={EDITABLE_CARD_CLASS}>
-        <CardEditOverlay
-          label={t('detail.specs.editAria')}
-          onClick={() => setOpen(true)}
-        />
+      <EditableCard breakInside label={t('detail.specs.editAria')} onEdit={() => setOpen(true)}>
         <CardHeader title={t('detail.specs.title')} />
         {hasSpecs ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
@@ -280,7 +276,7 @@ export default function VehicleSpecsPanel({
         ) : (
           <p className="text-sm text-text-mute">{t('detail.specs.empty')}</p>
         )}
-      </Card>
+      </EditableCard>
 
       <FormModalWrapper
         title={t('detail.specs.title')}

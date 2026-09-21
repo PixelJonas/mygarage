@@ -15,7 +15,45 @@ import type { ExternalVehicle } from '../types/externalVehicle'
 import { listExternalVehicles } from '../services/externalVehicleService'
 import api from '../services/api'
 
-type SortOption = 'name' | 'year-new' | 'year-old' | 'maintenance'
+const SORT_OPTIONS = ['name', 'year-new', 'year-old', 'maintenance'] as const
+type SortOption = (typeof SORT_OPTIONS)[number]
+
+/** Where the chosen sort order is remembered. */
+const SORT_STORAGE_KEY = 'mygarage:dashboard:sortBy'
+
+/**
+ * The remembered sort order, or the default.
+ *
+ * `sessionStorage`, not `localStorage`: issue #180 asks for the choice to
+ * survive a refresh "in the current login session", and this browser may be
+ * shared with another member of the household whose own default should not be
+ * decided by whoever sorted last.
+ *
+ * The stored string is validated against SORT_OPTIONS rather than trusted. It
+ * outlives deploys, so a renamed option would otherwise leave the list sorted by
+ * a value no menu item matches, which reads as "sorting is broken" with no way
+ * back except clearing site data. Reads and writes are both guarded because
+ * storage access itself throws in a private window or with site data blocked.
+ */
+function storedSortOption(): SortOption {
+  try {
+    const raw = sessionStorage.getItem(SORT_STORAGE_KEY)
+    if (raw !== null && (SORT_OPTIONS as readonly string[]).includes(raw)) {
+      return raw as SortOption
+    }
+  } catch {
+    // Storage unavailable; the default is a perfectly good answer.
+  }
+  return 'name'
+}
+
+function rememberSortOption(value: SortOption): void {
+  try {
+    sessionStorage.setItem(SORT_STORAGE_KEY, value)
+  } catch {
+    // Not remembering it is a smaller failure than breaking the sort.
+  }
+}
 
 function sortVehicles(vehicles: VehicleStatistics[], sortBy: SortOption): VehicleStatistics[] {
   return [...vehicles].sort((a, b) => {
@@ -54,7 +92,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showWizard, setShowWizard] = useState(false)
-  const [sortBy, setSortBy] = useState<SortOption>('name')
+  const [sortBy, setSortBy] = useState<SortOption>(storedSortOption)
   const [showExternalModal, setShowExternalModal] = useState(false)
   const [editingExternal, setEditingExternal] = useState<ExternalVehicle | null>(null)
   const [selectMode, setSelectMode] = useState(false)
@@ -136,11 +174,16 @@ export default function Dashboard() {
   const hasAnyContent =
     ownedCount > 0 || sharedVehicles.length > 0 || referenceVehicles.length > 0
 
+  // One writer, so a new sort option cannot be added and silently not remembered.
+  const chooseSort = (value: SortOption) => {
+    setSortBy(value)
+    rememberSortOption(value)
+  }
   const sortItems: DropdownItem[] = [
-    { id: 'name', label: t('dashboard.sortByName'), checked: sortBy === 'name', onSelect: () => setSortBy('name') },
-    { id: 'year-new', label: t('dashboard.newestFirst'), checked: sortBy === 'year-new', onSelect: () => setSortBy('year-new') },
-    { id: 'year-old', label: t('dashboard.oldestFirst'), checked: sortBy === 'year-old', onSelect: () => setSortBy('year-old') },
-    { id: 'maintenance', label: t('dashboard.byMaintenance'), checked: sortBy === 'maintenance', onSelect: () => setSortBy('maintenance') },
+    { id: 'name', label: t('dashboard.sortByName'), checked: sortBy === 'name', onSelect: () => chooseSort('name') },
+    { id: 'year-new', label: t('dashboard.newestFirst'), checked: sortBy === 'year-new', onSelect: () => chooseSort('year-new') },
+    { id: 'year-old', label: t('dashboard.oldestFirst'), checked: sortBy === 'year-old', onSelect: () => chooseSort('year-old') },
+    { id: 'maintenance', label: t('dashboard.byMaintenance'), checked: sortBy === 'maintenance', onSelect: () => chooseSort('maintenance') },
   ]
   const sortLabel = sortItems.find((i) => i.checked)?.label ?? ''
 

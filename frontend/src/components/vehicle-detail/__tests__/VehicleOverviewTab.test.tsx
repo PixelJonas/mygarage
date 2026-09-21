@@ -78,6 +78,63 @@ describe('VehicleOverviewTab — cards stay addable when the vehicle has no deco
     expect(onEditCard).toHaveBeenCalledWith('details')
   })
 
+  describe('text stays selectable (#179)', () => {
+    // The bug: each editable card carried a transparent full-card <button>
+    // (`absolute inset-0 z-10`) so the whole card was one click target. Nothing
+    // under it could be long-pressed, so on a phone the VIN could not be
+    // selected and the selection handles would not move.
+    //
+    // jsdom has no layout and no native long-press, so none of these assert
+    // selection directly. They pin the two properties that caused it and the
+    // behaviour that had to survive the fix.
+
+    it('does not cover the card with the edit control', () => {
+      renderTab(bareVehicle)
+      const edits = screen.getAllByRole('button', { name: 'detail.cardEdit.title' })
+      // The structural cause. An element stretched over the card is above the
+      // text whatever else is true, and no amount of handler logic can give a
+      // long-press back once the touch lands on the overlay instead.
+      for (const edit of edits) {
+        expect(edit.className).not.toMatch(/inset-0/)
+      }
+    })
+
+    it('still opens the editor when the card is clicked', () => {
+      const { onEditCard } = renderTab(bareVehicle)
+      // Click-anywhere-to-edit is the behaviour the overlay existed to provide,
+      // and it has to survive the overlay being removed.
+      fireEvent.click(screen.getByRole('heading', { name: 'detail.vehicleDetails' }))
+      expect(onEditCard).toHaveBeenCalledWith('details')
+    })
+
+    it('does not open the editor on the click that ends a text selection', () => {
+      const { onEditCard } = renderTab(bareVehicle)
+      const selection = { isCollapsed: false, toString: () => '1HGBH41JXMN109186' }
+      const spy = vi
+        .spyOn(window, 'getSelection')
+        .mockReturnValue(selection as unknown as Selection)
+
+      fireEvent.click(screen.getByRole('heading', { name: 'detail.vehicleDetails' }))
+
+      // Selecting the VIN ends in a click on the card. Without this guard the
+      // fix trades an unselectable card for one that opens an editor every time
+      // you finish selecting, which is worse.
+      expect(onEditCard).not.toHaveBeenCalled()
+      spy.mockRestore()
+    })
+
+    it('keeps a keyboard and screen-reader route to the editor', () => {
+      const { onEditCard } = renderTab(bareVehicle)
+      // A click handler on a container is invisible to keyboard and AT users.
+      // The named button is what keeps the action reachable without a pointer.
+      const edits = screen.getAllByRole('button', { name: 'detail.cardEdit.title' })
+      expect(edits).toHaveLength(4)
+      fireEvent.click(edits[1])
+      expect(onEditCard).toHaveBeenCalledWith('details')
+      expect(onEditCard).toHaveBeenCalledTimes(1)
+    })
+  })
+
   it('shows the empty-state line instead of a blank card body', () => {
     renderTab(bareVehicle)
     // One line per empty card: Details, Powertrain, Warranty.
