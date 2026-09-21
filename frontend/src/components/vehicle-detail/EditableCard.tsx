@@ -65,18 +65,27 @@ export default function EditableCard({
         if (!isSelectingText()) onEdit()
       }}
     >
-      <button
-        type="button"
-        onClick={(event) => {
-          // The card's own handler would fire on the way up and open the editor
-          // a second time.
-          event.stopPropagation()
-          onEdit()
-        }}
-        className="ui-focus-ring sr-only focus:not-sr-only focus:absolute focus:right-2 focus:top-2 focus:z-10 focus:rounded-lg focus:bg-surface-2 focus:px-2 focus:py-1 focus:text-xs"
-      >
-        {label}
-      </button>
+      {/* ★ THE STYLING IS ON THE WRAPPER AND THE VISIBILITY IS ON THE BUTTON, on
+          purpose. Tailwind's `not-sr-only` resets position, padding AND margin,
+          so any `focus:absolute` / `focus:px-2` sitting beside it on the same
+          element is in a fight it wins or loses purely on the order the two
+          utilities happen to be emitted in. Keeping the button to nothing but
+          `sr-only` / `focus:not-sr-only`, and hanging the position and the chip
+          styling off the wrapper's `focus-within`, leaves nothing to conflict. */}
+      <span className="absolute right-2 top-2 z-10 rounded-lg focus-within:bg-surface-2 focus-within:px-2 focus-within:py-1 focus-within:text-xs">
+        <button
+          type="button"
+          onClick={(event) => {
+            // The card's own handler would fire on the way up and open the
+            // editor a second time.
+            event.stopPropagation()
+            onEdit()
+          }}
+          className="ui-focus-ring sr-only focus:not-sr-only"
+        >
+          {label}
+        </button>
+      </span>
       {children}
     </Card>
   )
