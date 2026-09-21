@@ -24,6 +24,7 @@ import { withBase } from '../utils/basePath'
 import { getUsageTracking } from '../utils/usageTracking'
 import VehicleLiveLinkWidget from './livelink/VehicleLiveLinkWidget'
 import { ListRow, Tile, Badge, Mono } from './ui'
+import { unlessSelectingText } from '../utils/textSelection'
 
 interface VehicleStatisticsCardProps {
   stats: VehicleStatistics
@@ -139,8 +140,21 @@ function VehicleStatisticsCard({ stats, selectMode = false, selected = false, on
         {/* Scrim — bg-derived, theme-aware */}
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-bg via-bg/55 to-transparent" />
 
-        {/* Name + type chip + VIN overlay (display-only) */}
-        <div className="pointer-events-none absolute inset-x-4 bottom-3">
+        {/* Name + type chip + VIN overlay.
+            ★ NOT display-only any more, and it needs BOTH changes below to be
+            selectable (issue #179). `pointer-events-none` stops the text
+            receiving a selection at all, and the footer button's
+            `after:inset-0` covers the whole card, so dropping one without the
+            other changes nothing. `relative z-10` lifts it over that
+            pseudo-element, the same trick the LiveLink widget already uses.
+            Lifting it also takes it OUT of the stretched nav target, so it
+            carries `handleClick` itself or clicking the title would silently
+            stop navigating. No `tabIndex` or `role`: the footer button is still
+            the only focusable nav target, which keeps the a11y model intact. */}
+        <div
+          className="absolute inset-x-4 bottom-3 z-10"
+          onClick={unlessSelectingText(handleClick)}
+        >
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-[19px] font-bold tracking-[-.01em] text-text">
               {stats.year} {stats.make} {stats.model}

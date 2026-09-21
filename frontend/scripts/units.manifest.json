@@ -459,8 +459,8 @@
   {
    "path": "src/components/ExternalVehicleCard.tsx",
    "disposition": "no unit behaviour",
-   "digest": "d33e2c52a20e4fa44363411f519a611ad69074eaa33819965606a9b4357f383d",
-   "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched NONE of them."
+   "digest": "cc58015a5aab8627e1d4f6d978d81e3685d63de6464f4a1a0fceb09a6b5ab43e",
+   "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched NONE of them. Re-reviewed 2026-09-21 for issue #179: the name/VIN overlay is no longer `pointer-events-none`, so its text can be selected, and it carries the card's own navigation so lifting it out of the stretched click target does not cost a click. Presentation and event wiring only; no figure, unit or conversion in this file changed."
   },
   {
    "path": "src/components/FamilyMemberCard.tsx",
@@ -951,8 +951,8 @@
   {
    "path": "src/components/VehicleStatisticsCard.tsx",
    "disposition": "audited",
-   "digest": "e628694388abfb49d51518293c556c8aa78cd9353996d31ee7a6a397b8a2db90",
-   "reason": "no binary unit decision left. Task 6b migrated the fuel-economy and fuel-rate family onto the resolved `units.consumption` and `units.volume` tokens (31 sites over 4 files, enumerated by `scripts/enumerate-fuel-consumption.ts`), and `UnitFormatter.formatFuelEconomy`, `getFuelEconomyUnit`, `formatFuelRate` and `getFuelRateUnit` were deleted once `unitsBinaryApiSurface.test.ts` reported all four as dead. This card is where the same-screen disagreement was worst: task 6 had moved its odometer `ListRow` onto `u.distance` and left the economy strip directly below it on the collapsed system, so a `{volume:'L', distance:'mi', consumption:'mpg_us'}` account read miles above L/100km on one card. Both now read the same account's own tokens, and the mixed-set render tests below pin it. Re-reviewed 2026-09-21 for issue #181: the economy strip's headline now reads a chosen value (`headlineEconomy`) rather than `stats.average_l_per_100km` directly, and a second figure (towing-inclusive) can render beneath it. Both go through the SAME `u.consumption.formatPrimary`, so the two lines cannot quote different units, which is the failure this row was written about: the towing line is a second consumption figure on a card that already had one, and formatting it any other way would put two consumption units side by side. The values themselves are canonical L/100km from the API, unconverted here. Three render tests added, including the mpg_us assertions 29.4 / 19.6 / 23.5 that would move if either line stopped resolving the account's own token.",
+   "digest": "ef4721712a35dd080f6e50a7f6c714bc76033d44e1669b08973280fd23be0d2a",
+   "reason": "no binary unit decision left. Task 6b migrated the fuel-economy and fuel-rate family onto the resolved `units.consumption` and `units.volume` tokens (31 sites over 4 files, enumerated by `scripts/enumerate-fuel-consumption.ts`), and `UnitFormatter.formatFuelEconomy`, `getFuelEconomyUnit`, `formatFuelRate` and `getFuelRateUnit` were deleted once `unitsBinaryApiSurface.test.ts` reported all four as dead. This card is where the same-screen disagreement was worst: task 6 had moved its odometer `ListRow` onto `u.distance` and left the economy strip directly below it on the collapsed system, so a `{volume:'L', distance:'mi', consumption:'mpg_us'}` account read miles above L/100km on one card. Both now read the same account's own tokens, and the mixed-set render tests below pin it. Re-reviewed 2026-09-21 for issue #181: the economy strip's headline now reads a chosen value (`headlineEconomy`) rather than `stats.average_l_per_100km` directly, and a second figure (towing-inclusive) can render beneath it. Both go through the SAME `u.consumption.formatPrimary`, so the two lines cannot quote different units, which is the failure this row was written about: the towing line is a second consumption figure on a card that already had one, and formatting it any other way would put two consumption units side by side. The values themselves are canonical L/100km from the API, unconverted here. Three render tests added, including the mpg_us assertions 29.4 / 19.6 / 23.5 that would move if either line stopped resolving the account's own token. Re-reviewed 2026-09-21 for issue #179: the name/VIN overlay is no longer `pointer-events-none`, so its text can be selected, and it carries the card's own navigation so lifting it out of the stretched click target does not cost a click. Presentation and event wiring only; no figure, unit or conversion in this file changed.",
    "tests": [
     "components/__tests__/VehicleStatisticsCard.test.tsx",
     "components/__tests__/distanceReadSites.mixedUnits.test.tsx"
@@ -1765,8 +1765,8 @@
   {
    "path": "src/components/vehicle-detail/EditableCard.tsx",
    "disposition": "no unit behaviour",
-   "digest": "6e6ec7f843a96290d6f0e91c2cc73475b3c8ad7500b3eeecebfba6b4efa086e8",
-   "reason": "NEW 2026-09-21, replacing src/components/vehicle-detail/CardEditOverlay.tsx (issue #179), whose row carried the same conclusion about the same responsibility: make an info card one click-to-edit target. It renders no value of any kind. It holds a card's click handler, a focus-revealed button for keyboard and screen-reader users, and the guard that stops a click which merely ends a text selection from opening the editor. The predecessor's own hardcoded-string scan found one hit, read in context and not a unit decision; this file has no user-visible string at all, since its only label is passed in already translated."
+   "digest": "678c21f7ee54bf516d4215936ffe7c9a5d637f7c4948d9c502b7b2d47fad6dee",
+   "reason": "NEW 2026-09-21, replacing src/components/vehicle-detail/CardEditOverlay.tsx (issue #179), whose row carried the same conclusion about the same responsibility: make an info card one click-to-edit target. It renders no value of any kind. It holds a card's click handler, a focus-revealed button for keyboard and screen-reader users, and the guard that stops a click which merely ends a text selection from opening the editor. The predecessor's own hardcoded-string scan found one hit, read in context and not a unit decision; this file has no user-visible string at all, since its only label is passed in already translated. Re-reviewed 2026-09-21: the local text-selection predicate moved to utils/textSelection so the dashboard cards share one definition of it. Behaviour unchanged; still renders no value."
   },
   {
    "path": "src/components/vehicle-detail/EquipmentDrawer.tsx",
@@ -2953,6 +2953,12 @@
    "tests": [
     "utils/__tests__/telemetryUnits.test.ts"
    ]
+  },
+  {
+   "path": "src/utils/textSelection.ts",
+   "disposition": "no unit behaviour",
+   "digest": "625bd7bb8f50a8b16094504e640ff9c050cb47acf755c062546e307bf8c71c77",
+   "reason": "NEW 2026-09-21 (issue #179). Two functions, no rendering and no value of any kind: `isSelectingText` asks the browser whether a non-empty selection exists, and `unlessSelectingText` wraps a click handler so it does nothing while one does. It exists because every card that is one big click target needs the same guard: once nothing covers the text so a VIN can be highlighted, the click that ENDS the highlight lands on the card. Shared rather than copied so the three cards cannot drift on what counts as a selection. No unit, quantity or user-visible string."
   },
   {
    "path": "src/utils/unitAdapters.ts",

@@ -25,23 +25,11 @@
 
 import type { ReactNode } from 'react'
 import { Card } from '../ui'
+import { isSelectingText } from '../../utils/textSelection'
 
 /** Positioning context plus the hover/focus cues of a click-to-edit card. */
 export const EDITABLE_CARD_CLASS =
   'relative cursor-pointer ui-motion ui-hover-line hover:shadow-card-hover'
-
-/**
- * Whether the user currently has a real text selection on the page.
- *
- * `isCollapsed` alone is not enough: a plain caret placement is a collapsed
- * range, but so is some browsers' idea of an empty selection after a click, and
- * a whitespace-only string is not something anyone meant to select.
- */
-function isSelectingText(): boolean {
-  const selection = window.getSelection()
-  if (selection === null || selection.isCollapsed) return false
-  return selection.toString().trim().length > 0
-}
 
 interface EditableCardProps {
   /** Accessible name for the edit action, already translated. */

@@ -2,6 +2,7 @@ import { Phone, Car } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { ExternalVehicle } from '../types/externalVehicle'
 import { Badge } from './ui'
+import { unlessSelectingText } from '../utils/textSelection'
 
 interface ExternalVehicleCardProps {
   vehicle: ExternalVehicle
@@ -16,7 +17,7 @@ export default function ExternalVehicleCard({ vehicle, onClick }: ExternalVehicl
     <article
       role="button"
       tabIndex={0}
-      onClick={onClick}
+      onClick={unlessSelectingText(onClick)}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
@@ -32,7 +33,11 @@ export default function ExternalVehicleCard({ vehicle, onClick }: ExternalVehicl
             {t('externalVehicles.referenceBadge')}
           </Badge>
         </div>
-        <div className="pointer-events-none absolute inset-x-4 bottom-3">
+        {/* The name and VIN, selectable: `pointer-events-none` here would stop
+            the text taking a selection at all (issue #179). The click still
+            bubbles to the article, which guards against firing on the click
+            that merely ends a selection. */}
+        <div className="absolute inset-x-4 bottom-3">
           <h3 className="text-[19px] font-bold tracking-[-.01em] text-text">{vehicle.nickname}</h3>
           {subtitle ? <p className="mt-1 text-sm text-text-mute">{subtitle}</p> : null}
           {vehicle.vin ? (

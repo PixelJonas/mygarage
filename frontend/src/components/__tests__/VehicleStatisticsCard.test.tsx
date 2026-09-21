@@ -112,6 +112,58 @@ describe('VehicleStatisticsCard', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/vehicles/1HGBH41JXMN109186')
   })
 
+  describe('the VIN stays selectable (#179)', () => {
+    // ★ WHAT THESE CANNOT COVER. The fix has two halves and only one is
+    // testable here. Removing `pointer-events-none` is structural and the first
+    // case below catches it. The `z-10` that lifts this text above the footer
+    // button's stretched `after:inset-0` is pure STACKING, and jsdom has no
+    // layout and no stacking contexts: deleting `z-10` leaves every test in
+    // this file green while the card goes right back to being unselectable in a
+    // browser. Verified by mutation, not assumed. That half is only ever
+    // confirmed on a real device, so do not read these three passing as proof
+    // the VIN can be highlighted.
+    const vinOf = (vin: string) => screen.getByText(vin)
+
+    it('has no ancestor that disables pointer events', () => {
+      // jsdom applies no CSS, so this asserts the structural cause rather than
+      // a computed style. `pointer-events-none` does not merely pass clicks
+      // through: text under it cannot receive a selection at all.
+      render(<VehicleStatisticsCard stats={STATS} />)
+      let node: HTMLElement | null = vinOf(STATS.vin)
+      const blocking: string[] = []
+      while (node) {
+        if (String(node.className || '').includes('pointer-events-none')) {
+          blocking.push(String(node.className))
+        }
+        node = node.parentElement
+      }
+      expect(blocking).toEqual([])
+    })
+
+    it('still navigates when the VIN itself is clicked', () => {
+      // The whole card is one nav target via the footer button's stretched
+      // `after:inset-0`. Lifting the text above that pseudo-element is what
+      // makes it selectable, so the text has to carry the navigation itself or
+      // clicking the title would quietly stop working.
+      render(<VehicleStatisticsCard stats={STATS} />)
+      fireEvent.click(vinOf(STATS.vin))
+      expect(mockNavigate).toHaveBeenCalledWith(`/vehicles/${STATS.vin}`)
+    })
+
+    it('does not navigate on the click that ends a selection', () => {
+      render(<VehicleStatisticsCard stats={STATS} />)
+      const spy = vi.spyOn(window, 'getSelection').mockReturnValue({
+        isCollapsed: false,
+        toString: () => STATS.vin,
+      } as unknown as Selection)
+
+      fireEvent.click(vinOf(STATS.vin))
+
+      expect(mockNavigate).not.toHaveBeenCalled()
+      spy.mockRestore()
+    })
+  })
+
   describe('towing (#181)', () => {
     const distance = {
       usage_unit: 'distance' as const,
