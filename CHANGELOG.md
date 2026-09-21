@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.6.0] - 2026-09-21
+
 ### Added
 - Save a vehicle's recurring reminders as a pack and apply it to other vehicles; rename, delete or save a vehicle over one (#165).
 - Change any interval while applying a pack, instead of editing each reminder afterwards (#165).
