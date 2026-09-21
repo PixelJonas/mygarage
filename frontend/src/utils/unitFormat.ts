@@ -140,6 +140,36 @@ export interface UnitFieldOrigin {
   display: string
 }
 
+const formatters = new Map<string, Intl.NumberFormat>()
+
+/**
+ * The `Intl.NumberFormat` for `key`, constructed once.
+ *
+ * Constructing one resolves the locale's number data and is the expensive half
+ * of formatting; calling `format` on it is the cheap half. `formatAtPrecision`
+ * runs once per rendered quantity, so every vehicle list and every pack preview
+ * was building and discarding a formatter per number on screen.
+ *
+ * ★ THE KEY MUST CARRY THE LOCALE. `getActiveLocale()` changes when the reader
+ * picks a language, so a cache keyed on precision alone would answer the old
+ * language's formatter forever and separators would stop following the setting,
+ * which is the exact bug `localeFormatting.test.ts` exists to prevent.
+ *
+ * The key is passed in rather than derived from the options so that no
+ * serialization runs on the hot path; it is written on the line above the
+ * options it stands for, so the two cannot drift apart unseen.
+ */
+function cachedFormat(key: string, make: () => Intl.NumberFormat): Intl.NumberFormat {
+  let formatter = formatters.get(key)
+  if (formatter === undefined) {
+    // Bounded by the languages and precisions actually in use (a handful of
+    // each), so there is nothing to evict.
+    formatter = make()
+    formatters.set(key, formatter)
+  }
+  return formatter
+}
+
 /**
  * Render a number at a fixed precision, grouped for the active locale.
  *
@@ -153,10 +183,15 @@ export interface UnitFieldOrigin {
  * @returns The grouped string, e.g. `'1,000'`.
  */
 export function formatAtPrecision(value: number, precision: number): string {
-  return new Intl.NumberFormat(getActiveLocale(), {
-    minimumFractionDigits: precision,
-    maximumFractionDigits: precision,
-  }).format(value)
+  const locale = getActiveLocale()
+  return cachedFormat(
+    `${locale}|${precision}`,
+    () =>
+      new Intl.NumberFormat(locale, {
+        minimumFractionDigits: precision,
+        maximumFractionDigits: precision,
+      })
+  ).format(value)
 }
 
 /**
@@ -522,12 +557,18 @@ export function formatCostPerDistance(
   // rate as a kilometre rate.
   const canonicalPerDistanceUnit = adapterFor(units, 'distance').toCanonical(1)!
   const over = COST_PER_DISTANCE_OVER[units.distance]
-  return new Intl.NumberFormat(locale, {
-    style: 'currency',
-    currency: currencyCode,
-    minimumFractionDigits: COST_PER_DISTANCE_PRECISION,
-    maximumFractionDigits: COST_PER_DISTANCE_PRECISION,
-  }).format(costPerKm * canonicalPerDistanceUnit * over)
+  // The precision is a module constant, so only the locale and the currency
+  // vary and the key names exactly those two.
+  return cachedFormat(
+    `${locale}|cost|${currencyCode}`,
+    () =>
+      new Intl.NumberFormat(locale, {
+        style: 'currency',
+        currency: currencyCode,
+        minimumFractionDigits: COST_PER_DISTANCE_PRECISION,
+        maximumFractionDigits: COST_PER_DISTANCE_PRECISION,
+      })
+  ).format(costPerKm * canonicalPerDistanceUnit * over)
 }
 
 /**

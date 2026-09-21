@@ -5,8 +5,6 @@ away from the happy path: `auth_mode='none'` leaves no identity to compare
 against, and a pack cannot carry a schedule the apply pipeline would reshape.
 """
 
-import json
-
 import pytest
 import pytest_asyncio
 from fastapi import HTTPException
@@ -19,7 +17,12 @@ from app.models.vehicle import Vehicle
 from app.models.vehicle_share import VehicleShare
 from app.schemas.reminder_pack import SaveReminderPackRequest, custom_pack_id, pack_slug
 from app.services import reminder_pack_service
-from app.services.reminder_pack_service import PACKS_DIR, may_edit, unsavable_reason
+from app.services.reminder_pack_service import (
+    PACKS_DIR,
+    _vehicle_types,
+    may_edit,
+    unsavable_reason,
+)
 
 PASSWORD_HASH = (
     "$argon2id$v=19$m=102400,t=2,p=8$NNbLa8SMLODWY2Es68EvLw$"
@@ -77,7 +80,7 @@ def _pack(creator_id: int | None) -> ReminderPack:
         pack_id="custom-x",
         name="X",
         description="",
-        vehicle_types="[]",
+        vehicle_types=[],
         created_by_user_id=creator_id,
     )
 
@@ -123,6 +126,35 @@ class TestWhatAPackMayContain:
     def test_an_ordinary_rule_is_fine(self):
         rule = MaintenanceRule(vin=OWNER_VIN, title="Oil", maintenance_type="engine_oil_filter")
         assert unsavable_reason(rule, set()) is None
+
+
+@pytest.mark.unit
+class TestAWronglyShapedVehicleTypesColumn:
+    """`vehicle_types` is a JSON column, so a hand-edited row can hand the
+    service any JSON value, not just a list of strings. Anything that is not a
+    list of types means "offer this pack for every type", because a pack list
+    that 500s is worse than a pack that is offered too widely.
+
+    Valid JSON of the wrong shape is the only case left to defend: bytes that are
+    not JSON at all now raise while the row loads, which is the trade recorded in
+    `_vehicle_types`.
+    """
+
+    def test_a_json_object_means_every_type(self):
+        row = _pack(None)
+        row.vehicle_types = {"Truck": True}  # type: ignore[assignment]
+        assert _vehicle_types(row) == []
+
+    def test_a_bare_string_means_every_type(self):
+        # Not a list of one type: `"Truck"` would otherwise iterate as letters.
+        row = _pack(None)
+        row.vehicle_types = "Truck"  # type: ignore[assignment]
+        assert _vehicle_types(row) == []
+
+    def test_non_string_entries_are_dropped_and_the_rest_kept(self):
+        row = _pack(None)
+        row.vehicle_types = ["Truck", 7, None, "Boat"]  # type: ignore[list-item]
+        assert _vehicle_types(row) == ["Truck", "Boat"]
 
 
 @pytest.mark.unit
@@ -192,7 +224,7 @@ class TestPublishingNeedsWriteAccess:
             pack_id="custom-keepme",
             name="Keep Me",
             description="",
-            vehicle_types=json.dumps([]),
+            vehicle_types=[],
             created_by_user_id=pack_owner.id,
         )
         db_session.add(row)

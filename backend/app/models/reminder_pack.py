@@ -21,6 +21,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
+    JSON,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -61,9 +62,20 @@ class ReminderPack(Base):
     pack_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
-    #: JSON array of vehicle types; an empty array means every type. One column
-    #: rather than a child table: it is read only as a whole, never joined.
-    vehicle_types: Mapped[str] = mapped_column(Text, nullable=False, server_default="[]")
+    #: Vehicle types this pack offers itself for; an empty list means every type.
+    #: One column rather than a child table: it is read only as a whole, never
+    #: joined or filtered on in SQL.
+    #:
+    #: A real `JSON` column, so the list arrives as a list and no caller spells
+    #: `json.dumps`/`json.loads` around it. `JSON` is the generic type on
+    #: purpose: it emits `JSON` on both dialects, where PostgreSQL's `JSONB`
+    #: would not compile on SQLite, and SQLite gives it TEXT affinity and stores
+    #: the same bytes the old `Text` column did.
+    #:
+    #: Assign a new list to change it. There is no `MutableList` wrapper, so an
+    #: in-place `append` would not be seen by the flush -- the same contract as
+    #: `Vehicle.standard_equipment` and every other JSON column here.
+    vehicle_types: Mapped[list[str]] = mapped_column(JSON, nullable=False, server_default="[]")
     created_by_user_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )

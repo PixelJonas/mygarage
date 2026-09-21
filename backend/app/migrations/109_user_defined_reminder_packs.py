@@ -15,6 +15,10 @@ That same ordering is why every statement here is `IF NOT EXISTS` and why the
 re-entrancy check tolerates one table existing without the other: `create_all`
 may have made both, this migration may have made both, or a half-finished run
 may have made one.
+
+It is also why the column TYPES here have to match the models and not merely be
+compatible with them: whichever of the two runs first is the one that decides
+what the table looks like, so `vehicle_types` is `JSON` in both places.
 """
 
 from __future__ import annotations
@@ -37,7 +41,7 @@ def _packs_ddl(serial: str, timestamp: str) -> str:
             pack_id VARCHAR(64) NOT NULL UNIQUE,
             name VARCHAR(100) NOT NULL,
             description TEXT NOT NULL DEFAULT '',
-            vehicle_types TEXT NOT NULL DEFAULT '[]',
+            vehicle_types JSON NOT NULL DEFAULT '[]',
             created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
             created_at {timestamp} DEFAULT CURRENT_TIMESTAMP,
             updated_at {timestamp}

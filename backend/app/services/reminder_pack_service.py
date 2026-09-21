@@ -17,6 +17,7 @@ import json
 import logging
 import re
 from pathlib import Path
+from typing import cast
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -256,17 +257,27 @@ async def preview_pack(
 def _vehicle_types(row: ReminderPack) -> list[str]:
     """The pack's vehicle types, tolerating a hand-edited column.
 
-    Stored as a JSON array in one column. A row edited by hand into something
-    that is not a list of strings means "every type" rather than a 500 on the
-    list endpoint, the same tolerance `_coverage_responses` gives a coverage key
-    outside its catalogue.
+    The column is JSON, so the list arrives as a list and this only has to
+    survive a row edited by hand into the wrong SHAPE: a JSON object or a bare
+    string deserializes fine and is not a list of types. Either means "every
+    type" rather than a 500 on the list endpoint, the same tolerance
+    `_coverage_responses` gives a coverage key outside its catalogue.
+
+    A value that is not valid JSON at all is no longer tolerated here, because a
+    JSON column raises while the row loads and never reaches this function. That
+    is a deliberate trade for the column type: the old `Text` column logged a
+    warning and carried on, and a JSON column that cannot be parsed is a corrupt
+    database rather than a pack with odd contents.
     """
-    try:
-        value = json.loads(row.vehicle_types or "[]")
-    except json.JSONDecodeError:
-        logger.warning("Pack %s has unreadable vehicle_types", sanitize_for_log(row.pack_id))
-        return []
+    # Cast to `object` deliberately, and it is not ceremony. The column is
+    # annotated `list[str]`, but that is a promise the model makes and the
+    # database does not keep: nothing stops a hand-edited row holding a JSON
+    # object. Without the cast pyright narrows to the declared type and calls
+    # both checks below statically redundant, which is how a real runtime guard
+    # gets deleted to satisfy a type checker.
+    value = cast(object, row.vehicle_types)
     if not isinstance(value, list):
+        logger.warning("Pack %s has unreadable vehicle_types", sanitize_for_log(row.pack_id))
         return []
     return [v for v in value if isinstance(v, str)]
 
@@ -516,7 +527,7 @@ async def save_pack_from_vehicle(
         pack_id=pack_id,
         name=data.name,
         description=data.description,
-        vehicle_types=json.dumps(list(data.vehicle_types)),
+        vehicle_types=list(data.vehicle_types),
         # From the authenticated context, never from the request body.
         created_by_user_id=current_user.id if current_user else None,
     )
@@ -556,7 +567,7 @@ async def overwrite_pack(
 
     row.name = data.name
     row.description = data.description
-    row.vehicle_types = json.dumps(list(data.vehicle_types))
+    row.vehicle_types = list(data.vehicle_types)
     # delete-orphan on the relationship turns this into the DELETEs.
     row.items = _items_from_rules(rules)
     await db.commit()
