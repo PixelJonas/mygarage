@@ -66,8 +66,8 @@ class LiveLinkDevice(Base):
     # a default — hardware varies, so an explicit value always wins.
     odometer_unit: Mapped[str | None] = mapped_column(String(4))  # 'km' | 'mi' | None
     kind: Mapped[str] = mapped_column(
-        String(10), nullable=False, server_default=text("'wican'")
-    )  # 'wican' | 'torque'
+        String(20), nullable=False, server_default=text("'wican'")
+    )  # Validated by app.services.livelink_sources.registry, not a DB CHECK
     torque_device_id: Mapped[str | None] = mapped_column(
         String(40)
     )  # Torque's raw 32-hex id (kind='torque' only)
