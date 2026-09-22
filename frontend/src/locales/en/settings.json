@@ -333,7 +333,11 @@
     "blankSourceDescription": "Create the device, then map its topics under MQTT sources.",
     "addSourceAction": "add the source",
     "deviceIdStart": "Must start with a letter or digit.",
-    "deviceIdBadChar": "“{{char}}” is not allowed."
+    "deviceIdBadChar": "“{{char}}” is not allowed.",
+    "livelinkGeneral": "LiveLink settings",
+    "numberOutOfRange": "Enter a whole number from {{min}} to {{max}}.",
+    "saveSettingsAction": "save the settings",
+    "settingsLoadError": "Could not load these settings."
   },
   "notifications": {
     "loading": "Loading notification settings...",

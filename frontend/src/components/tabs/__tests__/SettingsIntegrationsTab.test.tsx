@@ -78,6 +78,18 @@ vi.mock('../../livelink/LiveLinkIntegrationsCard', () => ({
     </div>
   ),
 }))
+// The settings drawers have their own suites. The stub exposes which target
+// is open and a way to close it, so this suite can test the wiring. Its
+// hasDedicatedDrawer mirrors the real one's current answer.
+vi.mock('../../livelink/settings/LiveLinkSettingsDrawers', () => ({
+  hasDedicatedDrawer: () => false,
+  default: ({ target, onClose }: { target: { type: string } | null; onClose: () => void }) =>
+    target ? (
+      <div data-testid="settings-drawer" data-target={target.type}>
+        <button onClick={onClose}>close-settings-drawer</button>
+      </div>
+    ) : null,
+}))
 // Fetches presets and vehicles on its own; has its own suite.
 vi.mock('../../livelink/AddSourceDrawer', () => ({
   default: ({ open, onCreated }: { open: boolean; onCreated: () => void }) =>
@@ -241,5 +253,28 @@ describe('SettingsIntegrationsTab', () => {
       expect(Number(screen.getByTestId('livelink-integrations').dataset.refresh)).toBe(before + 1),
     )
     await waitFor(() => expect(livelinkService.getDevices).toHaveBeenCalledTimes(2))
+  })
+
+  it('opens the global LiveLink settings from the gear', async () => {
+    // Retention, alerts and the master switch belong to no single source.
+    renderTab()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'integrations.livelinkGeneral' }))
+
+    expect(await screen.findByTestId('settings-drawer')).toHaveAttribute('data-target', 'general')
+  })
+
+  it('refetches the strip when a settings drawer closes', async () => {
+    renderTab()
+
+    const strip = await screen.findByTestId('livelink-integrations')
+    const before = Number(strip.dataset.refresh)
+    fireEvent.click(screen.getByRole('button', { name: 'integrations.livelinkGeneral' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'close-settings-drawer' }))
+
+    await waitFor(() =>
+      expect(Number(screen.getByTestId('livelink-integrations').dataset.refresh)).toBe(before + 1),
+    )
+    expect(screen.queryByTestId('settings-drawer')).not.toBeInTheDocument()
   })
 })

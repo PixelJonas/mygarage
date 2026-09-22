@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { CheckCircle, AlertCircle, Plug, Shield, Pencil, Trash2, Plus, Radio, HelpCircle, Webhook, Sparkles, AtSign } from 'lucide-react'
+import { CheckCircle, AlertCircle, Plug, Shield, Pencil, Trash2, Plus, Radio, HelpCircle, Webhook, Sparkles, AtSign, Settings } from 'lucide-react'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useAuth } from '@/contexts/AuthContext'
 import api from '@/services/api'
@@ -14,6 +14,10 @@ import { Card, Chip, IconButton, Select, Toggle, Drawer } from '../ui'
 import type { IconType } from '../ui/types'
 import AddSourceDrawer from '@/components/livelink/AddSourceDrawer'
 import LiveLinkIntegrationsCard from '@/components/livelink/LiveLinkIntegrationsCard'
+import LiveLinkSettingsDrawers, {
+  hasDedicatedDrawer,
+  type SettingsTarget,
+} from '@/components/livelink/settings/LiveLinkSettingsDrawers'
 import MqttSourcesCard from '@/components/livelink/MqttSourcesCard'
 import type { LiveLinkDevice } from '@/types/livelink'
 
@@ -120,6 +124,9 @@ export default function SettingsIntegrationsTab() {
   // so the card refetches instead of showing the state from before the edit.
   const [integrationsRefresh, setIntegrationsRefresh] = useState(0)
   const [addSourceOpen, setAddSourceOpen] = useState(false)
+  const bumpStrip = useCallback(() => setIntegrationsRefresh((n) => n + 1), [])
+  // Which LiveLink settings drawer is open: the gear's, or one tab's.
+  const [settingsTarget, setSettingsTarget] = useState<SettingsTarget | null>(null)
 
   const [formData, setFormData] = useState({
     nhtsa_enabled: 'true',
@@ -587,12 +594,22 @@ export default function SettingsIntegrationsTab() {
           title={t('integrations.livelink')}
           description={t('integrations.livelinkSourcesDesc')}
           actions={
-            <IconButton
-              icon={HelpCircle}
-              label={t('integrations.aboutLiveLink')}
-              variant="surface"
-              onClick={() => setHelpDrawer('livelink')}
-            />
+            <div className="flex items-center gap-2">
+              {/* LiveLink's global settings (master switch, retention,
+                  alerts), which belong to no single source's drawer. */}
+              <IconButton
+                icon={Settings}
+                label={t('integrations.livelinkGeneral')}
+                variant="surface"
+                onClick={() => setSettingsTarget({ type: 'general' })}
+              />
+              <IconButton
+                icon={HelpCircle}
+                label={t('integrations.aboutLiveLink')}
+                variant="surface"
+                onClick={() => setHelpDrawer('livelink')}
+              />
+            </div>
           }
         >
 
@@ -600,7 +617,13 @@ export default function SettingsIntegrationsTab() {
               endpoint, and this card only renders when canManageLiveLink. */}
           <LiveLinkIntegrationsCard
             refreshKey={integrationsRefresh}
-            onOpenSettings={() => setIsLiveLinkModalOpen(true)}
+            onOpenSettings={(tab) =>
+              // Until every source has its own drawer, one without still
+              // opens the old all-in-one modal.
+              hasDedicatedDrawer(tab)
+                ? setSettingsTarget({ type: 'tab', tab })
+                : setIsLiveLinkModalOpen(true)
+            }
             onAddSource={() => setAddSourceOpen(true)}
           />
         </IntegrationCard>
@@ -702,7 +725,19 @@ export default function SettingsIntegrationsTab() {
         <AddSourceDrawer
           open={addSourceOpen}
           onClose={() => setAddSourceOpen(false)}
-          onCreated={() => setIntegrationsRefresh((n) => n + 1)}
+          onCreated={bumpStrip}
+        />
+      )}
+
+      {canManageLiveLink && (
+        <LiveLinkSettingsDrawers
+          target={settingsTarget}
+          onClose={() => {
+            setSettingsTarget(null)
+            // Closing is also a refresh point, as closing the modal is.
+            bumpStrip()
+          }}
+          onChanged={bumpStrip}
         />
       )}
 
