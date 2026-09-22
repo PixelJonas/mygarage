@@ -2372,6 +2372,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/livelink/devices/{device_id}/readings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Device Readings
+         * @description Every parameter this device is mapped to, with its current value.
+         *
+         *     Which keys comes from `livelink_topic_maps`: those rows are what route a
+         *     topic to a parameter, so a device's mapped key set IS its parameter list.
+         *
+         *     Whose value cannot come from `vehicle_telemetry_latest`. That table is
+         *     UNIQUE(vin, param_key) with no device_id, so two devices on one vehicle
+         *     mapping the same key means the last writer owns the row and the other
+         *     device's sidecar would display a reading that is not its own. Values come
+         *     from `vehicle_telemetry`, which carries device_id.
+         *
+         *     The cost is recency: `vehicle_telemetry` is written subject to
+         *     `storage_interval_seconds`. The timestamp is returned so the UI can show
+         *     how old the value actually is rather than implying it is live.
+         *
+         *     **Security:**
+         *     - Requires admin
+         */
+        get: operations["get_device_readings_api_livelink_devices__device_id__readings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/livelink/devices/{device_id}/sd-config": {
         parameters: {
             query?: never;
@@ -9185,6 +9221,48 @@ export interface components {
              * @default false
              */
             update_available: boolean | null;
+        };
+        /**
+         * DeviceReading
+         * @description One mapped parameter and its most recent device-attributed value.
+         */
+        DeviceReading: {
+            /** Display Name */
+            display_name?: string | null;
+            /** Param Key */
+            param_key: string;
+            /**
+             * Show On Dashboard
+             * @default true
+             */
+            show_on_dashboard: boolean;
+            /**
+             * Timestamp
+             * @description When that value was stored. Subject to storage_interval_seconds, so it is not the wall-clock moment the sensor published.
+             */
+            timestamp?: string | null;
+            /** Unit */
+            unit?: string | null;
+            /**
+             * Value
+             * @description None when never reported
+             */
+            value?: number | null;
+        };
+        /**
+         * DeviceReadingsResponse
+         * @description Every parameter one device is mapped to, with current values.
+         */
+        DeviceReadingsResponse: {
+            /** Device Id */
+            device_id: string;
+            /** Readings */
+            readings: components["schemas"]["DeviceReading"][];
+            /**
+             * Vin
+             * @description None when the device is unlinked
+             */
+            vin?: string | null;
         };
         /**
          * DocumentListResponse
@@ -23097,6 +23175,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": string[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_device_readings_api_livelink_devices__device_id__readings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceReadingsResponse"];
                 };
             };
             /** @description Validation Error */

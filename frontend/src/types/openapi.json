@@ -3880,6 +3880,106 @@
         "title": "DeviceFirmwareStatus",
         "type": "object"
       },
+      "DeviceReading": {
+        "description": "One mapped parameter and its most recent device-attributed value.",
+        "properties": {
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "param_key": {
+            "title": "Param Key",
+            "type": "string"
+          },
+          "show_on_dashboard": {
+            "default": true,
+            "title": "Show On Dashboard",
+            "type": "boolean"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When that value was stored. Subject to storage_interval_seconds, so it is not the wall-clock moment the sensor published.",
+            "title": "Timestamp"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "None when never reported",
+            "title": "Value"
+          }
+        },
+        "required": [
+          "param_key"
+        ],
+        "title": "DeviceReading",
+        "type": "object"
+      },
+      "DeviceReadingsResponse": {
+        "description": "Every parameter one device is mapped to, with current values.",
+        "properties": {
+          "device_id": {
+            "title": "Device Id",
+            "type": "string"
+          },
+          "readings": {
+            "items": {
+              "$ref": "#/components/schemas/DeviceReading"
+            },
+            "title": "Readings",
+            "type": "array"
+          },
+          "vin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "None when the device is unlinked",
+            "title": "Vin"
+          }
+        },
+        "required": [
+          "device_id",
+          "readings"
+        ],
+        "title": "DeviceReadingsResponse",
+        "type": "object"
+      },
       "DocumentListResponse": {
         "description": "Schema for list of documents.",
         "properties": {
@@ -35905,6 +36005,54 @@
           }
         ],
         "summary": "List Device Param Keys",
+        "tags": [
+          "LiveLink Admin"
+        ]
+      }
+    },
+    "/api/livelink/devices/{device_id}/readings": {
+      "get": {
+        "description": "Every parameter this device is mapped to, with its current value.\n\nWhich keys comes from `livelink_topic_maps`: those rows are what route a\ntopic to a parameter, so a device's mapped key set IS its parameter list.\n\nWhose value cannot come from `vehicle_telemetry_latest`. That table is\nUNIQUE(vin, param_key) with no device_id, so two devices on one vehicle\nmapping the same key means the last writer owns the row and the other\ndevice's sidecar would display a reading that is not its own. Values come\nfrom `vehicle_telemetry`, which carries device_id.\n\nThe cost is recency: `vehicle_telemetry` is written subject to\n`storage_interval_seconds`. The timestamp is returned so the UI can show\nhow old the value actually is rather than implying it is live.\n\n**Security:**\n- Requires admin",
+        "operationId": "get_device_readings_api_livelink_devices__device_id__readings_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "title": "Device Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceReadingsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Device Readings",
         "tags": [
           "LiveLink Admin"
         ]

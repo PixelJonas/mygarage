@@ -345,6 +345,31 @@ class IntegrationListResponse(BaseModel):
     tabs: list[IntegrationTab]
 
 
+class DeviceReading(BaseModel):
+    """One mapped parameter and its most recent device-attributed value."""
+
+    param_key: str
+    display_name: str | None = None
+    unit: str | None = None
+    value: float | None = Field(None, description="None when never reported")
+    timestamp: datetime | None = Field(
+        None,
+        description=(
+            "When that value was stored. Subject to storage_interval_seconds, "
+            "so it is not the wall-clock moment the sensor published."
+        ),
+    )
+    show_on_dashboard: bool = True
+
+
+class DeviceReadingsResponse(BaseModel):
+    """Every parameter one device is mapped to, with current values."""
+
+    device_id: str
+    vin: str | None = Field(None, description="None when the device is unlinked")
+    readings: list[DeviceReading]
+
+
 class FirmwareSkipRequest(BaseModel):
     """Body of POST /devices/{device_id}/firmware/skip.
 

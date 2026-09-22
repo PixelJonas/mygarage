@@ -1,13 +1,14 @@
 """LiveLink admin endpoints for settings, devices, and parameters."""
 
 import logging
+from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,12 +16,15 @@ from app.database import get_db
 from app.models.livelink_device import LiveLinkDevice
 from app.models.livelink_topic_map import LiveLinkTopicMap
 from app.models.user import User
+from app.models.vehicle_telemetry import VehicleTelemetry
 from app.schemas.dtc import DTCDefinitionResponse, DTCSearchResponse
 from app.schemas.livelink import (
     BackfillResultResponse,
     DeviceCommandRequest,
     DeviceCommandResponse,
     DeviceFirmwareStatus,
+    DeviceReading,
+    DeviceReadingsResponse,
     FirmwareInfoResponse,
     FirmwareSkipRequest,
     IntegrationListResponse,
@@ -1198,6 +1202,95 @@ async def list_integrations(
         )
 
     return IntegrationListResponse(tabs=tabs)
+
+
+@router.get("/devices/{device_id}/readings", response_model=DeviceReadingsResponse)
+async def get_device_readings(
+    device_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_current_admin_user),
+) -> DeviceReadingsResponse:
+    """Every parameter this device is mapped to, with its current value.
+
+    Which keys comes from `livelink_topic_maps`: those rows are what route a
+    topic to a parameter, so a device's mapped key set IS its parameter list.
+
+    Whose value cannot come from `vehicle_telemetry_latest`. That table is
+    UNIQUE(vin, param_key) with no device_id, so two devices on one vehicle
+    mapping the same key means the last writer owns the row and the other
+    device's sidecar would display a reading that is not its own. Values come
+    from `vehicle_telemetry`, which carries device_id.
+
+    The cost is recency: `vehicle_telemetry` is written subject to
+    `storage_interval_seconds`. The timestamp is returned so the UI can show
+    how old the value actually is rather than implying it is live.
+
+    **Security:**
+    - Requires admin
+    """
+    device = await _get_device_or_404(db, device_id)
+
+    keys_result = await db.execute(
+        select(LiveLinkTopicMap.param_key)
+        .where(
+            LiveLinkTopicMap.device_id == device_id,
+            LiveLinkTopicMap.role == "telemetry",
+            LiveLinkTopicMap.param_key.is_not(None),
+        )
+        .distinct()
+    )
+    param_keys = sorted({key for (key,) in keys_result.all() if key})
+
+    if not param_keys:
+        return DeviceReadingsResponse(device_id=device_id, vin=device.vin, readings=[])
+
+    parameters = await TelemetryService(db).get_all_parameters()
+
+    values: dict[str, tuple[float, datetime]] = {}
+    if device.vin:
+        # Newest row per (device_id, param_key). Expressed as a grouped
+        # subquery rather than a window function so it runs unchanged on
+        # SQLite (production) and PostgreSQL (CI).
+        newest = (
+            select(
+                VehicleTelemetry.param_key.label("param_key"),
+                func.max(VehicleTelemetry.timestamp).label("ts"),
+            )
+            .where(
+                VehicleTelemetry.device_id == device_id,
+                VehicleTelemetry.param_key.in_(param_keys),
+            )
+            .group_by(VehicleTelemetry.param_key)
+            .subquery()
+        )
+        rows = await db.execute(
+            select(VehicleTelemetry.param_key, VehicleTelemetry.value, VehicleTelemetry.timestamp)
+            .join(
+                newest,
+                (VehicleTelemetry.param_key == newest.c.param_key)
+                & (VehicleTelemetry.timestamp == newest.c.ts),
+            )
+            .where(VehicleTelemetry.device_id == device_id)
+        )
+        for param_key, value, timestamp in rows.all():
+            values[param_key] = (value, timestamp)
+
+    readings: list[DeviceReading] = []
+    for key in param_keys:
+        parameter = parameters.get(key)
+        value, timestamp = values.get(key, (None, None))
+        readings.append(
+            DeviceReading(
+                param_key=key,
+                display_name=parameter.display_name if parameter else key,
+                unit=parameter.unit if parameter else None,
+                value=value,
+                timestamp=timestamp,
+                show_on_dashboard=bool(parameter.show_on_dashboard) if parameter else True,
+            )
+        )
+
+    return DeviceReadingsResponse(device_id=device_id, vin=device.vin, readings=readings)
 
 
 @router.post("/devices", response_model=LiveLinkDeviceResponse, status_code=201)
