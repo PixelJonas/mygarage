@@ -5,7 +5,6 @@ import { useSettings } from '@/contexts/SettingsContext'
 import { useAuth } from '@/contexts/AuthContext'
 import api from '@/services/api'
 import { getActionErrorMessage } from '@/utils/httpErrorHandler'
-import { livelinkService } from '@/services/livelinkService'
 import AddProviderModal from '../modals/AddProviderModal'
 import EditProviderModal from '../modals/EditProviderModal'
 import LiveLinkSettingsModal from '../modals/LiveLinkSettingsModal'
@@ -18,8 +17,6 @@ import LiveLinkSettingsDrawers, {
   hasDedicatedDrawer,
   type SettingsTarget,
 } from '@/components/livelink/settings/LiveLinkSettingsDrawers'
-import MqttSourcesCard from '@/components/livelink/MqttSourcesCard'
-import type { LiveLinkDevice } from '@/types/livelink'
 
 // Sample VIN for testing NHTSA API connection
 const TEST_VIN = '1HGCM82633A123456'
@@ -111,8 +108,6 @@ export default function SettingsIntegrationsTab() {
   const [testing, setTesting] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
   const [providers, setProviders] = useState<POIProvider[]>([])
-  const [mqttDevices, setMqttDevices] = useState<LiveLinkDevice[]>([])
-  const [mqttDeviceId, setMqttDeviceId] = useState<string | null>(null)
   const [isAddProviderModalOpen, setIsAddProviderModalOpen] = useState(false)
   const [selectedProvider, setSelectedProvider] = useState<POIProvider | null>(null)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
@@ -193,22 +188,6 @@ export default function SettingsIntegrationsTab() {
       setMessage({ type: 'error', text: t('integrations.loadProvidersError') })
     }
   }, [t])
-
-  // Config-driven MQTT sources. Only generic_mqtt devices have topic maps;
-  // WiCAN and Torque parse their own wire formats in code.
-  useEffect(() => {
-    void livelinkService
-      .getDevices()
-      .then((res) => {
-        const generic = res.devices.filter((d) => d.kind === 'generic_mqtt')
-        setMqttDevices(generic)
-        setMqttDeviceId((current) => current ?? generic[0]?.device_id ?? null)
-      })
-      .catch(() => setMqttDevices([]))
-    // Refetched with the strip: the drawer's blank-device path says "map its
-    // topics under MQTT sources", which is only true if the new device shows
-    // up there without a reload.
-  }, [integrationsRefresh])
 
   useEffect(() => {
     loadSettings()
@@ -752,26 +731,6 @@ export default function SettingsIntegrationsTab() {
       />
 
       {/* About / help sidecar — opened from each card's upper-right help button. */}
-      <div className="mt-6">
-        {mqttDevices.length > 1 && (
-          <label className="mb-2 block text-xs text-garage-text-muted">
-            {t('integrations.mqttDeviceId')}
-            <select
-              className="ml-2 rounded border border-border bg-surface-2 px-2 py-1 text-xs"
-              value={mqttDeviceId ?? ''}
-              onChange={(e) => setMqttDeviceId(e.target.value || null)}
-            >
-              {mqttDevices.map((d) => (
-                <option key={d.device_id} value={d.device_id}>
-                  {d.label ?? d.device_id}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        <MqttSourcesCard deviceId={mqttDeviceId} />
-      </div>
-
       <Drawer
         open={helpDrawer !== null}
         onClose={() => setHelpDrawer(null)}

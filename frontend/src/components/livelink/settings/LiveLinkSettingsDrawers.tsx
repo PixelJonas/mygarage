@@ -4,6 +4,7 @@ import type { ReactElement } from 'react'
 import type { IntegrationTab } from '@/types/livelink'
 import GeneralSettingsDrawer from './GeneralSettingsDrawer'
 import MosquittoSettingsDrawer from './MosquittoSettingsDrawer'
+import MqttDeviceDrawer from './MqttDeviceDrawer'
 import SourceDevicesDrawer from './SourceDevicesDrawer'
 import TorqueSettingsDrawer from './TorqueSettingsDrawer'
 import WicanSettingsDrawer from './WicanSettingsDrawer'
@@ -25,15 +26,15 @@ import WicanSettingsDrawer from './WicanSettingsDrawer'
 
 export type SettingsTarget = { type: 'general' } | { type: 'tab'; tab: IntegrationTab }
 
-type DrawerKind = 'broker' | 'wican' | 'torque' | 'devices'
+type DrawerKind = 'broker' | 'wican' | 'torque' | 'mqtt' | 'devices'
 
 /** Which dedicated drawer a tab opens, or null for the old modal. */
 function drawerFor(tab: IntegrationTab): DrawerKind | null {
   if (tab.id === 'broker') return 'broker'
   if (tab.id === 'wican') return 'wican'
   if (tab.id === 'torque') return 'torque'
-  // Per-device MQTT tabs have no drawer yet.
-  if (tab.kind === 'generic_mqtt') return null
+  // One tab per MQTT device, preset-made (Mopeka) or mapped by hand.
+  if (tab.kind === 'generic_mqtt') return 'mqtt'
   // Any other registered kind: its devices, and no bespoke settings (spec G2).
   return 'devices'
 }
@@ -67,6 +68,7 @@ export default function LiveLinkSettingsDrawers({ target, onClose, onChanged }: 
       />
       <WicanSettingsDrawer open={openKind === 'wican'} tab={lastTab} onClose={onClose} onChanged={onChanged} />
       <TorqueSettingsDrawer open={openKind === 'torque'} tab={lastTab} onClose={onClose} onChanged={onChanged} />
+      <MqttDeviceDrawer open={openKind === 'mqtt'} tab={lastTab} onClose={onClose} onChanged={onChanged} />
       <SourceDevicesDrawer open={openKind === 'devices'} tab={lastTab} onClose={onClose} onChanged={onChanged} />
     </>
   )

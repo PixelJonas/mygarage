@@ -232,3 +232,21 @@ async def test_applying_keeps_a_name_someone_chose(
         else:
             row.display_name = prior
         await db_session.commit()
+
+
+@pytest.mark.asyncio
+async def test_a_preset_device_says_which_preset_made_it(
+    client, auth_headers, test_vehicle, no_reload
+):
+    """The MQTT device drawer opens a handmade device's mappings and keeps a
+    preset device's tucked away, which it can only do if it is told."""
+    await client.post(
+        f"{BASE}/mopeka_two_tank/apply",
+        json={"vin": test_vehicle["vin"], "device_id": "rvgw"},
+        headers=auth_headers,
+    )
+
+    resp = await client.get("/api/livelink/devices/rvgw", headers=auth_headers)
+
+    assert resp.status_code == 200
+    assert resp.json()["preset_key"] == "mopeka_two_tank"

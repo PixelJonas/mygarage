@@ -141,6 +141,13 @@ class LiveLinkDeviceResponse(LiveLinkDeviceBase):
     odometer_param_key: str | None = Field(
         None, description="Which reported parameter carries this device's odometer"
     )
+    preset_key: str | None = Field(
+        None,
+        description=(
+            "The preset that created this device, if any. A preset device's tab "
+            "is named by its preset, and its mappings are the preset's, not hand-made."
+        ),
+    )
     enabled: bool
     last_seen: datetime | None
     #: When this device last proved the vehicle moved. NULL on a device whose

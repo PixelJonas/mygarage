@@ -9754,6 +9754,18 @@
             "description": "Declared odometer units ('km'/'mi'); None means inferred from the key",
             "title": "Odometer Unit"
           },
+          "preset_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The preset that created this device, if any. A preset device's tab is named by its preset, and its mappings are the preset's, not hand-made.",
+            "title": "Preset Key"
+          },
           "rssi": {
             "anyOf": [
               {

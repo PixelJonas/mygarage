@@ -11666,6 +11666,11 @@ export interface components {
              */
             odometer_unit?: string | null;
             /**
+             * Preset Key
+             * @description The preset that created this device, if any. A preset device's tab is named by its preset, and its mappings are the preset's, not hand-made.
+             */
+            preset_key?: string | null;
+            /**
              * Rssi
              * @description WiFi signal strength (dBm)
              */

@@ -59,7 +59,6 @@ vi.mock('../../modals/LiveLinkSettingsModal', () => ({
   default: ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) =>
     isOpen ? <button onClick={onClose}>close-livelink-modal</button> : null,
 }))
-vi.mock('../../livelink/MqttSourcesCard', () => ({ default: () => <div data-testid="mqtt-sources" /> }))
 // Fetches on its own and has its own suite. Exposes refreshKey and the
 // settings callback so this suite can test the wiring between the two.
 vi.mock('../../livelink/LiveLinkIntegrationsCard', () => ({
@@ -97,7 +96,6 @@ vi.mock('../../livelink/AddSourceDrawer', () => ({
 }))
 
 import api from '@/services/api'
-import { livelinkService } from '@/services/livelinkService'
 import SettingsIntegrationsTab from '../SettingsIntegrationsTab'
 
 const mockedApi = vi.mocked(api)
@@ -237,14 +235,12 @@ describe('SettingsIntegrationsTab', () => {
     expect(await screen.findByRole('button', { name: 'source-created' })).toBeInTheDocument()
   })
 
-  it('a created source refreshes the strip AND the MQTT device list', async () => {
-    // The strip, so the new tab appears without a reload. The device list, so
-    // the blank-device path's "map its topics under MQTT sources" is true.
+  it('a created source refreshes the strip', async () => {
+    // So the new tab appears without a reload.
     renderTab()
 
     const strip = await screen.findByTestId('livelink-integrations')
     const before = Number(strip.dataset.refresh)
-    await waitFor(() => expect(livelinkService.getDevices).toHaveBeenCalledTimes(1))
 
     fireEvent.click(screen.getByRole('button', { name: 'open-add-source' }))
     fireEvent.click(await screen.findByRole('button', { name: 'source-created' }))
@@ -252,7 +248,6 @@ describe('SettingsIntegrationsTab', () => {
     await waitFor(() =>
       expect(Number(screen.getByTestId('livelink-integrations').dataset.refresh)).toBe(before + 1),
     )
-    await waitFor(() => expect(livelinkService.getDevices).toHaveBeenCalledTimes(2))
   })
 
   it('opens the global LiveLink settings from the gear', async () => {
