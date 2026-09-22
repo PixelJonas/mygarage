@@ -9533,6 +9533,7 @@
         "properties": {
           "device_id": {
             "maxLength": 20,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$",
             "title": "Device Id",
             "type": "string"
           },
@@ -13849,6 +13850,7 @@
         "properties": {
           "device_id": {
             "maxLength": 20,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$",
             "title": "Device Id",
             "type": "string"
           },
@@ -21917,6 +21919,7 @@
         "properties": {
           "device_id": {
             "maxLength": 20,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$",
             "title": "Device Id",
             "type": "string"
           },

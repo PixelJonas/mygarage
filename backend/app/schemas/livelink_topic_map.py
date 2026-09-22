@@ -7,6 +7,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.schemas.livelink import DEVICE_ID_PATTERN
+
 
 class TopicMapBase(BaseModel):
     """Fields shared by create and update."""
@@ -47,6 +49,11 @@ class TopicMapBase(BaseModel):
 class TopicMapCreate(TopicMapBase):
     """Request body for POST."""
 
+    #: Here and not on the base: `TopicMapResponse` shares the base, and a
+    #: pattern there would run on every stored row during response validation,
+    #: so one row written before this rule existed would 500 the whole list.
+    device_id: str = Field(..., max_length=20, pattern=DEVICE_ID_PATTERN)
+
 
 class TopicMapUpdate(BaseModel):
     """Request body for PATCH. Every field optional."""
@@ -80,5 +87,5 @@ class TopicDiscoveryRequest(BaseModel):
 class PresetApplyRequest(BaseModel):
     """Body for applying a named device preset."""
 
-    device_id: str = Field(..., max_length=20)
+    device_id: str = Field(..., max_length=20, pattern=DEVICE_ID_PATTERN)
     vin: str | None = Field(None, min_length=17, max_length=17)

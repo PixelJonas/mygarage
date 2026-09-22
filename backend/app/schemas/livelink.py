@@ -29,6 +29,14 @@ class LiveLinkDeviceCreate(LiveLinkDeviceBase):
     git_version: str | None = Field(None, description="Git version tag (e.g., v4.45p)")
 
 
+#: A device id an operator types must be safe as a single URL path segment.
+#: Every per-device admin route embeds it (`/devices/{device_id}/readings`), so
+#: `rv/gw` routes elsewhere, `gw#1` is cut at the fragment and `""` produces
+#: `/devices//readings`. Leading letter or digit also rules out `.` and `..`.
+#: Auto-discovered WiCAN ids (hex) and generated Torque ids already fit.
+DEVICE_ID_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+
+
 class LiveLinkDeviceManualCreate(BaseModel):
     """Schema for creating a device by hand, rather than by auto-discovery.
 
@@ -43,7 +51,7 @@ class LiveLinkDeviceManualCreate(BaseModel):
     state rather than an error.
     """
 
-    device_id: str = Field(..., max_length=20)
+    device_id: str = Field(..., max_length=20, pattern=DEVICE_ID_PATTERN)
     kind: str = Field(..., max_length=20)
     label: str | None = Field(None, max_length=100)
     vin: str | None = Field(None, min_length=17, max_length=17)
