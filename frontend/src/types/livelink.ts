@@ -83,6 +83,12 @@ export type TorqueSourceCreateResponse = components['schemas']['TorqueSourceCrea
 export type TorqueSourceResponse = components['schemas']['TorqueSourceResponse']
 export type TorqueSourceListResponse = components['schemas']['TorqueSourceListResponse']
 
+// -- Integrations Card Types --
+export type IntegrationTab = components['schemas']['IntegrationTab']
+export type IntegrationListResponse = components['schemas']['IntegrationListResponse']
+export type DeviceReading = components['schemas']['DeviceReading']
+export type DeviceReadingsResponse = components['schemas']['DeviceReadingsResponse']
+
 // =============================================================================
 // Section B — Manual types (backend uses str, frontend-only, or no generated schema)
 // =============================================================================

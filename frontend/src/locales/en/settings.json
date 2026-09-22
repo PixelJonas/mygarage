@@ -310,7 +310,21 @@
     "mqttApplyPreset": "Apply",
     "mqttPresetRows": "{{count}} topics",
     "mqttErrorsTopicMustBeExact": "Topic must be exact (no + or #)",
-    "mqttErrorsSampleNotNumeric": "Sample is not numeric and cannot be mapped"
+    "mqttErrorsSampleNotNumeric": "Sample is not numeric and cannot be mapped",
+    "livelinkSourcesDesc": "Sensor and telemetry integrations.",
+    "sourceWicanDescription": "OBD2 dongles reading engine data over the vehicle's CAN bus.",
+    "sourceTorqueDescription": "Torque Pro on an Android phone, posting readings and GPS over HTTP.",
+    "sourceBrokerDescription": "The MQTT broker that carries WiCAN and sensor messages.",
+    "statusReceiving": "Receiving data",
+    "statusFirmwareUpdate": "Firmware update available",
+    "statusNotLinked": "Not linked to a vehicle",
+    "statusNoData": "No data, devices offline",
+    "statusBrokerDown": "Broker not connected",
+    "statusDisabled": "Disabled",
+    "statusNotConfigured": "Not set up",
+    "addSource": "Add source",
+    "sourceSettings": "{{source}} settings",
+    "integrationsLoadError": "Could not load integrations."
   },
   "notifications": {
     "loading": "Loading notification settings...",

@@ -37,6 +37,8 @@ import type {
   BackfillResultResponse,
   TorqueSourceCreateResponse,
   TorqueSourceListResponse,
+  IntegrationListResponse,
+  DeviceReadingsResponse,
 } from '../types/livelink'
 import type { TripList, LocationTrackingResponse, TripPointsResponse, LastLocation } from '../types/trips'
 import { withBase } from '../utils/basePath'
@@ -63,6 +65,34 @@ export const livelinkService = {
   /** Registered source kinds and what each produces. */
   async listSources(): Promise<SourceInfo[]> {
     const response = await api.get<SourceInfo[]>('/livelink/sources')
+    return response.data
+  },
+
+  /**
+   * The integrations card's tab strip, with each tab's derived status.
+   *
+   * One request replaces the four the card used to make. The status rules live
+   * in the backend so they are unit-tested rather than spread across JSX.
+   */
+  async getIntegrations(): Promise<IntegrationListResponse> {
+    const response = await api.get<IntegrationListResponse>('/livelink/integrations')
+    return response.data
+  },
+
+  /**
+   * One device's mapped parameters and their current values.
+   *
+   * Device-attributed: values come from `vehicle_telemetry`, not from the
+   * VIN-scoped latest cache, so a vehicle carrying two sources cannot show one
+   * device's reading under the other's name.
+   *
+   * Encoded because a hand-created device id is free text: `rv/gw` would
+   * otherwise route to a different path entirely.
+   */
+  async getDeviceReadings(deviceId: string): Promise<DeviceReadingsResponse> {
+    const response = await api.get<DeviceReadingsResponse>(
+      `/livelink/devices/${encodeURIComponent(deviceId)}/readings`,
+    )
     return response.data
   },
 
