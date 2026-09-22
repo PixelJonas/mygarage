@@ -341,7 +341,8 @@
     "brokerSaveFirst": "Save your changes first. Test and Restart use the saved settings.",
     "discoverFailed": "Could not reach the broker to listen.",
     "wicanTopicPrefix": "WiCAN MQTT topic prefix",
-    "wicanTopicPrefixHint": "The first part of every topic your WiCAN devices publish. Saving restarts the MQTT subscriber if it is running."
+    "wicanTopicPrefixHint": "The first part of every topic your WiCAN devices publish. Saving restarts the MQTT subscriber if it is running.",
+    "noSourceDevices": "No devices of this kind yet."
   },
   "notifications": {
     "loading": "Loading notification settings...",

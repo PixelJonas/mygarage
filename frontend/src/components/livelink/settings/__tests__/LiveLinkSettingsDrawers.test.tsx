@@ -18,8 +18,14 @@ vi.mock('../MosquittoSettingsDrawer', () => ({
 vi.mock('../WicanSettingsDrawer', () => ({
   default: ({ open }: { open: boolean }) => (open ? <p>wican-drawer</p> : null),
 }))
+vi.mock('../TorqueSettingsDrawer', () => ({
+  default: ({ open }: { open: boolean }) => (open ? <p>torque-drawer</p> : null),
+}))
+vi.mock('../SourceDevicesDrawer', () => ({
+  default: ({ open }: { open: boolean }) => (open ? <p>devices-drawer</p> : null),
+}))
 
-const DRAWERS = ['general-drawer', 'mosquitto-drawer', 'wican-drawer']
+const DRAWERS = ['general-drawer', 'mosquitto-drawer', 'wican-drawer', 'torque-drawer', 'devices-drawer']
 
 /** Exactly `expected` renders, and no other drawer. */
 const expectOnly = (expected: string | null): void => {
@@ -70,9 +76,18 @@ describe('LiveLinkSettingsDrawers', () => {
     expect(hasDedicatedDrawer(wican)).toBe(true)
   })
 
-  it('sends the other source tabs to the old modal until their drawers exist', () => {
-    for (const t of [tab('torque', 'torque'), tab('device:rvgw', 'generic_mqtt')]) {
-      expect(hasDedicatedDrawer(t), t.id).toBe(false)
-    }
+  it.each([
+    ['torque', 'torque', 'torque-drawer'],
+    // A kind nobody wrote a drawer for still gets its devices (spec G2).
+    ['obdlink', 'obdlink', 'devices-drawer'],
+  ])('opens the right drawer for the %s tab, and only it', (id, kind, drawer) => {
+    const t = tab(id, kind)
+    render(<LiveLinkSettingsDrawers target={{ type: 'tab', tab: t }} onClose={vi.fn()} onChanged={vi.fn()} />)
+    expectOnly(drawer)
+    expect(hasDedicatedDrawer(t)).toBe(true)
+  })
+
+  it('sends a per-device MQTT tab to the old modal until its drawer exists', () => {
+    expect(hasDedicatedDrawer(tab('device:rvgw', 'generic_mqtt'))).toBe(false)
   })
 })
