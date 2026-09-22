@@ -513,7 +513,8 @@ class LiveLinkService:
         if label is not None:
             device.label = label
         if vin is not None:
-            device.vin = vin if vin else None
+            # "" is the unlink sentinel (schemas.livelink.LiveLinkDeviceUpdate.vin).
+            device.vin = vin or None
         if enabled is not None:
             device.enabled = enabled
         if odometer_unit is not None:

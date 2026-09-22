@@ -333,10 +333,10 @@ async def update_device(
 
     # Relink: the target VIN must also be owned by the caller, else a user could
     # attach a device to a vehicle they don't own (cross-tenant telemetry).
-    if updates.vin:
-        target_vin = updates.vin.upper().strip()
-        if target_vin != (device.vin or "").upper():
-            await get_vehicle_for_owner_or_403(target_vin, current_user, db)
+    # The schema has already uppercased it. An empty VIN is an unlink, which
+    # the current-link check above already authorised.
+    if updates.vin and updates.vin != (device.vin or "").upper():
+        await get_vehicle_for_owner_or_403(updates.vin, current_user, db)
 
     service = LiveLinkService(db)
     try:

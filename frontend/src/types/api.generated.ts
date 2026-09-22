@@ -11716,7 +11716,7 @@ export interface components {
             odometer_unit?: ("km" | "mi" | "auto") | null;
             /**
              * Vin
-             * @description VIN to link device to
+             * @description VIN to link the device to, any case. An empty string UNLINKS it; omitted or null leaves the link unchanged. Same convention as odometer_param_key below.
              */
             vin?: string | null;
         };

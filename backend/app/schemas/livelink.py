@@ -72,7 +72,15 @@ class LiveLinkDeviceUpdate(BaseModel):
     """Schema for updating a device."""
 
     label: str | None = Field(None, description="User-friendly device name")
-    vin: str | None = Field(None, description="VIN to link device to", min_length=17, max_length=17)
+    vin: str | None = Field(
+        None,
+        max_length=17,
+        description=(
+            "VIN to link the device to, any case. An empty string UNLINKS it; "
+            "omitted or null leaves the link unchanged. Same convention as "
+            "odometer_param_key below."
+        ),
+    )
     enabled: bool | None = Field(None, description="Enable/disable device")
     odometer_unit: Literal["km", "mi", "auto"] | None = Field(
         None,
@@ -91,6 +99,21 @@ class LiveLinkDeviceUpdate(BaseModel):
             "or the service cannot tell 'clear it' from 'not supplied'."
         ),
     )
+
+    @field_validator("vin", mode="before")
+    @classmethod
+    def _vin_is_empty_or_whole(cls, value: object) -> object:
+        """Normalise before the length check, so the ownership check and the
+        store see one string. The route checked an uppercased VIN and then
+        stored the one it was sent, so a lowercase VIN failed the foreign key
+        to vehicles.vin at commit: a 500.
+        """
+        if not isinstance(value, str):
+            return value
+        normalised = value.strip().upper()
+        if normalised and len(normalised) != 17:
+            raise ValueError("vin must be 17 characters, or empty to unlink")
+        return normalised
 
 
 class LiveLinkDeviceResponse(LiveLinkDeviceBase):

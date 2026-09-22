@@ -9884,14 +9884,13 @@
             "anyOf": [
               {
                 "maxLength": 17,
-                "minLength": 17,
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "VIN to link device to",
+            "description": "VIN to link the device to, any case. An empty string UNLINKS it; omitted or null leaves the link unchanged. Same convention as odometer_param_key below.",
             "title": "Vin"
           }
         },
