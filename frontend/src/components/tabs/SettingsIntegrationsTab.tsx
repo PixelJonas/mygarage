@@ -12,6 +12,7 @@ import LiveLinkSettingsModal from '../modals/LiveLinkSettingsModal'
 import WidgetKeysPanel from '../settings/WidgetKeysPanel'
 import { Card, Chip, IconButton, Select, Toggle, Drawer } from '../ui'
 import type { IconType } from '../ui/types'
+import AddSourceDrawer from '@/components/livelink/AddSourceDrawer'
 import LiveLinkIntegrationsCard from '@/components/livelink/LiveLinkIntegrationsCard'
 import MqttSourcesCard from '@/components/livelink/MqttSourcesCard'
 import type { LiveLinkDevice } from '@/types/livelink'
@@ -118,6 +119,7 @@ export default function SettingsIntegrationsTab() {
   // Bumped whenever something that can change the integrations strip closes,
   // so the card refetches instead of showing the state from before the edit.
   const [integrationsRefresh, setIntegrationsRefresh] = useState(0)
+  const [addSourceOpen, setAddSourceOpen] = useState(false)
 
   const [formData, setFormData] = useState({
     nhtsa_enabled: 'true',
@@ -196,7 +198,10 @@ export default function SettingsIntegrationsTab() {
         setMqttDeviceId((current) => current ?? generic[0]?.device_id ?? null)
       })
       .catch(() => setMqttDevices([]))
-  }, [])
+    // Refetched with the strip: the drawer's blank-device path says "map its
+    // topics under MQTT sources", which is only true if the new device shows
+    // up there without a reload.
+  }, [integrationsRefresh])
 
   useEffect(() => {
     loadSettings()
@@ -596,6 +601,7 @@ export default function SettingsIntegrationsTab() {
           <LiveLinkIntegrationsCard
             refreshKey={integrationsRefresh}
             onOpenSettings={() => setIsLiveLinkModalOpen(true)}
+            onAddSource={() => setAddSourceOpen(true)}
           />
         </IntegrationCard>
         )}
@@ -691,6 +697,14 @@ export default function SettingsIntegrationsTab() {
         onClose={() => setIsEditModalOpen(false)}
         onSave={loadProviders}
       />
+
+      {canManageLiveLink && (
+        <AddSourceDrawer
+          open={addSourceOpen}
+          onClose={() => setAddSourceOpen(false)}
+          onCreated={() => setIntegrationsRefresh((n) => n + 1)}
+        />
+      )}
 
       <LiveLinkSettingsModal
         isOpen={isLiveLinkModalOpen}

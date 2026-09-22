@@ -66,17 +66,26 @@ vi.mock('../../livelink/LiveLinkIntegrationsCard', () => ({
   default: ({
     refreshKey,
     onOpenSettings,
+    onAddSource,
   }: {
     refreshKey?: number
     onOpenSettings: (tab: { id: string }) => void
+    onAddSource?: () => void
   }) => (
     <div data-testid="livelink-integrations" data-refresh={refreshKey}>
       <button onClick={() => onOpenSettings({ id: 'wican' })}>open-source-settings</button>
+      {onAddSource ? <button onClick={onAddSource}>open-add-source</button> : null}
     </div>
   ),
 }))
+// Fetches presets and vehicles on its own; has its own suite.
+vi.mock('../../livelink/AddSourceDrawer', () => ({
+  default: ({ open, onCreated }: { open: boolean; onCreated: () => void }) =>
+    open ? <button onClick={onCreated}>source-created</button> : null,
+}))
 
 import api from '@/services/api'
+import { livelinkService } from '@/services/livelinkService'
 import SettingsIntegrationsTab from '../SettingsIntegrationsTab'
 
 const mockedApi = vi.mocked(api)
@@ -206,5 +215,31 @@ describe('SettingsIntegrationsTab', () => {
     await waitFor(() =>
       expect(Number(screen.getByTestId('livelink-integrations').dataset.refresh)).toBe(before + 1),
     )
+  })
+
+  it('opens the Add-source drawer from the strip', async () => {
+    renderTab()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'open-add-source' }))
+
+    expect(await screen.findByRole('button', { name: 'source-created' })).toBeInTheDocument()
+  })
+
+  it('a created source refreshes the strip AND the MQTT device list', async () => {
+    // The strip, so the new tab appears without a reload. The device list, so
+    // the blank-device path's "map its topics under MQTT sources" is true.
+    renderTab()
+
+    const strip = await screen.findByTestId('livelink-integrations')
+    const before = Number(strip.dataset.refresh)
+    await waitFor(() => expect(livelinkService.getDevices).toHaveBeenCalledTimes(1))
+
+    fireEvent.click(screen.getByRole('button', { name: 'open-add-source' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'source-created' }))
+
+    await waitFor(() =>
+      expect(Number(screen.getByTestId('livelink-integrations').dataset.refresh)).toBe(before + 1),
+    )
+    await waitFor(() => expect(livelinkService.getDevices).toHaveBeenCalledTimes(2))
   })
 })
