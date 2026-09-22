@@ -337,7 +337,9 @@
     "livelinkGeneral": "LiveLink settings",
     "numberOutOfRange": "Enter a whole number from {{min}} to {{max}}.",
     "saveSettingsAction": "save the settings",
-    "settingsLoadError": "Could not load these settings."
+    "settingsLoadError": "Could not load these settings.",
+    "brokerSaveFirst": "Save your changes first. Test and Restart use the saved settings.",
+    "discoverFailed": "Could not reach the broker to listen."
   },
   "notifications": {
     "loading": "Loading notification settings...",
