@@ -200,7 +200,6 @@
     "moveFieldDown": "Move field down"
   },
   "modal": {
-    "acceptTelemetry": "Accept telemetry data from WiCAN devices",
     "activeUser": "Active User",
     "addProvider": "Add {{name}}",
     "addShare": "Add Share",
@@ -317,7 +316,6 @@
     "managedByOidc": "Managed by OIDC provider",
     "memberDataUnavailable": "Member data unavailable — some actions disabled.",
     "members": "Members",
-    "mqttDescription": "Subscribe to WiCAN MQTT topics on a local broker",
     "mqttRestarted": "MQTT subscriber restarted",
     "mqttSettingsSaved": "MQTT settings saved",
     "multiUserMode": "Multi-user mode",

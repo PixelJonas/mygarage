@@ -112,7 +112,6 @@
     "selectFrequency": "Selecione a frequência"
   },
   "modal": {
-    "acceptTelemetry": "Aceitar telemetria",
     "activeUser": "Usuário ativo",
     "addProvider": "Adicionar {{name}}",
     "addShare": "Compartilhar",
@@ -217,7 +216,6 @@
     "managedByOidc": "Gerenciado via OIDC",
     "memberDataUnavailable": "Dados do membro indisponíveis",
     "members": "Membros",
-    "mqttDescription": "Assine os tópicos MQTT do WiCAN em um broker local",
     "mqttRestarted": "MQTT reiniciado",
     "mqttSettingsSaved": "Configurações do MQTT salvas",
     "multiUserMode": "Modo multiusuário",

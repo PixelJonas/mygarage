@@ -112,7 +112,6 @@
     "selectFrequency": "Выберите частоту"
   },
   "modal": {
-    "acceptTelemetry": "Принять телеметрию",
     "activeUser": "Активный пользователь",
     "addProvider": "Добавить {{name}}",
     "addShare": "Предоставить доступ",
@@ -217,7 +216,6 @@
     "managedByOidc": "Управляется через OIDC",
     "memberDataUnavailable": "Данные участника недоступны",
     "members": "Участники",
-    "mqttDescription": "Описание MQTT",
     "mqttRestarted": "MQTT перезапущен",
     "mqttSettingsSaved": "Настройки MQTT сохранены",
     "multiUserMode": "Многопользовательский режим",

@@ -290,3 +290,24 @@ async def test_show_on_dashboard_is_reported(client, auth_headers, db_session, t
     body = (await client.get(_url(device.device_id), headers=auth_headers)).json()
 
     assert body["readings"][0]["show_on_dashboard"] is True
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_readings_come_in_the_order_they_were_mapped(
+    client, auth_headers, db_session, test_vehicle
+):
+    """A preset maps a tank's level first; the drawer should list it first.
+
+    Alphabetical put "Tank 1 sensor heard" (AVAILABLE) ahead of the level,
+    the one reading the integration exists to show.
+    """
+    device = await _device(db_session, vin=test_vehicle["vin"])
+    n = next(_SEQ)
+    mapped = [f"ZZ_LEVEL_{n}", f"AA_AVAILABLE_{n}", f"MM_DEPTH_{n}"]
+    for key in mapped:
+        await _map(db_session, device.device_id, key)
+
+    body = (await client.get(_url(device.device_id), headers=auth_headers)).json()
+
+    assert [r["param_key"] for r in body["readings"]] == mapped

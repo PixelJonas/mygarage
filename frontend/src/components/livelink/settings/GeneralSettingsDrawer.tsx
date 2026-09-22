@@ -159,7 +159,7 @@ export default function GeneralSettingsDrawer({ open, onClose, onChanged }: Prop
               onChange={(next) => void save({ enabled: next })}
               disabled={saving}
             />
-            <p className="text-xs text-garage-text-muted mt-1">{t('modal.acceptTelemetry')}</p>
+            <p className="text-xs text-garage-text-muted mt-1">{t('settings:integrations.livelinkEnableHint')}</p>
           </section>
 
           <section className="bg-garage-bg rounded-lg border border-garage-border p-4">

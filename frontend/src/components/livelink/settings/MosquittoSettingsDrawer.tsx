@@ -219,7 +219,7 @@ export default function MosquittoSettingsDrawer({ open, tab, onClose, onChanged 
               onChange={(next) => void toggleEnabled(next)}
               disabled={saving}
             />
-            <p className="text-xs text-text-mute mt-1">{t('modal.mqttDescription')}</p>
+            <p className="text-xs text-text-mute mt-1">{t('settings:integrations.brokerSubscriptionHint')}</p>
           </div>
 
           <section>

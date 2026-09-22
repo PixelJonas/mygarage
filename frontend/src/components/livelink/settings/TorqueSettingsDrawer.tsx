@@ -115,7 +115,7 @@ export default function TorqueSettingsDrawer({ open, tab, onClose, onChanged }: 
       width="xl"
       closeLabel={t('common:close')}
     >
-      <p className="text-sm text-garage-text-muted -mt-1 mb-4">{t('modal.torque.description')}</p>
+      <p className="text-sm text-garage-text-muted -mt-1 mb-4">{t('settings:integrations.torqueDrawerDescription')}</p>
       {loadFailed ? (
         <div className="space-y-2">
           <p className="text-sm text-text-mute">{t('settings:integrations.settingsLoadError')}</p>
@@ -209,7 +209,7 @@ export default function TorqueSettingsDrawer({ open, tab, onClose, onChanged }: 
                   id={vehicleId}
                   value={vin}
                   onChange={(e) => setVin(e.target.value)}
-                  placeholder={t('settings:integrations.sourceVehicleUnset')}
+                  placeholder={t('settings:integrations.chooseVehicle')}
                   placeholderDisabled
                   options={vehicles.map((v) => ({
                     value: v.vin,

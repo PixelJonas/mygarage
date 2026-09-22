@@ -352,7 +352,11 @@
     "deleteSourceAction": "delete the source",
     "mappingAction": "change the mapping",
     "deviceLabel": "Label",
-    "labelPresetHint": "The tab keeps the preset's name; this label is for your own reference."
+    "labelPresetHint": "The tab keeps the preset's name; this label is for your own reference.",
+    "torqueDrawerDescription": "Torque Pro upload sources, one per phone and vehicle. Each gets its own upload URL and token, pasted into the Torque app.",
+    "chooseVehicle": "Choose a vehicle",
+    "brokerSubscriptionHint": "Listen on this broker for everything your devices and sensors publish.",
+    "livelinkEnableHint": "Controls the HTTPS ingestion URL and LiveLink's scheduled checks. MQTT and Torque data still arrive while it is off."
   },
   "notifications": {
     "loading": "Loading notification settings...",

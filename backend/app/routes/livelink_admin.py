@@ -1230,6 +1230,9 @@ async def get_device_readings(
     """
     device = await _get_device_or_404(db, device_id)
 
+    # In the order they were first mapped, which for a preset is the preset's
+    # own order (a tank's level first). GROUP BY rather than DISTINCT: one key
+    # may be mapped from two topics, and it is listed once, at its first row.
     keys_result = await db.execute(
         select(LiveLinkTopicMap.param_key)
         .where(
@@ -1237,9 +1240,10 @@ async def get_device_readings(
             LiveLinkTopicMap.role == "telemetry",
             LiveLinkTopicMap.param_key.is_not(None),
         )
-        .distinct()
+        .group_by(LiveLinkTopicMap.param_key)
+        .order_by(func.min(LiveLinkTopicMap.id))
     )
-    param_keys = sorted({key for (key,) in keys_result.all() if key})
+    param_keys = [key for (key,) in keys_result.all() if key]
 
     if not param_keys:
         return DeviceReadingsResponse(device_id=device_id, vin=device.vin, readings=[])

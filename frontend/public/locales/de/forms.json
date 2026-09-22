@@ -142,7 +142,6 @@
     "saveAction": "Versicherungspolice speichern"
   },
   "modal": {
-    "acceptTelemetry": "Telemetriedaten von WiCAN-Geräten akzeptieren",
     "activeUser": "Aktiver Benutzer",
     "addProvider": "{{name}} hinzufügen",
     "addShare": "Freigabe hinzufügen",
@@ -244,7 +243,6 @@
     "managedByOidc": "Vom OIDC-Anbieter verwaltet",
     "memberDataUnavailable": "Mitgliederdaten nicht verfügbar — einige Aktionen sind deaktiviert.",
     "members": "Mitglieder",
-    "mqttDescription": "Abonniere WiCAN MQTT-Themen auf einem lokalen Broker",
     "mqttRestarted": "MQTT-Abonnent neu gestartet",
     "mqttSettingsSaved": "MQTT-Einstellungen gespeichert",
     "multiUserMode": "Multi-User-Modus",

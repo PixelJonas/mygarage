@@ -112,7 +112,6 @@
     "selectFrequency": "Wybierz częstotliwość"
   },
   "modal": {
-    "acceptTelemetry": "Akceptuj telemetrię",
     "activeUser": "Aktywny użytkownik",
     "addProvider": "Dodaj {{name}}",
     "addShare": "Udostępnij",
@@ -217,7 +216,6 @@
     "managedByOidc": "Zarządzane przez OIDC",
     "memberDataUnavailable": "Dane członka niedostępne",
     "members": "Członkowie",
-    "mqttDescription": "Opis MQTT",
     "mqttRestarted": "MQTT zrestartowane",
     "mqttSettingsSaved": "Ustawienia MQTT zapisane",
     "multiUserMode": "Tryb dla wielu użytkowników",

@@ -12,6 +12,7 @@ import {
   Link2,
   Link2Off,
   RefreshCw,
+  SlidersHorizontal,
   Trash2,
   Wifi,
   WifiOff,
@@ -291,7 +292,7 @@ export default function DeviceRow({
               aria-label={t('modal.livelink.deviceSettings')}
               aria-expanded={showSdConfig}
             >
-              <Download className="w-4 h-4" />
+              <SlidersHorizontal className="w-4 h-4" />
             </button>
           )}
           <button
