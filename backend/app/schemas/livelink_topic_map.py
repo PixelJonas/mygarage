@@ -75,3 +75,10 @@ class TopicDiscoveryRequest(BaseModel):
 
     prefix: str = Field(..., max_length=255)
     seconds: int = Field(15, ge=1, le=60)
+
+
+class PresetApplyRequest(BaseModel):
+    """Body for applying a named device preset."""
+
+    device_id: str = Field(..., max_length=20)
+    vin: str | None = Field(None, min_length=17, max_length=17)

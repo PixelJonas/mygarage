@@ -13625,6 +13625,34 @@
         "title": "PolicyVehicleUpsert",
         "type": "object"
       },
+      "PresetApplyRequest": {
+        "description": "Body for applying a named device preset.",
+        "properties": {
+          "device_id": {
+            "maxLength": 20,
+            "title": "Device Id",
+            "type": "string"
+          },
+          "vin": {
+            "anyOf": [
+              {
+                "maxLength": 17,
+                "minLength": 17,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vin"
+          }
+        },
+        "required": [
+          "device_id"
+        ],
+        "title": "PresetApplyRequest",
+        "type": "object"
+      },
       "QuickEntryVehicle": {
         "description": "Lightweight vehicle summary for the Quick Entry selector.",
         "properties": {
@@ -36400,6 +36428,96 @@
           }
         ],
         "summary": "Update Parameter",
+        "tags": [
+          "LiveLink Admin"
+        ]
+      }
+    },
+    "/api/livelink/presets": {
+      "get": {
+        "description": "Named device templates that can be applied in one action.",
+        "operationId": "list_presets_api_livelink_presets_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response List Presets Api Livelink Presets Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Presets",
+        "tags": [
+          "LiveLink Admin"
+        ]
+      }
+    },
+    "/api/livelink/presets/{name}/apply": {
+      "post": {
+        "description": "Create a device plus all of its topic maps in one action.\n\nSets `storage_interval_seconds` on every telemetry parameter. That is\nREQUIRED, not tuning: retained messages replay on every resubscribe and the\nstorage path stamps server time, so without an interval each reconnect\nwrites a fresh row. It is also what turns ~79,000 messages/day into ~4,600\nstored rows/day.",
+        "operationId": "apply_preset_api_livelink_presets__name__apply_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PresetApplyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveLinkDeviceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Apply Preset",
         "tags": [
           "LiveLink Admin"
         ]

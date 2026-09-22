@@ -2689,6 +2689,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/livelink/presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Presets
+         * @description Named device templates that can be applied in one action.
+         */
+        get: operations["list_presets_api_livelink_presets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/livelink/presets/{name}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Preset
+         * @description Create a device plus all of its topic maps in one action.
+         *
+         *     Sets `storage_interval_seconds` on every telemetry parameter. That is
+         *     REQUIRED, not tuning: retained messages replay on every resubscribe and the
+         *     storage path stamps server time, so without an interval each reconnect
+         *     writes a fresh row. It is also what turns ~79,000 messages/day into ~4,600
+         *     stored rows/day.
+         */
+        post: operations["apply_preset_api_livelink_presets__name__apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/livelink/settings": {
         parameters: {
             query?: never;
@@ -13046,6 +13092,16 @@ export interface components {
             vin: string;
         };
         /**
+         * PresetApplyRequest
+         * @description Body for applying a named device preset.
+         */
+        PresetApplyRequest: {
+            /** Device Id */
+            device_id: string;
+            /** Vin */
+            vin?: string | null;
+        };
+        /**
          * QuickEntryVehicle
          * @description Lightweight vehicle summary for the Quick Entry selector.
          */
@@ -23317,6 +23373,63 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LiveLinkParameterResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_presets_api_livelink_presets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
+    apply_preset_api_livelink_presets__name__apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PresetApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveLinkDeviceResponse"];
                 };
             };
             /** @description Validation Error */

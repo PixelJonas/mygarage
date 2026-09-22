@@ -42,6 +42,7 @@ from app.schemas.livelink import (
     TokenInfoResponse,
 )
 from app.schemas.livelink_topic_map import (
+    PresetApplyRequest,
     TopicDiscoveryRequest,
     TopicMapCreate,
     TopicMapResponse,
@@ -55,6 +56,7 @@ from app.services.auth import (
 from app.services.dtc_service import DTCService
 from app.services.firmware_service import FirmwareService
 from app.services.livelink_service import LiveLinkService
+from app.services.livelink_sources.presets import PRESETS
 from app.services.livelink_sources.registry import default_registry
 from app.services.mqtt_subscriber import mqtt_subscriber
 from app.services.sd_backfill_service import SdBackfillService
@@ -1231,3 +1233,69 @@ async def discover_topics(
         )
     except RuntimeError as exc:
         raise HTTPException(409, str(exc)) from exc
+
+
+@router.get("/presets")
+async def list_presets(
+    current_user: User | None = Depends(get_current_admin_user),
+) -> list[dict[str, Any]]:
+    """Named device templates that can be applied in one action."""
+    return [
+        {
+            "name": p.name,
+            "title": p.title,
+            "description": p.description,
+            "kind": p.kind,
+            "row_count": len(p.rows),
+        }
+        for p in PRESETS.values()
+    ]
+
+
+@router.post("/presets/{name}/apply", response_model=LiveLinkDeviceResponse, status_code=201)
+async def apply_preset(
+    name: str,
+    body: PresetApplyRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_current_admin_user),
+) -> LiveLinkDevice:
+    """Create a device plus all of its topic maps in one action.
+
+    Sets `storage_interval_seconds` on every telemetry parameter. That is
+    REQUIRED, not tuning: retained messages replay on every resubscribe and the
+    storage path stamps server time, so without an interval each reconnect
+    writes a fresh row. It is also what turns ~79,000 messages/day into ~4,600
+    stored rows/day.
+    """
+    preset = PRESETS.get(name)
+    if preset is None:
+        raise HTTPException(status_code=404, detail=f"Unknown preset {name!r}")
+
+    service = LiveLinkService(db)
+    if await service.get_device_by_id(body.device_id) is not None:
+        raise HTTPException(status_code=409, detail=f"Device {body.device_id} already exists")
+
+    device = LiveLinkDevice(
+        device_id=body.device_id,
+        kind=preset.kind,
+        label=preset.title,
+        vin=body.vin,
+        enabled=True,
+    )
+    db.add(device)
+
+    telemetry = TelemetryService(db)
+    for row in preset.rows:
+        db.add(LiveLinkTopicMap(device_id=body.device_id, **row))
+        if row["role"] != "telemetry" or not row["param_key"]:
+            continue
+        param = await telemetry.get_or_create_parameter(
+            row["param_key"], unit=row["unit"], param_class=row["param_class"]
+        )
+        if param is not None:
+            param.storage_interval_seconds = preset.storage_interval_seconds
+
+    await db.commit()
+    await db.refresh(device)
+    await mqtt_subscriber.reload()
+    return device
