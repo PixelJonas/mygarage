@@ -34,6 +34,10 @@ TELEMETRY_WRITERS = frozenset(
         "bulk_backfill",
         "backfill_device",
         "store_readings",
+        # The source pipeline. Torque's route calls only `ingest(...)` since it
+        # was ported, so without this name the route scan below would silently
+        # stop covering /api/v1/torque/{token}/upload.
+        "ingest",
     }
 )
 

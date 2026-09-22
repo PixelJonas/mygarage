@@ -120,7 +120,14 @@ class TorqueModule(BaseSourceModule):
             # have just ended a stale prior trip and set ecu_status offline, so
             # re-assert it whenever real data arrives.
             ecu_status="online" if (reading.obd or reading.gps) else None,
-            device_status="online",
+            # None: LEAVE device_status as it is (the route never wrote it, so a
+            # Torque source stays 'unknown'). "online" here would enrol every
+            # phone in check_device_offline_status, which sweeps only devices
+            # whose device_status is 'online' and notifies for each one it
+            # marks offline: a "device offline" alert after every drive. The
+            # integrations card still sees a recent upload as online, via
+            # last_seen (livelink_integrations.device_is_online).
+            device_status=None,
             session=ExplicitSession(external_id=reading.session),
             location=location,
             timestamp=ts,
