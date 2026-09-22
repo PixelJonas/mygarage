@@ -23,7 +23,7 @@ import AddSourceDrawer from '../AddSourceDrawer'
 const VEHICLE = { vin: '1HGBH41JXMN109186', nickname: 'Durango', year: 2023, make: 'KZ', model: 'RV' }
 const PRESET = {
   name: 'mopeka_two_tank',
-  title: 'Mopeka propane (2 tanks)',
+  title: 'Mopeka',
   description: 'Two sensors.',
   kind: 'generic_mqtt',
   row_count: 17,
@@ -59,7 +59,7 @@ describe('AddSourceDrawer', () => {
   it('lists the preset catalog', async () => {
     renderDrawer()
 
-    expect(await screen.findByText('Mopeka propane (2 tanks)')).toBeInTheDocument()
+    expect(await screen.findByText('Mopeka')).toBeInTheDocument()
     expect(screen.getByText('Two sensors.')).toBeInTheDocument()
   })
 
@@ -68,7 +68,7 @@ describe('AddSourceDrawer', () => {
     // requires_link=True and ingest returns before storage. So the vehicle has
     // to be selectable at creation.
     const { onCreated, onClose } = renderDrawer()
-    await screen.findByText('Mopeka propane (2 tanks)')
+    await screen.findByText('Mopeka')
     await screen.findByRole('option', { name: 'Durango' })
 
     typeDeviceId('rvgw')
@@ -88,7 +88,7 @@ describe('AddSourceDrawer', () => {
 
   it('sends no vehicle, not an empty string, when left unlinked', async () => {
     renderDrawer()
-    await screen.findByText('Mopeka propane (2 tanks)')
+    await screen.findByText('Mopeka')
 
     typeDeviceId('rvgw')
     fireEvent.click(screen.getByRole('button', { name: 'integrations.mqttApplyPreset' }))
@@ -98,7 +98,7 @@ describe('AddSourceDrawer', () => {
 
   it('creates a blank device with its label and vehicle, then notifies', async () => {
     const { onCreated } = renderDrawer()
-    await screen.findByText('Mopeka propane (2 tanks)')
+    await screen.findByText('Mopeka')
     await screen.findByRole('option', { name: 'Durango' })
 
     typeDeviceId('hand1')
@@ -123,7 +123,7 @@ describe('AddSourceDrawer', () => {
 
   it('holds both actions until a device id is entered', async () => {
     renderDrawer()
-    await screen.findByText('Mopeka propane (2 tanks)')
+    await screen.findByText('Mopeka')
 
     expect(screen.getByRole('button', { name: 'integrations.mqttApplyPreset' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'integrations.mqttCreateDevice' })).toBeDisabled()
@@ -133,7 +133,7 @@ describe('AddSourceDrawer', () => {
     // The backend enforces the same pattern. Catching it here names the rule
     // at the field instead of after a round trip.
     renderDrawer()
-    await screen.findByText('Mopeka propane (2 tanks)')
+    await screen.findByText('Mopeka')
 
     typeDeviceId('rv/gw')
 
@@ -148,7 +148,7 @@ describe('AddSourceDrawer', () => {
     // actual problem: a bad first character, or the first character that
     // is not allowed.
     renderDrawer()
-    await screen.findByText('Mopeka propane (2 tanks)')
+    await screen.findByText('Mopeka')
 
     typeDeviceId('-gw')
     expect(await screen.findByRole('alert')).toHaveTextContent('integrations.deviceIdStart')
@@ -159,7 +159,7 @@ describe('AddSourceDrawer', () => {
 
   it('accepts the id shapes the backend accepts', async () => {
     renderDrawer()
-    await screen.findByText('Mopeka propane (2 tanks)')
+    await screen.findByText('Mopeka')
 
     typeDeviceId('rv-gateway.2_b')
 
@@ -170,7 +170,7 @@ describe('AddSourceDrawer', () => {
   it("shows the server's reason and stays open when creation fails", async () => {
     applyPreset.mockRejectedValue(httpError(409, 'Device rvgw already exists'))
     const { onCreated, onClose } = renderDrawer()
-    await screen.findByText('Mopeka propane (2 tanks)')
+    await screen.findByText('Mopeka')
 
     typeDeviceId('rvgw')
     fireEvent.click(screen.getByRole('button', { name: 'integrations.mqttApplyPreset' }))
@@ -182,7 +182,7 @@ describe('AddSourceDrawer', () => {
 
   it('starts empty when reopened after a success', async () => {
     const { rerender } = renderDrawer()
-    await screen.findByText('Mopeka propane (2 tanks)')
+    await screen.findByText('Mopeka')
     typeDeviceId('rvgw')
     fireEvent.click(screen.getByRole('button', { name: 'integrations.mqttApplyPreset' }))
     await waitFor(() => expect(applyPreset).toHaveBeenCalled())

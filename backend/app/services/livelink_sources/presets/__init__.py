@@ -27,7 +27,7 @@ class Preset:
 PRESETS: dict[str, Preset] = {
     "mopeka_two_tank": Preset(
         name="mopeka_two_tank",
-        title="Mopeka propane (2 tanks)",
+        title="Mopeka",
         # Shown to the operator as the tab's description and in the Add-source
         # catalogue, which prints the topic count on its own line.
         description=(

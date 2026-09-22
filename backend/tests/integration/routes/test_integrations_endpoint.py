@@ -138,6 +138,12 @@ async def test_generic_mqtt_has_no_tab_of_its_own(client, auth_headers, broker_c
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_a_preset_device_gets_its_own_tab(client, auth_headers, db_session, broker_connected):
+    """Named by its PRESET, not its stored label.
+
+    The stored label is the preset title at the moment the device was created,
+    here the preset's former title. Renaming a preset must rename the tab of
+    every device already made from it, so the label must not win.
+    """
     device = await _add_device(
         db_session,
         kind="generic_mqtt",
@@ -149,6 +155,7 @@ async def test_a_preset_device_gets_its_own_tab(client, auth_headers, db_session
 
     tab = tabs[f"device:{device.device_id}"]
     assert tab["kind"] == "generic_mqtt"
+    assert tab["label"] == "Mopeka"
     assert "Mopeka" in tab["description"]
 
 
