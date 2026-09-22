@@ -9,10 +9,10 @@ from typing import Any, cast
 
 from sqlalchemy import and_, delete, func, not_, or_, select, text
 from sqlalchemy.engine import CursorResult
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import is_sqlite
+from app.services.livelink_sources.base import Reading, StoragePolicy
 from app.utils.datetime_utils import utc_now
 
 if is_sqlite:
@@ -1384,49 +1384,90 @@ class TelemetryService:
     # Simple Value Storage (for route compatibility)
     # =========================================================================
 
-    async def store_value(
+    async def store_readings(
         self,
+        *,
         vin: str,
         device_id: str,
-        param_key: str,
-        value: float,
-    ) -> bool:
-        """Store a single telemetry value.
+        readings: list[Reading],
+        timestamp: datetime,
+        policy: StoragePolicy,
+        device: LiveLinkDevice | None = None,
+    ) -> StoreResult:
+        """Store normalized readings under a source's storage policy.
 
-        Returns True if stored to historical table, False if skipped due to interval.
-        Always updates the latest value cache.
+        The single storage entry point for `app.services.livelink_ingest`.
+        Does NOT commit; the caller owns the transaction.
+
+        When the policy asks for odometer sync or movement observation this
+        delegates to `store_telemetry` UNCHANGED. That path also runs
+        validation, odometer unit normalization and sanitization, movement
+        observation and closed-session refresh. Reimplementing it here is how
+        the port would silently lose behavior, so it does not.
         """
-        timestamp = utc_now()
-        received_at = timestamp
+        _refuse_if_in_maintenance("store_readings")
+        if not readings:
+            return StoreResult()
 
-        # Get parameter for storage interval check
-        param = await self.get_parameter(param_key)
+        # `device` is optional here and REQUIRED by Task 17: it carries
+        # `odometer_param_key`, which decides whether an odometer normalisation
+        # step runs before any row is written. Task 17 adds that step; leave the
+        # parameter unused for now rather than changing the signature twice.
 
-        # Always update latest value
-        await self._upsert_latest_value(vin, param_key, value, timestamp, received_at)
+        if policy.sync_odometer or policy.observe_movement:
+            autopid: dict[str, float | int | str | None] = {r.param_key: r.value for r in readings}
+            config: dict[str, dict[str, str | None]] = {
+                r.param_key: {"unit": r.unit, "class": r.param_class}
+                for r in readings
+                if r.unit is not None or r.param_class is not None
+            }
+            return await self.store_telemetry(vin, device_id, autopid, config, timestamp)
 
-        # Check storage interval
-        if param and param.storage_interval_seconds > 0:
-            should_store = await self._should_store_historical(
-                vin, param_key, param.storage_interval_seconds
+        ts = timestamp.replace(tzinfo=None) if timestamp.tzinfo else timestamp
+        stored = 0
+        validated: dict[str, float | int | str | None] = {}
+
+        for reading in readings:
+            await self.auto_register_parameter(
+                reading.param_key, unit=reading.unit, param_class=reading.param_class
             )
-            if not should_store:
-                return False
+            validated[reading.param_key] = reading.value
 
-        # Store to historical table
-        try:
-            telemetry = VehicleTelemetry(
-                vin=vin,
-                device_id=device_id,
-                param_key=param_key,
-                value=value,
-                timestamp=timestamp,
-                received_at=received_at,
+            if policy.latest == "if_newer":
+                await self._update_latest_if_newer(vin, reading.param_key, reading.value, ts)
+            else:
+                await self._upsert_latest_value(
+                    vin, reading.param_key, reading.value, ts, utc_now()
+                )
+
+            if policy.apply_storage_interval:
+                param = await self.get_parameter(reading.param_key)
+                if param is not None and param.storage_interval_seconds > 0:
+                    keep = await self._should_store_historical(
+                        vin,
+                        device_id,
+                        reading.param_key,
+                        param.storage_interval_seconds,
+                        ts,
+                    )
+                    if not keep:
+                        continue
+
+            stmt = (
+                dialect_insert(VehicleTelemetry)
+                .values(
+                    vin=vin,
+                    device_id=device_id,
+                    param_key=reading.param_key,
+                    value=float(reading.value),
+                    timestamp=ts,
+                )
+                .on_conflict_do_nothing(index_elements=["device_id", "param_key", "timestamp"])
             )
-            self.db.add(telemetry)
-            return True
-        except IntegrityError:
-            return False
+            result = await self.db.execute(stmt)
+            stored += cast(CursorResult[Any], result).rowcount or 0
+
+        return StoreResult(stored_count=stored, validated_data=validated)
 
     async def check_thresholds(
         self,

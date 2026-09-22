@@ -28,16 +28,24 @@ from app.middleware import is_maintenance_closed
 #: Hand-written, and therefore a floor unless something checks it -- which is
 #: what `TestTelemetryWriterSet` below does.
 TELEMETRY_WRITERS = frozenset(
-    {"store_telemetry", "store_torque_telemetry", "bulk_backfill", "backfill_device"}
+    {
+        "store_telemetry",
+        "store_torque_telemetry",
+        "bulk_backfill",
+        "backfill_device",
+        "store_readings",
+    }
 )
 
 #: Models whose construction means a telemetry row is being written.
 TELEMETRY_MODELS = frozenset({"VehicleTelemetry"})
 
 #: Functions that build a telemetry model but are unreachable from any route.
-#: `store_value` currently has zero callers anywhere in `app/`. Listed rather
-#: than silently excluded, so that giving it a caller fails this test.
-KNOWN_UNREACHABLE = frozenset({"store_value"})
+#: Empty since `store_value` was deleted: it had zero callers AND was broken
+#: (it called `_should_store_historical` with three of its five arguments, so
+#: any call with a non-zero storage interval raised TypeError). `store_readings`
+#: replaced it and is reachable, so it belongs in TELEMETRY_WRITERS above.
+KNOWN_UNREACHABLE: frozenset[str] = frozenset()
 
 APP_DIR = Path(__file__).resolve().parents[2] / "app"
 ROUTES_DIR = APP_DIR / "routes"
