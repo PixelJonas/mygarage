@@ -2555,6 +2555,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/livelink/integrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Integrations
+         * @description The integrations card's tab strip, with each tab's status.
+         *
+         *     One request replaces the card's previous four. The status rules live in
+         *     `app.services.livelink_integrations` so they can be unit-tested without a
+         *     database, a broker or an HTTP client.
+         *
+         *     **Security:**
+         *     - Requires admin
+         */
+        get: operations["list_integrations_api_livelink_integrations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/livelink/mqtt/restart": {
         parameters: {
             query?: never;
@@ -11291,6 +11318,70 @@ export interface components {
              * @description The policy's COMPLETE vehicle list. Omit to leave the vehicles alone; when present, vehicles not listed are removed. Sending the premium and every share together is how a vehicle is added and the premium raised in one valid step
              */
             vehicles?: components["schemas"]["PolicyVehicleUpsert"][] | null;
+        };
+        /**
+         * IntegrationListResponse
+         * @description The whole tab strip, in display order.
+         */
+        IntegrationListResponse: {
+            /** Tabs */
+            tabs: components["schemas"]["IntegrationTab"][];
+        };
+        /**
+         * IntegrationTab
+         * @description One entry in the integrations card's tab strip.
+         */
+        IntegrationTab: {
+            /**
+             * Description
+             * @description Literal text, sent only for preset-backed devices
+             */
+            description?: string | null;
+            /**
+             * Device Count
+             * @default 0
+             */
+            device_count: number;
+            /**
+             * Firmware Updates
+             * @default 0
+             */
+            firmware_updates: number;
+            /**
+             * Id
+             * @description 'wican' | 'torque' | 'broker' | 'device:<device_id>'
+             */
+            id: string;
+            /**
+             * Kind
+             * @description Source-module kind; None for the broker
+             */
+            kind?: string | null;
+            /**
+             * Label
+             * @description Proper noun. Never translated.
+             */
+            label: string;
+            /**
+             * Linked Count
+             * @default 0
+             */
+            linked_count: number;
+            /**
+             * Online Count
+             * @default 0
+             */
+            online_count: number;
+            /**
+             * Reason
+             * @description Why it has that status. Status and counts alone cannot tell an unlinked device from one that has never reported: both are 'attention' with zero online.
+             */
+            reason: string;
+            /**
+             * Status
+             * @description 'ok' | 'attention' | 'off'
+             */
+            status: string;
         };
         /**
          * IntervalOverride
@@ -23288,6 +23379,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_integrations_api_livelink_integrations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationListResponse"];
                 };
             };
         };

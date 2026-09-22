@@ -23,6 +23,8 @@ from app.schemas.livelink import (
     DeviceFirmwareStatus,
     FirmwareInfoResponse,
     FirmwareSkipRequest,
+    IntegrationListResponse,
+    IntegrationTab,
     LiveLinkDeviceListResponse,
     LiveLinkDeviceManualCreate,
     LiveLinkDeviceResponse,
@@ -55,6 +57,13 @@ from app.services.auth import (
 )
 from app.services.dtc_service import DTCService
 from app.services.firmware_service import FirmwareService
+from app.services.livelink_integrations import (
+    derive_broker_status,
+    derive_group_status,
+    device_is_linked,
+    device_is_online,
+    firmware_is_pending,
+)
 from app.services.livelink_service import LiveLinkService
 from app.services.livelink_sources.presets import PRESETS
 from app.services.livelink_sources.registry import default_registry
@@ -62,6 +71,8 @@ from app.services.mqtt_subscriber import mqtt_subscriber
 from app.services.sd_backfill_service import SdBackfillService
 from app.services.settings_service import SettingsService
 from app.services.telemetry_service import TelemetryService
+from app.tasks.livelink_tasks import get_mqtt_status as get_subscriber_status
+from app.utils.datetime_utils import utc_now
 from app.utils.request_scheme import get_external_base_url
 
 logger = logging.getLogger(__name__)
@@ -1075,6 +1086,118 @@ async def list_sources(
         }
         for m in default_registry().all_modules()
     ]
+
+
+#: Display names for the built-in source modules. A kind that is not here gets
+#: its bare `kind` as a label rather than raising: a missing entry that 500s
+#: would take the whole strip down, and the strip is one of six cards.
+_SOURCE_LABELS = {"wican": "WiCAN", "torque": "Torque"}
+
+#: generic_mqtt expands to one tab per device instead of appearing as a single
+#: tab. Nothing on the module says which behaviour it wants, so this is a rule
+#: of the endpoint rather than a property of the registry.
+_PER_DEVICE_KINDS = frozenset({"generic_mqtt"})
+
+
+@router.get("/integrations", response_model=IntegrationListResponse)
+async def list_integrations(
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_current_admin_user),
+) -> IntegrationListResponse:
+    """The integrations card's tab strip, with each tab's status.
+
+    One request replaces the card's previous four. The status rules live in
+    `app.services.livelink_integrations` so they can be unit-tested without a
+    database, a broker or an HTTP client.
+
+    **Security:**
+    - Requires admin
+    """
+    livelink = LiveLinkService(db)
+    enabled = await livelink.is_enabled()
+    timeout = await livelink.get_device_offline_timeout_minutes()
+    now = utc_now()
+
+    devices = await livelink.list_devices()
+    firmware_by_id: dict[str, DeviceFirmwareStatus] = {}
+    if enabled:
+        firmware_service = FirmwareService(db)
+        for device in devices:
+            status = await firmware_service.check_device_firmware(device.device_id)
+            firmware_by_id[device.device_id] = DeviceFirmwareStatus(
+                device_id=device.device_id,
+                current_version=status.get("current_version"),
+                latest_version=status.get("latest_version"),
+                update_available=status.get("update_available") or False,
+                skipped_version=status.get("skipped_version"),
+            )
+
+    def _tab(
+        tab_id: str,
+        label: str,
+        kind: str | None,
+        group: list[LiveLinkDevice],
+        description: str | None = None,
+    ) -> IntegrationTab:
+        state = derive_group_status(group, firmware_by_id, timeout, now, livelink_enabled=enabled)
+        return IntegrationTab(
+            id=tab_id,
+            label=label,
+            kind=kind,
+            status=state.status,
+            reason=state.reason,
+            description=description,
+            device_count=len(group),
+            online_count=sum(1 for d in group if device_is_online(d, timeout, now)),
+            linked_count=sum(1 for d in group if device_is_linked(d)),
+            firmware_updates=sum(
+                1 for d in group if firmware_is_pending(firmware_by_id.get(d.device_id))
+            ),
+        )
+
+    tabs: list[IntegrationTab] = []
+    for module in default_registry().all_modules():
+        if module.kind in _PER_DEVICE_KINDS:
+            continue
+        group = [d for d in devices if d.kind == module.kind]
+        tabs.append(
+            _tab(module.kind, _SOURCE_LABELS.get(module.kind, module.kind), module.kind, group)
+        )
+
+    # The broker is not a source module. It is the transport the MQTT sources
+    # share, and "is my broker up" is exactly the kind of thing a status dot
+    # is for.
+    try:
+        connection_status = get_subscriber_status().get("connection_status", "disconnected")
+    except Exception:  # noqa: BLE001 - a broker we cannot read is not healthy
+        logger.warning("Could not read MQTT subscriber status", exc_info=True)
+        connection_status = "error"
+    broker = derive_broker_status(connection_status, livelink_enabled=enabled)
+    tabs.append(
+        IntegrationTab(
+            id="broker",
+            label="Mosquitto",
+            kind=None,
+            status=broker.status,
+            reason=broker.reason,
+        )
+    )
+
+    for device in devices:
+        if device.kind not in _PER_DEVICE_KINDS:
+            continue
+        preset = PRESETS.get(device.preset_key or "")
+        tabs.append(
+            _tab(
+                f"device:{device.device_id}",
+                (preset.title if preset else device.label) or device.device_id,
+                device.kind,
+                [device],
+                description=preset.description if preset else None,
+            )
+        )
+
+    return IntegrationListResponse(tabs=tabs)
 
 
 @router.post("/devices", response_model=LiveLinkDeviceResponse, status_code=201)

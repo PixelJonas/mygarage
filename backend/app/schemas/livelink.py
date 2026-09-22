@@ -316,6 +316,35 @@ class DeviceFirmwareStatus(BaseModel):
     skipped_version: str | None = None
 
 
+class IntegrationTab(BaseModel):
+    """One entry in the integrations card's tab strip."""
+
+    id: str = Field(description="'wican' | 'torque' | 'broker' | 'device:<device_id>'")
+    label: str = Field(description="Proper noun. Never translated.")
+    kind: str | None = Field(None, description="Source-module kind; None for the broker")
+    status: str = Field(description="'ok' | 'attention' | 'off'")
+    reason: str = Field(
+        description=(
+            "Why it has that status. Status and counts alone cannot tell an "
+            "unlinked device from one that has never reported: both are "
+            "'attention' with zero online."
+        )
+    )
+    description: str | None = Field(
+        None, description="Literal text, sent only for preset-backed devices"
+    )
+    device_count: int = 0
+    online_count: int = 0
+    linked_count: int = 0
+    firmware_updates: int = 0
+
+
+class IntegrationListResponse(BaseModel):
+    """The whole tab strip, in display order."""
+
+    tabs: list[IntegrationTab]
+
+
 class FirmwareSkipRequest(BaseModel):
     """Body of POST /devices/{device_id}/firmware/skip.
 

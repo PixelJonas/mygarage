@@ -9144,6 +9144,100 @@
         "title": "InsurancePolicyUpdate",
         "type": "object"
       },
+      "IntegrationListResponse": {
+        "description": "The whole tab strip, in display order.",
+        "properties": {
+          "tabs": {
+            "items": {
+              "$ref": "#/components/schemas/IntegrationTab"
+            },
+            "title": "Tabs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "tabs"
+        ],
+        "title": "IntegrationListResponse",
+        "type": "object"
+      },
+      "IntegrationTab": {
+        "description": "One entry in the integrations card's tab strip.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Literal text, sent only for preset-backed devices",
+            "title": "Description"
+          },
+          "device_count": {
+            "default": 0,
+            "title": "Device Count",
+            "type": "integer"
+          },
+          "firmware_updates": {
+            "default": 0,
+            "title": "Firmware Updates",
+            "type": "integer"
+          },
+          "id": {
+            "description": "'wican' | 'torque' | 'broker' | 'device:<device_id>'",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Source-module kind; None for the broker",
+            "title": "Kind"
+          },
+          "label": {
+            "description": "Proper noun. Never translated.",
+            "title": "Label",
+            "type": "string"
+          },
+          "linked_count": {
+            "default": 0,
+            "title": "Linked Count",
+            "type": "integer"
+          },
+          "online_count": {
+            "default": 0,
+            "title": "Online Count",
+            "type": "integer"
+          },
+          "reason": {
+            "description": "Why it has that status. Status and counts alone cannot tell an unlinked device from one that has never reported: both are 'attention' with zero online.",
+            "title": "Reason",
+            "type": "string"
+          },
+          "status": {
+            "description": "'ok' | 'attention' | 'off'",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "status",
+          "reason"
+        ],
+        "title": "IntegrationTab",
+        "type": "object"
+      },
       "IntervalOverride": {
         "description": "Intervals the caller typed while applying a pack, for one item.\n\nSubclasses `RecurrenceSpec` so the rules a rule obeys (at least one\ninterval, never distance and hours together) are enforced from one place\nrather than restated here.\n\nAn override is not the pack's value, it is a number the caller typed just\nnow, so it wins over BOTH the pack's own interval and the destination\nvehicle's existing rule. See `maintenance_service._plan_item`: without that\nsecond part the override is planned, previewed, and then dropped on a reuse.",
         "properties": {
@@ -36241,6 +36335,33 @@
           }
         ],
         "summary": "Get Latest Firmware",
+        "tags": [
+          "LiveLink Admin"
+        ]
+      }
+    },
+    "/api/livelink/integrations": {
+      "get": {
+        "description": "The integrations card's tab strip, with each tab's status.\n\nOne request replaces the card's previous four. The status rules live in\n`app.services.livelink_integrations` so they can be unit-tested without a\ndatabase, a broker or an HTTP client.\n\n**Security:**\n- Requires admin",
+        "operationId": "list_integrations_api_livelink_integrations_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Integrations",
         "tags": [
           "LiveLink Admin"
         ]
