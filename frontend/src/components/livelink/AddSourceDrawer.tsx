@@ -71,6 +71,12 @@ export default function AddSourceDrawer({ open, onClose, onCreated }: Props): Re
   }, [open])
 
   const idInvalid = deviceId !== '' && !DEVICE_ID_PATTERN.test(deviceId)
+  // The hint already states the rule, so the error names the actual problem.
+  const idError = !idInvalid
+    ? undefined
+    : !/^[A-Za-z0-9]/.test(deviceId)
+      ? t('integrations.deviceIdStart')
+      : t('integrations.deviceIdBadChar', { char: deviceId.match(/[^A-Za-z0-9_.-]/)?.[0] ?? '' })
   const ready = deviceId !== '' && !idInvalid && !busy
 
   const vehicleOptions = vehicles.map((vehicle) => ({
@@ -118,7 +124,7 @@ export default function AddSourceDrawer({ open, onClose, onCreated }: Props): Re
             id={deviceIdField}
             label={t('integrations.mqttDeviceId')}
             hint={t('integrations.deviceIdHint')}
-            error={idInvalid ? t('integrations.deviceIdInvalid') : undefined}
+            error={idError}
           >
             <Input
               id={deviceIdField}

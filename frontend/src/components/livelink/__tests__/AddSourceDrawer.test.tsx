@@ -137,10 +137,24 @@ describe('AddSourceDrawer', () => {
 
     typeDeviceId('rv/gw')
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('integrations.deviceIdInvalid')
+    expect(await screen.findByRole('alert')).toHaveTextContent('integrations.deviceIdBadChar')
     expect(screen.getByRole('button', { name: 'integrations.mqttApplyPreset' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'integrations.mqttCreateDevice' })).toBeDisabled()
     expect(applyPreset).not.toHaveBeenCalled()
+  })
+
+  it('says what is wrong rather than repeating the rule', async () => {
+    // The hint above the field already states the rule. The error names the
+    // actual problem: a bad first character, or the first character that
+    // is not allowed.
+    renderDrawer()
+    await screen.findByText('Mopeka propane (2 tanks)')
+
+    typeDeviceId('-gw')
+    expect(await screen.findByRole('alert')).toHaveTextContent('integrations.deviceIdStart')
+
+    typeDeviceId('gw#1')
+    expect(await screen.findByRole('alert')).toHaveTextContent('integrations.deviceIdBadChar')
   })
 
   it('accepts the id shapes the backend accepts', async () => {

@@ -329,10 +329,11 @@
     "sourceVehicleUnset": "Not linked",
     "sourceVehicleHint": "Readings are stored only once the source is linked to a vehicle.",
     "deviceIdHint": "Letters, digits, underscore, dot and hyphen, starting with a letter or digit.",
-    "deviceIdInvalid": "Use only letters, digits, underscore, dot and hyphen, starting with a letter or digit.",
     "blankSourceHeading": "Blank device",
     "blankSourceDescription": "Create the device, then map its topics under MQTT sources.",
-    "addSourceAction": "add the source"
+    "addSourceAction": "add the source",
+    "deviceIdStart": "Must start with a letter or digit.",
+    "deviceIdBadChar": "“{{char}}” is not allowed."
   },
   "notifications": {
     "loading": "Loading notification settings...",
