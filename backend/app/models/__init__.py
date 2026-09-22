@@ -20,6 +20,7 @@ from app.models.insurance import (
 from app.models.livelink_device import LiveLinkDevice
 from app.models.livelink_firmware_cache import LiveLinkFirmwareCache
 from app.models.livelink_parameter import LiveLinkParameter
+from app.models.livelink_topic_map import LiveLinkTopicMap
 from app.models.location_point import LocationPoint
 from app.models.maintenance_rule import MaintenanceRule
 from app.models.note import Note
@@ -84,6 +85,7 @@ __all__ = [
     # LiveLink (Telemetry)
     "LiveLinkDevice",
     "LiveLinkParameter",
+    "LiveLinkTopicMap",
     "LiveLinkFirmwareCache",
     "VehicleTelemetry",
     "VehicleTelemetryLatest",

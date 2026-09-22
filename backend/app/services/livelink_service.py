@@ -9,10 +9,11 @@ from collections.abc import Sequence
 from datetime import timedelta
 from urllib.parse import urlsplit
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.livelink_device import LiveLinkDevice
+from app.models.livelink_topic_map import LiveLinkTopicMap
 from app.models.vehicle_telemetry import VehicleTelemetry
 from app.services.settings_service import SettingsService
 from app.utils.datetime_utils import utc_now
@@ -530,6 +531,16 @@ class LiveLinkService:
         device = await self.get_device_by_id(device_id)
         if not device:
             return False
+
+        # Topic maps are CONFIGURATION, not history. Telemetry, sessions and
+        # DTCs are deliberately retained above; a mapping row for a deleted
+        # device is dead weight that would keep a broker subscription alive
+        # forever. The caller must also await mqtt_subscriber.reload() after
+        # this commit, or the broker keeps sending topics that resolve to no
+        # module.
+        await self.db.execute(
+            delete(LiveLinkTopicMap).where(LiveLinkTopicMap.device_id == device_id)
+        )
 
         await self.db.delete(device)
         await self.db.commit()
