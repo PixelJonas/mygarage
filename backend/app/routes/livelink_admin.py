@@ -1280,6 +1280,26 @@ async def _reject_foreign_topic_claim(
         )
 
 
+async def _register_mapped_parameter(db: AsyncSession, row: LiveLinkTopicMap) -> None:
+    """Give a mapped telemetry key a `livelink_parameters` row.
+
+    `apply_preset` registers a parameter per row; these two write paths must
+    too, or the integrations sidecar renders a show-on-dashboard switch whose
+    `PUT /parameters/{key}` returns 404. Parameters are otherwise registered
+    only at first ingest, and a freshly mapped topic has not ingested yet.
+
+    Called before the caller's commit, so the parameter and the mapping land
+    in one transaction: `get_or_create_parameter` only flushes.
+
+    `get_or_create`, never create-or-clobber. A repointed mapping must not
+    reset an operator's display name or dashboard choice.
+    """
+    if row.role == "telemetry" and row.param_key:
+        await TelemetryService(db).get_or_create_parameter(
+            row.param_key, unit=row.unit, param_class=row.param_class
+        )
+
+
 @router.post("/topic-maps", response_model=TopicMapResponse, status_code=201)
 async def create_topic_map(
     body: TopicMapCreate,
@@ -1290,6 +1310,7 @@ async def create_topic_map(
     await _reject_foreign_topic_claim(db, body.topic, body.device_id)
     row = LiveLinkTopicMap(**body.model_dump())
     db.add(row)
+    await _register_mapped_parameter(db, row)
     try:
         await db.commit()
     except IntegrityError:
@@ -1339,6 +1360,7 @@ async def update_topic_map(
     await _reject_foreign_topic_claim(db, validated.topic, validated.device_id, exclude_id=map_id)
     for field, value in validated.model_dump().items():
         setattr(row, field, value)
+    await _register_mapped_parameter(db, row)
     await db.commit()
     await db.refresh(row)
     await mqtt_subscriber.reload()
