@@ -69,7 +69,6 @@ vi.mock('@/services/vehicleService', () => ({
 vi.mock('../../settings/WidgetKeysPanel', () => ({ default: () => null }))
 vi.mock('../../modals/AddProviderModal', () => ({ default: () => null }))
 vi.mock('../../modals/EditProviderModal', () => ({ default: () => null }))
-vi.mock('../../modals/LiveLinkSettingsModal', () => ({ default: () => null }))
 
 import api from '@/services/api'
 import SettingsIntegrationsTab from '../SettingsIntegrationsTab'

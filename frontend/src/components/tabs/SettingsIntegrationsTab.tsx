@@ -7,16 +7,12 @@ import api from '@/services/api'
 import { getActionErrorMessage } from '@/utils/httpErrorHandler'
 import AddProviderModal from '../modals/AddProviderModal'
 import EditProviderModal from '../modals/EditProviderModal'
-import LiveLinkSettingsModal from '../modals/LiveLinkSettingsModal'
 import WidgetKeysPanel from '../settings/WidgetKeysPanel'
 import { Card, Chip, IconButton, Select, Toggle, Drawer } from '../ui'
 import type { IconType } from '../ui/types'
 import AddSourceDrawer from '@/components/livelink/AddSourceDrawer'
 import LiveLinkIntegrationsCard from '@/components/livelink/LiveLinkIntegrationsCard'
-import LiveLinkSettingsDrawers, {
-  hasDedicatedDrawer,
-  type SettingsTarget,
-} from '@/components/livelink/settings/LiveLinkSettingsDrawers'
+import LiveLinkSettingsDrawers, { type SettingsTarget } from '@/components/livelink/settings/LiveLinkSettingsDrawers'
 
 // Sample VIN for testing NHTSA API connection
 const TEST_VIN = '1HGCM82633A123456'
@@ -111,7 +107,6 @@ export default function SettingsIntegrationsTab() {
   const [isAddProviderModalOpen, setIsAddProviderModalOpen] = useState(false)
   const [selectedProvider, setSelectedProvider] = useState<POIProvider | null>(null)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
-  const [isLiveLinkModalOpen, setIsLiveLinkModalOpen] = useState(false)
   // Which card's "About" help sidecar is open (null = closed).
   const [helpDrawer, setHelpDrawer] = useState<'carcomplaints' | 'livelink' | null>(null)
 
@@ -596,13 +591,7 @@ export default function SettingsIntegrationsTab() {
               endpoint, and this card only renders when canManageLiveLink. */}
           <LiveLinkIntegrationsCard
             refreshKey={integrationsRefresh}
-            onOpenSettings={(tab) =>
-              // Until every source has its own drawer, one without still
-              // opens the old all-in-one modal.
-              hasDedicatedDrawer(tab)
-                ? setSettingsTarget({ type: 'tab', tab })
-                : setIsLiveLinkModalOpen(true)
-            }
+            onOpenSettings={(tab) => setSettingsTarget({ type: 'tab', tab })}
             onAddSource={() => setAddSourceOpen(true)}
           />
         </IntegrationCard>
@@ -713,22 +702,13 @@ export default function SettingsIntegrationsTab() {
           target={settingsTarget}
           onClose={() => {
             setSettingsTarget(null)
-            // Closing is also a refresh point, as closing the modal is.
+            // Closing is also a refresh point: whatever the drawer changed
+            // may have changed a tab's status.
             bumpStrip()
           }}
           onChanged={bumpStrip}
         />
       )}
-
-      <LiveLinkSettingsModal
-        isOpen={isLiveLinkModalOpen}
-        onClose={() => {
-          setIsLiveLinkModalOpen(false)
-          // Anything done in the modal (enable/disable, link a device) can
-          // change a tab's status.
-          setIntegrationsRefresh((n) => n + 1)
-        }}
-      />
 
       {/* About / help sidecar — opened from each card's upper-right help button. */}
       <Drawer

@@ -4,6 +4,10 @@
  * Each drawer is stubbed to render its name ONLY when open, as a real closed
  * Drawer renders nothing. A stub that always rendered would let a router that
  * opens every drawer pass.
+ *
+ * This is what licensed deleting LiveLinkSettingsModal: every kind of tab,
+ * including one for a source module nobody has written a drawer for, opens a
+ * drawer of its own, so no tab can reach the modal's old fallback.
  */
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
@@ -45,7 +49,7 @@ const expectOnly = (expected: string | null): void => {
   }
 }
 
-import LiveLinkSettingsDrawers, { hasDedicatedDrawer } from '../LiveLinkSettingsDrawers'
+import LiveLinkSettingsDrawers from '../LiveLinkSettingsDrawers'
 
 const tab = (id: string, kind: string | null): IntegrationTab =>
   ({
@@ -76,14 +80,12 @@ describe('LiveLinkSettingsDrawers', () => {
     const broker = tab('broker', null)
     render(<LiveLinkSettingsDrawers target={{ type: 'tab', tab: broker }} onClose={vi.fn()} onChanged={vi.fn()} />)
     expectOnly('mosquitto-drawer')
-    expect(hasDedicatedDrawer(broker)).toBe(true)
   })
 
   it('opens the WiCAN drawer for the WiCAN tab, and only it', () => {
     const wican = tab('wican', 'wican')
     render(<LiveLinkSettingsDrawers target={{ type: 'tab', tab: wican }} onClose={vi.fn()} onChanged={vi.fn()} />)
     expectOnly('wican-drawer')
-    expect(hasDedicatedDrawer(wican)).toBe(true)
   })
 
   it.each([
@@ -96,7 +98,6 @@ describe('LiveLinkSettingsDrawers', () => {
     const t = tab(id, kind)
     render(<LiveLinkSettingsDrawers target={{ type: 'tab', tab: t }} onClose={vi.fn()} onChanged={vi.fn()} />)
     expectOnly(drawer)
-    expect(hasDedicatedDrawer(t)).toBe(true)
   })
 
 })

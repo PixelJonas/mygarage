@@ -11,12 +11,9 @@ import WicanSettingsDrawer from './WicanSettingsDrawer'
 
 /**
  * Picks the settings drawer for what the operator clicked: the gear on the
- * LiveLink card, or one tab's Settings button.
- *
- * One switch, so the old modal fallback has exactly one place to shrink from.
- * Until the last per-source drawer lands, a tab with no dedicated drawer
- * still opens LiveLinkSettingsModal; `hasDedicatedDrawer` is how the settings
- * tab knows which.
+ * LiveLink card, or one tab's Settings button. Every tab has one: the built-in
+ * sources and the broker their own, each MQTT device the MQTT device drawer,
+ * and any other registered kind the device-list fallback (spec G2).
  *
  * Every drawer stays mounted with `open` derived from the target, rather than
  * being rendered conditionally: `Drawer` keeps its panel in the tree for the
@@ -28,8 +25,8 @@ export type SettingsTarget = { type: 'general' } | { type: 'tab'; tab: Integrati
 
 type DrawerKind = 'broker' | 'wican' | 'torque' | 'mqtt' | 'devices'
 
-/** Which dedicated drawer a tab opens, or null for the old modal. */
-function drawerFor(tab: IntegrationTab): DrawerKind | null {
+/** Which drawer a tab opens. Total: no tab is left without one. */
+function drawerFor(tab: IntegrationTab): DrawerKind {
   if (tab.id === 'broker') return 'broker'
   if (tab.id === 'wican') return 'wican'
   if (tab.id === 'torque') return 'torque'
@@ -37,10 +34,6 @@ function drawerFor(tab: IntegrationTab): DrawerKind | null {
   if (tab.kind === 'generic_mqtt') return 'mqtt'
   // Any other registered kind: its devices, and no bespoke settings (spec G2).
   return 'devices'
-}
-
-export function hasDedicatedDrawer(tab: IntegrationTab): boolean {
-  return drawerFor(tab) !== null
 }
 
 interface Props {

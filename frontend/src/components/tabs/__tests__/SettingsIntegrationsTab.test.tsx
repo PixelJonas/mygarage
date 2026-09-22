@@ -53,12 +53,6 @@ vi.mock('@/services/livelinkService', () => ({
 vi.mock('../../settings/WidgetKeysPanel', () => ({ default: () => <div data-testid="widget-keys" /> }))
 vi.mock('../../modals/AddProviderModal', () => ({ default: () => null }))
 vi.mock('../../modals/EditProviderModal', () => ({ default: () => null }))
-// Renders a close control only while open, so a test can close it the way the
-// operator does and observe what closing triggers.
-vi.mock('../../modals/LiveLinkSettingsModal', () => ({
-  default: ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) =>
-    isOpen ? <button onClick={onClose}>close-livelink-modal</button> : null,
-}))
 // Fetches on its own and has its own suite. Exposes refreshKey and the
 // settings callback so this suite can test the wiring between the two.
 vi.mock('../../livelink/LiveLinkIntegrationsCard', () => ({
@@ -78,13 +72,17 @@ vi.mock('../../livelink/LiveLinkIntegrationsCard', () => ({
   ),
 }))
 // The settings drawers have their own suites. The stub exposes which target
-// is open and a way to close it, so this suite can test the wiring. Its
-// hasDedicatedDrawer mirrors the real one's current answer.
+// is open and a way to close it, so this suite can test the wiring.
 vi.mock('../../livelink/settings/LiveLinkSettingsDrawers', () => ({
-  hasDedicatedDrawer: () => false,
-  default: ({ target, onClose }: { target: { type: string } | null; onClose: () => void }) =>
+  default: ({
+    target,
+    onClose,
+  }: {
+    target: { type: string; tab?: { id: string } } | null
+    onClose: () => void
+  }) =>
     target ? (
-      <div data-testid="settings-drawer" data-target={target.type}>
+      <div data-testid="settings-drawer" data-target={target.type} data-tab={target.tab?.id}>
         <button onClick={onClose}>close-settings-drawer</button>
       </div>
     ) : null,
@@ -212,19 +210,15 @@ describe('SettingsIntegrationsTab', () => {
     expect(screen.queryByText('integrations.configureLiveLink')).not.toBeInTheDocument()
   })
 
-  it('refetches the strip when the LiveLink settings modal closes', async () => {
-    // Enabling LiveLink or linking a device in the modal changes a tab's
-    // status. Without the bump the strip shows the state from before the edit.
+  it("opens a tab's own settings drawer from its Settings button", async () => {
+    // Each source's settings, and nothing else: there is no all-in-one modal.
     renderTab()
 
-    const strip = await screen.findByTestId('livelink-integrations')
-    const before = Number(strip.dataset.refresh)
-    fireEvent.click(screen.getByRole('button', { name: 'open-source-settings' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'close-livelink-modal' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'open-source-settings' }))
 
-    await waitFor(() =>
-      expect(Number(screen.getByTestId('livelink-integrations').dataset.refresh)).toBe(before + 1),
-    )
+    const drawer = await screen.findByTestId('settings-drawer')
+    expect(drawer).toHaveAttribute('data-target', 'tab')
+    expect(drawer).toHaveAttribute('data-tab', 'wican')
   })
 
   it('opens the Add-source drawer from the strip', async () => {

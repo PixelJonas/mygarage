@@ -112,6 +112,8 @@ describe('MosquittoSettingsDrawer', () => {
     renderDrawer()
     await screen.findByLabelText('modal.brokerHost')
 
-    expect(screen.queryByLabelText('modal.topicPrefix')).not.toBeInTheDocument()
+    // By value, so it holds whatever the field would be labelled: the saved
+    // prefix is 'wican', and no field here shows it.
+    expect(screen.queryByDisplayValue('wican')).not.toBeInTheDocument()
   })
 })
