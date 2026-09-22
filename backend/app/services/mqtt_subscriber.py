@@ -25,6 +25,39 @@ from app.utils.logging_utils import sanitize_for_log
 logger = logging.getLogger(__name__)
 
 
+MAX_DISCOVERY_SECONDS = 60
+MAX_DISCOVERY_TOPICS = 500
+MAX_DISCOVERY_SAMPLE = 256
+
+
+class _DiscoveryCollector:
+    """Accumulates distinct topics with one truncated sample each."""
+
+    def __init__(self, max_topics: int, max_sample: int) -> None:
+        self._max_topics = max_topics
+        self._max_sample = max_sample
+        self._seen: dict[str, str] = {}
+
+    def observe(self, topic: str, payload: bytes) -> None:
+        """Record a topic, keeping the FIRST sample seen for it.
+
+        Truncates BYTES before decoding. Slicing after decode bounds
+        characters, not bytes, so the stated 256-byte limit would not hold for
+        multi-byte UTF-8 and the whole payload gets allocated regardless.
+        """
+        if topic in self._seen or len(self._seen) >= self._max_topics:
+            return
+        self._seen[topic] = payload[: self._max_sample].decode("utf-8", errors="replace")
+
+    def full(self) -> bool:
+        """Whether the topic cap has been reached."""
+        return len(self._seen) >= self._max_topics
+
+    def results(self) -> list[dict[str, str]]:
+        """Observed topics, in first-seen order."""
+        return [{"topic": t, "sample": s} for t, s in self._seen.items()]
+
+
 class MQTTSubscriber:
     """MQTT subscriber for WiCAN device telemetry.
 
@@ -253,6 +286,51 @@ class MQTTSubscriber:
 
             # Only now drop departed topics from the dispatch map.
             self._subscribed = desired
+
+    async def discover_topics(self, prefix: str, seconds: int = 15) -> list[dict[str, str]]:
+        """Listen on a temporary client and report what is publishing.
+
+        Opens its OWN client so the live subscription set is untouched. Bounded
+        on every axis: duration, distinct topics and sample size. Raises
+        RuntimeError if a run is already in progress.
+        """
+        import aiomqtt
+
+        # Claim the guard BEFORE the first await. Checking here and setting it
+        # after `_get_config()` leaves a window in which two concurrent
+        # requests both pass.
+        if self._discovering:
+            raise RuntimeError("A discovery run is already in progress")
+        self._discovering = True
+        try:
+            config = await self._get_config()
+            if not config:
+                return []
+
+            seconds = max(1, min(seconds, MAX_DISCOVERY_SECONDS))
+            collector = _DiscoveryCollector(MAX_DISCOVERY_TOPICS, MAX_DISCOVERY_SAMPLE)
+            async with aiomqtt.Client(
+                hostname=config["host"],
+                port=config["port"],
+                username=config["username"],
+                password=config["password"],
+                tls_context=ssl.create_default_context() if config["use_tls"] else None,
+            ) as client:
+                await client.subscribe(prefix)
+
+                async def _collect() -> None:
+                    async for message in client.messages:
+                        collector.observe(str(message.topic), message.payload)
+                        if collector.full():
+                            return
+
+                try:
+                    await asyncio.wait_for(_collect(), timeout=seconds)
+                except TimeoutError:
+                    pass
+        finally:
+            self._discovering = False
+        return collector.results()
 
     async def _run(self) -> None:
         """Main subscriber loop with reconnection handling."""

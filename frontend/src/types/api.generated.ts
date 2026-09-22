@@ -2764,6 +2764,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/livelink/topic-discovery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Discover Topics
+         * @description Listen briefly and report what the broker is publishing.
+         */
+        post: operations["discover_topics_api_livelink_topic_discovery_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/livelink/topic-maps": {
         parameters: {
             query?: never;
@@ -16088,6 +16108,19 @@ export interface components {
             transaction_date?: string | null;
         };
         /**
+         * TopicDiscoveryRequest
+         * @description Body for a discovery run.
+         */
+        TopicDiscoveryRequest: {
+            /** Prefix */
+            prefix: string;
+            /**
+             * Seconds
+             * @default 15
+             */
+            seconds: number;
+        };
+        /**
          * TopicMapCreate
          * @description Request body for POST.
          */
@@ -23388,6 +23421,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TokenGenerateResponse"];
+                };
+            };
+        };
+    };
+    discover_topics_api_livelink_topic_discovery_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopicDiscoveryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

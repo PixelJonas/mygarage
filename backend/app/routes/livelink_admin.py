@@ -42,6 +42,7 @@ from app.schemas.livelink import (
     TokenInfoResponse,
 )
 from app.schemas.livelink_topic_map import (
+    TopicDiscoveryRequest,
     TopicMapCreate,
     TopicMapResponse,
     TopicMapUpdate,
@@ -1216,3 +1217,17 @@ async def delete_topic_map(
     await db.delete(row)
     await db.commit()
     await mqtt_subscriber.reload()
+
+
+@router.post("/topic-discovery", response_model=list[dict])
+async def discover_topics(
+    body: TopicDiscoveryRequest,
+    current_user: User | None = Depends(get_current_admin_user),
+) -> list[dict[str, str]]:
+    """Listen briefly and report what the broker is publishing."""
+    try:
+        return await mqtt_subscriber.discover_topics(
+            prefix=body.prefix, seconds=min(body.seconds, 60)
+        )
+    except RuntimeError as exc:
+        raise HTTPException(409, str(exc)) from exc

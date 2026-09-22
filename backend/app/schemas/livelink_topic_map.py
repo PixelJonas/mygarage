@@ -68,3 +68,10 @@ class TopicMapResponse(TopicMapBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+
+
+class TopicDiscoveryRequest(BaseModel):
+    """Body for a discovery run."""
+
+    prefix: str = Field(..., max_length=255)
+    seconds: int = Field(15, ge=1, le=60)

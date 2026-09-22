@@ -21643,6 +21643,28 @@
         "title": "TollTransactionUpdate",
         "type": "object"
       },
+      "TopicDiscoveryRequest": {
+        "description": "Body for a discovery run.",
+        "properties": {
+          "prefix": {
+            "maxLength": 255,
+            "title": "Prefix",
+            "type": "string"
+          },
+          "seconds": {
+            "default": 15,
+            "maximum": 60.0,
+            "minimum": 1.0,
+            "title": "Seconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "prefix"
+        ],
+        "title": "TopicDiscoveryRequest",
+        "type": "object"
+      },
       "TopicMapCreate": {
         "description": "Request body for POST.",
         "properties": {
@@ -36509,6 +36531,58 @@
           }
         ],
         "summary": "Regenerate Global Token",
+        "tags": [
+          "LiveLink Admin"
+        ]
+      }
+    },
+    "/api/livelink/topic-discovery": {
+      "post": {
+        "description": "Listen briefly and report what the broker is publishing.",
+        "operationId": "discover_topics_api_livelink_topic_discovery_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TopicDiscoveryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Discover Topics Api Livelink Topic Discovery Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Discover Topics",
         "tags": [
           "LiveLink Admin"
         ]
