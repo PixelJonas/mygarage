@@ -22,6 +22,14 @@ class TelemetryLatestValue(BaseModel):
     warning_min: float | None = Field(None, description="Low warning threshold")
     warning_max: float | None = Field(None, description="High warning threshold")
     in_warning: bool = Field(False, description="Whether value is outside thresholds")
+    show_on_dashboard: bool = Field(
+        True,
+        description=(
+            "Whether the Live tab draws a gauge for this reading. Every value is "
+            "still returned: the vehicle widget looks keys up by name and must "
+            "not lose one because its gauge is hidden."
+        ),
+    )
 
 
 class VehicleLiveLinkStatus(BaseModel):

@@ -196,6 +196,7 @@ async def get_vehicle_livelink_status(
                 warning_min=warning_min,
                 warning_max=warning_max,
                 in_warning=in_warning,
+                show_on_dashboard=bool(param.show_on_dashboard) if param else True,
             )
         )
 

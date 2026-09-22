@@ -114,8 +114,11 @@ def _backfill_parameters(engine) -> None:
         ).all()
 
         for param_key, unit, param_class in orphans:
-            # Mirrors TelemetryService.auto_register_parameter's defaults. Kept
-            # literal rather than imported, per the inlining convention above.
+            # Mirrors TelemetryService.auto_register_parameter's defaults AS
+            # THEY WERE when this migration was written. Kept literal rather than
+            # imported, per the inlining convention above. Migration 114 then
+            # resets show_on_dashboard to TRUE on every row, so the FALSE this
+            # writes for a diagnostic class does not survive a full upgrade.
             show = param_class in (
                 "speed",
                 "frequency",

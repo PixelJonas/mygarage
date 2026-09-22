@@ -143,6 +143,12 @@ export default function LiveLinkLiveTab({ vin }: LiveLinkLiveTabProps) {
   const statusColor = getStatusColor(status.device_status, status.ecu_status)
   const statusText = getStatusText(status.device_status, status.ecu_status)
 
+  // Hidden readings are still in latest_values: the vehicle widget reads keys
+  // from it by name. Only the gauge grid honours the switch (set per reading in
+  // Settings, Integrations, LiveLink).
+  const gauges = status.latest_values?.filter((v) => v.show_on_dashboard !== false) ?? []
+  const allHidden = gauges.length === 0 && (status.latest_values?.length ?? 0) > 0
+
   return (
     <div className="space-y-6">
       {/* Status Bar */}
@@ -189,12 +195,14 @@ export default function LiveLinkLiveTab({ vin }: LiveLinkLiveTabProps) {
       </Card>
 
       {/* Live Gauges Grid */}
-      {(status.latest_values?.length ?? 0) > 0 ? (
+      {gauges.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {status.latest_values?.map((value) => (
+          {gauges.map((value) => (
             <GaugeCard key={value.param_key} value={value} unitFormat={unitFormat} />
           ))}
         </div>
+      ) : allHidden ? (
+        <EmptyState icon={Car} title={t('livelink.allReadingsHidden')} />
       ) : (
         <EmptyState icon={Car} title={t('livelink.noTelemetry')} description={t('livelink.telemetryWillAppear')} />
       )}

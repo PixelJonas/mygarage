@@ -236,17 +236,20 @@ class TelemetryService:
         category = self._classify_param(resolved_class)
         display_name = self._format_display_name(param_key)
 
-        # Set sensible defaults based on the resolved class. Only applied to
-        # brand-new rows — existing rows keep whatever show_on_dashboard/
-        # archive_only a user has hand-tuned in the admin UI.
-        # This list predates config-driven sources, when every class came from
-        # a WiCAN config block. A class NOT named here is archive-only, which
-        # means it never reaches a gauge or the chart picker — so a new source
-        # whose headline reading has a new class defaults to invisible. That is
-        # what happened to the Mopeka preset: `propane` was unlisted, and tank
-        # level, the one figure the integration exists to show, could be stored
-        # but never charted.
-        show_on_dashboard = resolved_class in (
+        # Defaults for brand-new rows only; existing rows keep whatever a user
+        # has set.
+        #
+        # Every new parameter starts on the dashboard. The Live tab has always
+        # drawn every reading, and hiding one is now an explicit per-reading
+        # switch in the integrations settings, not a class default nobody chose
+        # (migration 114 reset the rows this used to decide).
+        #
+        # The class list governs only archive_only, which keeps a parameter out
+        # of the chart picker. It predates config-driven sources, when every
+        # class came from a WiCAN config block, so a new source whose headline
+        # reading has a new class is unchartable by default. That is what
+        # happened to the Mopeka preset until `propane` was added.
+        chartable = resolved_class in (
             "speed",
             "frequency",
             "temperature",
@@ -254,7 +257,8 @@ class TelemetryService:
             "battery",
             "propane",
         )
-        archive_only = not show_on_dashboard
+        show_on_dashboard = True
+        archive_only = not chartable
 
         param = LiveLinkParameter(
             param_key=param_key,

@@ -47,9 +47,9 @@ const RUNNING = {
   ...STATUS,
   ecu_status: 'online',
   latest_values: [
-    { param_key: 'SPEED', value: 100, unit: 'km/h', display_name: 'Speed', in_warning: false, timestamp: 'x' },
-    { param_key: 'ENGINE_RPM', value: 3200, unit: 'rpm', display_name: 'RPM', in_warning: false, timestamp: 'x' },
-    { param_key: 'COOLANT_TMP', value: 90, unit: 'C', display_name: 'Coolant', in_warning: false, timestamp: 'x' },
+    { param_key: 'SPEED', value: 100, unit: 'km/h', display_name: 'Speed', in_warning: false, show_on_dashboard: true, timestamp: 'x' },
+    { param_key: 'ENGINE_RPM', value: 3200, unit: 'rpm', display_name: 'RPM', in_warning: false, show_on_dashboard: true, timestamp: 'x' },
+    { param_key: 'COOLANT_TMP', value: 90, unit: 'C', display_name: 'Coolant', in_warning: false, show_on_dashboard: true, timestamp: 'x' },
   ],
 } satisfies VehicleLiveLinkStatus
 

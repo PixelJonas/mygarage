@@ -74,7 +74,7 @@ const okStatus = (overrides: Partial<VehicleLiveLinkStatus> = {}) =>
     current_session_id: 1,
     session_duration_seconds: 120,
     latest_values: [
-      { param_key: 'rpm', value: 3200, unit: 'rpm', display_name: 'Engine RPM', in_warning: false, timestamp: 'x' },
+      { param_key: 'rpm', value: 3200, unit: 'rpm', display_name: 'Engine RPM', in_warning: false, show_on_dashboard: true, timestamp: 'x' },
     ],
     ...overrides,
   }) satisfies VehicleLiveLinkStatus
@@ -175,8 +175,8 @@ describe('LiveLinkLiveTab — status mapping + gauge warning (SDQ-C)', () => {
     getVehicleStatus.mockResolvedValue(
       okStatus({
         latest_values: [
-          { param_key: 'rpm', value: 3200, unit: 'rpm', display_name: 'Engine RPM', in_warning: false, timestamp: 'x' },
-          { param_key: 'coolant', value: 130, unit: 'C', display_name: 'Coolant Temp', in_warning: true, timestamp: 'x' },
+          { param_key: 'rpm', value: 3200, unit: 'rpm', display_name: 'Engine RPM', in_warning: false, show_on_dashboard: true, timestamp: 'x' },
+          { param_key: 'coolant', value: 130, unit: 'C', display_name: 'Coolant Temp', in_warning: true, show_on_dashboard: true, timestamp: 'x' },
         ],
       }),
     )

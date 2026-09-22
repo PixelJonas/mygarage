@@ -19612,6 +19612,12 @@
             "title": "Param Key",
             "type": "string"
           },
+          "show_on_dashboard": {
+            "default": true,
+            "description": "Whether the Live tab draws a gauge for this reading. Every value is still returned: the vehicle widget looks keys up by name and must not lose one because its gauge is hidden.",
+            "title": "Show On Dashboard",
+            "type": "boolean"
+          },
           "timestamp": {
             "description": "When value was recorded",
             "format": "date-time",

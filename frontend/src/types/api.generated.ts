@@ -15471,6 +15471,12 @@ export interface components {
              */
             param_key: string;
             /**
+             * Show On Dashboard
+             * @description Whether the Live tab draws a gauge for this reading. Every value is still returned: the vehicle widget looks keys up by name and must not lose one because its gauge is hidden.
+             * @default true
+             */
+            show_on_dashboard: boolean;
+            /**
              * Timestamp
              * Format: date-time
              * @description When value was recorded
