@@ -12,6 +12,8 @@ import ssl
 from datetime import datetime
 from typing import Any
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.database import AsyncSessionLocal
 from app.services.livelink_service import LiveLinkService
 from app.services.session_service import SessionService
@@ -154,6 +156,23 @@ class MQTTSubscriber:
                 else "wican",
                 "use_tls": use_tls and use_tls.value == "true",
             }
+
+    async def configured_topic_prefix(self, db: AsyncSession) -> str | None:
+        """The configured WiCAN topic prefix, or None when MQTT is off.
+
+        Reads through the CALLER's session rather than delegating to
+        `_get_config`, which opens its own `AsyncSessionLocal`. That would
+        reach the configured database rather than the one the caller is using,
+        which under test is a different file entirely.
+
+        Mirrors the two keys `_get_config` consults for this, including its
+        "wican" default.
+        """
+        enabled = await SettingsService.get(db, "livelink_mqtt_enabled")
+        if not enabled or enabled.value != "true":
+            return None
+        prefix = await SettingsService.get(db, "livelink_mqtt_topic_prefix")
+        return prefix.value if prefix and prefix.value else "wican"
 
     async def _run(self) -> None:
         """Main subscriber loop with reconnection handling."""
