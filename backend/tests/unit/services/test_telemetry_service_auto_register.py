@@ -241,3 +241,36 @@ class TestAutoRegisterBackfillInference:
         param = await svc.auto_register_parameter("2F-FUELTANKLEVEL", unit=None, param_class=None)
 
         assert param.param_class == "power_factor"
+
+
+@pytest.mark.asyncio
+class TestAutoRegisterDashboardDefaults:
+    """Which classes are chartable out of the box.
+
+    `archive_only` keeps a parameter off every gauge AND out of the chart
+    picker, so a headline reading whose class is unlisted is registered
+    invisible. That is what happened to the Mopeka preset's tank level.
+    """
+
+    async def test_propane_level_is_chartable_on_registration(self, db_session):
+        param = await TelemetryService(db_session).auto_register_parameter(
+            "PROPANE_T1_LEVEL_PCT", unit="%", param_class="propane"
+        )
+
+        assert param.show_on_dashboard is True
+        assert param.archive_only is False
+
+    async def test_diagnostics_stay_archive_only(self, db_session):
+        """The negative control: widening the list must not surface every row.
+
+        Reading quality, rejected counts and gateway uptime are real
+        parameters worth storing and worth nobody's chart.
+        """
+        svc = TelemetryService(db_session)
+
+        for key, klass in (
+            ("PROPANE_T1_QUALITY", "diagnostic"),
+            ("RV_GATEWAY_RSSI", "signal"),
+        ):
+            param = await svc.auto_register_parameter(key, unit=None, param_class=klass)
+            assert param.archive_only is True, key

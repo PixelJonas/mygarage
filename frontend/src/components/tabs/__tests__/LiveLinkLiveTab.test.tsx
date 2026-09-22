@@ -65,6 +65,9 @@ const okStatus = (overrides: Partial<VehicleLiveLinkStatus> = {}) =>
   ({
     vin: 'V1',
     device_id: 'DEV1',
+    // A WiCAN-shaped source. DRIVE_SESSION is what gives this fixture a
+    // running/parked axis; a source without it has only reachability.
+    capabilities: ['telemetry', 'drive_session', 'location', 'dtc', 'odometer'],
     device_status: 'online',
     ecu_status: 'online',
     rssi: -55,
@@ -136,13 +139,35 @@ describe('LiveLinkLiveTab — status mapping + gauge warning (SDQ-C)', () => {
 
     getVehicleStatus.mockResolvedValue(okStatus({ device_status: 'online', ecu_status: 'offline' }))
     const parked = render(<LiveLinkLiveTab vin="V1" />)
-    expect(await screen.findByText('livelink.vehicleParked')).toBeInTheDocument()
+    expect(await screen.findByText('livelink.statusVehicleParked')).toBeInTheDocument()
     expect(parked.container.querySelector('.rounded-full')).toHaveClass('bg-info')
     parked.unmount()
 
     getVehicleStatus.mockResolvedValue(okStatus({ device_status: 'offline', ecu_status: 'offline' }))
     const offline = render(<LiveLinkLiveTab vin="V1" />)
-    expect(await screen.findByText('livelink.wicanOffline')).toBeInTheDocument()
+    expect(await screen.findByText('livelink.statusDeviceOffline')).toBeInTheDocument()
+    expect(offline.container.querySelector('.rounded-full')).toHaveClass('bg-danger')
+  })
+
+  it('reports reachability, not parked/running, for a source without DRIVE_SESSION (fails if ecu_status is read for a source that never sets it)', async () => {
+    // A propane gateway leaves ecu_status at its 'unknown' default forever.
+    // The old mapping fell through to the parked branch, so a tank sensor
+    // rendered "Vehicle Parked — WiCAN Connected" on a trailer with no engine.
+    getVehicleStatus.mockResolvedValue(
+      okStatus({ capabilities: ['telemetry'], device_status: 'online', ecu_status: 'unknown' }),
+    )
+    const connected = render(<LiveLinkLiveTab vin="V1" />)
+    expect(await screen.findByText('livelink.statusConnected')).toBeInTheDocument()
+    expect(screen.queryByText('livelink.statusVehicleParked')).not.toBeInTheDocument()
+    expect(connected.container.querySelector('.rounded-full')).toHaveClass('bg-success')
+    connected.unmount()
+
+    // Offline still reads as offline: reachability is the one axis it has.
+    getVehicleStatus.mockResolvedValue(
+      okStatus({ capabilities: ['telemetry'], device_status: 'offline', ecu_status: 'unknown' }),
+    )
+    const offline = render(<LiveLinkLiveTab vin="V1" />)
+    expect(await screen.findByText('livelink.statusDeviceOffline')).toBeInTheDocument()
     expect(offline.container.querySelector('.rounded-full')).toHaveClass('bg-danger')
   })
 
@@ -167,6 +192,6 @@ describe('LiveLinkLiveTab — status mapping + gauge warning (SDQ-C)', () => {
     getVehicleStatus.mockRejectedValue(new Error('boom'))
     render(<LiveLinkLiveTab vin="V1" />)
     expect(await screen.findByText('livelink.fetchStatusError')).toBeInTheDocument()
-    expect(screen.getByText('livelink.ensureDeviceLinked')).toBeInTheDocument()
+    expect(screen.getByText('livelink.ensureSourceLinked')).toBeInTheDocument()
   })
 })

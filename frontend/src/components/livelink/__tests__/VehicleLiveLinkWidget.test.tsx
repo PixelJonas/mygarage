@@ -22,6 +22,9 @@ const { VIN, STATUS } = vi.hoisted(() => {
     VIN,
     STATUS: {
       device_id: 'wican-1',
+      // A WiCAN declares DRIVE_SESSION, which is what makes Running/Parked
+      // meaningful. A telemetry-only source reports reachability instead.
+      capabilities: ['telemetry', 'drive_session', 'location', 'dtc', 'odometer'],
       device_status: 'online',
       ecu_status: 'offline',
       vin: VIN,

@@ -81,7 +81,7 @@ vi.mock('../../services/vehicleService', () => ({
 }))
 vi.mock('../../services/livelinkService', () => ({
   livelinkService: {
-    hasLinkedDevice: vi.fn(),
+    getVehicleStatus: vi.fn(),
   },
 }))
 vi.mock('../../services/api', () => ({
@@ -169,6 +169,21 @@ function renderVehicleDetail(initialPath = '/vehicles/TEST12345678901234') {
   )
 }
 
+// The LiveLink tab strip is driven entirely by the status endpoint: a null
+// device_id hides the primary tab, and `capabilities` decides which sub-tabs
+// exist. These are the Capability values from the backend registry.
+const status = (device_id: string | null, capabilities: string[]) => ({
+  vin: 'TEST12345678901234',
+  device_id,
+  capabilities,
+  device_status: device_id ? 'online' : 'offline',
+  ecu_status: 'unknown',
+  latest_values: [],
+})
+const noDevice = status(null, [])
+const linked = (capabilities: string[]) => status('dev01', capabilities)
+const WICAN_CAPS = ['telemetry', 'drive_session', 'location', 'dtc', 'odometer']
+
 describe('VehicleDetail', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -176,7 +191,7 @@ describe('VehicleDetail', () => {
     reminderListProps.onStatsChanged = undefined
     mockedVehicleService.get.mockResolvedValue(mockVehicle)
     mockedVehicleService.getDetailStats.mockRejectedValue(new Error('no stats'))
-    mockedLivelinkService.hasLinkedDevice.mockResolvedValue(false)
+    mockedLivelinkService.getVehicleStatus.mockResolvedValue(noDevice)
   })
 
   // --- Loading & Error States ---
@@ -444,7 +459,7 @@ describe('VehicleDetail', () => {
   // --- LiveLink Tab Visibility ---
 
   it('shows LiveLink tab when device is linked', async () => {
-    mockedLivelinkService.hasLinkedDevice.mockResolvedValue(true)
+    mockedLivelinkService.getVehicleStatus.mockResolvedValue(linked(['telemetry']))
 
     renderVehicleDetail()
 
@@ -458,8 +473,46 @@ describe('VehicleDetail', () => {
     })
   })
 
+  // --- LiveLink Sub-tab Capability Gating ---
+
+  it('hides DTCs, Sessions and Trips for a telemetry-only source', async () => {
+    mockedLivelinkService.getVehicleStatus.mockResolvedValue(linked(['telemetry']))
+
+    renderVehicleDetail('/vehicles/TEST12345678901234?tab=live')
+
+    // Wait for a sub-tab that SHOULD be there, so the negatives below are read
+    // against a rendered strip rather than an empty page.
+    expect(await screen.findByText('detail.misc.charts')).toBeInTheDocument()
+
+    expect(screen.queryByText('DTCs')).not.toBeInTheDocument()
+    expect(screen.queryByText('detail.misc.sessions')).not.toBeInTheDocument()
+    expect(screen.queryByText('detail.misc.trips')).not.toBeInTheDocument()
+  })
+
+  it('shows every LiveLink sub-tab for a source that declares the full set', async () => {
+    mockedLivelinkService.getVehicleStatus.mockResolvedValue(linked(WICAN_CAPS))
+
+    renderVehicleDetail('/vehicles/TEST12345678901234?tab=live')
+
+    expect(await screen.findByText('DTCs')).toBeInTheDocument()
+    expect(screen.getByText('detail.misc.sessions')).toBeInTheDocument()
+    expect(screen.getByText('detail.misc.trips')).toBeInTheDocument()
+  })
+
+  it('does not render a capability-gated sub-tab reached by deep link', async () => {
+    // `?tab=dtcs` never passes the tab strip, so hiding the button is not
+    // enough: without a guard on the content a propane trailer renders the
+    // full DTC dashboard.
+    mockedLivelinkService.getVehicleStatus.mockResolvedValue(linked(['telemetry']))
+
+    renderVehicleDetail('/vehicles/TEST12345678901234?tab=dtcs')
+
+    expect(await screen.findByText('detail.misc.charts')).toBeInTheDocument()
+    expect(screen.queryByText('LiveLinkDTCsTab')).not.toBeInTheDocument()
+  })
+
   it('hides LiveLink tab when no device is linked', async () => {
-    mockedLivelinkService.hasLinkedDevice.mockResolvedValue(false)
+    mockedLivelinkService.getVehicleStatus.mockResolvedValue(noDevice)
 
     renderVehicleDetail()
 

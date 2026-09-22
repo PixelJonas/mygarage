@@ -91,16 +91,25 @@ export default function LiveLinkLiveTab({ vin }: LiveLinkLiveTabProps) {
     }
   }, [fetchStatus])
 
+  // `ecu_status` is a WiCAN concept. A source that cannot open a drive session
+  // leaves it 'unknown' forever, and the old fall-through branch read that as
+  // "parked" — which is how a propane tank sensor came to report a parked
+  // vehicle. Without DRIVE_SESSION there is no parked/running axis at all, only
+  // whether the source is reachable.
+  const tracksDriving = status?.capabilities?.includes('drive_session') ?? false
+
   const getStatusColor = (deviceStatus: string, ecuStatus: string) => {
     if (deviceStatus !== 'online') return 'danger'
+    if (!tracksDriving) return 'success'
     if (ecuStatus === 'online') return 'success'
     return 'info'
   }
 
   const getStatusText = (deviceStatus: string, ecuStatus: string) => {
-    if (deviceStatus !== 'online') return t('livelink.wicanOffline')
+    if (deviceStatus !== 'online') return t('livelink.statusDeviceOffline')
+    if (!tracksDriving) return t('livelink.statusConnected')
     if (ecuStatus === 'online') return t('livelink.vehicleRunning')
-    return t('livelink.vehicleParked')
+    return t('livelink.statusVehicleParked')
   }
 
   const formatDuration = (seconds: number | null | undefined) => {
@@ -126,7 +135,7 @@ export default function LiveLinkLiveTab({ vin }: LiveLinkLiveTabProps) {
       <EmptyState
         icon={Radio}
         title={error || t('livelink.noData')}
-        description={t('livelink.ensureDeviceLinked')}
+        description={t('livelink.ensureSourceLinked')}
       />
     )
   }

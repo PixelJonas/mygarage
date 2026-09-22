@@ -4,6 +4,7 @@ import csv
 import io
 import json
 import logging
+from collections.abc import Sequence
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -27,6 +28,10 @@ from app.schemas.dtc import (
     VehicleDTCResponse,
     VehicleDTCUpdate,
 )
+from app.schemas.livelink import (
+    LiveLinkParameterListResponse,
+    LiveLinkParameterResponse,
+)
 from app.schemas.telemetry import (
     TelemetryLatestValue,
     TelemetryQueryResponse,
@@ -49,6 +54,7 @@ from app.schemas.torque import (
 from app.services.auth import get_vehicle_for_owner_or_403, get_vehicle_or_403, require_auth
 from app.services.dtc_service import DTCService
 from app.services.livelink_service import LiveLinkService
+from app.services.livelink_sources.registry import default_registry
 from app.services.location_service import LocationService
 from app.services.session_service import SessionService
 from app.services.settings_service import SettingsService
@@ -96,6 +102,28 @@ async def verify_vehicle_access(
     return await get_vehicle_or_403(vin, current_user, db, require_write=require_write)
 
 
+def _union_capabilities(devices: Sequence[LiveLinkDevice]) -> list[str]:
+    """Capability values every linked device collectively supports.
+
+    A kind with no registered module contributes nothing. That is the safe
+    direction: an unknown source shows no capability-gated tab rather than
+    all of them, and the warning says which kind to go look at.
+    """
+    registry = default_registry()
+    caps: set[str] = set()
+    for device in devices:
+        module = registry.get_module(device.kind)
+        if module is None:
+            logger.warning(
+                "Device %s has unregistered kind %r; it contributes no capabilities",
+                device.device_id,
+                device.kind,
+            )
+            continue
+        caps.update(c.value for c in module.capabilities)
+    return sorted(caps)
+
+
 # =============================================================================
 # Status Endpoint (for live dashboard polling)
 # =============================================================================
@@ -132,8 +160,11 @@ async def get_vehicle_livelink_status(
     telemetry_service = TelemetryService(db)
     session_service = SessionService(db)
 
-    # Get linked device
-    device = await livelink_service.get_device_by_vin(vin)
+    # Every linked device, not just the most recent one: `capabilities` is a
+    # union and a vehicle may carry more than one source.
+    devices = await livelink_service.list_devices_by_vin(vin)
+    device = devices[0] if devices else None
+    capabilities = _union_capabilities(devices)
 
     # Get latest telemetry values
     latest_values = await telemetry_service.get_latest_values(vin)
@@ -187,6 +218,8 @@ async def get_vehicle_livelink_status(
     return VehicleLiveLinkStatus(
         vin=vin,
         device_id=device.device_id if device else None,
+        kind=device.kind if device else None,
+        capabilities=capabilities,
         device_status=device.device_status if device else "offline",
         ecu_status=device.ecu_status if device else "unknown",
         last_seen=device.last_seen if device else None,
@@ -196,6 +229,39 @@ async def get_vehicle_livelink_status(
         session_started_at=session_started_at,
         session_duration_seconds=session_duration_seconds,
         latest_values=latest_with_thresholds,
+    )
+
+
+@router.get("/parameters", response_model=LiveLinkParameterListResponse)
+async def list_vehicle_parameters(
+    vin: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_auth),
+):
+    """
+    List the parameters this vehicle actually reports.
+
+    The admin `/api/livelink/parameters` catalog is global: it holds every
+    parameter any device has ever sent, fleet-wide. Charting from it offers a
+    propane trailer a list of engine PIDs that can only ever draw an empty
+    graph. Scoping to `get_latest_values` reuses its staleness rule, so a
+    parameter the rest of the vehicle has left behind drops out of the picker
+    the same way it drops off the live dashboard.
+
+    **Security:**
+    - Requires authentication and access to the vehicle
+    """
+    await verify_vehicle_access(db, vin, current_user)
+    vin = vin.upper().strip()
+
+    service = TelemetryService(db)
+    reported = {lv.param_key for lv in await service.get_latest_values(vin)}
+    catalog = await service.get_all_parameters()
+    rows = [p for key, p in catalog.items() if key in reported]
+
+    return LiveLinkParameterListResponse(
+        parameters=[LiveLinkParameterResponse.model_validate(p) for p in rows],
+        total=len(rows),
     )
 
 

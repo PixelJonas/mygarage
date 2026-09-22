@@ -29,6 +29,15 @@ class VehicleLiveLinkStatus(BaseModel):
 
     vin: str
     device_id: str | None = Field(None, description="Linked device ID")
+    kind: str | None = Field(None, description="Source kind of the reporting device")
+    capabilities: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Union of Capability values across every device linked to this VIN. "
+            "The UI gates sub-tabs on these: a propane gateway declares telemetry "
+            "alone and must not be offered DTCs, sessions or trips."
+        ),
+    )
     device_status: str = Field("offline", description="Device: online/offline")
     ecu_status: str = Field("unknown", description="ECU: online/offline/unknown")
     last_seen: datetime | None = Field(None, description="Last data received")

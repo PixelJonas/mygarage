@@ -5101,6 +5101,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/vehicles/{vin}/livelink/parameters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Vehicle Parameters
+         * @description List the parameters this vehicle actually reports.
+         *
+         *     The admin `/api/livelink/parameters` catalog is global: it holds every
+         *     parameter any device has ever sent, fleet-wide. Charting from it offers a
+         *     propane trailer a list of engine PIDs that can only ever draw an empty
+         *     graph. Scoping to `get_latest_values` reuses its staleness rule, so a
+         *     parameter the rest of the vehicle has left behind drops out of the picker
+         *     the same way it drops off the live dashboard.
+         *
+         *     **Security:**
+         *     - Requires authentication and access to the vehicle
+         */
+        get: operations["list_vehicle_parameters_api_vehicles__vin__livelink_parameters_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/vehicles/{vin}/livelink/sessions": {
         parameters: {
             query?: never;
@@ -17603,6 +17633,11 @@ export interface components {
              */
             battery_voltage?: number | null;
             /**
+             * Capabilities
+             * @description Union of Capability values across every device linked to this VIN. The UI gates sub-tabs on these: a propane gateway declares telemetry alone and must not be offered DTCs, sessions or trips.
+             */
+            capabilities?: string[];
+            /**
              * Current Session Id
              * @description Active session ID
              */
@@ -17624,6 +17659,11 @@ export interface components {
              * @default unknown
              */
             ecu_status: string;
+            /**
+             * Kind
+             * @description Source kind of the reporting device
+             */
+            kind?: string | null;
             /**
              * Last Seen
              * @description Last data received
@@ -27151,6 +27191,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LastLocationResponse"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_vehicle_parameters_api_vehicles__vin__livelink_parameters_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveLinkParameterListResponse"];
                 };
             };
             /** @description Validation Error */

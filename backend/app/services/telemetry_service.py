@@ -239,12 +239,20 @@ class TelemetryService:
         # Set sensible defaults based on the resolved class. Only applied to
         # brand-new rows — existing rows keep whatever show_on_dashboard/
         # archive_only a user has hand-tuned in the admin UI.
+        # This list predates config-driven sources, when every class came from
+        # a WiCAN config block. A class NOT named here is archive-only, which
+        # means it never reaches a gauge or the chart picker — so a new source
+        # whose headline reading has a new class defaults to invisible. That is
+        # what happened to the Mopeka preset: `propane` was unlisted, and tank
+        # level, the one figure the integration exists to show, could be stored
+        # but never charted.
         show_on_dashboard = resolved_class in (
             "speed",
             "frequency",
             "temperature",
             "voltage",
             "battery",
+            "propane",
         )
         archive_only = not show_on_dashboard
 

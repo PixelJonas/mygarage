@@ -200,6 +200,22 @@ class LiveLinkService:
         )
         return result.scalar_one_or_none()
 
+    async def list_devices_by_vin(self, vin: str) -> list[LiveLinkDevice]:
+        """Every device linked to a vehicle, most-recently-active first.
+
+        `get_device_by_vin` returns only the first of these. Capability
+        questions need all of them: a trailer carrying both a WiCAN and a
+        propane gateway supports drive sessions via one and telemetry via
+        both, and answering from a single device would hide whichever one
+        reported second.
+        """
+        result = await self.db.execute(
+            select(LiveLinkDevice)
+            .where(LiveLinkDevice.vin == vin)
+            .order_by(LiveLinkDevice.last_seen.desc().nullslast())
+        )
+        return list(result.scalars().all())
+
     async def list_devices(self) -> list[LiveLinkDevice]:
         """List all discovered devices."""
         result = await self.db.execute(

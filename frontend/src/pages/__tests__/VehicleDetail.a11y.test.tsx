@@ -64,7 +64,7 @@ vi.mock('../../services/vehicleService', () => ({
 }))
 vi.mock('../../services/livelinkService', () => ({
   livelinkService: {
-    hasLinkedDevice: vi.fn(),
+    getVehicleStatus: vi.fn(),
   },
 }))
 vi.mock('../../services/api', () => ({
@@ -143,7 +143,14 @@ describe('VehicleDetail — tablist accessible names', () => {
     localStorage.clear()
     mockedVehicleService.get.mockResolvedValue(mockVehicle)
     mockedVehicleService.getDetailStats.mockRejectedValue(new Error('no stats'))
-    mockedLivelinkService.hasLinkedDevice.mockResolvedValue(false)
+    mockedLivelinkService.getVehicleStatus.mockResolvedValue({
+      vin: 'TEST12345678901234',
+      device_id: null,
+      capabilities: [],
+      device_status: 'offline',
+      ecu_status: 'unknown',
+      latest_values: [],
+    })
   })
 
   it('gives the sub-tab tablist a different accessible name than the primary tablist', async () => {

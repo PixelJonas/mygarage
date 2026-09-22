@@ -25016,6 +25016,14 @@
             "description": "Vehicle battery (V)",
             "title": "Battery Voltage"
           },
+          "capabilities": {
+            "description": "Union of Capability values across every device linked to this VIN. The UI gates sub-tabs on these: a propane gateway declares telemetry alone and must not be offered DTCs, sessions or trips.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
           "current_session_id": {
             "anyOf": [
               {
@@ -25051,6 +25059,18 @@
             "description": "ECU: online/offline/unknown",
             "title": "Ecu Status",
             "type": "string"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Source kind of the reporting device",
+            "title": "Kind"
           },
           "last_seen": {
             "anyOf": [
@@ -42470,6 +42490,54 @@
           }
         ],
         "summary": "Get Last Location",
+        "tags": [
+          "Vehicle LiveLink"
+        ]
+      }
+    },
+    "/api/vehicles/{vin}/livelink/parameters": {
+      "get": {
+        "description": "List the parameters this vehicle actually reports.\n\nThe admin `/api/livelink/parameters` catalog is global: it holds every\nparameter any device has ever sent, fleet-wide. Charting from it offers a\npropane trailer a list of engine PIDs that can only ever draw an empty\ngraph. Scoping to `get_latest_values` reuses its staleness rule, so a\nparameter the rest of the vehicle has left behind drops out of the picker\nthe same way it drops off the live dashboard.\n\n**Security:**\n- Requires authentication and access to the vehicle",
+        "operationId": "list_vehicle_parameters_api_vehicles__vin__livelink_parameters_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vin",
+            "required": true,
+            "schema": {
+              "title": "Vin",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveLinkParameterListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Vehicle Parameters",
         "tags": [
           "Vehicle LiveLink"
         ]

@@ -208,10 +208,25 @@ export const livelinkService = {
   // ===========================================================================
 
   /**
-   * Get all discovered parameters
+   * Get all discovered parameters, fleet-wide. Admin surfaces only.
    */
   async getParameters(): Promise<LiveLinkParameterListResponse> {
     const response = await api.get<LiveLinkParameterListResponse>('/livelink/parameters')
+    return response.data
+  },
+
+  /**
+   * Get the parameters one vehicle actually reports.
+   *
+   * Anything vehicle-facing wants this, not `getParameters`: the global
+   * catalog holds every parameter any device has ever sent, so charting from
+   * it offers a propane trailer a list of engine PIDs that can only draw an
+   * empty graph.
+   */
+  async getVehicleParameters(vin: string): Promise<LiveLinkParameterListResponse> {
+    const response = await api.get<LiveLinkParameterListResponse>(
+      `/vehicles/${vin}/livelink/parameters`,
+    )
     return response.data
   },
 
@@ -308,17 +323,6 @@ export const livelinkService = {
     return response.data
   },
 
-  /**
-   * Check if vehicle has a linked LiveLink device
-   */
-  async hasLinkedDevice(vin: string): Promise<boolean> {
-    try {
-      const status = await this.getVehicleStatus(vin)
-      return status.device_id !== null
-    } catch {
-      return false
-    }
-  },
 
   // ===========================================================================
   // Vehicle Telemetry (historical)
