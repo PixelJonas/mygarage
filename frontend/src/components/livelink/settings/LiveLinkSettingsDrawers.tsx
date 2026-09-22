@@ -4,6 +4,7 @@ import type { ReactElement } from 'react'
 import type { IntegrationTab } from '@/types/livelink'
 import GeneralSettingsDrawer from './GeneralSettingsDrawer'
 import MosquittoSettingsDrawer from './MosquittoSettingsDrawer'
+import WicanSettingsDrawer from './WicanSettingsDrawer'
 
 /**
  * Picks the settings drawer for what the operator clicked: the gear on the
@@ -22,11 +23,12 @@ import MosquittoSettingsDrawer from './MosquittoSettingsDrawer'
 
 export type SettingsTarget = { type: 'general' } | { type: 'tab'; tab: IntegrationTab }
 
-type DrawerKind = 'broker'
+type DrawerKind = 'broker' | 'wican'
 
 /** Which dedicated drawer a tab opens, or null for the old modal. */
 function drawerFor(tab: IntegrationTab): DrawerKind | null {
   if (tab.id === 'broker') return 'broker'
+  if (tab.id === 'wican') return 'wican'
   return null
 }
 
@@ -57,6 +59,7 @@ export default function LiveLinkSettingsDrawers({ target, onClose, onChanged }: 
         onClose={onClose}
         onChanged={onChanged}
       />
+      <WicanSettingsDrawer open={openKind === 'wican'} tab={lastTab} onClose={onClose} onChanged={onChanged} />
     </>
   )
 }

@@ -339,7 +339,9 @@
     "saveSettingsAction": "save the settings",
     "settingsLoadError": "Could not load these settings.",
     "brokerSaveFirst": "Save your changes first. Test and Restart use the saved settings.",
-    "discoverFailed": "Could not reach the broker to listen."
+    "discoverFailed": "Could not reach the broker to listen.",
+    "wicanTopicPrefix": "WiCAN MQTT topic prefix",
+    "wicanTopicPrefixHint": "The first part of every topic your WiCAN devices publish. Saving restarts the MQTT subscriber if it is running."
   },
   "notifications": {
     "loading": "Loading notification settings...",

@@ -15,8 +15,11 @@ vi.mock('../GeneralSettingsDrawer', () => ({
 vi.mock('../MosquittoSettingsDrawer', () => ({
   default: ({ open }: { open: boolean }) => (open ? <p>mosquitto-drawer</p> : null),
 }))
+vi.mock('../WicanSettingsDrawer', () => ({
+  default: ({ open }: { open: boolean }) => (open ? <p>wican-drawer</p> : null),
+}))
 
-const DRAWERS = ['general-drawer', 'mosquitto-drawer']
+const DRAWERS = ['general-drawer', 'mosquitto-drawer', 'wican-drawer']
 
 /** Exactly `expected` renders, and no other drawer. */
 const expectOnly = (expected: string | null): void => {
@@ -60,8 +63,15 @@ describe('LiveLinkSettingsDrawers', () => {
     expect(hasDedicatedDrawer(broker)).toBe(true)
   })
 
+  it('opens the WiCAN drawer for the WiCAN tab, and only it', () => {
+    const wican = tab('wican', 'wican')
+    render(<LiveLinkSettingsDrawers target={{ type: 'tab', tab: wican }} onClose={vi.fn()} onChanged={vi.fn()} />)
+    expectOnly('wican-drawer')
+    expect(hasDedicatedDrawer(wican)).toBe(true)
+  })
+
   it('sends the other source tabs to the old modal until their drawers exist', () => {
-    for (const t of [tab('wican', 'wican'), tab('torque', 'torque'), tab('device:rvgw', 'generic_mqtt')]) {
+    for (const t of [tab('torque', 'torque'), tab('device:rvgw', 'generic_mqtt')]) {
       expect(hasDedicatedDrawer(t), t.id).toBe(false)
     }
   })
