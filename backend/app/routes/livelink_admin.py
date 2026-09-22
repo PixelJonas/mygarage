@@ -1293,6 +1293,27 @@ async def get_device_readings(
     return DeviceReadingsResponse(device_id=device_id, vin=device.vin, readings=readings)
 
 
+async def _resolve_new_device_vin(
+    db: AsyncSession, vin: str | None, current_user: User | None
+) -> str | None:
+    """The VIN a newly created device should be linked to, or None.
+
+    Mirrors what `update_device` does when it LINKS a device: uppercase, then
+    resolve through `get_vehicle_for_owner_or_403`. Without this the body's VIN
+    went straight into `livelink_devices.vin`, a foreign key to `vehicles.vin`,
+    so an unknown VIN, or a lowercase one (VINs are stored uppercase), was an
+    IntegrityError at commit: a 500 instead of a 404.
+
+    Called before anything is added to the session, so a bad VIN leaves no
+    device and no topic maps behind.
+    """
+    if not vin:
+        return None
+    normalised = vin.upper().strip()
+    await get_vehicle_for_owner_or_403(normalised, current_user, db)
+    return normalised
+
+
 @router.post("/devices", response_model=LiveLinkDeviceResponse, status_code=201)
 async def create_device(
     body: LiveLinkDeviceManualCreate,
@@ -1308,12 +1329,13 @@ async def create_device(
     existing = await LiveLinkService(db).get_device_by_id(body.device_id)
     if existing is not None:
         raise HTTPException(status_code=409, detail=f"Device {body.device_id} already exists")
+    vin = await _resolve_new_device_vin(db, body.vin, current_user)
 
     device = LiveLinkDevice(
         device_id=body.device_id,
         kind=body.kind,
         label=body.label,
-        vin=body.vin,
+        vin=vin,
         enabled=True,
     )
     db.add(device)
@@ -1528,13 +1550,14 @@ async def apply_preset(
     service = LiveLinkService(db)
     if await service.get_device_by_id(body.device_id) is not None:
         raise HTTPException(status_code=409, detail=f"Device {body.device_id} already exists")
+    vin = await _resolve_new_device_vin(db, body.vin, current_user)
 
     device = LiveLinkDevice(
         device_id=body.device_id,
         kind=preset.kind,
         label=preset.title,
         preset_key=name,
-        vin=body.vin,
+        vin=vin,
         enabled=True,
     )
     db.add(device)
