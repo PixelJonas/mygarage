@@ -10,8 +10,10 @@ export interface TabItem {
   icon?: IconType
   /** Rendered as an aria-hidden Badge so the accessible name stays the label. */
   count?: number
-  /** Status marker (e.g. "this service is enabled"). Always aria-hidden. */
-  dot?: boolean
+  /** Status marker. Always aria-hidden, so the tone must never be the only
+   *  thing carrying the state: the consumer states it in words too.
+   *  `true` means success, which is the spelling this prop shipped with. */
+  dot?: boolean | 'success' | 'warning' | 'danger'
   visible?: boolean
 }
 
@@ -37,6 +39,14 @@ const CONTAINER: Record<TabsVariant, string> = {
   segmented: 'inline-flex gap-1 rounded-control border border-border bg-surface-2 p-1',
   pill: 'flex flex-wrap gap-2 rounded-control border border-border bg-surface/50 p-1',
 }
+
+// Same tone vocabulary as Badge, over the same --color-success/warning/danger
+// tokens. No new colour is introduced here.
+const DOT_TONE = {
+  success: 'bg-success',
+  warning: 'bg-warning',
+  danger: 'bg-danger',
+} as const
 
 /**
  * One tablist, three containers.
@@ -109,7 +119,12 @@ export default function Tabs({ items, activeId, onChange, label, variant = 'unde
               </span>
             ) : null}
             {item.dot ? (
-              <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-success" />
+              <span
+                aria-hidden="true"
+                className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                  DOT_TONE[item.dot === true ? 'success' : item.dot]
+                }`}
+              />
             ) : null}
           </button>
         )
