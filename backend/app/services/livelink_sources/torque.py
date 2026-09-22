@@ -41,9 +41,7 @@ class TorqueModule(BaseSourceModule):
     """Torque Pro."""
 
     kind = "torque"
-    capabilities = frozenset(
-        {Capability.TELEMETRY, Capability.DRIVE_SESSION, Capability.LOCATION}
-    )
+    capabilities = frozenset({Capability.TELEMETRY, Capability.DRIVE_SESSION, Capability.LOCATION})
     #: Exactly store_torque_telemetry's behavior: newer-only latest updates so a
     #: backfilled row never clobbers a fresher live one, and no storage-interval
     #: check because that method never performed one.
@@ -54,9 +52,7 @@ class TorqueModule(BaseSourceModule):
         observe_movement=False,
     )
 
-    async def resolve_device(
-        self, db: AsyncSession, device_key: str
-    ) -> LiveLinkDevice | None:
+    async def resolve_device(self, db: AsyncSession, device_key: str) -> LiveLinkDevice | None:
         """Torque's device_key is a path token, not a device id."""
         from app.services.torque_service import TorqueService
 
@@ -71,10 +67,10 @@ class TorqueModule(BaseSourceModule):
         ts = now
         if reading.time_ms:
             try:
-                candidate = datetime.fromtimestamp(
-                    reading.time_ms / 1000, tz=UTC
-                ).replace(tzinfo=None)
-            except (OverflowError, OSError, ValueError):
+                candidate = datetime.fromtimestamp(reading.time_ms / 1000, tz=UTC).replace(
+                    tzinfo=None
+                )
+            except OverflowError, OSError, ValueError:
                 # `time_ms` is only digit-validated, never range-checked. Degrade
                 # to server-now rather than 500ing: Torque retries on any non-OK
                 # response, so a bad device clock would wedge in a retry loop.

@@ -25,10 +25,10 @@ def scope() -> str:
 
 async def _rows(db, scope: str):
     return (
-        await db.execute(
-            select(LiveLinkTopicMap).where(LiveLinkTopicMap.device_id == scope)
-        )
-    ).scalars().all()
+        (await db.execute(select(LiveLinkTopicMap).where(LiveLinkTopicMap.device_id == scope)))
+        .scalars()
+        .all()
+    )
 
 
 def test_offset_column_avoids_the_reserved_word():
@@ -61,18 +61,14 @@ async def test_a_row_round_trips(db_session, scope):
     assert rows[0].enabled is True
     assert float(rows[0].scale) == 1.0
     assert rows[0].value_path is None
-    await db_session.execute(
-        delete(LiveLinkTopicMap).where(LiveLinkTopicMap.device_id == scope)
-    )
+    await db_session.execute(delete(LiveLinkTopicMap).where(LiveLinkTopicMap.device_id == scope))
     await db_session.commit()
 
 
 @pytest.mark.asyncio
 async def test_the_same_topic_cannot_map_to_the_same_param_twice(db_session, scope):
     for _ in range(2):
-        db_session.add(
-            LiveLinkTopicMap(device_id=scope, topic=f"{scope}/t", param_key="P")
-        )
+        db_session.add(LiveLinkTopicMap(device_id=scope, topic=f"{scope}/t", param_key="P"))
     with pytest.raises(IntegrityError):
         await db_session.commit()
     await db_session.rollback()
@@ -92,9 +88,7 @@ async def test_one_topic_may_feed_two_params(db_session, scope):
         )
     await db_session.commit()
     assert len(await _rows(db_session, scope)) == 2
-    await db_session.execute(
-        delete(LiveLinkTopicMap).where(LiveLinkTopicMap.device_id == scope)
-    )
+    await db_session.execute(delete(LiveLinkTopicMap).where(LiveLinkTopicMap.device_id == scope))
     await db_session.commit()
 
 
@@ -105,9 +99,7 @@ async def test_deleting_a_device_removes_its_topic_maps(db_session, scope):
     from app.services.livelink_service import LiveLinkService
 
     db_session.add(LiveLinkDevice(device_id=scope, kind="generic_mqtt"))
-    db_session.add(
-        LiveLinkTopicMap(device_id=scope, topic=f"{scope}/x", param_key="P")
-    )
+    db_session.add(LiveLinkTopicMap(device_id=scope, topic=f"{scope}/x", param_key="P"))
     await db_session.commit()
 
     assert len(await _rows(db_session, scope)) == 1

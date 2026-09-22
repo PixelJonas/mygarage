@@ -34,6 +34,7 @@ call in ``SessionService.handle_ecu_status_change``'s online branch, and every
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from unittest.mock import AsyncMock, patch
 
@@ -44,7 +45,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.drive_session import DriveSession
 from app.models.settings import Setting
-from app.services.mqtt_subscriber import MQTTSubscriber
+from app.services.livelink_ingest import ingest
+from app.services.livelink_sources.base import MqttEnvelope
+from app.services.livelink_sources.wican import WicanModule
 from app.services.session_service import SessionService
 
 pytestmark = pytest.mark.asyncio
@@ -71,6 +74,21 @@ async def _enable_livelink(db: AsyncSession) -> None:
     await db.flush()
 
 
+async def _wican(db, device_id: str, subtopic: str, payload: dict) -> None:
+    """Feed a WiCAN MQTT frame through the real ingest pipeline.
+
+    Replaces the deleted `MQTTSubscriber._handle_status` / `._handle_telemetry`.
+    Only the INVOCATION changed in this file; every assertion below is the one
+    that guarded the old handlers, which is what makes them evidence that the
+    port preserved behaviour.
+    """
+    await ingest(
+        WicanModule(),
+        MqttEnvelope(f"wican/{device_id}/{subtopic}", json.dumps(payload).encode()),
+        db,
+    )
+
+
 class TestMqttCanRx:
     """The telemetry-inferred path: the one the first design revision fixed."""
 
@@ -86,9 +104,7 @@ class TestMqttCanRx:
         vin, device = await make_livelink_vehicle("ingrx", "1")
         await _enable_livelink(db_session)
 
-        await MQTTSubscriber()._handle_telemetry(
-            db_session, device.device_id, {"BATTERY_VOLTAGE": 12.4}
-        )
+        await _wican(db_session, device.device_id, "can/rx", {"BATTERY_VOLTAGE": 12.4})
         await db_session.flush()
 
         assert await _sessions(db_session, device.device_id) == []
@@ -100,11 +116,8 @@ class TestMqttCanRx:
         vin, device = await make_livelink_vehicle("ingrx", "2")
         await _enable_livelink(db_session)
 
-        subscriber = MQTTSubscriber()
         for _ in range(3):
-            await subscriber._handle_telemetry(
-                db_session, device.device_id, {"ENGINE_RPM": 760, "SPEED": 0}
-            )
+            await _wican(db_session, device.device_id, "can/rx", {"ENGINE_RPM": 760, "SPEED": 0})
         await db_session.flush()
 
         assert await _sessions(db_session, device.device_id) == []
@@ -121,11 +134,8 @@ class TestMqttCanRx:
         vin, device = await make_livelink_vehicle("ingrx", "3")
         await _enable_livelink(db_session)
 
-        subscriber = MQTTSubscriber()
         for _ in range(2):
-            await subscriber._handle_telemetry(
-                db_session, device.device_id, {"SPEED": 52, "ENGINE_RPM": 2200}
-            )
+            await _wican(db_session, device.device_id, "can/rx", {"SPEED": 52, "ENGINE_RPM": 2200})
         await db_session.flush()
 
         sessions = await _sessions(db_session, device.device_id)
@@ -151,7 +161,7 @@ class TestMqttCanStatus:
         vin, device = await make_livelink_vehicle("ingst", "1")
         await _enable_livelink(db_session)
 
-        await MQTTSubscriber()._handle_status(db_session, device.device_id, {"status": "online"})
+        await _wican(db_session, device.device_id, "can/status", {"status": "online"})
         await db_session.flush()
         await db_session.refresh(device)
 
@@ -171,7 +181,7 @@ class TestMqttCanStatus:
         vin, device = await make_livelink_vehicle("ingst", "2")
         await _enable_livelink(db_session)
 
-        await MQTTSubscriber()._handle_status(db_session, device.device_id, {"status": "online"})
+        await _wican(db_session, device.device_id, "can/status", {"status": "online"})
         await db_session.flush()
         await db_session.refresh(device)
 

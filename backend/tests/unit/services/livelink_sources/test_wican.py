@@ -91,7 +91,7 @@ async def test_device_ids_are_normalized():
         ("wican/abc/unknown_subtopic", b'{"x": 1}'),
     ],
 )
-async def test_unparseable_input_returns_None_not_an_exception(topic, payload):
+async def test_unparseable_input_returns_none_not_an_exception(topic, payload):
     assert await M.parse(MqttEnvelope(topic, payload)) is None
 
 
