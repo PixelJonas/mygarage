@@ -265,7 +265,7 @@ export default function LiveLinkSettingsModal({ isOpen, onClose }: LiveLinkSetti
   // Update device
   const handleUpdateDevice = async (
     deviceId: string,
-    update: { vin?: string | null; label?: string; enabled?: boolean; odometer_unit?: 'km' | 'mi' | 'auto' }
+    update: { vin?: string | null; label?: string; enabled?: boolean; odometer_unit?: 'km' | 'mi' | 'auto'; odometer_param_key?: string }
   ) => {
     try {
       await livelinkService.updateDevice(deviceId, update)
@@ -1045,7 +1045,7 @@ export function DeviceRow({
   vehicles: Vehicle[]
   deviceFirmware?: DeviceFirmwareStatus
   mqttConnected?: boolean
-  onUpdate: (deviceId: string, update: { vin?: string | null; label?: string; enabled?: boolean; odometer_unit?: 'km' | 'mi' | 'auto' }) => void
+  onUpdate: (deviceId: string, update: { vin?: string | null; label?: string; enabled?: boolean; odometer_unit?: 'km' | 'mi' | 'auto'; odometer_param_key?: string }) => void
   onDelete: (deviceId: string) => void
   onGenerateToken: (deviceId: string) => void
   onRevokeToken: (deviceId: string) => void
@@ -1067,6 +1067,31 @@ export function DeviceRow({
   const [odometerUnit, setOdometerUnit] = useState<'km' | 'mi' | 'auto'>(
     (device.odometer_unit as 'km' | 'mi' | null) ?? 'auto'
   )
+  const [odometerParamKey, setOdometerParamKey] = useState<string>(
+    device.odometer_param_key ?? '',
+  )
+  const [paramKeys, setParamKeys] = useState<string[]>([])
+
+  // Hidden for kinds whose module already syncs odometer inside
+  // store_telemetry: a declaration on those is threaded nowhere and would be
+  // silently ignored. WiCAN is the case today.
+  const [syncsOdometer, setSyncsOdometer] = useState(false)
+
+  useEffect(() => {
+    // Per-DEVICE keys. vehicle_telemetry_latest has no device_id column, so a
+    // per-vehicle list would offer a Torque phone the co-located WiCAN's
+    // A6-ODOMETER, which it never emits.
+    void livelinkService
+      .getDeviceParamKeys(device.device_id)
+      .then(setParamKeys)
+      .catch(() => setParamKeys([]))
+    void livelinkService
+      .listSources()
+      .then((sources) => {
+        setSyncsOdometer(sources.find((x) => x.kind === device.kind)?.syncs_odometer ?? false)
+      })
+      .catch(() => setSyncsOdometer(false))
+  }, [device.device_id, device.kind])
   const [savingSd, setSavingSd] = useState(false)
   const [backfilling, setBackfilling] = useState(false)
 
@@ -1290,6 +1315,28 @@ export function DeviceRow({
                 {t('modal.livelink.odometerUnitHelp')}
               </p>
             </div>
+            {!syncsOdometer && (
+              <div>
+                <label className="block text-xs font-medium text-garage-text mb-1">
+                  {t('modal.livelink.odometerParam')}
+                </label>
+                <Select
+                  value={odometerParamKey}
+                  onChange={(e) => {
+                    const next = e.target.value
+                    setOdometerParamKey(next)
+                    onUpdate(device.device_id, { odometer_param_key: next })
+                  }}
+                  options={[
+                    { value: '', label: t('modal.livelink.odometerParamNone') },
+                    ...paramKeys.map((k) => ({ value: k, label: k })),
+                  ]}
+                />
+                <p className="mt-1 text-[11px] text-garage-text-muted max-w-56">
+                  {t('modal.livelink.odometerParamHelp')}
+                </p>
+              </div>
+            )}
             <button
               onClick={handleSaveSdConfig}
               disabled={savingSd || sdAddress.trim() === ''}

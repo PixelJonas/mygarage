@@ -476,11 +476,19 @@ class LiveLinkService:
         vin: str | None = None,
         enabled: bool | None = None,
         odometer_unit: str | None = None,
+        odometer_param_key: str | None = None,
     ) -> LiveLinkDevice | None:
         """Update device settings.
 
         ``odometer_unit`` accepts 'km', 'mi', or 'auto' to clear the override
         back to key-shape inference. None leaves the current value untouched.
+
+        ``odometer_param_key`` names the parameter carrying this device's
+        odometer. `""` clears it; None leaves it untouched. The empty string is
+        this field's equivalent of odometer_unit's ``'auto'`` sentinel, and it
+        is the SERVICE that maps it to NULL: if the schema coerced `""` to None
+        the route could no longer tell "clear it" from "not supplied" and
+        clearing would silently no-op.
         """
         device = await self.get_device_by_id(device_id)
         if not device:
@@ -506,6 +514,23 @@ class LiveLinkService:
                     "and fix_session_odometer_units.py, then set the unit."
                 )
             device.odometer_unit = resolved
+
+        if odometer_param_key is not None:
+            resolved_key = odometer_param_key.upper().replace(" ", "_") or None
+            # Same reasoning as the unit guard above: changing which parameter
+            # IS the odometer mid-stream splits the history between two keys.
+            # Checked against the CURRENT declaration, or the predicate falls
+            # back to name matching and answers False for exactly the devices
+            # this feature serves.
+            if resolved_key != device.odometer_param_key and await self._has_odometer_history(
+                device_id, device.odometer_param_key
+            ):
+                raise ValueError(
+                    "This device has already recorded odometer readings under its "
+                    "current parameter. Changing it now would split that history. "
+                    "Normalise the stored data first, then change the parameter."
+                )
+            device.odometer_param_key = resolved_key
 
         device.updated_at = utc_now()
         await self.db.commit()

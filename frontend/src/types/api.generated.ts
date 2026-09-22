@@ -2348,6 +2348,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/livelink/devices/{device_id}/param-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Device Param Keys
+         * @description Distinct parameter keys THIS device has reported.
+         *
+         *     Per-device on purpose. `vehicle_telemetry_latest` has no device_id column
+         *     and is keyed (vin, param_key), so a per-vehicle list would offer a Torque
+         *     phone the co-located WiCAN's A6-ODOMETER, which it never emits.
+         */
+        get: operations["list_device_param_keys_api_livelink_devices__device_id__param_keys_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/livelink/devices/{device_id}/sd-config": {
         parameters: {
             query?: never;
@@ -11433,6 +11457,11 @@ export interface components {
              */
             movement_unreadable: boolean;
             /**
+             * Odometer Param Key
+             * @description Which reported parameter carries this device's odometer
+             */
+            odometer_param_key?: string | null;
+            /**
              * Odometer Unit
              * @description Declared odometer units ('km'/'mi'); None means inferred from the key
              */
@@ -11476,6 +11505,11 @@ export interface components {
              * @description User-friendly device name
              */
             label?: string | null;
+            /**
+             * Odometer Param Key
+             * @description Which reported parameter carries this device's odometer. Omitted leaves it unchanged, an empty string clears it, a key sets it (uppercased). The empty string must NOT be coerced to None here, or the service cannot tell 'clear it' from 'not supplied'.
+             */
+            odometer_param_key?: string | null;
             /**
              * Odometer Unit
              * @description Units this device reports its odometer in. 'auto' clears the override and infers from the param key shape. None leaves it unchanged.
@@ -22901,6 +22935,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeviceFirmwareStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_device_param_keys_api_livelink_devices__device_id__param_keys_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string[];
                 };
             };
             /** @description Validation Error */

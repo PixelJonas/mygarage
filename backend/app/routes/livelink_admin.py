@@ -331,6 +331,7 @@ async def update_device(
             vin=updates.vin,
             enabled=updates.enabled,
             odometer_unit=updates.odometer_unit,
+            odometer_param_key=updates.odometer_param_key,
         )
     except ValueError as exc:
         # Changing the odometer unit once readings depend on it would split the
@@ -1103,6 +1104,21 @@ async def create_device(
     await db.commit()
     await db.refresh(device)
     return device
+
+
+@router.get("/devices/{device_id}/param-keys", response_model=list[str])
+async def list_device_param_keys(
+    device_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_current_admin_user),
+) -> list[str]:
+    """Distinct parameter keys THIS device has reported.
+
+    Per-device on purpose. `vehicle_telemetry_latest` has no device_id column
+    and is keyed (vin, param_key), so a per-vehicle list would offer a Torque
+    phone the co-located WiCAN's A6-ODOMETER, which it never emits.
+    """
+    return await LiveLinkService(db).device_reported_param_keys(device_id)
 
 
 @router.get("/topic-maps", response_model=list[TopicMapResponse])

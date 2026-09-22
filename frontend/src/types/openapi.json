@@ -9535,6 +9535,18 @@
             "title": "Movement Unreadable",
             "type": "boolean"
           },
+          "odometer_param_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which reported parameter carries this device's odometer",
+            "title": "Odometer Param Key"
+          },
           "odometer_unit": {
             "anyOf": [
               {
@@ -9642,6 +9654,19 @@
             ],
             "description": "User-friendly device name",
             "title": "Label"
+          },
+          "odometer_param_key": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which reported parameter carries this device's odometer. Omitted leaves it unchanged, an empty string clears it, a key sets it (uppercased). The empty string must NOT be coerced to None here, or the service cannot tell 'clear it' from 'not supplied'.",
+            "title": "Odometer Param Key"
           },
           "odometer_unit": {
             "anyOf": [
@@ -35714,6 +35739,58 @@
           }
         ],
         "summary": "Skip Firmware Version",
+        "tags": [
+          "LiveLink Admin"
+        ]
+      }
+    },
+    "/api/livelink/devices/{device_id}/param-keys": {
+      "get": {
+        "description": "Distinct parameter keys THIS device has reported.\n\nPer-device on purpose. `vehicle_telemetry_latest` has no device_id column\nand is keyed (vin, param_key), so a per-vehicle list would offer a Torque\nphone the co-located WiCAN's A6-ODOMETER, which it never emits.",
+        "operationId": "list_device_param_keys_api_livelink_devices__device_id__param_keys_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "title": "Device Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Response List Device Param Keys Api Livelink Devices  Device Id  Param Keys Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Device Param Keys",
         "tags": [
           "LiveLink Admin"
         ]

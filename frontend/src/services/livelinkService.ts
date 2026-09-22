@@ -54,6 +54,12 @@ export const livelinkService = {
   // Source modules, topic maps, discovery and presets
   // ===========================================================================
 
+  /** Distinct parameter keys THIS device has reported. */
+  async getDeviceParamKeys(deviceId: string): Promise<string[]> {
+    const response = await api.get<string[]>(`/livelink/devices/${deviceId}/param-keys`)
+    return response.data
+  },
+
   /** Registered source kinds and what each produces. */
   async listSources(): Promise<SourceInfo[]> {
     const response = await api.get<SourceInfo[]>('/livelink/sources')

@@ -73,6 +73,16 @@ class LiveLinkDeviceUpdate(BaseModel):
             "override and infers from the param key shape. None leaves it unchanged."
         ),
     )
+    odometer_param_key: str | None = Field(
+        None,
+        max_length=100,
+        description=(
+            "Which reported parameter carries this device's odometer. Omitted "
+            "leaves it unchanged, an empty string clears it, a key sets it "
+            "(uppercased). The empty string must NOT be coerced to None here, "
+            "or the service cannot tell 'clear it' from 'not supplied'."
+        ),
+    )
 
 
 class LiveLinkDeviceResponse(LiveLinkDeviceBase):
@@ -97,6 +107,9 @@ class LiveLinkDeviceResponse(LiveLinkDeviceBase):
         None, description="Declared odometer units ('km'/'mi'); None means inferred from the key"
     )
     kind: str = Field("wican", description="Source module that owns this device (see GET /sources)")
+    odometer_param_key: str | None = Field(
+        None, description="Which reported parameter carries this device's odometer"
+    )
     enabled: bool
     last_seen: datetime | None
     #: When this device last proved the vehicle moved. NULL on a device whose
