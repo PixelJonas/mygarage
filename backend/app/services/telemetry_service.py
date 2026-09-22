@@ -297,8 +297,13 @@ class TelemetryService:
         else:
             return "other"
 
-    def _format_display_name(self, param_key: str) -> str:
-        """Format a parameter key into a display name."""
+    @staticmethod
+    def _format_display_name(param_key: str) -> str:
+        """Format a parameter key into a display name.
+
+        Also the test for "still the auto name" when a preset applies its own
+        names (routes/livelink_admin.apply_preset), so the two cannot drift.
+        """
         # Replace underscores with spaces and title case
         return param_key.replace("_", " ").title()
 

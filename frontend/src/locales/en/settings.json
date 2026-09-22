@@ -314,7 +314,7 @@
     "livelinkSourcesDesc": "Sensor and telemetry integrations.",
     "sourceWicanDescription": "OBD2 dongles reading engine data over the vehicle's CAN bus.",
     "sourceTorqueDescription": "Torque Pro on an Android phone, posting readings and GPS over HTTP.",
-    "sourceBrokerDescription": "The MQTT broker that carries WiCAN and sensor messages.",
+    "sourceBrokerDescription": "The MQTT broker your devices and sensors publish to.",
     "statusReceiving": "Receiving data",
     "statusFirmwareUpdate": "Firmware update available",
     "statusNotLinked": "Not linked to a vehicle",

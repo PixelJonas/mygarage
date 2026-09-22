@@ -149,3 +149,86 @@ async def test_non_admins_are_refused(client, non_admin_headers, test_vehicle):
         headers=non_admin_headers,
     )
     assert resp.status_code in (401, 403)
+
+
+# ---------------------------------------------------------------------------
+# Display names (sidecars plan, Task 3)
+# ---------------------------------------------------------------------------
+
+
+def test_every_mapped_reading_has_a_display_name():
+    """A row without one would render as a title-cased key ("Propane T1 Quality")
+    in the settings drawer's reading list."""
+    from app.services.livelink_sources.presets import PRESETS
+
+    preset = PRESETS["mopeka_two_tank"]
+    keys = {r["param_key"] for r in preset.rows if r["role"] == "telemetry"}
+    assert keys == set(preset.display_names)
+
+
+def test_the_description_leaves_calibration_to_the_gateway():
+    """30 lb is the gateway's calibration setting, not anything MyGarage does."""
+    from app.services.livelink_sources.presets import PRESETS
+
+    assert "30 lb" not in PRESETS["mopeka_two_tank"].description
+
+
+async def _parameter(db_session, key):
+    db_session.expire_all()
+    return (
+        await db_session.execute(
+            select(LiveLinkParameter).where(LiveLinkParameter.param_key == key)
+        )
+    ).scalar_one_or_none()
+
+
+@pytest.mark.asyncio
+async def test_applying_names_the_readings(
+    client, auth_headers, db_session, test_vehicle, no_reload
+):
+    # Earlier tests in this file register these keys and nothing wipes
+    # parameters, so put the one under test back to its auto name first.
+    level = await _parameter(db_session, "PROPANE_T1_LEVEL_PCT")
+    if level is not None:
+        level.display_name = "Propane T1 Level Pct"
+        await db_session.commit()
+
+    resp = await client.post(
+        f"{BASE}/mopeka_two_tank/apply",
+        json={"vin": test_vehicle["vin"], "device_id": "rvgw"},
+        headers=auth_headers,
+    )
+
+    assert resp.status_code == 201
+    assert (await _parameter(db_session, "PROPANE_T1_LEVEL_PCT")).display_name == "Tank 1 level"
+    assert (await _parameter(db_session, "RV_GATEWAY_RSSI")).display_name == "Gateway Wi-Fi signal"
+
+
+@pytest.mark.asyncio
+async def test_applying_keeps_a_name_someone_chose(
+    client, auth_headers, db_session, test_vehicle, no_reload
+):
+    key = "PROPANE_T2_TEMP_C"
+    existing = await _parameter(db_session, key)
+    prior = existing.display_name if existing is not None else None
+    if existing is None:
+        existing = LiveLinkParameter(param_key=key, unit="C", param_class="temperature")
+        db_session.add(existing)
+    existing.display_name = "Rear bottle temp"
+    await db_session.commit()
+
+    try:
+        resp = await client.post(
+            f"{BASE}/mopeka_two_tank/apply",
+            json={"vin": test_vehicle["vin"], "device_id": "rvgw"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        assert (await _parameter(db_session, key)).display_name == "Rear bottle temp"
+    finally:
+        row = await _parameter(db_session, key)
+        if prior is None:
+            await db_session.delete(row)
+        else:
+            row.display_name = prior
+        await db_session.commit()

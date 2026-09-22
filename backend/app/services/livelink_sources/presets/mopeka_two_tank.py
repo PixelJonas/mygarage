@@ -38,6 +38,32 @@ _PER_TANK = [
     ("availability", "AVAILABLE", None, "diagnostic"),
 ]
 
+#: Operator-facing names. Server data, like every parameter display name, so
+#: English only. Tank numbers follow the gateway's topic numbering.
+#: "sensor heard", not "available": `availability` means the radio was heard,
+#: not that the measurement is valid (see the module docstring).
+_PER_TANK_NAMES = {
+    "LEVEL_PCT": "level",
+    "DEPTH_MM": "depth",
+    "TEMP_C": "temperature",
+    "SENSOR_BATT_PCT": "sensor battery",
+    "QUALITY": "reading quality",
+    "REJECTED": "rejected readings",
+    "AVAILABLE": "sensor heard",
+}
+
+#: Applied at preset apply, and only while a parameter's name is still the
+#: auto default: a name someone set by hand is theirs.
+DISPLAY_NAMES: dict[str, str] = {
+    **{
+        f"PROPANE_T{tank}_{key}": f"Tank {tank} {name}"
+        for tank in (1, 2)
+        for key, name in _PER_TANK_NAMES.items()
+    },
+    "RV_GATEWAY_RSSI": "Gateway Wi-Fi signal",
+    "RV_GATEWAY_UPTIME_S": "Gateway uptime",
+}
+
 
 def _rows() -> list[dict]:
     """The seventeen mapping rows: 14 propane, 2 gateway, 1 status."""

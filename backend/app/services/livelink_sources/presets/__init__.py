@@ -22,6 +22,9 @@ class Preset:
     kind: str
     rows: list[dict]
     storage_interval_seconds: int
+    #: param_key to operator-facing name. Kept apart from `rows` because each
+    #: row is splatted straight into LiveLinkTopicMap(**row).
+    display_names: dict[str, str]
 
 
 PRESETS: dict[str, Preset] = {
@@ -30,11 +33,12 @@ PRESETS: dict[str, Preset] = {
         title="Mopeka",
         # Shown to the operator as the tab's description and in the Add-source
         # catalogue, which prints the topic count on its own line.
-        description=(
-            "Two Mopeka Pro Check sensors on 30 lb bottles, published by an ESPHome gateway."
-        ),
+        # No bottle size: the 30 lb calibration is the gateway's setting, not
+        # anything MyGarage does. "Two" stays while the preset maps exactly two.
+        description="Two Mopeka Pro Check propane sensors, published by an ESPHome gateway.",
         kind="generic_mqtt",
         rows=mopeka_two_tank.ROWS,
         storage_interval_seconds=mopeka_two_tank.STORAGE_INTERVAL_SECONDS,
+        display_names=mopeka_two_tank.DISPLAY_NAMES,
     )
 }

@@ -125,3 +125,4 @@ migrations must swallow their own operational errors.
 | `112_device_odometer_param_key` | **FATAL** — Add ``livelink_devices.odometer_param_key``: which parameter carries this device's odometer. |
 | `113_livelink_device_preset_key` | **FATAL** — Add ``livelink_devices.preset_key``: which preset created this device. |
 | `114_livelink_parameter_dashboard_default` | **FATAL** — Reset ``livelink_parameters.show_on_dashboard`` to TRUE everywhere. |
+| `115_livelink_preset_display_names` | Name an existing Mopeka install's readings ("Tank 1 level"). |

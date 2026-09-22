@@ -1572,6 +1572,15 @@ async def apply_preset(
         )
         if param is not None:
             param.storage_interval_seconds = preset.storage_interval_seconds
+            # Only while the name is still the auto default: a name someone set
+            # by hand is theirs. get_or_create_parameter accepts a display_name
+            # argument and ignores it, so this cannot be done there.
+            wanted = preset.display_names.get(row["param_key"])
+            if wanted and param.display_name in (
+                None,
+                TelemetryService._format_display_name(row["param_key"]),
+            ):
+                param.display_name = wanted
 
     await db.commit()
     await db.refresh(device)
