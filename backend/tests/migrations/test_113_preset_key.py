@@ -140,6 +140,39 @@ def test_backfills_parameters_for_existing_mappings(tmp_path):
     assert keys == ["AUX_VOLTS"]
 
 
+def test_backfill_parameters_dedupes_shared_param_key_across_topics(tmp_path):
+    """Two mappings can share one param_key under different topics
+    (livelink_topic_maps is only UNIQUE(topic, param_key)), but
+    livelink_parameters.param_key is globally unique. A backfill that
+    groups by the (param_key, unit, param_class) triple instead of by
+    param_key alone would try to INSERT the same key twice and crash --
+    and since this migration is FATAL=True, that takes the whole app
+    down with it."""
+    engine = create_engine(f"sqlite:///{tmp_path / 'm.db'}")
+    _schema(engine)
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO livelink_topic_maps (device_id, topic, role, param_key, unit, param_class) "
+                "VALUES ('hand1', 'x/y/volts', 'telemetry', 'AUX_VOLTS', 'V', 'voltage')"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO livelink_topic_maps (device_id, topic, role, param_key, unit, param_class) "
+                "VALUES ('hand1', 'x/z/volts', 'telemetry', 'AUX_VOLTS', 'mV', 'voltage')"
+            )
+        )
+
+    _load().upgrade(engine)  # must not raise IntegrityError
+
+    with engine.begin() as conn:
+        rows = conn.execute(
+            text("SELECT param_key FROM livelink_parameters WHERE param_key = 'AUX_VOLTS'")
+        ).all()
+    assert len(rows) == 1
+
+
 def test_backfill_does_not_duplicate_an_existing_parameter(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'm.db'}")
     _schema(engine)

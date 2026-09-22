@@ -73,7 +73,7 @@ def _backfill_preset_key(engine) -> None:
             result = conn.execute(
                 text(
                     f"UPDATE {_TABLE} SET {_COLUMN} = :key "
-                    f"WHERE label = :title AND {_COLUMN} IS NULL"
+                    f"WHERE label = :title AND kind = 'generic_mqtt' AND {_COLUMN} IS NULL"
                 ),
                 {"key": key, "title": title},
             )
@@ -90,19 +90,31 @@ def _backfill_parameters(engine) -> None:
         return
 
     with engine.begin() as conn:
+        # GROUP BY param_key, not DISTINCT on the triple: livelink_topic_maps
+        # is only UNIQUE(topic, param_key) (app/models/livelink_topic_map.py),
+        # so two rows can share one param_key under different topics with
+        # different unit/param_class -- exactly the rows create_topic_map never
+        # registered a parameter for. livelink_parameters.param_key is globally
+        # unique, so a DISTINCT triple would issue two INSERTs for one key and
+        # the second raises IntegrityError, rolling back the whole migration
+        # (FATAL=True), which refuses to boot. MIN() picks a representative
+        # unit/param_class deterministically on both SQLite and Postgres; when
+        # two mappings disagree, one wins arbitrarily, mirroring
+        # auto_register_parameter keeping whatever was registered first.
         orphans = conn.execute(
             text(
-                "SELECT DISTINCT m.param_key, m.unit, m.param_class "
+                "SELECT m.param_key, MIN(m.unit), MIN(m.param_class) "
                 "FROM livelink_topic_maps m "
                 "LEFT JOIN livelink_parameters p ON p.param_key = m.param_key "
                 "WHERE m.role = 'telemetry' "
                 "  AND m.param_key IS NOT NULL "
-                "  AND p.param_key IS NULL"
+                "  AND p.param_key IS NULL "
+                "GROUP BY m.param_key"
             )
         ).all()
 
         for param_key, unit, param_class in orphans:
-            # Mirrors TelemetryService._register_parameter's defaults. Kept
+            # Mirrors TelemetryService.auto_register_parameter's defaults. Kept
             # literal rather than imported, per the inlining convention above.
             show = param_class in (
                 "speed",
