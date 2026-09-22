@@ -591,7 +591,8 @@
       "noMovementSignalDesc": "{{devices}} keeps checking in but never reports a speed or odometer reading MyGarage recognises, so no drives are being recorded for it. Check the container log for the exact readings it sends, or set How drives are detected to \"By device connection\" to record drives the old way.",
       "odometerParam": "Odometer parameter",
       "odometerParamNone": "None (no odometer recorded)",
-      "odometerParamHelp": "Which reported parameter carries this device's odometer. Leave it unset and nothing is recorded. Torque's own total is accumulated by the app, not read from the vehicle, so it drifts when the phone misses trips. Set the unit above to match, or the value is read as kilometres."
+      "odometerParamHelp": "Which reported parameter carries this device's odometer. Leave it unset and nothing is recorded. Torque's own total is accumulated by the app, not read from the vehicle, so it drifts when the phone misses trips. Set the unit above to match, or the value is read as kilometres.",
+      "deviceSettings": "Device settings"
     },
     "transfer": {
       "progressLabel": "Vehicle transfer progress",
