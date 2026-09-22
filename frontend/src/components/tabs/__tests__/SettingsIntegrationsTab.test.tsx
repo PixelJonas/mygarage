@@ -16,7 +16,7 @@
 
 import { useEffect } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { SettingsProvider, useSettings } from '@/contexts/SettingsContext'
 
 vi.mock('@/services/api', () => ({
@@ -53,8 +53,28 @@ vi.mock('@/services/livelinkService', () => ({
 vi.mock('../../settings/WidgetKeysPanel', () => ({ default: () => <div data-testid="widget-keys" /> }))
 vi.mock('../../modals/AddProviderModal', () => ({ default: () => null }))
 vi.mock('../../modals/EditProviderModal', () => ({ default: () => null }))
-vi.mock('../../modals/LiveLinkSettingsModal', () => ({ default: () => null }))
+// Renders a close control only while open, so a test can close it the way the
+// operator does and observe what closing triggers.
+vi.mock('../../modals/LiveLinkSettingsModal', () => ({
+  default: ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) =>
+    isOpen ? <button onClick={onClose}>close-livelink-modal</button> : null,
+}))
 vi.mock('../../livelink/MqttSourcesCard', () => ({ default: () => <div data-testid="mqtt-sources" /> }))
+// Fetches on its own and has its own suite. Exposes refreshKey and the
+// settings callback so this suite can test the wiring between the two.
+vi.mock('../../livelink/LiveLinkIntegrationsCard', () => ({
+  default: ({
+    refreshKey,
+    onOpenSettings,
+  }: {
+    refreshKey?: number
+    onOpenSettings: (tab: { id: string }) => void
+  }) => (
+    <div data-testid="livelink-integrations" data-refresh={refreshKey}>
+      <button onClick={() => onOpenSettings({ id: 'wican' })}>open-source-settings</button>
+    </div>
+  ),
+}))
 
 import api from '@/services/api'
 import SettingsIntegrationsTab from '../SettingsIntegrationsTab'
@@ -152,5 +172,39 @@ describe('SettingsIntegrationsTab', () => {
     // accessible name, so this assertion is false against that version.
     expect(screen.getByText('integrations.statusActive')).toBeInTheDocument()
     expect(screen.getByText('integrations.statusInactive')).toBeInTheDocument()
+  })
+
+  it('describes LiveLink by its sources, not by one vendor', async () => {
+    // A new key rather than a rewrite of livelinkDesc: six locales translate
+    // the old WiCAN-specific text, and rewriting its English value would leave
+    // every one of them silently stale.
+    renderTab()
+
+    expect(await screen.findByText('integrations.livelinkSourcesDesc')).toBeInTheDocument()
+    expect(screen.queryByText('integrations.livelinkDesc')).not.toBeInTheDocument()
+  })
+
+  it('mounts the integrations strip inside the LiveLink card', async () => {
+    renderTab()
+
+    expect(await screen.findByTestId('livelink-integrations')).toBeInTheDocument()
+    // The old body's Configure button is gone; the strip's per-source
+    // Settings button replaces it.
+    expect(screen.queryByText('integrations.configureLiveLink')).not.toBeInTheDocument()
+  })
+
+  it('refetches the strip when the LiveLink settings modal closes', async () => {
+    // Enabling LiveLink or linking a device in the modal changes a tab's
+    // status. Without the bump the strip shows the state from before the edit.
+    renderTab()
+
+    const strip = await screen.findByTestId('livelink-integrations')
+    const before = Number(strip.dataset.refresh)
+    fireEvent.click(screen.getByRole('button', { name: 'open-source-settings' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'close-livelink-modal' }))
+
+    await waitFor(() =>
+      expect(Number(screen.getByTestId('livelink-integrations').dataset.refresh)).toBe(before + 1),
+    )
   })
 })

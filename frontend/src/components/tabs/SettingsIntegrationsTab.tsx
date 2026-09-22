@@ -1,18 +1,18 @@
 import { useState, useEffect, useCallback, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { CheckCircle, AlertCircle, Plug, Shield, Pencil, Trash2, Plus, Radio, Settings, ArrowUpCircle, HelpCircle, Webhook, Sparkles, AtSign } from 'lucide-react'
+import { CheckCircle, AlertCircle, Plug, Shield, Pencil, Trash2, Plus, Radio, HelpCircle, Webhook, Sparkles, AtSign } from 'lucide-react'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useAuth } from '@/contexts/AuthContext'
 import api from '@/services/api'
 import { getActionErrorMessage } from '@/utils/httpErrorHandler'
 import { livelinkService } from '@/services/livelinkService'
-import type { LiveLinkSettings, LiveLinkDeviceListResponse, DeviceFirmwareStatus } from '@/types/livelink'
 import AddProviderModal from '../modals/AddProviderModal'
 import EditProviderModal from '../modals/EditProviderModal'
 import LiveLinkSettingsModal from '../modals/LiveLinkSettingsModal'
 import WidgetKeysPanel from '../settings/WidgetKeysPanel'
 import { Card, Chip, IconButton, Select, Toggle, Drawer } from '../ui'
 import type { IconType } from '../ui/types'
+import LiveLinkIntegrationsCard from '@/components/livelink/LiveLinkIntegrationsCard'
 import MqttSourcesCard from '@/components/livelink/MqttSourcesCard'
 import type { LiveLinkDevice } from '@/types/livelink'
 
@@ -115,11 +115,9 @@ export default function SettingsIntegrationsTab() {
   // Which card's "About" help sidecar is open (null = closed).
   const [helpDrawer, setHelpDrawer] = useState<'carcomplaints' | 'livelink' | null>(null)
 
-  // LiveLink state
-  const [livelinkSettings, setLivelinkSettings] = useState<LiveLinkSettings | null>(null)
-  const [livelinkDevices, setLivelinkDevices] = useState<LiveLinkDeviceListResponse | null>(null)
-  const [livelinkFirmware, setLivelinkFirmware] = useState<DeviceFirmwareStatus[]>([])
-  const [livelinkLoading, setLivelinkLoading] = useState(true)
+  // Bumped whenever something that can change the integrations strip closes,
+  // so the card refetches instead of showing the state from before the edit.
+  const [integrationsRefresh, setIntegrationsRefresh] = useState(0)
 
   const [formData, setFormData] = useState({
     nhtsa_enabled: 'true',
@@ -187,27 +185,6 @@ export default function SettingsIntegrationsTab() {
     }
   }, [t])
 
-  const loadLiveLinkData = useCallback(async () => {
-    setLivelinkLoading(true)
-    try {
-      const [settings, devices, firmware] = await Promise.all([
-        livelinkService.getSettings(),
-        livelinkService.getDevices(),
-        livelinkService.getDeviceFirmwareStatus(),
-      ])
-      setLivelinkSettings(settings)
-      setLivelinkDevices(devices)
-      setLivelinkFirmware(firmware)
-    } catch {
-      // LiveLink may not be configured yet, silently ignore
-      setLivelinkSettings(null)
-      setLivelinkDevices(null)
-      setLivelinkFirmware([])
-    } finally {
-      setLivelinkLoading(false)
-    }
-  }, [])
-
   // Config-driven MQTT sources. Only generic_mqtt devices have topic maps;
   // WiCAN and Torque parse their own wire formats in code.
   useEffect(() => {
@@ -224,14 +201,7 @@ export default function SettingsIntegrationsTab() {
   useEffect(() => {
     loadSettings()
     loadProviders()
-    // LiveLink infra endpoints are admin-only (allowed in none-mode); skip the
-    // fetch for non-admins in an auth-enabled deployment.
-    if (canManageLiveLink) {
-      loadLiveLinkData()
-    } else {
-      setLivelinkLoading(false)
-    }
-  }, [loadSettings, loadLiveLinkData, loadProviders, canManageLiveLink])
+  }, [loadSettings, loadProviders])
 
   const handleEditProvider = (provider: POIProvider) => {
     setSelectedProvider(provider)
@@ -610,7 +580,7 @@ export default function SettingsIntegrationsTab() {
         <IntegrationCard
           icon={Radio}
           title={t('integrations.livelink')}
-          description={t('integrations.livelinkDesc')}
+          description={t('integrations.livelinkSourcesDesc')}
           actions={
             <IconButton
               icon={HelpCircle}
@@ -621,69 +591,12 @@ export default function SettingsIntegrationsTab() {
           }
         >
 
-          <div className="space-y-6">
-            {livelinkLoading ? (
-              <div className="text-sm text-garage-text-muted">{t('integrations.livelinkLoading')}</div>
-            ) : (
-              <>
-                {/* Status Indicator */}
-                <div className="flex items-center gap-2">
-                  <div
-                    className={`w-3 h-3 rounded-full ${
-                      !livelinkSettings?.enabled
-                        ? 'bg-gray-500'
-                        : livelinkDevices && livelinkDevices.online_count > 0
-                        ? 'bg-green-500'
-                        : 'bg-yellow-500'
-                    }`}
-                  />
-                  <span className="text-sm text-garage-text">
-                    {!livelinkSettings?.enabled
-                      ? t('integrations.disabled')
-                      : livelinkDevices && livelinkDevices.online_count > 0
-                      ? t('integrations.receivingData')
-                      : livelinkDevices && livelinkDevices.total > 0
-                      ? t('integrationsTab.noDataDevicesOffline')
-                      : t('integrations.noDevices')}
-                  </span>
-                </div>
-
-                {/* Device Summary */}
-                {livelinkDevices && livelinkDevices.total > 0 && (
-                  <div className="text-sm text-garage-text-muted">
-                    {t('integrationsTab.devicesLinked', { count: livelinkDevices.total })}
-                    {livelinkDevices.online_count > 0 && (
-                      <span className="text-green-500">
-                        {t('integrationsTab.devicesOnlineSuffix', { count: livelinkDevices.online_count })}
-                      </span>
-                    )}
-                  </div>
-                )}
-
-                {/* Firmware Update Badge */}
-                {livelinkFirmware.some((d) => d.update_available) && (
-                  <div className="flex items-center gap-2 text-sm text-yellow-500">
-                    <ArrowUpCircle className="w-4 h-4" />
-                    <span>{t('integrations.firmwareUpdate')}</span>
-                  </div>
-                )}
-
-                {/* Configure Button */}
-                <div className="pt-4 border-t border-garage-border">
-                  <button
-                    onClick={() => setIsLiveLinkModalOpen(true)}
-                    className="flex items-center gap-2 btn btn-primary rounded-lg transition-colors"
-                  >
-                    <Settings size={16} />
-                    {t('integrations.configureLiveLink')}
-                  </button>
-                  <p className="mt-2 text-sm text-garage-text-muted">
-                    {t('integrations.configureDesc')}
-                  </p>
-                </div>
-              </>
-            )}
-          </div>
+          {/* Admin-gated like the card around it: /integrations is an admin
+              endpoint, and this card only renders when canManageLiveLink. */}
+          <LiveLinkIntegrationsCard
+            refreshKey={integrationsRefresh}
+            onOpenSettings={() => setIsLiveLinkModalOpen(true)}
+          />
         </IntegrationCard>
         )}
       </div>
@@ -781,7 +694,12 @@ export default function SettingsIntegrationsTab() {
 
       <LiveLinkSettingsModal
         isOpen={isLiveLinkModalOpen}
-        onClose={() => setIsLiveLinkModalOpen(false)}
+        onClose={() => {
+          setIsLiveLinkModalOpen(false)
+          // Anything done in the modal (enable/disable, link a device) can
+          // change a tab's status.
+          setIntegrationsRefresh((n) => n + 1)
+        }}
       />
 
       {/* About / help sidecar — opened from each card's upper-right help button. */}

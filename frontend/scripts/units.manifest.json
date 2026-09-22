@@ -1060,6 +1060,12 @@
       "reason": "no unit behaviour: household insurance (2026-09-19, migration 107), the next-term form; its date arithmetic counts days, not a unit-bearing quantity. Reviewed by reading it: currency amounts, dates and text only; no distance, volume, mass, pressure, temperature or consumption value is read, converted or displayed. Re-reviewed 2026-09-19 (PR #177 review: no overlapping renewal or switch, partial-switch hint): still currency, dates and text only."
     },
     {
+      "path": "src/components/livelink/LiveLinkIntegrationsCard.tsx",
+      "disposition": "no unit behaviour",
+      "digest": "0338424b035cfca94cd05692c725e371701d25c5278f2270f082fd17d083dba5",
+      "reason": "no unit behaviour: read in full (2026-09-22). Renders the integrations tab strip: tab labels (proper nouns from the server), a status dot tone, a translated status phrase, a source description (translated, or the preset's literal server text), and two DIMENSIONLESS device counts (linked, online) through integrationsTab.devicesLinked / devicesOnlineSuffix. No telemetry value, no unit label, no formatter, no quantity. Deliberately so: per-device readings (value + unit) are Plan 2's sidecar, whose row must be `audited`."
+    },
+    {
       "path": "src/components/livelink/MqttSourcesCard.tsx",
       "disposition": "no unit behaviour",
       "digest": "1b63e50bc8fdbae16207bb69f4c37e14e5d5122709a4fdda1727365f99281b78",
@@ -1495,8 +1501,8 @@
     {
       "path": "src/components/tabs/SettingsIntegrationsTab.tsx",
       "disposition": "no unit behaviour",
-      "digest": "a55085aa49cedcd7deb9b3cc3e1d30b5f600ba238314a4de3a0915671052c65d",
-      "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched 5 of them; every hit was read in context and none is a unit decision or a unit-bearing quantity."
+      "digest": "520255b994ce3ae314f082161bb11efd03252e3913787ecb5a0a6301135e05de",
+      "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched 5 of them; every hit was read in context and none is a unit decision or a unit-bearing quantity. 2026-09-22: re-reviewed for the LiveLink integrations card. The LiveLink card's status dot, device summary, firmware badge and Configure button are replaced by <LiveLinkIntegrationsCard>, and the settings/devices/firmware loader that fed them is deleted with its four state variables. The subtitle moves to integrations.livelinkSourcesDesc and the LiveLink modal's onClose bumps a refresh counter. Every removed line was a status word or a device count; no unit-bearing value, conversion or label is added or touched."
     },
     {
       "path": "src/components/tabs/SettingsNotificationsTab.tsx",
