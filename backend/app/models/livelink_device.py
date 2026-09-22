@@ -81,6 +81,11 @@ class LiveLinkDevice(Base):
     #: as kilometres.
     odometer_param_key: Mapped[str | None] = mapped_column(String(100))
 
+    #: Which preset created this device, or NULL for a handmade one. The
+    #: integrations card names a preset-backed tab from this rather than by
+    #: matching the user-editable label against a preset title.
+    preset_key: Mapped[str | None] = mapped_column(String(50))
+
     kind: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default=text("'wican'")
     )  # Validated by app.services.livelink_sources.registry, not a DB CHECK

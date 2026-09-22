@@ -1295,6 +1295,7 @@ async def apply_preset(
         device_id=body.device_id,
         kind=preset.kind,
         label=preset.title,
+        preset_key=name,
         vin=body.vin,
         enabled=True,
     )

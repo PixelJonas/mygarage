@@ -123,3 +123,4 @@ migrations must swallow their own operational errors.
 | `110_widen_livelink_device_kind` | **FATAL** — Widen ``livelink_devices.kind`` from VARCHAR(10) to VARCHAR(20). |
 | `111_livelink_topic_maps` | Add ``livelink_topic_maps``, the table behind config-driven MQTT sources. |
 | `112_device_odometer_param_key` | **FATAL** — Add ``livelink_devices.odometer_param_key``: which parameter carries this device's odometer. |
+| `113_livelink_device_preset_key` | **FATAL** — Add ``livelink_devices.preset_key``: which preset created this device. |
