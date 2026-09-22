@@ -16,6 +16,7 @@ const svc = vi.hoisted(() => ({
   listTopicMaps: vi.fn(),
   createTopicMap: vi.fn(),
   deleteTopicMap: vi.fn(),
+  getIntegrations: vi.fn(),
 }))
 vi.mock('@/services/livelinkService', () => ({ livelinkService: svc }))
 const VEHICLE = { vin: '4EZFD3821P6080615', nickname: 'Durango', year: 2023, make: 'KZ', model: 'Durango' }
@@ -80,6 +81,7 @@ beforeEach(() => {
   svc.deleteDevice.mockResolvedValue(undefined)
   svc.updateParameter.mockResolvedValue({})
   svc.listTopicMaps.mockResolvedValue([])
+  svc.getIntegrations.mockResolvedValue({ tabs: [TAB] })
 })
 
 afterEach(() => {
@@ -186,5 +188,22 @@ describe('MqttDeviceDrawer', () => {
     await waitFor(() => expect(svc.updateDevice).toHaveBeenCalledWith('rvgateway', { label: 'Barn sensors' }))
     expect(await screen.findByRole('dialog', { name: 'Barn sensors' })).toBeInTheDocument()
     expect(onChanged).toHaveBeenCalled()
+  })
+
+  it('states the status the device has now, not the one it had when opened', async () => {
+    // The drawer opened on a tab object captured at click time. Unlinking
+    // made it "Not linked", and the drawer went on saying "Receiving data".
+    const receiving = { ...TAB, status: 'ok', reason: 'receiving' } as unknown as IntegrationTab
+    svc.getDevices.mockResolvedValue({ total: 1, online_count: 0, devices: [device({ vin: VEHICLE.vin })] })
+    openDrawer(receiving)
+    expect(await screen.findByText('integrations.statusReceiving')).toBeInTheDocument()
+    await screen.findByRole('option', { name: 'Durango' })
+
+    svc.getDevices.mockResolvedValue({ total: 1, online_count: 0, devices: [device({ vin: null })] })
+    svc.getIntegrations.mockResolvedValue({ tabs: [{ ...TAB, status: 'attention', reason: 'not_linked' }] })
+    fireEvent.change(screen.getByLabelText('integrations.sourceVehicle'), { target: { value: '' } })
+
+    expect(await screen.findByText('integrations.statusNotLinked')).toBeInTheDocument()
+    expect(screen.queryByText('integrations.statusReceiving')).not.toBeInTheDocument()
   })
 })

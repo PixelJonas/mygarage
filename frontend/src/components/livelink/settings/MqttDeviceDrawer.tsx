@@ -47,6 +47,27 @@ export default function MqttDeviceDrawer({ open, tab, onClose, onChanged }: Prop
   const [label, setLabel] = useState('')
   const [busy, setBusy] = useState(false)
 
+  // The tab as it is NOW. The prop is the object captured when Settings was
+  // clicked, so after a link change it would go on stating the old status.
+  // Reset from the prop when a different tab opens; refreshed after changes.
+  const [liveTab, setLiveTab] = useState(tab)
+  const [seenTab, setSeenTab] = useState(tab)
+  if (tab !== seenTab) {
+    setSeenTab(tab)
+    setLiveTab(tab)
+  }
+
+  const refreshTab = useCallback(async (): Promise<void> => {
+    if (!tab) return
+    try {
+      const { tabs } = await livelinkService.getIntegrations()
+      const found = tabs.find((candidate) => candidate.id === tab.id)
+      if (found) setLiveTab(found)
+    } catch {
+      // Keep the last known status; the card behind shows its own error.
+    }
+  }, [tab])
+
   const loadDevice = useCallback(async (): Promise<LiveLinkDevice | null> => {
     const list = await livelinkService.getDevices()
     const found = list.devices.find((d) => d.device_id === deviceId) ?? null
@@ -94,7 +115,7 @@ export default function MqttDeviceDrawer({ open, tab, onClose, onChanged }: Prop
       await livelinkService.updateDevice(deviceId, change)
       const found = await loadDevice()
       if (change.label !== undefined) setLabel(found?.label ?? '')
-      await loadReadings()
+      await Promise.all([loadReadings(), refreshTab()])
       onChanged()
     } catch (error) {
       toast.error(getActionErrorMessage(error, t('integrations.saveSettingsAction')))
@@ -119,7 +140,7 @@ export default function MqttDeviceDrawer({ open, tab, onClose, onChanged }: Prop
 
   // A handmade device's tab is named from its label, so a rename renames the
   // open drawer too. A preset device's tab keeps the preset's name.
-  const title = device && !device.preset_key ? device.label || device.device_id : (tab?.label ?? '')
+  const title = device && !device.preset_key ? device.label || device.device_id : (liveTab?.label ?? '')
   const labelId = `${idBase}-label`
   const vehicleId = `${idBase}-vehicle`
 
@@ -153,10 +174,10 @@ export default function MqttDeviceDrawer({ open, tab, onClose, onChanged }: Prop
       ) : (
         <div className="space-y-6">
           <section className="space-y-2">
-            {tab?.description ? <p className="text-sm text-text">{tab.description}</p> : null}
-            {tab ? (
+            {liveTab?.description ? <p className="text-sm text-text">{liveTab.description}</p> : null}
+            {liveTab ? (
               <p className="text-sm text-text-mute">
-                {t(STATUS_KEY[tab.reason] ?? 'integrations.statusNotConfigured')}
+                {t(STATUS_KEY[liveTab.reason] ?? 'integrations.statusNotConfigured')}
               </p>
             ) : null}
           </section>

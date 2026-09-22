@@ -1134,8 +1134,8 @@
     {
       "path": "src/components/livelink/settings/MqttDeviceDrawer.tsx",
       "disposition": "no unit behaviour",
-      "digest": "7be066cade53f253525910d205cbf900c65e44134d5830382be2e439c6fcb035",
-      "reason": "no unit behaviour: one MQTT device's header (label, vehicle link, delete) and layout (2026-09-22, sidecars Task 9). Readings are rendered by DeviceReadingsList, audited separately; this file renders no value or unit itself."
+      "digest": "000bf6f91d1624817ceea7d045718fb766e0249058746349688974a71bebf293",
+      "reason": "no unit behaviour: one MQTT device's header (label, vehicle link, delete) and layout (2026-09-22, sidecars Task 9). Readings are rendered by DeviceReadingsList, audited separately; this file renders no value or unit itself. 2026-09-22 (visual review): keeps a live copy of its tab and refreshes it from /integrations after a link change, so the status line is current. No unit behaviour."
     },
     {
       "path": "src/components/livelink/settings/SourceDevicesDrawer.tsx",
