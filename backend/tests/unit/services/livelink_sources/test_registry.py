@@ -83,9 +83,10 @@ async def test_a_module_claiming_anothers_topic_is_an_error():
         await r.mqtt_subscriptions(None)
 
 
-@pytest.mark.xfail(reason="modules land in tasks 6/8/11", strict=False)
 def test_the_default_registry_has_the_shipped_modules():
-    assert "wican" in registry.default_registry().valid_kinds()
+    assert registry.default_registry().valid_kinds() == frozenset(
+        {"wican", "torque", "generic_mqtt"}
+    )
 
 
 def test_a_policy_that_reaches_sessions_without_the_capability_is_refused():

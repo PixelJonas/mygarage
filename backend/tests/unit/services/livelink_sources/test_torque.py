@@ -77,9 +77,7 @@ async def test_flags_preserve_torques_current_side_effects():
 
 @pytest.mark.asyncio
 async def test_gps_becomes_a_geopoint():
-    batch = await M.parse(
-        HttpEnvelope(token="t", params={"kff1006": "45.5", "kff1005": "-122.6"})
-    )
+    batch = await M.parse(HttpEnvelope(token="t", params={"kff1006": "45.5", "kff1005": "-122.6"}))
     assert batch.location is not None
     assert float(batch.location.latitude) == pytest.approx(45.5)
 
