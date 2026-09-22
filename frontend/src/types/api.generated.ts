@@ -2199,7 +2199,15 @@ export interface paths {
          */
         get: operations["list_devices_api_livelink_devices_get"];
         put?: never;
-        post?: never;
+        /**
+         * Create Device
+         * @description Create a device by hand.
+         *
+         *     Auto-discovery covers WiCAN and a token flow covers Torque; a generic MQTT
+         *     device has neither, so without this an admin can save topic maps against a
+         *     device id that does not exist and every reading is silently discarded.
+         */
+        post: operations["create_device_api_livelink_devices_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2711,6 +2719,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/livelink/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Sources
+         * @description Every registered source kind and what it produces.
+         */
+        get: operations["list_sources_api_livelink_sources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/livelink/token": {
         parameters: {
             query?: never;
@@ -2734,6 +2762,59 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/livelink/topic-maps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Topic Maps
+         * @description All topic maps, optionally for one device.
+         */
+        get: operations["list_topic_maps_api_livelink_topic_maps_get"];
+        put?: never;
+        /**
+         * Create Topic Map
+         * @description Add a mapping and resubscribe.
+         */
+        post: operations["create_topic_map_api_livelink_topic_maps_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/livelink/topic-maps/{map_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Topic Map
+         * @description Remove a mapping and resubscribe.
+         */
+        delete: operations["delete_topic_map_api_livelink_topic_maps__map_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Topic Map
+         * @description Change a mapping and resubscribe.
+         *
+         *     Re-validates the MERGED row through TopicMapCreate rather than assigning
+         *     the patch fields directly: otherwise a PATCH could null `param_key` on a
+         *     telemetry row, set a wildcard topic, or skip param-key canonicalisation,
+         *     all of which create rejects.
+         */
+        patch: operations["update_topic_map_api_livelink_topic_maps__map_id__patch"];
         trace?: never;
     };
     "/api/maintenance-types": {
@@ -11183,6 +11264,30 @@ export interface components {
             total: number;
         };
         /**
+         * LiveLinkDeviceManualCreate
+         * @description Schema for creating a device by hand, rather than by auto-discovery.
+         *
+         *     `LiveLinkDeviceCreate` above is the auto-discovery shape: it carries no
+         *     `kind` and no `vin` because a WiCAN dongle announces itself and is linked
+         *     afterwards. A `generic_mqtt` device declares neither AUTO_DISCOVER nor a
+         *     token flow, so without this route the only way such a device can exist is
+         *     by applying a preset.
+         *
+         *     `vin` is optional, matching every other device: the pipeline returns early
+         *     for a device with no VIN, so an unlinked device is a valid intermediate
+         *     state rather than an error.
+         */
+        LiveLinkDeviceManualCreate: {
+            /** Device Id */
+            device_id: string;
+            /** Kind */
+            kind: string;
+            /** Label */
+            label?: string | null;
+            /** Vin */
+            vin?: string | null;
+        };
+        /**
          * LiveLinkDeviceResponse
          * @description Schema for device response.
          */
@@ -11237,6 +11342,12 @@ export interface components {
             hw_version: string | null;
             /** Id */
             id: number;
+            /**
+             * Kind
+             * @description Source module that owns this device (see GET /sources)
+             * @default wican
+             */
+            kind: string;
             /**
              * Label
              * @description User-friendly device name
@@ -15975,6 +16086,106 @@ export interface components {
              * @description Transaction date
              */
             transaction_date?: string | null;
+        };
+        /**
+         * TopicMapCreate
+         * @description Request body for POST.
+         */
+        TopicMapCreate: {
+            /** Device Id */
+            device_id: string;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Param Class */
+            param_class?: string | null;
+            /** Param Key */
+            param_key?: string | null;
+            /**
+             * Role
+             * @default telemetry
+             * @enum {string}
+             */
+            role: "telemetry" | "status";
+            /**
+             * Scale
+             * @default 1
+             */
+            scale: number | string;
+            /** Topic */
+            topic: string;
+            /** Unit */
+            unit?: string | null;
+            /**
+             * Value Offset
+             * @default 0
+             */
+            value_offset: number | string;
+            /** Value Path */
+            value_path?: string | null;
+        };
+        /**
+         * TopicMapResponse
+         * @description One stored row.
+         */
+        TopicMapResponse: {
+            /** Device Id */
+            device_id: string;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Id */
+            id: number;
+            /** Param Class */
+            param_class?: string | null;
+            /** Param Key */
+            param_key?: string | null;
+            /**
+             * Role
+             * @default telemetry
+             * @enum {string}
+             */
+            role: "telemetry" | "status";
+            /**
+             * Scale
+             * @default 1
+             */
+            scale: string;
+            /** Topic */
+            topic: string;
+            /** Unit */
+            unit?: string | null;
+            /**
+             * Value Offset
+             * @default 0
+             */
+            value_offset: string;
+            /** Value Path */
+            value_path?: string | null;
+        };
+        /**
+         * TopicMapUpdate
+         * @description Request body for PATCH. Every field optional.
+         */
+        TopicMapUpdate: {
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Param Class */
+            param_class?: string | null;
+            /** Param Key */
+            param_key?: string | null;
+            /** Scale */
+            scale?: number | string | null;
+            /** Unit */
+            unit?: string | null;
+            /** Value Offset */
+            value_offset?: number | string | null;
+            /** Value Path */
+            value_path?: string | null;
         };
         /**
          * TorqueSourceCreate
@@ -22354,6 +22565,39 @@ export interface operations {
             };
         };
     };
+    create_device_api_livelink_devices_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiveLinkDeviceManualCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveLinkDeviceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_device_api_livelink_devices__device_id__get: {
         parameters: {
             query?: never;
@@ -23106,6 +23350,28 @@ export interface operations {
             };
         };
     };
+    list_sources_api_livelink_sources_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
     regenerate_global_token_api_livelink_token_post: {
         parameters: {
             query?: never;
@@ -23122,6 +23388,134 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TokenGenerateResponse"];
+                };
+            };
+        };
+    };
+    list_topic_maps_api_livelink_topic_maps_get: {
+        parameters: {
+            query?: {
+                device_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopicMapResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_topic_map_api_livelink_topic_maps_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopicMapCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopicMapResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_topic_map_api_livelink_topic_maps__map_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                map_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_topic_map_api_livelink_topic_maps__map_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                map_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopicMapUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopicMapResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

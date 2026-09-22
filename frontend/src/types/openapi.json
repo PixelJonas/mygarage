@@ -9334,6 +9334,52 @@
         "title": "LiveLinkDeviceListResponse",
         "type": "object"
       },
+      "LiveLinkDeviceManualCreate": {
+        "description": "Schema for creating a device by hand, rather than by auto-discovery.\n\n`LiveLinkDeviceCreate` above is the auto-discovery shape: it carries no\n`kind` and no `vin` because a WiCAN dongle announces itself and is linked\nafterwards. A `generic_mqtt` device declares neither AUTO_DISCOVER nor a\ntoken flow, so without this route the only way such a device can exist is\nby applying a preset.\n\n`vin` is optional, matching every other device: the pipeline returns early\nfor a device with no VIN, so an unlinked device is a valid intermediate\nstate rather than an error.",
+        "properties": {
+          "device_id": {
+            "maxLength": 20,
+            "title": "Device Id",
+            "type": "string"
+          },
+          "kind": {
+            "maxLength": 20,
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "vin": {
+            "anyOf": [
+              {
+                "maxLength": 17,
+                "minLength": 17,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vin"
+          }
+        },
+        "required": [
+          "device_id",
+          "kind"
+        ],
+        "title": "LiveLinkDeviceManualCreate",
+        "type": "object"
+      },
       "LiveLinkDeviceResponse": {
         "description": "Schema for device response.",
         "properties": {
@@ -9439,6 +9485,12 @@
           "id": {
             "title": "Id",
             "type": "integer"
+          },
+          "kind": {
+            "default": "wican",
+            "description": "Source module that owns this device (see GET /sources)",
+            "title": "Kind",
+            "type": "string"
           },
           "label": {
             "anyOf": [
@@ -21589,6 +21641,308 @@
           }
         },
         "title": "TollTransactionUpdate",
+        "type": "object"
+      },
+      "TopicMapCreate": {
+        "description": "Request body for POST.",
+        "properties": {
+          "device_id": {
+            "maxLength": 20,
+            "title": "Device Id",
+            "type": "string"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "param_class": {
+            "anyOf": [
+              {
+                "maxLength": 50,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Param Class"
+          },
+          "param_key": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Param Key"
+          },
+          "role": {
+            "default": "telemetry",
+            "enum": [
+              "telemetry",
+              "status"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "default": "1",
+            "title": "Scale"
+          },
+          "topic": {
+            "maxLength": 255,
+            "title": "Topic",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "value_offset": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "default": "0",
+            "title": "Value Offset"
+          },
+          "value_path": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Path"
+          }
+        },
+        "required": [
+          "device_id",
+          "topic"
+        ],
+        "title": "TopicMapCreate",
+        "type": "object"
+      },
+      "TopicMapResponse": {
+        "description": "One stored row.",
+        "properties": {
+          "device_id": {
+            "maxLength": 20,
+            "title": "Device Id",
+            "type": "string"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "param_class": {
+            "anyOf": [
+              {
+                "maxLength": 50,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Param Class"
+          },
+          "param_key": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Param Key"
+          },
+          "role": {
+            "default": "telemetry",
+            "enum": [
+              "telemetry",
+              "status"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "scale": {
+            "default": "1",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Scale",
+            "type": "string"
+          },
+          "topic": {
+            "maxLength": 255,
+            "title": "Topic",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "value_offset": {
+            "default": "0",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Value Offset",
+            "type": "string"
+          },
+          "value_path": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Path"
+          }
+        },
+        "required": [
+          "device_id",
+          "topic",
+          "id"
+        ],
+        "title": "TopicMapResponse",
+        "type": "object"
+      },
+      "TopicMapUpdate": {
+        "additionalProperties": false,
+        "description": "Request body for PATCH. Every field optional.",
+        "properties": {
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "param_class": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Param Class"
+          },
+          "param_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Param Key"
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scale"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "value_offset": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Offset"
+          },
+          "value_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Path"
+          }
+        },
+        "title": "TopicMapUpdate",
         "type": "object"
       },
       "TorqueSourceCreate": {
@@ -34915,6 +35269,51 @@
         "tags": [
           "LiveLink Admin"
         ]
+      },
+      "post": {
+        "description": "Create a device by hand.\n\nAuto-discovery covers WiCAN and a token flow covers Torque; a generic MQTT\ndevice has neither, so without this an admin can save topic maps against a\ndevice id that does not exist and every reading is silently discarded.",
+        "operationId": "create_device_api_livelink_devices_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LiveLinkDeviceManualCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveLinkDeviceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Device",
+        "tags": [
+          "LiveLink Admin"
+        ]
       }
     },
     "/api/livelink/devices/{device_id}": {
@@ -36056,6 +36455,38 @@
         ]
       }
     },
+    "/api/livelink/sources": {
+      "get": {
+        "description": "Every registered source kind and what it produces.",
+        "operationId": "list_sources_api_livelink_sources_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response List Sources Api Livelink Sources Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Sources",
+        "tags": [
+          "LiveLink Admin"
+        ]
+      }
+    },
     "/api/livelink/token": {
       "post": {
         "description": "Generate a new global API token.\n\n**Important:** The token is only shown once. Store it securely.\n\n**Security:**\n- Requires authentication",
@@ -36078,6 +36509,207 @@
           }
         ],
         "summary": "Regenerate Global Token",
+        "tags": [
+          "LiveLink Admin"
+        ]
+      }
+    },
+    "/api/livelink/topic-maps": {
+      "get": {
+        "description": "All topic maps, optionally for one device.",
+        "operationId": "list_topic_maps_api_livelink_topic_maps_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "device_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Device Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TopicMapResponse"
+                  },
+                  "title": "Response List Topic Maps Api Livelink Topic Maps Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Topic Maps",
+        "tags": [
+          "LiveLink Admin"
+        ]
+      },
+      "post": {
+        "description": "Add a mapping and resubscribe.",
+        "operationId": "create_topic_map_api_livelink_topic_maps_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TopicMapCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopicMapResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Topic Map",
+        "tags": [
+          "LiveLink Admin"
+        ]
+      }
+    },
+    "/api/livelink/topic-maps/{map_id}": {
+      "delete": {
+        "description": "Remove a mapping and resubscribe.",
+        "operationId": "delete_topic_map_api_livelink_topic_maps__map_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "map_id",
+            "required": true,
+            "schema": {
+              "title": "Map Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Topic Map",
+        "tags": [
+          "LiveLink Admin"
+        ]
+      },
+      "patch": {
+        "description": "Change a mapping and resubscribe.\n\nRe-validates the MERGED row through TopicMapCreate rather than assigning\nthe patch fields directly: otherwise a PATCH could null `param_key` on a\ntelemetry row, set a wildcard topic, or skip param-key canonicalisation,\nall of which create rejects.",
+        "operationId": "update_topic_map_api_livelink_topic_maps__map_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "map_id",
+            "required": true,
+            "schema": {
+              "title": "Map Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TopicMapUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopicMapResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Topic Map",
         "tags": [
           "LiveLink Admin"
         ]

@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # Shared status literals for OpenAPI schema generation
 DeviceStatusType = Literal["online", "offline", "unknown"]
@@ -27,6 +27,37 @@ class LiveLinkDeviceCreate(LiveLinkDeviceBase):
     hw_version: str | None = Field(None, description="Hardware version (e.g., WiCAN-OBD-PRO)")
     fw_version: str | None = Field(None, description="Firmware version (e.g., 4.45)")
     git_version: str | None = Field(None, description="Git version tag (e.g., v4.45p)")
+
+
+class LiveLinkDeviceManualCreate(BaseModel):
+    """Schema for creating a device by hand, rather than by auto-discovery.
+
+    `LiveLinkDeviceCreate` above is the auto-discovery shape: it carries no
+    `kind` and no `vin` because a WiCAN dongle announces itself and is linked
+    afterwards. A `generic_mqtt` device declares neither AUTO_DISCOVER nor a
+    token flow, so without this route the only way such a device can exist is
+    by applying a preset.
+
+    `vin` is optional, matching every other device: the pipeline returns early
+    for a device with no VIN, so an unlinked device is a valid intermediate
+    state rather than an error.
+    """
+
+    device_id: str = Field(..., max_length=20)
+    kind: str = Field(..., max_length=20)
+    label: str | None = Field(None, max_length=100)
+    vin: str | None = Field(None, min_length=17, max_length=17)
+
+    @field_validator("kind")
+    @classmethod
+    def kind_must_be_registered(cls, v: str) -> str:
+        """The registry owns the set of valid kinds, not a database CHECK."""
+        from app.services.livelink_sources.registry import default_registry
+
+        valid = default_registry().valid_kinds()
+        if v not in valid:
+            raise ValueError(f"Unknown source kind {v!r}. Valid kinds: {sorted(valid)}")
+        return v
 
 
 class LiveLinkDeviceUpdate(BaseModel):
@@ -64,6 +95,9 @@ class LiveLinkDeviceResponse(LiveLinkDeviceBase):
     sd_backfill_enabled: bool = Field(False, description="Whether SD-card backfill is enabled")
     odometer_unit: str | None = Field(
         None, description="Declared odometer units ('km'/'mi'); None means inferred from the key"
+    )
+    kind: str = Field(
+        "wican", description="Source module that owns this device (see GET /sources)"
     )
     enabled: bool
     last_seen: datetime | None

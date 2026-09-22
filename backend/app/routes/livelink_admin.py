@@ -2,11 +2,18 @@
 
 import logging
 from enum import StrEnum
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.exceptions import RequestValidationError
+from pydantic import ValidationError
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.models.livelink_device import LiveLinkDevice
+from app.models.livelink_topic_map import LiveLinkTopicMap
 from app.models.user import User
 from app.schemas.dtc import DTCDefinitionResponse, DTCSearchResponse
 from app.schemas.livelink import (
@@ -17,6 +24,7 @@ from app.schemas.livelink import (
     FirmwareInfoResponse,
     FirmwareSkipRequest,
     LiveLinkDeviceListResponse,
+    LiveLinkDeviceManualCreate,
     LiveLinkDeviceResponse,
     LiveLinkDeviceUpdate,
     LiveLinkParameterListResponse,
@@ -33,6 +41,11 @@ from app.schemas.livelink import (
     TokenGenerateResponse,
     TokenInfoResponse,
 )
+from app.schemas.livelink_topic_map import (
+    TopicMapCreate,
+    TopicMapResponse,
+    TopicMapUpdate,
+)
 from app.services.auth import (
     get_current_admin_user,
     get_vehicle_for_owner_or_403,
@@ -41,6 +54,8 @@ from app.services.auth import (
 from app.services.dtc_service import DTCService
 from app.services.firmware_service import FirmwareService
 from app.services.livelink_service import LiveLinkService
+from app.services.livelink_sources.registry import default_registry
+from app.services.mqtt_subscriber import mqtt_subscriber
 from app.services.sd_backfill_service import SdBackfillService
 from app.services.settings_service import SettingsService
 from app.services.telemetry_service import TelemetryService
@@ -347,6 +362,11 @@ async def delete_device(
 
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Device {device_id} not found")
+
+    # delete_device also dropped this device's topic maps. Without a resubscribe
+    # the broker keeps delivering topics that now resolve to no module, one
+    # debug line per message, indefinitely.
+    await mqtt_subscriber.reload()
 
 
 @router.post("/devices/{device_id}/token", response_model=TokenGenerateResponse)
@@ -1028,3 +1048,171 @@ async def _get_bool_setting(db: AsyncSession, key: str, default: bool = False) -
     if not setting or not setting.value:
         return default
     return setting.value.lower() in ("true", "1", "yes")
+
+
+# =========================================================================
+# Source modules and topic maps
+# =========================================================================
+
+
+@router.get("/sources")
+async def list_sources(
+    current_user: User | None = Depends(get_current_admin_user),
+) -> list[dict[str, Any]]:
+    """Every registered source kind and what it produces."""
+    return [
+        {
+            "kind": m.kind,
+            "capabilities": sorted(c.value for c in m.capabilities),
+            # The frontend hides the odometer-parameter picker for kinds whose
+            # storage policy already syncs odometer; a declaration on those is
+            # silently ignored today.
+            "syncs_odometer": m.storage_policy.sync_odometer,
+        }
+        for m in default_registry().all_modules()
+    ]
+
+
+@router.post("/devices", response_model=LiveLinkDeviceResponse, status_code=201)
+async def create_device(
+    body: LiveLinkDeviceManualCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_current_admin_user),
+) -> LiveLinkDevice:
+    """Create a device by hand.
+
+    Auto-discovery covers WiCAN and a token flow covers Torque; a generic MQTT
+    device has neither, so without this an admin can save topic maps against a
+    device id that does not exist and every reading is silently discarded.
+    """
+    existing = await LiveLinkService(db).get_device_by_id(body.device_id)
+    if existing is not None:
+        raise HTTPException(status_code=409, detail=f"Device {body.device_id} already exists")
+
+    device = LiveLinkDevice(
+        device_id=body.device_id,
+        kind=body.kind,
+        label=body.label,
+        vin=body.vin,
+        enabled=True,
+    )
+    db.add(device)
+    await db.commit()
+    await db.refresh(device)
+    return device
+
+
+@router.get("/topic-maps", response_model=list[TopicMapResponse])
+async def list_topic_maps(
+    device_id: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_current_admin_user),
+) -> list[LiveLinkTopicMap]:
+    """All topic maps, optionally for one device."""
+    stmt = select(LiveLinkTopicMap).order_by(LiveLinkTopicMap.topic)
+    if device_id:
+        stmt = stmt.where(LiveLinkTopicMap.device_id == device_id)
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def _reject_foreign_topic_claim(
+    db: AsyncSession, topic: str, device_id: str, exclude_id: int | None = None
+) -> None:
+    """One topic belongs to exactly ONE device.
+
+    The unique key is (topic, param_key), which does not stop two devices
+    mapping the same topic under different param keys. `GenericMqttModule.parse`
+    attributes a whole batch to its first entry, so that configuration would
+    write one device's readings against another device's vehicle.
+    """
+    stmt = select(LiveLinkTopicMap).where(
+        LiveLinkTopicMap.topic == topic, LiveLinkTopicMap.device_id != device_id
+    )
+    if exclude_id is not None:
+        stmt = stmt.where(LiveLinkTopicMap.id != exclude_id)
+    clash = (await db.execute(stmt)).scalars().first()
+    if clash is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Topic {topic} is already mapped to device {clash.device_id}",
+        )
+
+
+@router.post("/topic-maps", response_model=TopicMapResponse, status_code=201)
+async def create_topic_map(
+    body: TopicMapCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_current_admin_user),
+) -> LiveLinkTopicMap:
+    """Add a mapping and resubscribe."""
+    await _reject_foreign_topic_claim(db, body.topic, body.device_id)
+    row = LiveLinkTopicMap(**body.model_dump())
+    db.add(row)
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(409, "That topic already maps to that parameter") from None
+    await db.refresh(row)
+    await mqtt_subscriber.reload()
+    return row
+
+
+@router.patch("/topic-maps/{map_id}", response_model=TopicMapResponse)
+async def update_topic_map(
+    map_id: int,
+    body: TopicMapUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_current_admin_user),
+) -> LiveLinkTopicMap:
+    """Change a mapping and resubscribe.
+
+    Re-validates the MERGED row through TopicMapCreate rather than assigning
+    the patch fields directly: otherwise a PATCH could null `param_key` on a
+    telemetry row, set a wildcard topic, or skip param-key canonicalisation,
+    all of which create rejects.
+    """
+    row = await db.get(LiveLinkTopicMap, map_id)
+    if row is None:
+        raise HTTPException(404, "Topic map not found")
+
+    merged = {
+        "device_id": row.device_id,
+        "topic": row.topic,
+        "role": row.role,
+        "param_key": row.param_key,
+        "value_path": row.value_path,
+        "unit": row.unit,
+        "param_class": row.param_class,
+        "scale": row.scale,
+        "value_offset": row.value_offset,
+        "enabled": row.enabled,
+    }
+    merged.update(body.model_dump(exclude_unset=True))
+    try:
+        validated = TopicMapCreate(**merged)
+    except ValidationError as exc:
+        raise RequestValidationError(exc.errors()) from exc
+
+    await _reject_foreign_topic_claim(db, validated.topic, validated.device_id, exclude_id=map_id)
+    for field, value in validated.model_dump().items():
+        setattr(row, field, value)
+    await db.commit()
+    await db.refresh(row)
+    await mqtt_subscriber.reload()
+    return row
+
+
+@router.delete("/topic-maps/{map_id}", status_code=204)
+async def delete_topic_map(
+    map_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_current_admin_user),
+) -> None:
+    """Remove a mapping and resubscribe."""
+    row = await db.get(LiveLinkTopicMap, map_id)
+    if row is None:
+        raise HTTPException(404, "Topic map not found")
+    await db.delete(row)
+    await db.commit()
+    await mqtt_subscriber.reload()
