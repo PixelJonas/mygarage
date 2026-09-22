@@ -15,11 +15,23 @@ from app.services.livelink_sources.torque import TorqueModule
 M = TorqueModule()
 
 
-def test_does_not_declare_odometer_because_torque_never_synced_it():
-    assert Capability.ODOMETER not in M.capabilities
+def test_declares_odometer_as_a_capability_but_not_as_a_storage_policy():
+    """The capability opens the door; the DEVICE decides by naming a parameter.
+
+    sync_odometer must stay False: it routes storage through store_telemetry,
+    which would replace Torque's newer-only latest write with an unconditional
+    one and undo the divergence StoragePolicy exists to preserve.
+    """
+    assert Capability.ODOMETER in M.capabilities
     assert M.capabilities == frozenset(
-        {Capability.TELEMETRY, Capability.DRIVE_SESSION, Capability.LOCATION}
+        {
+            Capability.TELEMETRY,
+            Capability.DRIVE_SESSION,
+            Capability.LOCATION,
+            Capability.ODOMETER,
+        }
     )
+    assert M.storage_policy.sync_odometer is False
 
 
 def test_storage_policy_matches_store_torque_telemetry():

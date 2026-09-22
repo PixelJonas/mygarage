@@ -4,7 +4,7 @@ import hashlib
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, cast
 
 from sqlalchemy import and_, delete, func, not_, or_, select, text
@@ -112,6 +112,11 @@ ODOMETER_PID_PATTERNS = [
 LATEST_VALUE_STALE_AFTER = timedelta(days=30)
 
 logger = logging.getLogger(__name__)
+
+#: VIN -> date of the last "declared odometer never records" warning. Bounded by
+#: the number of vehicles, which is a household's worth, so it never needs
+#: eviction.
+_DECLARED_ODOMETER_WARNED: dict[str, date] = {}
 
 
 class TelemetryService:
@@ -285,13 +290,32 @@ class TelemetryService:
         # Replace underscores with spaces and title case
         return param_key.replace("_", " ").title()
 
-    def _is_odometer_param(self, param_key: str) -> bool:
-        """Check if a parameter key represents an odometer reading."""
+    def _is_odometer_param(self, param_key: str, declared: str | None = None) -> bool:
+        """Check if a parameter key represents an odometer reading.
+
+        ``declared`` is the device's ``odometer_param_key``. When set it
+        REPLACES the pattern scan for that one key, so a device can name a
+        parameter no pattern would match (a vendor custom PID, say) without
+        widening the match for anything else.
+        """
+        if declared:
+            return param_key.upper() == declared.upper()
         param_upper = param_key.upper()
         for pattern in ODOMETER_PID_PATTERNS:
             if pattern.upper() in param_upper:
                 return True
         return False
+
+    async def _declared_odometer_key(self, device_id: str) -> str | None:
+        """The device's `odometer_param_key`, or None when it declares nothing.
+
+        NULL is the default and the reason existing installs are unaffected:
+        every predicate falls back to its usual name matching.
+        """
+        row = await self.db.execute(
+            select(LiveLinkDevice.odometer_param_key).where(LiveLinkDevice.device_id == device_id)
+        )
+        return row.scalar_one_or_none()
 
     async def _odometer_units_for(self, device_id: str) -> tuple[str | None, str | None]:
         """Return the device's declared `(odometer_unit, kind)`, or `(None, None)`."""
@@ -308,6 +332,7 @@ class TelemetryService:
         self,
         device_id: str,
         autopid_data: dict[str, float | int | str | None],
+        declared: str | None = None,
     ) -> dict[str, float | int | str | None]:
         """Return ``autopid_data`` with any odometer value converted to km.
 
@@ -316,14 +341,14 @@ class TelemetryService:
         car. The device's declared `odometer_unit` decides, falling back to the
         key shape (WiCAN only) when it has not been set.
         """
-        if not any(self._is_odometer_param(k) for k in autopid_data):
+        if not any(self._is_odometer_param(k, declared) for k in autopid_data):
             return autopid_data
 
         device_unit, device_kind = await self._odometer_units_for(device_id)
 
         normalized = dict(autopid_data)
         for param_key, value in autopid_data.items():
-            if value is None or not self._is_odometer_param(param_key):
+            if value is None or not self._is_odometer_param(param_key, declared):
                 continue
             try:
                 converted = odometer_value_to_km(float(value), param_key, device_unit, device_kind)
@@ -419,7 +444,8 @@ class TelemetryService:
         # consumer (raw storage, the latest-value table, the odometer record and
         # the session stamp) reads the same units. Doing it per-consumer is what
         # let the record path and the storage path disagree for four months.
-        autopid_data = await self._normalize_odometer_units(device_id, autopid_data)
+        declared_key = await self._declared_odometer_key(device_id)
+        autopid_data = await self._normalize_odometer_units(device_id, autopid_data, declared_key)
 
         received_at = utc_now()
 
@@ -519,7 +545,7 @@ class TelemetryService:
         await self._observe_movement(vin, device_id, valid_data, timestamp, received_at)
 
         # Check for odometer reading and sync
-        await self._sync_odometer_from_telemetry(vin, autopid_data, timestamp)
+        await self._sync_odometer_from_telemetry(vin, autopid_data, timestamp, declared_key)
 
         # A replayed reading can belong to a session that has already closed.
         await self._refresh_closed_session(vin, device_id, timestamp)
@@ -604,6 +630,7 @@ class TelemetryService:
         vin: str,
         autopid_data: dict[str, float | int | str | None],
         timestamp: datetime,
+        declared: str | None = None,
     ) -> None:
         """Sync odometer record from telemetry if odometer PID is present.
 
@@ -620,14 +647,12 @@ class TelemetryService:
             if value is None:
                 continue
 
-            # Check if this is an odometer parameter
-            param_upper = param_key.upper()
-            for pattern in ODOMETER_PID_PATTERNS:
-                if pattern.upper() in param_upper:
-                    odometer_value = float(value)
-                    odometer_key = param_key
-                    break
-            if odometer_value is not None:
+            # Was an inline copy of the pattern scan. It has to go through the
+            # predicate, or a device's declaration never reaches this path and a
+            # declared key that matches no pattern records nothing, silently.
+            if self._is_odometer_param(param_key, declared):
+                odometer_value = float(value)
+                odometer_key = param_key
                 break
 
         if odometer_value is None or odometer_key is None:
@@ -668,13 +693,38 @@ class TelemetryService:
         # Logged because a units mismatch makes every reading look backwards, and
         # a silent return here hid exactly that for four months (see 6f04e53).
         if odometer_km <= float(max_odometer_km):
-            logger.debug(
-                "Skipped odometer %d km for %s (%s): not above existing max %s",
-                odometer_km,
-                vin[:8],
-                odometer_key,
-                max_odometer_km,
-            )
+            if declared:
+                # A DECLARED odometer that never records is the expected steady
+                # state for an app-accumulated total that drifts low (Torque's
+                # ff120C) once any fuel record sits above it. Debug is too quiet
+                # for that: the feature would produce nothing and say nothing.
+                #
+                # Throttled to once per VIN per day. Torque uploads every few
+                # seconds, so an unthrottled warning is ~1,800 lines per
+                # half-hour drive. Module-level because TelemetryService is
+                # constructed per request, so instance state would never survive
+                # to throttle anything.
+                today_utc = utc_now().date()
+                if _DECLARED_ODOMETER_WARNED.get(vin) != today_utc:
+                    _DECLARED_ODOMETER_WARNED[vin] = today_utc
+                    logger.warning(
+                        "Declared odometer %s for %s read %d km, at or below the "
+                        "existing maximum %s. No record written. If this repeats, "
+                        "the declared parameter may be a trip counter or an "
+                        "app-accumulated total rather than the vehicle odometer.",
+                        odometer_key,
+                        vin[:8],
+                        odometer_km,
+                        max_odometer_km,
+                    )
+            else:
+                logger.debug(
+                    "Skipped odometer %d km for %s (%s): not above existing max %s",
+                    odometer_km,
+                    vin[:8],
+                    odometer_key,
+                    max_odometer_km,
+                )
             return
 
         # Cap date to today (don't allow future dates from device clock issues)
@@ -1424,6 +1474,32 @@ class TelemetryService:
             return await self.store_telemetry(vin, device_id, autopid, config, timestamp)
 
         ts = timestamp.replace(tzinfo=None) if timestamp.tzinfo else timestamp
+
+        # Normalise the odometer to canonical km ONCE, here, before any row is
+        # written, exactly as store_telemetry does at its own entry point. Every
+        # downstream consumer (the raw row, the latest-value table and the
+        # odometer record) must read the same units; converting per-consumer is
+        # what let the record path and the storage path disagree for four
+        # months. `device` is None when the module lacks the ODOMETER
+        # capability, so this is dead for a source that has no business
+        # recording one.
+        declared = device.odometer_param_key if device else None
+        if declared:
+            normalised = await self._normalize_odometer_units(
+                device_id, {r.param_key: r.value for r in readings}, declared
+            )
+            readings = [
+                Reading(
+                    r.param_key,
+                    float(normalised[r.param_key]),
+                    r.unit,
+                    r.param_class,
+                )
+                if normalised.get(r.param_key) is not None
+                else r
+                for r in readings
+            ]
+
         stored = 0
         validated: dict[str, float | int | str | None] = {}
 
@@ -1466,6 +1542,12 @@ class TelemetryService:
             )
             result = await self.db.execute(stmt)
             stored += cast(CursorResult[Any], result).rowcount or 0
+
+        # Record the odometer for a source whose module does NOT already do it
+        # inside store_telemetry. WiCAN returns above via the delegating branch,
+        # so it cannot double-record.
+        if declared:
+            await self._sync_odometer_from_telemetry(vin, validated, ts, declared)
 
         return StoreResult(stored_count=stored, validated_data=validated)
 

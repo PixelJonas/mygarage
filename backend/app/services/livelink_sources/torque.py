@@ -2,10 +2,13 @@
 
 Extracted verbatim in behavior from `routes/torque.py:_ingest`.
 
-Deliberately does NOT declare ODOMETER: `store_torque_telemetry` never called
-`_sync_odometer_from_telemetry`, so declaring it would silently start syncing
-odometer for every Torque user. The design document's capability table is
-wrong on this point.
+Declares ODOMETER as a CAPABILITY but leaves `sync_odometer` False. Torque
+historically recorded no odometer at all: `store_torque_telemetry` never called
+`_sync_odometer_from_telemetry`, and nothing Torque sends matches
+`ODOMETER_PID_PATTERNS`. Flipping the storage policy would have started syncing
+for every Torque user AND replaced the newer-only latest write. Instead the
+capability opens the door and each DEVICE decides by naming its own
+`odometer_param_key`; a device that names nothing behaves exactly as before.
 """
 
 from __future__ import annotations
@@ -41,7 +44,19 @@ class TorqueModule(BaseSourceModule):
     """Torque Pro."""
 
     kind = "torque"
-    capabilities = frozenset({Capability.TELEMETRY, Capability.DRIVE_SESSION, Capability.LOCATION})
+    capabilities = frozenset(
+        {
+            Capability.TELEMETRY,
+            Capability.DRIVE_SESSION,
+            Capability.LOCATION,
+            # Capability only. storage_policy.sync_odometer stays False: that
+            # flag routes storage through store_telemetry and would replace
+            # Torque's newer-only latest write with an unconditional one.
+            # Whether an odometer is actually recorded is the DEVICE's call,
+            # via odometer_param_key.
+            Capability.ODOMETER,
+        }
+    )
     #: Exactly store_torque_telemetry's behavior: newer-only latest updates so a
     #: backfilled row never clobbers a fresher live one, and no storage-interval
     #: check because that method never performed one.

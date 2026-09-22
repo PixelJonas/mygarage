@@ -1091,8 +1091,24 @@ class SessionService:
             .where(VehicleTelemetry.timestamp <= session.ended_at)
             .group_by(VehicleTelemetry.param_key)
         )
-        source_keys = [key for (key,) in result.all() if is_distance_source_param_key(key)]
-        odometer_keys = {key for key in source_keys if is_odometer_param_key(key)}
+        # A device that NAMES its odometer parameter must have that name honoured
+        # here too. Without it a Torque session never gets start_odometer /
+        # end_odometer stamped, because nothing Torque sends matches the
+        # patterns and the predicate answers False forever.
+        declared = (
+            await self.db.execute(
+                select(LiveLinkDevice.odometer_param_key).where(
+                    LiveLinkDevice.device_id == session.device_id
+                )
+            )
+        ).scalar_one_or_none()
+
+        source_keys = [
+            key
+            for (key,) in result.all()
+            if is_distance_source_param_key(key) or is_odometer_param_key(key, declared)
+        ]
+        odometer_keys = {key for key in source_keys if is_odometer_param_key(key, declared)}
 
         if source_keys:
             travelled = await self._distance_by_source(session, source_keys)

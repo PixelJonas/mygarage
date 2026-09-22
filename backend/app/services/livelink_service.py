@@ -494,7 +494,9 @@ class LiveLinkService:
             device.enabled = enabled
         if odometer_unit is not None:
             resolved = None if odometer_unit == "auto" else odometer_unit
-            if resolved != device.odometer_unit and await self._has_odometer_history(device_id):
+            if resolved != device.odometer_unit and await self._has_odometer_history(
+                device_id, device.odometer_param_key
+            ):
                 raise ValueError(
                     "This device has already recorded odometer readings under its current "
                     "unit. Changing the unit now would leave that history in one unit and "
@@ -510,8 +512,15 @@ class LiveLinkService:
 
         return device
 
-    async def _has_odometer_history(self, device_id: str) -> bool:
-        """Whether this device has stored any odometer reading."""
+    async def _has_odometer_history(self, device_id: str, declared: str | None = None) -> bool:
+        """Whether this device has stored any odometer reading.
+
+        `declared` is the device's `odometer_param_key`. It MUST be passed by
+        every caller that guards a change, or the predicate falls back to name
+        matching and answers False forever for a device whose odometer key the
+        patterns do not recognise. That silently disables the guard for exactly
+        the devices the declaration exists to serve.
+        """
         from app.models.vehicle_telemetry import VehicleTelemetry
         from app.utils.odometer_units import is_odometer_param_key
 
@@ -520,7 +529,24 @@ class LiveLinkService:
             .where(VehicleTelemetry.device_id == device_id)
             .distinct()
         )
-        return any(is_odometer_param_key(key) for (key,) in result.all())
+        return any(is_odometer_param_key(key, declared) for (key,) in result.all())
+
+    async def device_reported_param_keys(self, device_id: str) -> list[str]:
+        """Distinct parameter keys THIS device has reported.
+
+        Per-device on purpose. `vehicle_telemetry_latest` has no `device_id`
+        column and is keyed (vin, param_key), so a per-vehicle list would offer
+        a Torque phone the WiCAN dongle's `A6-ODOMETER`, which it never emits.
+        """
+        from app.models.vehicle_telemetry import VehicleTelemetry
+
+        result = await self.db.execute(
+            select(VehicleTelemetry.param_key)
+            .where(VehicleTelemetry.device_id == device_id)
+            .distinct()
+            .order_by(VehicleTelemetry.param_key)
+        )
+        return [key for (key,) in result.all()]
 
     async def delete_device(self, device_id: str) -> bool:
         """Delete a device record.
