@@ -13,7 +13,6 @@ from app.models.livelink_topic_map import LiveLinkTopicMap
 BASE = "/api/livelink/presets"
 
 
-
 @pytest_asyncio.fixture(autouse=True)
 async def _clean(db_session):
     """Presets assert exact row counts, and the suite shares one database."""
@@ -81,17 +80,19 @@ async def test_applying_creates_the_device_and_rows(
     )
     assert resp.status_code == 201
     device = (
-        await db_session.execute(
-            select(LiveLinkDevice).where(LiveLinkDevice.device_id == "rvgw")
-        )
+        await db_session.execute(select(LiveLinkDevice).where(LiveLinkDevice.device_id == "rvgw"))
     ).scalar_one()
     assert device.kind == "generic_mqtt"
     assert device.vin == test_vehicle["vin"]
     rows = (
-        await db_session.execute(
-            select(LiveLinkTopicMap).where(LiveLinkTopicMap.device_id == "rvgw")
+        (
+            await db_session.execute(
+                select(LiveLinkTopicMap).where(LiveLinkTopicMap.device_id == "rvgw")
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(rows) == 17
     assert all(r.device_id == "rvgw" for r in rows)
 
@@ -113,9 +114,7 @@ async def test_applying_sets_the_storage_interval_on_every_param(
 
 
 @pytest.mark.asyncio
-async def test_applying_triggers_a_resubscribe(
-    client, auth_headers, test_vehicle, no_reload
-):
+async def test_applying_triggers_a_resubscribe(client, auth_headers, test_vehicle, no_reload):
     await client.post(
         f"{BASE}/mopeka_two_tank/apply",
         json={"vin": test_vehicle["vin"], "device_id": "rvgw"},

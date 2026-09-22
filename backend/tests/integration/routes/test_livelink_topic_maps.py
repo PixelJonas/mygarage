@@ -15,7 +15,6 @@ ROW = {
 }
 
 
-
 @pytest_asyncio.fixture(autouse=True)
 async def _clean_tables(db_session):
     """Empty topic maps and generic devices before and after each test.
@@ -111,7 +110,9 @@ async def test_a_duplicate_topic_and_param_is_a_conflict(client, auth_headers, n
 @pytest.mark.asyncio
 async def test_listing_can_be_filtered_by_device(client, auth_headers, no_reload):
     await client.post(BASE, json=ROW, headers=auth_headers)
-    await client.post(BASE, json={**ROW, "device_id": "other", "topic": "z/z"}, headers=auth_headers)
+    await client.post(
+        BASE, json={**ROW, "device_id": "other", "topic": "z/z"}, headers=auth_headers
+    )
     resp = await client.get(f"{BASE}?device_id=gw01", headers=auth_headers)
     assert [r["device_id"] for r in resp.json()] == ["gw01"]
 
@@ -193,7 +194,11 @@ async def test_patch_canonicalizes_param_key_like_create(client, auth_headers, n
 
 @pytest.mark.asyncio
 async def test_deleting_a_device_resubscribes(client, auth_headers, no_reload):
-    await client.post("/api/livelink/devices", json={"device_id": "rvgw", "kind": "generic_mqtt"}, headers=auth_headers)
+    await client.post(
+        "/api/livelink/devices",
+        json={"device_id": "rvgw", "kind": "generic_mqtt"},
+        headers=auth_headers,
+    )
     no_reload.reset_mock()
     resp = await client.delete("/api/livelink/devices/rvgw", headers=auth_headers)
     assert resp.status_code == 204

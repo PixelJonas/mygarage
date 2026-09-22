@@ -85,9 +85,7 @@ async def apply_session_signal(
     # ExplicitSession is the only remaining member of the SessionSignal union;
     # both branches above return, so an isinstance check here is provably
     # always true and pyright rejects it (reportUnnecessaryIsInstance).
-    return await sessions.resolve_torque_session(
-        device, signal.external_id, timestamp or utc_now()
-    )
+    return await sessions.resolve_torque_session(device, signal.external_id, timestamp or utc_now())
 
 
 async def ingest(module: BaseSourceModule, env: Envelope, db: AsyncSession) -> None:

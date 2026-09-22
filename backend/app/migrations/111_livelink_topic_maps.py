@@ -61,8 +61,7 @@ def _ddl(serial: str, timestamp: str) -> str:
 
 
 _UNIQUE = (
-    "CREATE UNIQUE INDEX IF NOT EXISTS uq_topic_maps_topic_param "
-    f"ON {_TABLE} (topic, param_key)"
+    f"CREATE UNIQUE INDEX IF NOT EXISTS uq_topic_maps_topic_param ON {_TABLE} (topic, param_key)"
 )
 _INDEX = f"CREATE INDEX IF NOT EXISTS idx_topic_maps_device ON {_TABLE} (device_id)"
 

@@ -40,8 +40,85 @@ import type {
 } from '../types/livelink'
 import type { TripList, LocationTrackingResponse, TripPointsResponse, LastLocation } from '../types/trips'
 import { withBase } from '../utils/basePath'
+import type {
+  DiscoveredTopic,
+  PresetInfo,
+  SourceInfo,
+  TopicMap,
+  TopicMapCreate,
+} from '@/types/livelinkTopicMap'
 
 export const livelinkService = {
+
+  // ===========================================================================
+  // Source modules, topic maps, discovery and presets
+  // ===========================================================================
+
+  /** Registered source kinds and what each produces. */
+  async listSources(): Promise<SourceInfo[]> {
+    const response = await api.get<SourceInfo[]>('/livelink/sources')
+    return response.data
+  },
+
+  /** Create a device by hand (generic MQTT has no auto-discovery). */
+  async createDevice(body: {
+    device_id: string
+    kind: string
+    label?: string | null
+    vin?: string | null
+  }): Promise<LiveLinkDevice> {
+    const response = await api.post<LiveLinkDevice>('/livelink/devices', body)
+    return response.data
+  },
+
+  /** Topic maps, optionally for one device. */
+  async listTopicMaps(deviceId?: string): Promise<TopicMap[]> {
+    const response = await api.get<TopicMap[]>('/livelink/topic-maps', {
+      params: deviceId ? { device_id: deviceId } : undefined,
+    })
+    return response.data
+  },
+
+  /** Add a mapping. The backend resubscribes. */
+  async createTopicMap(body: TopicMapCreate): Promise<TopicMap> {
+    const response = await api.post<TopicMap>('/livelink/topic-maps', body)
+    return response.data
+  },
+
+  /** Change a mapping. The backend resubscribes. */
+  async updateTopicMap(id: number, body: Partial<TopicMapCreate>): Promise<TopicMap> {
+    const response = await api.patch<TopicMap>(`/livelink/topic-maps/${id}`, body)
+    return response.data
+  },
+
+  /** Remove a mapping. The backend resubscribes. */
+  async deleteTopicMap(id: number): Promise<void> {
+    await api.delete(`/livelink/topic-maps/${id}`)
+  },
+
+  /** Listen briefly and report what the broker is publishing. */
+  async discoverTopics(prefix: string, seconds = 15): Promise<DiscoveredTopic[]> {
+    const response = await api.post<DiscoveredTopic[]>('/livelink/topic-discovery', {
+      prefix,
+      seconds,
+    })
+    return response.data
+  },
+
+  /** Named device templates. */
+  async listPresets(): Promise<PresetInfo[]> {
+    const response = await api.get<PresetInfo[]>('/livelink/presets')
+    return response.data
+  },
+
+  /** Create a device plus all its topic maps in one action. */
+  async applyPreset(name: string, deviceId: string, vin?: string | null): Promise<LiveLinkDevice> {
+    const response = await api.post<LiveLinkDevice>(`/livelink/presets/${name}/apply`, {
+      device_id: deviceId,
+      vin: vin ?? null,
+    })
+    return response.data
+  },
   // ===========================================================================
   // Settings
   // ===========================================================================

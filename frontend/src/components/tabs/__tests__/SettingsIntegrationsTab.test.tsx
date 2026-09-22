@@ -54,6 +54,7 @@ vi.mock('../../settings/WidgetKeysPanel', () => ({ default: () => <div data-test
 vi.mock('../../modals/AddProviderModal', () => ({ default: () => null }))
 vi.mock('../../modals/EditProviderModal', () => ({ default: () => null }))
 vi.mock('../../modals/LiveLinkSettingsModal', () => ({ default: () => null }))
+vi.mock('../../livelink/MqttSourcesCard', () => ({ default: () => <div data-testid="mqtt-sources" /> }))
 
 import api from '@/services/api'
 import SettingsIntegrationsTab from '../SettingsIntegrationsTab'
