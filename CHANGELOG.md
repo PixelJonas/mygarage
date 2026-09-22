@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- LiveLink source modules: telemetry sources now declare their capabilities
+- Generic MQTT sources, mappable from Settings with no code
+- MQTT topic discovery for finding what a device publishes
+- Create a LiveLink device from Settings
+- Mopeka propane preset (2 tanks, 17 topics)
+
+### Fixed
+- Removed `TelemetryService.store_value`, which was unreachable and raised `TypeError`
+- Widened `livelink_devices.kind` so PostgreSQL accepts `generic_mqtt`
+
+### Changed
+- A disabled LiveLink device no longer has its status refreshed by status or battery messages
+
 ## [3.6.0] - 2026-09-21
 
 ### Added
