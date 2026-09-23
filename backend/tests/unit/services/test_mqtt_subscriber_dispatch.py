@@ -8,6 +8,11 @@ import pytest
 from app.services.livelink_sources.base import BaseSourceModule, Capability, IngestBatch
 from app.services.mqtt_subscriber import MQTTSubscriber
 
+# LiveLink's master switch gates the ingest pipeline and SD backfill, and it is
+# off by default. Explicit, not inherited from whatever an earlier test left in
+# the shared database.
+pytestmark = pytest.mark.usefixtures("livelink_enabled")
+
 
 class _Spy(BaseSourceModule):
     kind = "spy"

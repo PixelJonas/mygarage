@@ -50,7 +50,10 @@ from app.services.livelink_sources.base import MqttEnvelope
 from app.services.livelink_sources.wican import WicanModule
 from app.services.session_service import SessionService
 
-pytestmark = pytest.mark.asyncio
+# LiveLink's master switch gates the ingest pipeline and is off by default.
+# `_enable_livelink` below flips it inside a test's own session; this makes it
+# on for every test here, and puts the shared database back afterwards.
+pytestmark = [pytest.mark.asyncio, pytest.mark.usefixtures("livelink_enabled")]
 
 T0 = datetime(2026, 9, 1, 8, 0, 0)
 

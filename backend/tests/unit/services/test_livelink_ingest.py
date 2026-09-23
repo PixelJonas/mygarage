@@ -16,6 +16,11 @@ from app.services.livelink_sources.base import (
     StoragePolicy,
 )
 
+# LiveLink's master switch gates the ingest pipeline and SD backfill, and it is
+# off by default. Explicit, not inherited from whatever an earlier test left in
+# the shared database.
+pytestmark = pytest.mark.usefixtures("livelink_enabled")
+
 
 class _Fake(BaseSourceModule):
     """Base for the fakes: carries the device id its batches address.
@@ -123,6 +128,7 @@ async def test_session_is_applied_before_device_status_is_updated(db_session, li
             side_effect=lambda **k: calls.append("status")
         )
         live.return_value.get_device_by_id = AsyncMock(return_value=linked_device)
+        live.return_value.is_enabled = AsyncMock(return_value=True)  # the master switch
         await ingest(_Sessionful(linked_device.device_id), ENV, db_session)
     assert calls.index("session") < calls.index("status")
 
@@ -204,6 +210,7 @@ async def test_an_unlinked_device_still_gets_its_status_updated(db_session, link
 
     with patch("app.services.livelink_ingest.LiveLinkService") as live:
         live.return_value.get_device_by_id = AsyncMock(return_value=linked_device)
+        live.return_value.is_enabled = AsyncMock(return_value=True)  # the master switch
         live.return_value.update_device_status = AsyncMock()
         await ingest(_StatusOnly(linked_device.device_id), ENV, db_session)
         live.return_value.update_device_status.assert_awaited_once()
@@ -218,6 +225,7 @@ async def test_a_batch_that_does_not_clear_pending_offline_leaves_it(db_session,
     await db_session.commit()
     with patch("app.services.livelink_ingest.LiveLinkService") as live:
         live.return_value.get_device_by_id = AsyncMock(return_value=linked_device)
+        live.return_value.is_enabled = AsyncMock(return_value=True)  # the master switch
         live.return_value.clear_pending_offline = AsyncMock()
         live.return_value.update_device_status = AsyncMock()
         await ingest(
@@ -264,6 +272,7 @@ async def test_a_telemetry_batch_does_not_resurrect_an_offline_device(db_session
 
     with patch("app.services.livelink_ingest.LiveLinkService") as live:
         live.return_value.get_device_by_id = AsyncMock(return_value=linked_device)
+        live.return_value.is_enabled = AsyncMock(return_value=True)  # the master switch
         live.return_value.update_device_status = AsyncMock()
         await ingest(_NoStatus(linked_device.device_id), ENV, db_session)
         assert live.return_value.update_device_status.await_args.kwargs["device_status"] is None

@@ -126,3 +126,4 @@ migrations must swallow their own operational errors.
 | `113_livelink_device_preset_key` | **FATAL** — Add ``livelink_devices.preset_key``: which preset created this device. |
 | `114_livelink_parameter_dashboard_default` | **FATAL** — Reset ``livelink_parameters.show_on_dashboard`` to TRUE everywhere. |
 | `115_livelink_preset_display_names` | Name an existing Mopeka install's readings ("Tank 1 level"). |
+| `116_livelink_enable_for_active_installs` | **FATAL** — Switch LiveLink on for installs already receiving MQTT or Torque data. |

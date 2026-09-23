@@ -21,6 +21,11 @@ from app.models.vehicle_telemetry import VehicleTelemetry
 from app.services.livelink_service import LiveLinkService
 from scripts.torque_sim import build_drive
 
+# LiveLink's master switch gates the ingest pipeline and SD backfill, and it is
+# off by default. Explicit, not inherited from whatever an earlier test left in
+# the shared database.
+pytestmark = pytest.mark.usefixtures("livelink_enabled")
+
 
 @pytest_asyncio.fixture
 async def torque_source(db_session, test_user):

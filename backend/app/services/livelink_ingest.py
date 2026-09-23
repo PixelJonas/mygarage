@@ -90,6 +90,15 @@ async def apply_session_signal(
 
 async def ingest(module: BaseSourceModule, env: Envelope, db: AsyncSession) -> None:
     """Parse one message or request and apply it. Does NOT commit."""
+    # The master switch ("Enable LiveLink"). Every MQTT message and every Torque
+    # upload comes through here; the HTTPS route and the periodic jobs check it
+    # themselves, and SD backfill in SdBackfillService.backfill_device. Checked
+    # before parsing, so a switched-off install also discovers no new device
+    # and bumps no last_seen, which is what the integrations card's all-off
+    # state tells the operator.
+    if not await LiveLinkService(db).is_enabled():
+        return
+
     batch = await module.parse(env)
     if batch is None:
         return

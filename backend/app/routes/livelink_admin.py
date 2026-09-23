@@ -1025,9 +1025,15 @@ async def trigger_backfill(
 ):
     """Pull and backfill the device's SD logs immediately.
 
+    409 while LiveLink is switched off: the service would quietly do nothing
+    (it checks the master switch too, for queued backfills), and an operator
+    who pressed "pull now" deserves to be told why nothing arrived.
+
     **Security:**
     - Requires admin authentication
     """
+    if not await LiveLinkService(db).is_enabled():
+        raise HTTPException(status_code=409, detail="LiveLink is switched off")
     result = await SdBackfillService(db).backfill_device(device_id)
     return BackfillResultResponse(
         files_seen=result.files_seen,

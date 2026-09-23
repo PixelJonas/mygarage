@@ -2267,6 +2267,10 @@ export interface paths {
          * Trigger Backfill
          * @description Pull and backfill the device's SD logs immediately.
          *
+         *     409 while LiveLink is switched off: the service would quietly do nothing
+         *     (it checks the master switch too, for queued backfills), and an operator
+         *     who pressed "pull now" deserves to be told why nothing arrived.
+         *
          *     **Security:**
          *     - Requires admin authentication
          */

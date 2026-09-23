@@ -28,6 +28,11 @@ from app.models.vehicle_telemetry import VehicleTelemetry
 from app.routes.torque import TorqueTokenRedactionFilter, redact_torque_path
 from app.services.torque_service import TorqueService
 
+# Uploads store nothing while LiveLink's master switch is off (it gates the
+# ingest pipeline). Explicit, not inherited from whatever an earlier test left
+# in the shared database.
+pytestmark = pytest.mark.usefixtures("livelink_enabled")
+
 # Module-level counter for unique identifiers across all tests in this file.
 _SEQ = itertools.count()
 
@@ -448,3 +453,26 @@ async def test_an_upload_leaves_device_status_alone(client: AsyncClient, db_sess
     ).scalar_one()
     assert refreshed.device_status == before
     assert refreshed.last_seen is not None
+
+
+@pytest.mark.asyncio
+async def test_an_upload_while_livelink_is_off_answers_ok_and_stores_nothing(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """OK!, because Torque retries forever on anything else; nothing stored,
+    because the master switch now gates every ingest path."""
+    from app.models.settings import Setting
+
+    vin, _device, token = await _make_torque_source(db_session)
+    row = await db_session.get(Setting, "livelink_enabled")
+    row.value = "false"  # the module's fixture put it on, and puts it back
+    await db_session.commit()
+
+    resp = await client.get(
+        f"/api/v1/torque/{token}/upload",
+        params={"session": "S1", "time": _epoch_ms(datetime.now(UTC)), "k0c": "1800"},
+    )
+
+    assert resp.status_code == 200
+    assert resp.text == "OK!"
+    assert await _telemetry_rows(db_session, vin) == []

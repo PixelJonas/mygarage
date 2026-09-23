@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.livelink_device import LiveLinkDevice
 from app.models.sd_log_ingest_state import SdLogIngestState
+from app.services.livelink_service import LiveLinkService
 from app.services.sd_log_client import SdLogClient, SdLogClientError
 from app.services.sd_log_parser import SdLogParser, SdLogSchemaError
 from app.services.telemetry_service import TelemetryService
@@ -50,6 +51,12 @@ class SdBackfillService:
         Errors (network, schema) are collected into result.errors rather than raised.
         """
         result = BackfillResult()
+
+        # The master switch. Checked here, not only in the route, because a
+        # backfill queued before the switch went off (run_sd_backfill) still
+        # runs through this method afterwards.
+        if not await LiveLinkService(self.db).is_enabled():
+            return result
 
         device = (
             await self.db.execute(
