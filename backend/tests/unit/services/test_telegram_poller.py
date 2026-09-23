@@ -231,6 +231,8 @@ def test_a_stored_offset_counts_only_for_its_own_bot(value, expected):
         sa_exc.InterfaceError("SELECT 1", {}, Exception("connection closed")),
         ConnectionRefusedError(111, "Connection refused"),
         TimeoutError(),
+        # PostgreSQL's pool exhausted: a bare SQLAlchemyError, no DBAPI error inside.
+        sa_exc.TimeoutError("QueuePool limit of size 5 overflow 10 reached"),
     ],
 )
 def test_outages(exc):
@@ -523,8 +525,9 @@ async def test_an_exception_after_the_commit_replies_logged_and_does_not_duplica
     [
         sa_exc.OperationalError("INSERT", {}, Exception("database is locked")),
         ConnectionRefusedError(111, "Connection refused"),  # PostgreSQL down, unwrapped
+        sa_exc.TimeoutError("QueuePool limit of size 5 overflow 10 reached"),
     ],
-    ids=["sqlite-locked", "postgres-down"],
+    ids=["sqlite-locked", "postgres-down", "postgres-pool-exhausted"],
 )
 async def test_an_outage_never_skips_a_message(
     db_session, switches, sessions, test_vehicle, outage

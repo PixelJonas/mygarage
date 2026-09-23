@@ -82,8 +82,12 @@ def is_outage(exc: BaseException) -> bool:
 
     ``OSError`` is not optional: with PostgreSQL down, asyncpg's
     ``ConnectionRefusedError`` reaches the caller unwrapped by SQLAlchemy.
+    ``sa_exc.TimeoutError`` is PostgreSQL's pool running out of connections;
+    it wraps no DBAPI error, so neither of the others catches it.
     """
-    if isinstance(exc, sa_exc.OperationalError | sa_exc.InterfaceError | OSError):
+    if isinstance(
+        exc, sa_exc.OperationalError | sa_exc.InterfaceError | sa_exc.TimeoutError | OSError
+    ):
         return True
     return isinstance(exc, sa_exc.DBAPIError) and exc.connection_invalidated
 
