@@ -135,7 +135,7 @@ export default function SensorBlock({ device, vehicles, onChanged }: Props): Rea
             value={device.vin ?? ''}
             disabled={busy}
             onChange={(e) => void update({ vin: e.target.value })}
-            placeholder={t('forms:modal.livelink.unlinked')}
+            placeholder={t('integrations.sourceVehicleUnset')}
             options={vehicles.map((v) => ({
               value: v.vin,
               label: v.nickname || `${v.year} ${v.make} ${v.model}`,

@@ -68,7 +68,10 @@ describe('SensorBlock', () => {
     svc.getDeviceReadings.mockResolvedValue({ device_id: 'mopeka-t1', vin: null, online, readings: [] })
     renderBlock(sensor(overrides as Partial<LiveLinkDevice>))
 
-    expect(await screen.findByText(word)).toBeInTheDocument()
+    // "Not linked" is also the vehicle picker's empty option; the status is
+    // the one that is not an <option>.
+    const found = await screen.findAllByText(word)
+    expect(found.filter((el) => el.tagName !== 'OPTION')).toHaveLength(1)
   })
 
   it('renames the sensor and refreshes its readings, whose names follow', async () => {

@@ -57,6 +57,27 @@ describe('PresetDrawer', () => {
     expect(svc.getDevices).toHaveBeenCalledTimes(2)
   })
 
+  it('lists the sensors in the order they were added', async () => {
+    // The device list puts whichever reported last first; t10 after t2.
+    svc.getDevices.mockResolvedValue({
+      total: 3,
+      online_count: 0,
+      devices: [
+        device('mopeka-t10', 'Spare tank', 'mopeka'),
+        device('mopeka-t2', 'Rear tank', 'mopeka'),
+        device('mopeka-t1', 'Front tank', 'mopeka'),
+      ],
+    })
+    render(<PresetDrawer open tab={TAB} onClose={vi.fn()} onChanged={vi.fn()} />)
+
+    await screen.findByText('block Front tank')
+    expect(screen.getAllByText(/^block /).map((el) => el.textContent)).toEqual([
+      'block Front tank',
+      'block Rear tank',
+      'block Spare tank',
+    ])
+  })
+
   it('says so when there are no sensors yet', async () => {
     svc.getDevices.mockResolvedValue({ total: 0, online_count: 0, devices: [] })
     render(<PresetDrawer open tab={TAB} onClose={vi.fn()} onChanged={vi.fn()} />)

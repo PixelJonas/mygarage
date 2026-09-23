@@ -1140,14 +1140,14 @@
     {
       "path": "src/components/livelink/settings/PresetDrawer.tsx",
       "disposition": "no unit behaviour",
-      "digest": "df0ba879f9108c1ec53e16e8acfc49d7f65a3c3d980c612bd730c6610cc28afd",
-      "reason": "no unit behaviour: a preset's drawer (2026-09-22, Plan 3 Task 6). Lists the preset's sensors as SensorBlocks and hosts SensorForm; renders only the preset's description text. No value, no unit."
+      "digest": "8e654f92b7d3eacddc20ac546d51cda77b0f61ad4431a3686682401f2bd12be8",
+      "reason": "no unit behaviour: a preset's drawer (2026-09-22, Plan 3 Task 6). Lists the preset's sensors as SensorBlocks and hosts SensorForm; renders only the preset's description text. No value, no unit. 2026-09-22 (dev review): sensors listed in the order they were added. No unit behaviour."
     },
     {
       "path": "src/components/livelink/settings/SensorBlock.tsx",
       "disposition": "no unit behaviour",
-      "digest": "4b902b6ce9efbccad21fd5166651dcbab1011faa4fe7fc3154f53456cdc91dcb",
-      "reason": "no unit behaviour: one preset sensor's header (name, status word, vehicle link, mappings, delete) (2026-09-22, Plan 3 Task 6). Its readings are rendered by DeviceReadingsList (compact), audited separately; this file renders no value or unit itself."
+      "digest": "13298e887d37e3f9caa2b1a0369db47a6b178ebe67e66d0556b6d92c25ea9385",
+      "reason": "no unit behaviour: one preset sensor's header (name, status word, vehicle link, mappings, delete) (2026-09-22, Plan 3 Task 6). Its readings are rendered by DeviceReadingsList (compact), audited separately; this file renders no value or unit itself. 2026-09-22 (dev review): the vehicle picker says Not linked, like the form. No unit behaviour."
     },
     {
       "path": "src/components/livelink/settings/SensorForm.tsx",

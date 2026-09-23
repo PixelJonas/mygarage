@@ -39,7 +39,13 @@ export default function PresetDrawer({ open, tab, onClose, onChanged }: Props): 
 
   const loadSensors = useCallback(async (): Promise<void> => {
     const list = await livelinkService.getDevices()
-    setSensors(list.devices.filter((d) => d.preset_key === presetName))
+    // In the order they were added (mopeka-t1, t2, ... t10), not the list's
+    // own order, which moves whichever reported last to the top.
+    setSensors(
+      list.devices
+        .filter((d) => d.preset_key === presetName)
+        .sort((a, b) => a.device_id.localeCompare(b.device_id, undefined, { numeric: true })),
+    )
   }, [presetName])
 
   const load = useCallback(async (): Promise<void> => {
