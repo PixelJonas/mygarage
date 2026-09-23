@@ -25,6 +25,9 @@ vi.mock('@/hooks/useUnitPreference', () => {
     }),
   }
 })
+// The compact list's exact-time tooltips read the 12h/24h preference, which
+// lives in the auth context.
+vi.mock('@/hooks/useTimeFormat', () => ({ useTimeFormat: () => ({ timeFormat: '24h' }) }))
 
 import DeviceReadingsList from '../DeviceReadingsList'
 
@@ -109,5 +112,91 @@ describe('DeviceReadingsList', () => {
     rerender(<DeviceReadingsList readings={[reading({ show_on_dashboard: true })]} onChanged={vi.fn()} />)
 
     expect(screen.getByRole('checkbox', { name: 'Tank 1 level' })).toBeChecked()
+  })
+})
+
+describe('DeviceReadingsList compact', () => {
+  const tank = (suffix: string, name: string, overrides: Partial<DeviceReading> = {}): DeviceReading =>
+    reading({ param_key: `PROPANE_T3_${suffix}`, display_name: `Front tank ${name}`, ...overrides })
+
+  it("drops the sensor's name from each reading, but not from its switch", () => {
+    // Two tanks' "Level" switches must not read alike to a screen reader.
+    render(
+      <DeviceReadingsList compact sensorLabel="Front tank" readings={[tank('LEVEL_PCT', 'level')]} onChanged={vi.fn()} />,
+    )
+
+    expect(screen.getByText('Level')).toBeInTheDocument()
+    expect(screen.queryByText('Front tank level')).not.toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'Front tank level' })).toBeInTheDocument()
+  })
+
+  it('shows a name set by hand whole', () => {
+    render(
+      <DeviceReadingsList
+        compact
+        sensorLabel="Front tank"
+        readings={[reading({ param_key: 'PROPANE_T3_TEMP_C', display_name: 'Bottle temp', unit: 'C', value: 20 })]}
+        onChanged={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Bottle temp')).toBeInTheDocument()
+  })
+
+  it('says how old the sensor is once, not on every row', () => {
+    render(
+      <DeviceReadingsList
+        compact
+        sensorLabel="Front tank"
+        readings={[
+          tank('LEVEL_PCT', 'level'),
+          tank('SENSOR_BATT_PCT', 'battery', { value: 90, timestamp: '2026-09-22T11:55:00Z' }),
+        ]}
+        onChanged={vi.fn()}
+      />,
+    )
+
+    expect(screen.getAllByText('integrations.lastReading')).toHaveLength(1)
+    expect(screen.queryByText(/ ago$/)).not.toBeInTheDocument()
+  })
+
+  it("marks a value much older than the sensor's newest, and only that one", () => {
+    // Level 12:00, depth 10:00: the gateway stopped sending depth.
+    render(
+      <DeviceReadingsList
+        compact
+        sensorLabel="Front tank"
+        readings={[
+          tank('LEVEL_PCT', 'level'),
+          tank('DEPTH_MM', 'depth', { unit: 'mm', value: 250, timestamp: '2026-09-22T10:00:00Z' }),
+        ]}
+        onChanged={vi.fn()}
+      />,
+    )
+
+    expect(screen.getAllByText('integrations.readingOld')).toHaveLength(1)
+    expect(screen.getByText('integrations.readingOld').parentElement).toHaveTextContent('250')
+  })
+
+  it('gives each value its exact time on hover', () => {
+    render(
+      <DeviceReadingsList compact sensorLabel="Front tank" readings={[tank('LEVEL_PCT', 'level')]} onChanged={vi.fn()} />,
+    )
+
+    expect(screen.getByText(/^71/).closest('[title]')?.getAttribute('title')).toMatch(/2026/)
+  })
+
+  it('says nothing about age when the sensor has never reported', () => {
+    render(
+      <DeviceReadingsList
+        compact
+        sensorLabel="Front tank"
+        readings={[tank('LEVEL_PCT', 'level', { value: null, timestamp: null })]}
+        onChanged={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByText('integrations.lastReading')).not.toBeInTheDocument()
+    expect(screen.getByText('integrations.readingNone')).toBeInTheDocument()
   })
 })

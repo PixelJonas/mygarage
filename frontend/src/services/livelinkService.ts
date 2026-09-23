@@ -44,6 +44,7 @@ import type { TripList, LocationTrackingResponse, TripPointsResponse, LastLocati
 import { withBase } from '../utils/basePath'
 import type {
   DiscoveredTopic,
+  PresetApplyRequest,
   PresetInfo,
   SourceInfo,
   TopicMap,
@@ -147,12 +148,10 @@ export const livelinkService = {
     return response.data
   },
 
-  /** Create a device plus all its topic maps in one action. */
-  async applyPreset(name: string, deviceId: string, vin?: string | null): Promise<LiveLinkDevice> {
-    const response = await api.post<LiveLinkDevice>(`/livelink/presets/${name}/apply`, {
-      device_id: deviceId,
-      vin: vin ?? null,
-    })
+  /** Add one sensor from a preset: its own device, and a topic map per
+   *  reading given. The server picks the device id. */
+  async applyPreset(name: string, body: PresetApplyRequest): Promise<LiveLinkDevice> {
+    const response = await api.post<LiveLinkDevice>(`/livelink/presets/${name}/apply`, body)
     return response.data
   },
   // ===========================================================================

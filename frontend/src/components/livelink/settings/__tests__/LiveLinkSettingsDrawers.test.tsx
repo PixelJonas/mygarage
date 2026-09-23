@@ -31,6 +31,10 @@ vi.mock('../SourceDevicesDrawer', () => ({
 vi.mock('../MqttDeviceDrawer', () => ({
   default: ({ open }: { open: boolean }) => (open ? <p>mqtt-drawer</p> : null),
 }))
+vi.mock('../PresetDrawer', () => ({
+  PRESET_TAB_PREFIX: 'preset:',
+  default: ({ open }: { open: boolean }) => (open ? <p>preset-drawer</p> : null),
+}))
 
 const DRAWERS = [
   'general-drawer',
@@ -39,6 +43,7 @@ const DRAWERS = [
   'torque-drawer',
   'devices-drawer',
   'mqtt-drawer',
+  'preset-drawer',
 ]
 
 /** Exactly `expected` renders, and no other drawer. */
@@ -90,7 +95,9 @@ describe('LiveLinkSettingsDrawers', () => {
 
   it.each([
     ['torque', 'torque', 'torque-drawer'],
-    // Mopeka, or any MQTT device mapped by hand.
+    // Every Mopeka sensor. Its kind is generic_mqtt too, so the id must win.
+    ['preset:mopeka', 'generic_mqtt', 'preset-drawer'],
+    // Any MQTT device mapped by hand.
     ['device:rvgw', 'generic_mqtt', 'mqtt-drawer'],
     // A kind nobody wrote a drawer for still gets its devices (spec G2).
     ['obdlink', 'obdlink', 'devices-drawer'],

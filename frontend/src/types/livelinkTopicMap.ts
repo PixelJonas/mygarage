@@ -6,6 +6,8 @@
  * OpenAPI number schema, while the wire carries them as decimal strings.
  */
 
+import type { components } from './api.generated'
+
 export interface TopicMap {
   id: number
   device_id: string
@@ -45,13 +47,11 @@ export interface SourceInfo {
   syncs_odometer: boolean
 }
 
-export interface PresetInfo {
-  name: string
-  title: string
-  description: string
-  kind: string
-  row_count: number
-}
+/** A sensor template, with the readings one sensor made from it reports. */
+export type PresetInfo = components['schemas']['PresetInfo']
+export type PresetReadingInfo = components['schemas']['PresetReadingInfo']
+/** Adding one sensor: a name, a vehicle, and a topic per reading suffix. */
+export type PresetApplyRequest = components['schemas']['PresetApplyRequest']
 
 /** Payloads the backend coerces to 1/0 when they are not numeric. */
 const BOOLEANS = new Set([

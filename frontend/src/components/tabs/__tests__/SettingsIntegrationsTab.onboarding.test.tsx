@@ -56,7 +56,7 @@ vi.mock('@/services/livelinkService', () => ({
     getIntegrations: () => Promise.resolve({ tabs: BUILT_IN }),
     listPresets: () =>
       Promise.resolve([
-        { name: 'mopeka_two_tank', title: 'Mopeka', description: 'Two sensors.', kind: 'generic_mqtt', row_count: 17 },
+        { name: 'mopeka', title: 'Mopeka', description: 'Mopeka Pro Check propane tank sensors.', kind: 'generic_mqtt', readings: [] },
       ]),
   },
 }))
@@ -103,7 +103,7 @@ describe('Adding a source with no devices at all', () => {
     fireEvent.click(screen.getByRole('button', { name: 'integrations.addSource' }))
 
     expect(await screen.findByText('Mopeka')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'integrations.mqttApplyPreset' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'integrations.addSensor' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'integrations.mqttCreateDevice' })).toBeInTheDocument()
   })
 })

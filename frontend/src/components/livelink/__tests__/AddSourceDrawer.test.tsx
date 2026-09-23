@@ -3,13 +3,10 @@ import { render, screen, waitFor } from '../../../__tests__/test-utils'
 import { fireEvent } from '@testing-library/react'
 
 const listPresets = vi.fn()
-const applyPreset = vi.fn()
 const createDevice = vi.fn()
 vi.mock('@/services/livelinkService', () => ({
   livelinkService: {
     listPresets: () => listPresets(),
-    applyPreset: (name: string, deviceId: string, vin?: string | null) =>
-      applyPreset(name, deviceId, vin),
     createDevice: (body: unknown) => createDevice(body),
   },
 }))
@@ -17,16 +14,39 @@ const listVehicles = vi.fn()
 vi.mock('@/services/vehicleService', () => ({
   default: { list: () => listVehicles() },
 }))
+// The form has its own suite. Here: which preset it is given, and what the
+// drawer does once it reports a sensor created.
+vi.mock('../settings/SensorForm', () => ({
+  default: ({
+    preset,
+    vehicles,
+    onCreated,
+    onCancel,
+  }: {
+    preset: { name: string }
+    vehicles: unknown[]
+    onCreated: (device: unknown) => void
+    onCancel: () => void
+  }) => (
+    <div>
+      <p>
+        sensor form for {preset.name} with {vehicles.length} vehicle(s)
+      </p>
+      <button onClick={() => onCreated({ device_id: 'mopeka-t1' })}>form-submit</button>
+      <button onClick={onCancel}>form-cancel</button>
+    </div>
+  ),
+}))
 
 import AddSourceDrawer from '../AddSourceDrawer'
 
 const VEHICLE = { vin: '1HGBH41JXMN109186', nickname: 'Durango', year: 2023, make: 'KZ', model: 'RV' }
 const PRESET = {
-  name: 'mopeka_two_tank',
+  name: 'mopeka',
   title: 'Mopeka',
-  description: 'Two sensors.',
+  description: 'Mopeka Pro Check propane tank sensors.',
   kind: 'generic_mqtt',
-  row_count: 17,
+  readings: [],
 }
 
 /** What axios rejects with, as far as getActionErrorMessage reads it. */
@@ -51,7 +71,6 @@ beforeEach(() => {
   vi.clearAllMocks()
   listPresets.mockResolvedValue([PRESET])
   listVehicles.mockResolvedValue({ vehicles: [VEHICLE], total: 1 })
-  applyPreset.mockResolvedValue({ device_id: 'rvgw' })
   createDevice.mockResolvedValue({ device_id: 'hand1' })
 })
 
@@ -60,40 +79,40 @@ describe('AddSourceDrawer', () => {
     renderDrawer()
 
     expect(await screen.findByText('Mopeka')).toBeInTheDocument()
-    expect(screen.getByText('Two sensors.')).toBeInTheDocument()
+    expect(screen.getByText(PRESET.description)).toBeInTheDocument()
   })
 
-  it('applies a preset with the chosen vehicle, then notifies and closes', async () => {
-    // An unlinked generic_mqtt device drops every message: generic_mqtt is
-    // requires_link=True and ingest returns before storage. So the vehicle has
-    // to be selectable at creation.
-    const { onCreated, onClose } = renderDrawer()
-    await screen.findByText('Mopeka')
+  it("opens a preset's sensor form with the vehicles, and takes no device id for it", async () => {
+    // The server picks a sensor's id; only the blank device is typed.
+    renderDrawer()
     await screen.findByRole('option', { name: 'Durango' })
 
-    typeDeviceId('rvgw')
-    fireEvent.change(screen.getByLabelText('integrations.sourceVehicle'), {
-      target: { value: VEHICLE.vin },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'integrations.mqttApplyPreset' }))
+    fireEvent.click(screen.getByRole('button', { name: 'integrations.addSensor' }))
 
-    await waitFor(() =>
-      expect(applyPreset).toHaveBeenCalledWith('mopeka_two_tank', 'rvgw', VEHICLE.vin),
-    )
-    // Without onCreated the operator applies a preset and no tab appears until
+    expect(screen.getByText('sensor form for mopeka with 1 vehicle(s)')).toBeInTheDocument()
+    expect(screen.getAllByLabelText('integrations.mqttDeviceId')).toHaveLength(1)
+  })
+
+  it('notifies and closes once the form has added a sensor', async () => {
+    // Without onCreated the operator adds a sensor and no tab appears until
     // they reload the page.
-    await waitFor(() => expect(onCreated).toHaveBeenCalled())
+    const { onCreated, onClose } = renderDrawer()
+    fireEvent.click(await screen.findByRole('button', { name: 'integrations.addSensor' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'form-submit' }))
+
+    expect(onCreated).toHaveBeenCalled()
     expect(onClose).toHaveBeenCalled()
   })
 
-  it('sends no vehicle, not an empty string, when left unlinked', async () => {
+  it('puts the button back when the form is cancelled', async () => {
     renderDrawer()
-    await screen.findByText('Mopeka')
+    fireEvent.click(await screen.findByRole('button', { name: 'integrations.addSensor' }))
 
-    typeDeviceId('rvgw')
-    fireEvent.click(screen.getByRole('button', { name: 'integrations.mqttApplyPreset' }))
+    fireEvent.click(screen.getByRole('button', { name: 'form-cancel' }))
 
-    await waitFor(() => expect(applyPreset).toHaveBeenCalledWith('mopeka_two_tank', 'rvgw', null))
+    expect(screen.queryByText(/sensor form for/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'integrations.addSensor' })).toBeInTheDocument()
   })
 
   it('creates a blank device with its label and vehicle, then notifies', async () => {
@@ -121,11 +140,22 @@ describe('AddSourceDrawer', () => {
     await waitFor(() => expect(onCreated).toHaveBeenCalled())
   })
 
-  it('holds both actions until a device id is entered', async () => {
+  it('sends no vehicle, not an empty string, when left unlinked', async () => {
     renderDrawer()
     await screen.findByText('Mopeka')
 
-    expect(screen.getByRole('button', { name: 'integrations.mqttApplyPreset' })).toBeDisabled()
+    typeDeviceId('hand1')
+    fireEvent.click(screen.getByRole('button', { name: 'integrations.mqttCreateDevice' }))
+
+    await waitFor(() =>
+      expect(createDevice).toHaveBeenCalledWith({ device_id: 'hand1', kind: 'generic_mqtt', label: null, vin: null }),
+    )
+  })
+
+  it('holds the blank device until a device id is entered', async () => {
+    renderDrawer()
+    await screen.findByText('Mopeka')
+
     expect(screen.getByRole('button', { name: 'integrations.mqttCreateDevice' })).toBeDisabled()
   })
 
@@ -138,9 +168,7 @@ describe('AddSourceDrawer', () => {
     typeDeviceId('rv/gw')
 
     expect(await screen.findByRole('alert')).toHaveTextContent('integrations.deviceIdBadChar')
-    expect(screen.getByRole('button', { name: 'integrations.mqttApplyPreset' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'integrations.mqttCreateDevice' })).toBeDisabled()
-    expect(applyPreset).not.toHaveBeenCalled()
   })
 
   it('says what is wrong rather than repeating the rule', async () => {
@@ -164,32 +192,32 @@ describe('AddSourceDrawer', () => {
     typeDeviceId('rv-gateway.2_b')
 
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'integrations.mqttApplyPreset' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'integrations.mqttCreateDevice' })).toBeEnabled()
   })
 
   it("shows the server's reason and stays open when creation fails", async () => {
-    applyPreset.mockRejectedValue(httpError(409, 'Device rvgw already exists'))
+    createDevice.mockRejectedValue(httpError(409, 'Device hand1 already exists'))
     const { onCreated, onClose } = renderDrawer()
     await screen.findByText('Mopeka')
 
-    typeDeviceId('rvgw')
-    fireEvent.click(screen.getByRole('button', { name: 'integrations.mqttApplyPreset' }))
+    typeDeviceId('hand1')
+    fireEvent.click(screen.getByRole('button', { name: 'integrations.mqttCreateDevice' }))
 
-    expect(await screen.findByText(/Device rvgw already exists/)).toBeInTheDocument()
+    expect(await screen.findByText(/Device hand1 already exists/)).toBeInTheDocument()
     expect(onCreated).not.toHaveBeenCalled()
     expect(onClose).not.toHaveBeenCalled()
   })
 
-  it('starts empty when reopened after a success', async () => {
+  it('starts empty when reopened', async () => {
     const { rerender } = renderDrawer()
     await screen.findByText('Mopeka')
-    typeDeviceId('rvgw')
-    fireEvent.click(screen.getByRole('button', { name: 'integrations.mqttApplyPreset' }))
-    await waitFor(() => expect(applyPreset).toHaveBeenCalled())
+    typeDeviceId('hand1')
+    fireEvent.click(screen.getByRole('button', { name: 'integrations.addSensor' }))
 
     rerender(<AddSourceDrawer open={false} onClose={() => {}} onCreated={() => {}} />)
     rerender(<AddSourceDrawer open onClose={() => {}} onCreated={() => {}} />)
 
     expect(await screen.findByLabelText('integrations.mqttDeviceId')).toHaveValue('')
+    expect(screen.queryByText(/sensor form for/)).not.toBeInTheDocument()
   })
 })

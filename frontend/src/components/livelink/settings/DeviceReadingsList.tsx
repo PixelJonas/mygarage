@@ -4,12 +4,13 @@ import { useTranslation } from 'react-i18next'
 import { formatDistanceToNow } from 'date-fns'
 
 import { Mono, Toggle } from '@/components/ui'
+import { useTimeFormat } from '@/hooks/useTimeFormat'
 import { useUnitFormat } from '@/hooks/useUnitFormat'
 import { livelinkService } from '@/services/livelinkService'
 import type { DeviceReading } from '@/types/livelink'
 import { getDateFnsLocale } from '@/utils/dateUtils'
 import { getActionErrorMessage } from '@/utils/httpErrorHandler'
-import { parseAPITimestamp } from '@/utils/parseAPITimestamp'
+import { formatDateTime, parseAPITimestamp } from '@/utils/parseAPITimestamp'
 import { convertTelemetryValue, getParamDisplayName } from '@/utils/telemetryUnits'
 
 /**
@@ -23,15 +24,35 @@ import { convertTelemetryValue, getParamDisplayName } from '@/utils/telemetryUni
  * The value is device-attributed and may be old (GET /devices/{id}/readings
  * takes the newest stored row, subject to the storage interval), so the age
  * shown is the timestamp it actually has, never a promise of freshness.
+ *
+ * `compact` is the preset sensor's block: two readings to a row, names without
+ * the sensor's own name in front, and one "last reading" line for the sensor
+ * instead of an age on every row.
  */
 
 interface Props {
   readings: DeviceReading[]
   /** Called after a switch is saved, so the drawer refetches. */
   onChanged: () => void
+  compact?: boolean
+  /** The sensor's name, dropped from the front of each reading's name in the
+   *  compact list: under "Front tank", "Front tank level" reads "Level". */
+  sensorLabel?: string
 }
 
-export default function DeviceReadingsList({ readings, onChanged }: Props): ReactElement {
+/** A value this much older than the sensor's newest is from a reading the
+ *  gateway has stopped sending, so it is muted and marked. */
+const STALE_MS = 30 * 60 * 1000
+
+interface Row {
+  reading: DeviceReading
+  name: string
+  shown: { text: string; unit: string } | null
+  at: Date | null
+  checked: boolean
+}
+
+export default function DeviceReadingsList({ readings, onChanged, compact, sensorLabel }: Props): ReactElement {
   const { t } = useTranslation('settings')
   const unitFormat = useUnitFormat()
   const [error, setError] = useState<string | null>(null)
@@ -59,54 +80,125 @@ export default function DeviceReadingsList({ readings, onChanged }: Props): Reac
     }
   }
 
+  const rows: Row[] = readings.map((reading) => ({
+    reading,
+    name: getParamDisplayName(reading.param_key, reading.display_name ?? null),
+    shown:
+      reading.value == null
+        ? null
+        : convertTelemetryValue(reading.value, reading.param_key, reading.unit ?? null, unitFormat),
+    at: reading.timestamp ? parseAPITimestamp(reading.timestamp) : null,
+    checked: pending[reading.param_key] ?? reading.show_on_dashboard,
+  }))
+
+  const errorLine = error ? (
+    <p className="text-xs text-danger" role="alert">
+      {error}
+    </p>
+  ) : null
+
+  if (compact) {
+    return (
+      <CompactRows rows={rows} sensorLabel={sensorLabel} errorLine={errorLine} onToggle={toggle} />
+    )
+  }
+
   return (
     <section className="space-y-2">
       <div className="flex items-baseline justify-between gap-3">
         <h3 className="text-sm font-semibold text-text">{t('integrations.readingsHeading')}</h3>
         <p className="text-xs text-text-mute">{t('integrations.readingsSummary', { count: readings.length })}</p>
       </div>
-      {error ? (
-        <p className="text-xs text-danger" role="alert">
-          {error}
-        </p>
-      ) : null}
+      {errorLine}
       <ul className="divide-y divide-border rounded-control border border-border">
-        {readings.map((reading) => {
-          const name = getParamDisplayName(reading.param_key, reading.display_name ?? null)
-          const shown =
-            reading.value == null
-              ? null
-              : convertTelemetryValue(reading.value, reading.param_key, reading.unit ?? null, unitFormat)
-          const at = reading.timestamp ? parseAPITimestamp(reading.timestamp) : null
-          const checked = pending[reading.param_key] ?? reading.show_on_dashboard
-          return (
-            <li key={reading.param_key} className="flex items-center gap-3 px-3 py-2">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm text-text">{name}</p>
-                {at ? (
-                  <p className="text-xs text-text-mute">
-                    {formatDistanceToNow(at, { addSuffix: true, locale: getDateFnsLocale() })}
-                  </p>
-                ) : null}
-              </div>
-              {shown ? (
-                <Mono size="sm" tabular>
-                  {shown.text}
-                  {shown.unit ? <span className="ml-1 text-text-mute">{shown.unit}</span> : null}
-                </Mono>
-              ) : (
-                <span className="text-xs text-text-mute">{t('integrations.readingNone')}</span>
-              )}
-              <Toggle
-                label={name}
-                hideLabel
-                checked={checked}
-                onChange={(next) => void toggle(reading.param_key, next)}
-              />
-            </li>
-          )
-        })}
+        {rows.map(({ reading, name, shown, at, checked }) => (
+          <li key={reading.param_key} className="flex items-center gap-3 px-3 py-2">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm text-text">{name}</p>
+              {at ? (
+                <p className="text-xs text-text-mute">
+                  {formatDistanceToNow(at, { addSuffix: true, locale: getDateFnsLocale() })}
+                </p>
+              ) : null}
+            </div>
+            <Value shown={shown} />
+            <Toggle
+              label={name}
+              hideLabel
+              checked={checked}
+              onChange={(next) => void toggle(reading.param_key, next)}
+            />
+          </li>
+        ))}
       </ul>
     </section>
+  )
+}
+
+function Value({ shown, title, stale }: { shown: Row['shown']; title?: string; stale?: boolean }): ReactElement {
+  const { t } = useTranslation('settings')
+  if (!shown) return <span className="text-xs text-text-mute">{t('integrations.readingNone')}</span>
+  return (
+    <span title={title} className="shrink-0">
+      <Mono size="sm" tabular tone={stale ? 'muted' : undefined}>
+        {shown.text}
+        {shown.unit ? <span className="ml-1 text-text-mute">{shown.unit}</span> : null}
+      </Mono>
+      {stale ? <span className="ml-1 text-xs text-text-mute">{t('integrations.readingOld')}</span> : null}
+    </span>
+  )
+}
+
+/** "Front tank level" under "Front tank" is "Level". A name someone changed by
+ *  hand, which no longer starts with the sensor's name, is shown whole. */
+function shortName(name: string, sensorLabel: string | undefined): string {
+  const prefix = sensorLabel ? `${sensorLabel} ` : ''
+  const rest = prefix && name.startsWith(prefix) ? name.slice(prefix.length) : name
+  return rest.charAt(0).toUpperCase() + rest.slice(1)
+}
+
+/** Its own component so only the compact list reads the time-format
+ *  preference, which lives in the auth context. */
+function CompactRows({
+  rows,
+  sensorLabel,
+  errorLine,
+  onToggle,
+}: {
+  rows: Row[]
+  sensorLabel: string | undefined
+  errorLine: ReactElement | null
+  onToggle: (paramKey: string, next: boolean) => Promise<void>
+}): ReactElement {
+  const { t } = useTranslation('settings')
+  const { timeFormat } = useTimeFormat()
+  const times = rows.flatMap(({ at }) => (at ? [at.getTime()] : []))
+  const newest = times.length > 0 ? Math.max(...times) : null
+
+  return (
+    <div className="space-y-1">
+      {errorLine}
+      <ul className="grid gap-x-6 sm:grid-cols-2">
+        {rows.map(({ reading, name, shown, at, checked }) => (
+          <li key={reading.param_key} className="flex items-center gap-2 border-b border-border py-1.5">
+            <span className="min-w-0 flex-1 truncate text-sm text-text">{shortName(name, sensorLabel)}</span>
+            <Value
+              shown={shown}
+              title={at ? formatDateTime(at, timeFormat) : undefined}
+              stale={at !== null && newest !== null && newest - at.getTime() > STALE_MS}
+            />
+            {/* The full name: two tanks' "Level" switches must not read alike. */}
+            <Toggle label={name} hideLabel checked={checked} onChange={(next) => void onToggle(reading.param_key, next)} />
+          </li>
+        ))}
+      </ul>
+      {newest !== null ? (
+        <p className="text-xs text-text-mute">
+          {t('integrations.lastReading', {
+            age: formatDistanceToNow(newest, { addSuffix: true, locale: getDateFnsLocale() }),
+          })}
+        </p>
+      ) : null}
+    </div>
   )
 }
