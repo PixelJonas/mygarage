@@ -98,15 +98,18 @@ export default function LiveLinkLiveTab({ vin }: LiveLinkLiveTabProps) {
   // whether the source is reachable.
   const tracksDriving = status?.capabilities?.includes('drive_session') ?? false
 
-  const getStatusColor = (deviceStatus: string, ecuStatus: string) => {
-    if (deviceStatus !== 'online') return 'danger'
+  // `online` is the server's reachability rule, not `device_status`: a sensor
+  // with no status topic (Mopeka) never leaves 'unknown' and read raw showed
+  // the RV offline while its readings arrived.
+  const getStatusColor = (online: boolean, ecuStatus: string) => {
+    if (!online) return 'danger'
     if (!tracksDriving) return 'success'
     if (ecuStatus === 'online') return 'success'
     return 'info'
   }
 
-  const getStatusText = (deviceStatus: string, ecuStatus: string) => {
-    if (deviceStatus !== 'online') return t('livelink.statusDeviceOffline')
+  const getStatusText = (online: boolean, ecuStatus: string) => {
+    if (!online) return t('livelink.statusDeviceOffline')
     if (!tracksDriving) return t('livelink.statusConnected')
     if (ecuStatus === 'online') return t('livelink.vehicleRunning')
     return t('livelink.statusVehicleParked')
@@ -140,8 +143,8 @@ export default function LiveLinkLiveTab({ vin }: LiveLinkLiveTabProps) {
     )
   }
 
-  const statusColor = getStatusColor(status.device_status, status.ecu_status)
-  const statusText = getStatusText(status.device_status, status.ecu_status)
+  const statusColor = getStatusColor(status.online, status.ecu_status)
+  const statusText = getStatusText(status.online, status.ecu_status)
 
   // Hidden readings are still in latest_values: the vehicle widget reads keys
   // from it by name. Only the gauge grid honours the switch (set per reading in
@@ -168,7 +171,7 @@ export default function LiveLinkLiveTab({ vin }: LiveLinkLiveTabProps) {
           {/* WiFi Signal */}
           {status.rssi !== null && (
             <div className="flex items-center gap-1 text-text-mute">
-              {status.device_status === 'online' ? (
+              {status.online ? (
                 <Wifi aria-hidden="true" className="w-4 h-4" />
               ) : (
                 <WifiOff aria-hidden="true" className="w-4 h-4" />

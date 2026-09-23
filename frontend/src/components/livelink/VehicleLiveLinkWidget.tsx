@@ -106,7 +106,8 @@ export default function VehicleLiveLinkWidget({ vin }: VehicleLiveLinkWidgetProp
   // has no engine to read. See LiveLinkLiveTab for the same reasoning.
   const tracksDriving = status.capabilities?.includes('drive_session') ?? false
   const isRunning = tracksDriving && status.ecu_status === 'online'
-  const isOnline = status.device_status === 'online'
+  // The server's reachability rule; see LiveLinkLiveTab.
+  const isOnline = status.online
 
   const openLiveTab = () => {
     navigate(`/vehicles/${vin}?tab=live`)

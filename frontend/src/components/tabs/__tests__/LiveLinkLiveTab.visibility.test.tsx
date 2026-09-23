@@ -52,6 +52,7 @@ const status = (values: TelemetryLatestValue[]) =>
     device_id: 'rvgw',
     capabilities: ['telemetry'],
     device_status: 'online',
+    online: true,
     ecu_status: 'unknown',
     rssi: null,
     current_session_id: null,

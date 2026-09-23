@@ -69,6 +69,7 @@ const okStatus = (overrides: Partial<VehicleLiveLinkStatus> = {}) =>
     // running/parked axis; a source without it has only reachability.
     capabilities: ['telemetry', 'drive_session', 'location', 'dtc', 'odometer'],
     device_status: 'online',
+    online: true,
     ecu_status: 'online',
     rssi: -55,
     current_session_id: 1,
@@ -143,7 +144,7 @@ describe('LiveLinkLiveTab — status mapping + gauge warning (SDQ-C)', () => {
     expect(parked.container.querySelector('.rounded-full')).toHaveClass('bg-info')
     parked.unmount()
 
-    getVehicleStatus.mockResolvedValue(okStatus({ device_status: 'offline', ecu_status: 'offline' }))
+    getVehicleStatus.mockResolvedValue(okStatus({ device_status: 'offline', online: false, ecu_status: 'offline' }))
     const offline = render(<LiveLinkLiveTab vin="V1" />)
     expect(await screen.findByText('livelink.statusDeviceOffline')).toBeInTheDocument()
     expect(offline.container.querySelector('.rounded-full')).toHaveClass('bg-danger')
@@ -164,11 +165,28 @@ describe('LiveLinkLiveTab — status mapping + gauge warning (SDQ-C)', () => {
 
     // Offline still reads as offline: reachability is the one axis it has.
     getVehicleStatus.mockResolvedValue(
-      okStatus({ capabilities: ['telemetry'], device_status: 'offline', ecu_status: 'unknown' }),
+      okStatus({ capabilities: ['telemetry'], device_status: 'offline', online: false, ecu_status: 'unknown' }),
     )
     const offline = render(<LiveLinkLiveTab vin="V1" />)
     expect(await screen.findByText('livelink.statusDeviceOffline')).toBeInTheDocument()
     expect(offline.container.querySelector('.rounded-full')).toHaveClass('bg-danger')
+  })
+
+  it("reads the server's online flag, not device_status, which a sensor with no status topic never sets", async () => {
+    // A Mopeka sensor: device_status 'unknown' for ever, readings arriving.
+    // Reading device_status showed the RV offline while Settings said online.
+    getVehicleStatus.mockResolvedValue(
+      okStatus({ capabilities: ['telemetry'], device_status: 'unknown', online: true, ecu_status: 'unknown' }),
+    )
+    const reporting = render(<LiveLinkLiveTab vin="V1" />)
+    expect(await screen.findByText('livelink.statusConnected')).toBeInTheDocument()
+    expect(reporting.container.querySelector('.rounded-full')).toHaveClass('bg-success')
+    reporting.unmount()
+
+    // And the other way: a stored 'online' the server no longer believes.
+    getVehicleStatus.mockResolvedValue(okStatus({ device_status: 'online', online: false }))
+    render(<LiveLinkLiveTab vin="V1" />)
+    expect(await screen.findByText('livelink.statusDeviceOffline')).toBeInTheDocument()
   })
 
   it('renders the AlertTriangle marker only for an in_warning gauge (fails if the warning marker is dropped or shown unconditionally)', async () => {

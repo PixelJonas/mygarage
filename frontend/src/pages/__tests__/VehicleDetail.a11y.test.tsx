@@ -148,6 +148,7 @@ describe('VehicleDetail — tablist accessible names', () => {
       device_id: null,
       capabilities: [],
       device_status: 'offline',
+      online: false,
       ecu_status: 'unknown',
       latest_values: [],
     })

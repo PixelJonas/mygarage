@@ -61,6 +61,7 @@ const status = (
     vin: 'V1',
     device_id: 'DEV1',
     device_status: 'online',
+    online: true,
     ecu_status: 'online',
     rssi: -55,
     current_session_id: null,

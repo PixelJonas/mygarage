@@ -53,6 +53,7 @@ from app.schemas.torque import (
 )
 from app.services.auth import get_vehicle_for_owner_or_403, get_vehicle_or_403, require_auth
 from app.services.dtc_service import DTCService
+from app.services.livelink_integrations import device_is_online
 from app.services.livelink_service import LiveLinkService
 from app.services.livelink_sources.registry import default_registry
 from app.services.location_service import LocationService
@@ -165,6 +166,16 @@ async def get_vehicle_livelink_status(
     devices = await livelink_service.list_devices_by_vin(vin)
     device = devices[0] if devices else None
     capabilities = _union_capabilities(devices)
+    # The integrations card's rule, not `device_status == 'online'`: a sensor
+    # with no status topic never leaves 'unknown', and read raw it showed the
+    # RV offline while its readings arrived every few seconds.
+    online = (
+        device_is_online(
+            device, await livelink_service.get_device_offline_timeout_minutes(), utc_now()
+        )
+        if device
+        else False
+    )
 
     # Get latest telemetry values
     latest_values = await telemetry_service.get_latest_values(vin)
@@ -222,6 +233,7 @@ async def get_vehicle_livelink_status(
         kind=device.kind if device else None,
         capabilities=capabilities,
         device_status=device.device_status if device else "offline",
+        online=online,
         ecu_status=device.ecu_status if device else "unknown",
         last_seen=device.last_seen if device else None,
         battery_voltage=device.battery_voltage if device else None,

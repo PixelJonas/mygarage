@@ -177,6 +177,7 @@ const status = (device_id: string | null, capabilities: string[]) => ({
   device_id,
   capabilities,
   device_status: device_id ? 'online' : 'offline',
+  online: device_id !== null,
   ecu_status: 'unknown',
   latest_values: [],
 })

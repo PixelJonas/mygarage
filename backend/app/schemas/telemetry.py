@@ -47,6 +47,15 @@ class VehicleLiveLinkStatus(BaseModel):
         ),
     )
     device_status: str = Field("offline", description="Device: online/offline")
+    online: bool = Field(
+        False,
+        description=(
+            "Whether the reporting device is reporting now, by the integrations "
+            "card's rule: a source with no status topic (a Mopeka sensor) keeps "
+            "device_status 'unknown' and counts as online while it has reported "
+            "within the offline timeout. Read this, not device_status."
+        ),
+    )
     ecu_status: str = Field("unknown", description="ECU: online/offline/unknown")
     last_seen: datetime | None = Field(None, description="Last data received")
     battery_voltage: float | None = Field(None, description="Vehicle battery (V)")

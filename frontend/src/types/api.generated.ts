@@ -17924,6 +17924,12 @@ export interface components {
              */
             latest_values?: components["schemas"]["TelemetryLatestValue"][];
             /**
+             * Online
+             * @description Whether the reporting device is reporting now, by the integrations card's rule: a source with no status topic (a Mopeka sensor) keeps device_status 'unknown' and counts as online while it has reported within the offline timeout. Read this, not device_status.
+             * @default false
+             */
+            online: boolean;
+            /**
              * Rssi
              * @description WiFi signal (dBm)
              */
