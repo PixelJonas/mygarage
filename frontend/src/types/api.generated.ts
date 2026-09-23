@@ -11427,7 +11427,7 @@ export interface components {
         IntegrationTab: {
             /**
              * Description
-             * @description Literal text, sent only for preset-backed devices
+             * @description Literal text, sent only for preset tabs
              */
             description?: string | null;
             /**
@@ -11442,7 +11442,7 @@ export interface components {
             firmware_updates: number;
             /**
              * Id
-             * @description 'wican' | 'torque' | 'broker' | 'device:<device_id>'
+             * @description 'wican' | 'torque' | 'broker' | 'preset:<preset name>' (every sensor made from that preset) | 'device:<device_id>' (any other generic MQTT device)
              */
             id: string;
             /**

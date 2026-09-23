@@ -1118,9 +1118,10 @@ async def list_sources(
 #: would take the whole strip down, and the strip is one of six cards.
 _SOURCE_LABELS = {"wican": "WiCAN", "torque": "Torque"}
 
-#: generic_mqtt expands to one tab per device instead of appearing as a single
-#: tab. Nothing on the module says which behaviour it wants, so this is a rule
-#: of the endpoint rather than a property of the registry.
+#: generic_mqtt has no tab of its own: its preset sensors are grouped by
+#: preset, and every other device is its own tab. Nothing on the module says
+#: which behaviour it wants, so this is a rule of the endpoint rather than a
+#: property of the registry.
 _PER_DEVICE_KINDS = frozenset({"generic_mqtt"})
 
 
@@ -1208,17 +1209,33 @@ async def list_integrations(
         )
     )
 
-    for device in devices:
-        if device.kind not in _PER_DEVICE_KINDS:
+    # A preset's sensors share one tab, the way WiCAN's dongles do: two tanks
+    # are "2 devices linked", not two tabs.
+    generic = [d for d in devices if d.kind in _PER_DEVICE_KINDS]
+    for preset in PRESETS.values():
+        group = [d for d in generic if d.preset_key == preset.name]
+        if group:
+            tabs.append(
+                _tab(
+                    f"preset:{preset.name}",
+                    preset.title,
+                    preset.kind,
+                    group,
+                    description=preset.description,
+                )
+            )
+
+    # Every other device is its own tab, including one whose preset no longer
+    # exists: it stays reachable to be edited or deleted.
+    for device in generic:
+        if device.preset_key in PRESETS:
             continue
-        preset = PRESETS.get(device.preset_key or "")
         tabs.append(
             _tab(
                 f"device:{device.device_id}",
-                (preset.title if preset else device.label) or device.device_id,
+                device.label or device.device_id,
                 device.kind,
                 [device],
-                description=preset.description if preset else None,
             )
         )
 

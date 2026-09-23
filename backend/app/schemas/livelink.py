@@ -357,7 +357,13 @@ class DeviceFirmwareStatus(BaseModel):
 class IntegrationTab(BaseModel):
     """One entry in the integrations card's tab strip."""
 
-    id: str = Field(description="'wican' | 'torque' | 'broker' | 'device:<device_id>'")
+    id: str = Field(
+        description=(
+            "'wican' | 'torque' | 'broker' | 'preset:<preset name>' (every "
+            "sensor made from that preset) | 'device:<device_id>' (any other "
+            "generic MQTT device)"
+        )
+    )
     label: str = Field(description="Proper noun. Never translated.")
     kind: str | None = Field(None, description="Source-module kind; None for the broker")
     status: str = Field(description="'ok' | 'attention' | 'off'")
@@ -368,9 +374,7 @@ class IntegrationTab(BaseModel):
             "'attention' with zero online."
         )
     )
-    description: str | None = Field(
-        None, description="Literal text, sent only for preset-backed devices"
-    )
+    description: str | None = Field(None, description="Literal text, sent only for preset tabs")
     device_count: int = 0
     online_count: int = 0
     linked_count: int = 0

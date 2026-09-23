@@ -1,7 +1,8 @@
 """The integrations tab strip.
 
 Composition rules under test: every registered module is one tab, except
-generic_mqtt which expands to one tab per device, plus one broker tab.
+generic_mqtt, whose preset sensors share one tab per preset and whose other
+devices get a tab each, plus one broker tab.
 """
 
 import itertools
@@ -137,26 +138,61 @@ async def test_generic_mqtt_has_no_tab_of_its_own(client, auth_headers, broker_c
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_a_preset_device_gets_its_own_tab(client, auth_headers, db_session, broker_connected):
-    """Named by its PRESET, not its stored label.
+async def test_a_presets_sensors_share_one_tab(client, auth_headers, db_session, broker_connected):
+    """Like WiCAN: two tanks are two devices under one tab, not two tabs.
 
-    The stored label is the preset title at the moment the device was created,
-    here the preset's former title. Renaming a preset must rename the tab of
-    every device already made from it, so the label must not win.
+    Titled by the PRESET, not a sensor's own name ("Front tank").
     """
+    front = await _add_device(db_session, kind="generic_mqtt", preset_key="mopeka", label="Front")
+    rear = await _add_device(db_session, kind="generic_mqtt", preset_key="mopeka", label="Rear")
+
+    tabs = _by_id((await client.get(BASE, headers=auth_headers)).json())
+
+    tab = tabs["preset:mopeka"]
+    assert (tab["label"], tab["kind"], tab["device_count"]) == ("Mopeka", "generic_mqtt", 2)
+    assert "Mopeka" in tab["description"]
+    assert f"device:{front.device_id}" not in tabs
+    assert f"device:{rear.device_id}" not in tabs
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_preset_tab_sits_between_the_broker_and_handmade_devices(
+    client, auth_headers, db_session, broker_connected
+):
+    handmade = await _add_device(db_session, kind="generic_mqtt", label="My own gateway")
+    await _add_device(db_session, kind="generic_mqtt", preset_key="mopeka")
+
+    ids = [t["id"] for t in (await client.get(BASE, headers=auth_headers)).json()["tabs"]]
+
+    assert ids.index("preset:mopeka") == ids.index("broker") + 1
+    assert ids.index(f"device:{handmade.device_id}") == ids.index("preset:mopeka") + 1
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_preset_with_no_sensors_has_no_tab(client, auth_headers, broker_connected):
+    """It is added from Add source; an empty tab would be a dead end."""
+    tabs = _by_id((await client.get(BASE, headers=auth_headers)).json())
+
+    assert "preset:mopeka" not in tabs
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_device_whose_preset_is_gone_keeps_a_tab_of_its_own(
+    client, auth_headers, db_session, broker_connected
+):
+    """The two-tank preset's `rvgateway` on the dev database: it must stay
+    reachable to be deleted."""
     device = await _add_device(
-        db_session,
-        kind="generic_mqtt",
-        preset_key="mopeka",
-        label="Mopeka propane (2 tanks)",
+        db_session, kind="generic_mqtt", preset_key="mopeka_two_tank", label="Mopeka propane"
     )
 
     tabs = _by_id((await client.get(BASE, headers=auth_headers)).json())
 
-    tab = tabs[f"device:{device.device_id}"]
-    assert tab["kind"] == "generic_mqtt"
-    assert tab["label"] == "Mopeka"
-    assert "Mopeka" in tab["description"]
+    assert tabs[f"device:{device.device_id}"]["label"] == "Mopeka propane"
+    assert tabs[f"device:{device.device_id}"]["description"] is None
 
 
 @pytest.mark.integration

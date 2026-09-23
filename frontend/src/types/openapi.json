@@ -9279,7 +9279,7 @@
                 "type": "null"
               }
             ],
-            "description": "Literal text, sent only for preset-backed devices",
+            "description": "Literal text, sent only for preset tabs",
             "title": "Description"
           },
           "device_count": {
@@ -9293,7 +9293,7 @@
             "type": "integer"
           },
           "id": {
-            "description": "'wican' | 'torque' | 'broker' | 'device:<device_id>'",
+            "description": "'wican' | 'torque' | 'broker' | 'preset:<preset name>' (every sensor made from that preset) | 'device:<device_id>' (any other generic MQTT device)",
             "title": "Id",
             "type": "string"
           },
