@@ -2243,7 +2243,8 @@ export interface paths {
          * Delete Device
          * @description Delete a device.
          *
-         *     Historical telemetry and sessions are retained (keyed on vehicle).
+         *     Historical telemetry and sessions are retained (keyed on vehicle), except a
+         *     preset sensor's readings, which are deleted with it.
          *
          *     **Security:**
          *     - Owner of the device's linked vehicle (admin for unlinked devices).
