@@ -255,8 +255,21 @@ class TestAutoRegisterDashboardDefaults:
     """
 
     async def test_propane_level_is_chartable_on_registration(self, db_session):
+        """Ingest tests register this key without a class and leave the row.
+
+        A key registered earlier returns its existing row, so clear it first or
+        this test reads their archive-only row whenever it runs after them.
+        """
+        from sqlalchemy import delete
+
+        key = "PROPANE_T1_LEVEL_PCT"
+        await db_session.execute(
+            delete(LiveLinkParameter).where(LiveLinkParameter.param_key == key)
+        )
+        await db_session.commit()
+
         param = await TelemetryService(db_session).auto_register_parameter(
-            "PROPANE_T1_LEVEL_PCT", unit="%", param_class="propane"
+            key, unit="%", param_class="propane"
         )
 
         assert param.show_on_dashboard is True
