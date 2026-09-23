@@ -1,13 +1,12 @@
 /**
  * Hook to access the user's time-format preference (12-hour vs 24-hour clock).
  *
- * Mirrors useUnitPreference, but ALSO subscribes to the `storage` event so the
- * Settings toggle's `window.dispatchEvent(new Event('storage'))` re-renders
- * consumers live for unauthenticated users. (useUnitPreference only reads on
- * render, so its dispatched event is a no-op — this hook fixes that for time.)
+ * Mirrors useUnitPreference, but ALSO subscribes to the `storage` event, which
+ * `useSavePersonalPreference` fires after a browser-only save, so consumers
+ * re-render live for unauthenticated users.
  *
- * Authenticated users get reactivity from AuthContext instead: the Settings
- * handler calls refreshUser() after PUT /auth/me, updating user.time_format.
+ * Authenticated users get reactivity from AuthContext instead: the save calls
+ * refreshUser() after PUT /auth/me, updating user.time_format.
  *
  * Falls back to localStorage for unauthenticated users, or '12h' as the final
  * default (matches the app's US-leaning defaults, e.g. imperial units).
@@ -23,7 +22,7 @@ export type TimeFormat = '12h' | '24h'
  *
  * `users.time_format` is a plain VARCHAR, so the generated schema types it as
  * `string`. Anything that is not exactly '24h' renders on a 12-hour clock,
- * which is also the app default. Shared with the Settings tab so both agree.
+ * which is also the app default.
  *
  * @param value A stored or transmitted preference, possibly absent.
  * @returns The narrowed preference.

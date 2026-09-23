@@ -16,12 +16,6 @@
     "label": "Fuso horário",
     "description": "Afeta os carimbos de data/hora nos logs, tarefas agendadas e a exibição de datas em todo o aplicativo."
   },
-  "debug": {
-    "label": "Modo de depuração",
-    "tooltip": "Requer reiniciar o aplicativo",
-    "enable": "Ativar log detalhado e mensagens de erro estendidas",
-    "warning": "⚠️ Para que as alterações tenham efeito, é necessário reiniciar o aplicativo. Ative apenas para fins de solução de problemas."
-  },
   "units": {
     "label": "Sistema de unidades",
     "imperial": "Imperial",
@@ -104,13 +98,11 @@
   },
   "language": {
     "label": "Idioma",
-    "description": "Selecione o idioma de exibição de sua preferência. Traduções da comunidade podem estar incompletas.",
     "saved": "Preferências de idioma salvas!",
     "error": "Não foi possível salvar as preferências de idioma"
   },
   "currency": {
     "label": "Moeda",
-    "description": "Selecione a moeda de sua preferência para a exibição de custos e preços.",
     "preview": "Visualização: {{amount}}",
     "saved": "Preferências de moeda salvas!",
     "error": "Não foi possível salvar las preferências de moeda",
@@ -323,7 +315,6 @@
   "timeFormat": {
     "label": "Formato de hora",
     "twelveHour": "12 horas",
-    "twentyFourHour": "24 horas",
-    "description": "Escolha como as horas são exibidas no aplicativo."
+    "twentyFourHour": "24 horas"
   }
 }

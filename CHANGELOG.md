@@ -31,9 +31,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Search providers moved from Settings > Integrations to a button on **Find POI** (admins only); `/shop-finder` now opens Find POI
 - Telegram fuel commands moved to Settings > Notifications > Telegram and fetch messages from Telegram, so no public address or webhook is needed; they are off while Telegram is off and answer only the chat ID set there
 - Telegram fuel commands accept `/fuel`, so they work in group chats (where the bot answers only commands), and date a fill-up the day its message was sent
+- Units, time format, language and currency moved from Settings > System to Quick Settings (the gear); Custom units open as a section there
+- Non-admins see only their own settings: the Files, Notifications and Backup tabs are hidden, and System and Integrations show only their personal cards
 
 ### Removed
 - `POST /api/v1/webhooks/telegram` (fuel commands are fetched by polling)
+- The Debug Mode switch, which changed nothing (debug logging is the `MYGARAGE_DEBUG` environment variable)
 
 ## [3.6.0] - 2026-09-21
 

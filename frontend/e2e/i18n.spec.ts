@@ -1,108 +1,107 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type APIRequestContext, type Locator, type Page } from '@playwright/test'
+import { adminSessionFromStorageState } from './helpers/seed'
 
 const API_BASE = 'http://localhost:8686/api'
-const ADMIN = { username: 'e2e-admin', password: 'E2eTest!ng123' }
+/** Mirrors `global.setup.ts`'s `AUTH_FILE`: the session the setup project saved. */
+const AUTH_FILE = './e2e/.auth/user.json'
+
+/**
+ * Language and currency are each person's own, and live in Quick Settings (the
+ * gear). The drawer marks the app behind it `aria-hidden`, so a test that reads
+ * the nav closes the drawer first.
+ *
+ * @param page The page under test.
+ * @returns The open drawer.
+ */
+async function openQuickSettings(page: Page): Promise<Locator> {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Quick settings' }).click()
+  const drawer = page.getByRole('dialog', { name: 'Quick settings' })
+  await expect(drawer).toBeVisible({ timeout: 15000 })
+  return drawer
+}
+
+/**
+ * Put the admin's language back to English through the API.
+ *
+ * Through the session the setup project saved, never a fresh login:
+ * `/api/auth/login` allows five a minute per IP, the whole suite shares one
+ * address, and a reset that 429s leaves the account in Polish for every spec
+ * after this one (see `adminSessionFromStorageState`).
+ *
+ * @param request The API request context.
+ */
+async function resetLanguage(request: APIRequestContext): Promise<void> {
+  const admin = await adminSessionFromStorageState(request, API_BASE, AUTH_FILE)
+  const reset = await request.put(`${API_BASE}/auth/me`, {
+    data: { language: 'en' },
+    headers: admin.headers,
+  })
+  expect(reset.ok(), `Language reset failed: ${reset.status()}`).toBeTruthy()
+}
 
 test.describe('Internationalization', () => {
   // Reset language to English via API after each test to prevent DB contamination
   test.afterEach(async ({ request }) => {
-    const loginResp = await request.post(`${API_BASE}/auth/login`, {
-      data: ADMIN,
-    })
-    if (loginResp.ok()) {
-      const loginData = await loginResp.json()
-      await request.put(`${API_BASE}/auth/me`, {
-        data: { language: 'en' },
-        headers: {
-          Cookie: `mygarage_token=${loginData.access_token}`,
-          'X-CSRF-Token': loginData.csrf_token,
-        },
-      })
-    }
+    await resetLanguage(request)
   })
 
-  test('language selector exists in settings and switches nav labels', async ({ page }) => {
-    await page.goto('/settings')
+  test('language selector in Quick Settings switches nav labels', async ({ page, request }) => {
+    const drawer = await openQuickSettings(page)
 
-    // Wait for settings page to load
-    await expect(page.getByText('System Configuration')).toBeVisible({ timeout: 15000 })
-
-    // Language selector should be visible
-    const languageSelect = page.locator('select').filter({ has: page.locator('option[value="pl"]') })
+    const languageSelect = drawer.locator('select').filter({ has: page.locator('option[value="pl"]') })
     await expect(languageSelect).toBeVisible()
-
-    // Verify default is English
     await expect(languageSelect).toHaveValue('en')
 
-    // Switch to Polish
     await languageSelect.selectOption('pl')
+    await page.keyboard.press('Escape')
 
     // Nav labels should change to Polish
     await expect(page.getByRole('link', { name: 'Panel sterowania' })).toBeVisible({ timeout: 10000 })
     await expect(page.getByRole('link', { name: 'Analityka' })).toBeVisible()
     await expect(page.getByRole('link', { name: 'Kalendarz' })).toBeVisible()
 
-    // Switch back to English
-    await languageSelect.selectOption('en')
-
-    // Nav labels should revert to English
+    // Back to English through the account, not the drawer: the gear's own
+    // label is translated too, so a Polish page has no stable name to click.
+    await resetLanguage(request)
+    await page.reload()
     await expect(page.getByRole('link', { name: 'Dashboard' })).toBeVisible({ timeout: 10000 })
     await expect(page.getByRole('link', { name: 'Analytics' })).toBeVisible()
     await expect(page.getByRole('link', { name: 'Calendar' })).toBeVisible()
   })
 
-  test('currency selector exists and shows preview', async ({ page }) => {
-    await page.goto('/settings')
+  test('currency selector in Quick Settings shows a preview', async ({ page }) => {
+    const drawer = await openQuickSettings(page)
 
-    // Wait for settings page to load
-    await expect(page.getByText('System Configuration')).toBeVisible({ timeout: 15000 })
-
-    // Currency selector should be visible
-    const currencySelect = page.locator('select').filter({ has: page.locator('option[value="EUR"]') })
+    const currencySelect = drawer.locator('select').filter({ has: page.locator('option[value="EUR"]') })
     await expect(currencySelect).toBeVisible()
-
-    // Verify default is USD
     await expect(currencySelect).toHaveValue('USD')
-
-    // Preview should show USD formatting
-    await expect(page.getByText(/Preview:.*\$/)).toBeVisible()
+    await expect(drawer.getByText(/Preview:.*\$/)).toBeVisible()
   })
 
   test('language persists across page refresh', async ({ page }) => {
-    await page.goto('/settings')
-    await expect(page.getByText('System Configuration')).toBeVisible({ timeout: 15000 })
+    const drawer = await openQuickSettings(page)
 
-    // Switch to Polish
-    const languageSelect = page.locator('select').filter({ has: page.locator('option[value="pl"]') })
+    const languageSelect = drawer.locator('select').filter({ has: page.locator('option[value="pl"]') })
     await languageSelect.selectOption('pl')
-
-    // Wait for Polish nav to render
+    await page.keyboard.press('Escape')
     await expect(page.getByRole('link', { name: 'Panel sterowania' })).toBeVisible({ timeout: 10000 })
 
-    // Refresh page
     await page.reload()
 
-    // Polish should persist via localStorage
+    // Polish persists: it was saved to the account. The afterEach resets it.
     await expect(page.getByRole('link', { name: 'Panel sterowania' })).toBeVisible({ timeout: 15000 })
-
-    // Clean up: switch back to English
-    const langSelectAfterReload = page.locator('select').filter({ has: page.locator('option[value="pl"]') })
-    await langSelectAfterReload.selectOption('en')
-    await expect(page.getByRole('link', { name: 'Dashboard' })).toBeVisible({ timeout: 10000 })
   })
 
   test('html lang attribute updates on language change', async ({ page }) => {
-    await page.goto('/settings')
-    await expect(page.getByText('System Configuration')).toBeVisible({ timeout: 15000 })
+    const drawer = await openQuickSettings(page)
 
     // Default should be en
     await expect(page.locator('html')).toHaveAttribute('lang', 'en')
 
-    // Switch to Polish
-    const languageSelect = page.locator('select').filter({ has: page.locator('option[value="pl"]') })
+    // Switch to Polish (the select stays reachable: it is inside the drawer)
+    const languageSelect = drawer.locator('select').filter({ has: page.locator('option[value="pl"]') })
     await languageSelect.selectOption('pl')
-
-    // html lang should update
     await expect(page.locator('html')).toHaveAttribute('lang', 'pl', { timeout: 5000 })
 
     // Switch back

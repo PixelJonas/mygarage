@@ -17,12 +17,6 @@
     "label": "Timezone",
     "description": "The calendar day MyGarage uses for due dates, overdue badges, notifications and the dates forms fill in. Log timestamps stay in UTC."
   },
-  "debug": {
-    "label": "Debug Mode",
-    "tooltip": "Requires application restart",
-    "enable": "Enable verbose logging and detailed error messages",
-    "warning": "⚠️ Requires application restart to take effect. Only enable for troubleshooting."
-  },
   "garageSections": {
     "title": "Garage sections",
     "description": "Opt in to lightweight family/friend reference vehicles. Off by default. Shared vehicles always appear in their own section.",
@@ -47,6 +41,7 @@
     "gallonSaved": "Gallon standard saved",
     "gallonError": "Failed to save gallon standard",
     "custom": "Custom",
+    "customToggle": "Custom units",
     "customDescription": "Choose a unit for each quantity. These override the preset everywhere in the app.",
     "presetConfirmTitle": "Switch to {{preset}} units?",
     "presetConfirmMessage": "This clears any per-quantity units you have set and uses the preset everywhere.",
@@ -118,13 +113,11 @@
   },
   "language": {
     "label": "Language",
-    "description": "Choose your preferred display language. Community translations may be incomplete.",
     "saved": "Language preference saved!",
     "error": "Failed to save language preference"
   },
   "currency": {
     "label": "Currency",
-    "description": "Choose your preferred currency for displaying costs and prices.",
     "preview": "Preview: {{amount}}",
     "saved": "Currency preference saved!",
     "error": "Failed to save currency preference",
@@ -612,8 +605,7 @@
   "timeFormat": {
     "label": "Time Format",
     "twelveHour": "12-hour (2:30 PM)",
-    "twentyFourHour": "24-hour (14:30)",
-    "description": "Choose how times are displayed throughout the app."
+    "twentyFourHour": "24-hour (14:30)"
   },
   "widgetKeys": {
     "createTitle": "New API Key",

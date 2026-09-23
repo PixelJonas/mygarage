@@ -21,11 +21,18 @@
  * with `secondary_gallon='us'` (`app/constants/units.py`), so a UK-gallon client
  * choosing Imperial lands on US gallons: a 20 percent move in every volume and
  * every MPG, from a button labelled with the system it is already on. R4.
+ *
+ * ★ `compact` IS THE QUICK SETTINGS LAYOUT. A 400 px drawer cannot take the
+ * page's: eleven selects left open push every other preference out of sight,
+ * so under Custom they sit in an accordion, closed until asked for. And the
+ * confirmation above is a full-screen overlay on the page, which is no place
+ * to send someone from a drawer, so in compact mode it appears in place under
+ * the buttons (`InlineConfirm`, which the overlay also renders).
  */
 
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Ruler } from 'lucide-react'
+import { ChevronDown, Ruler } from 'lucide-react'
 import {
   UNIT_FIELD_NAMES,
   UNIT_OPTION_LABELS,
@@ -36,6 +43,8 @@ import {
 } from '@/types/units'
 import { gallonStandardFor } from '@/utils/publicUnitDefaults'
 import { Select } from '../ui'
+import { segmentClass } from './choiceStyles'
+import InlineConfirm from './InlineConfirm'
 
 /**
  * A complete unit selection, in the shape `PUT /auth/me/units` accepts.
@@ -62,6 +71,8 @@ export interface UnitSetEditorProps {
   busy?: boolean
   /** Distinguishes the control ids when two editors share one screen. */
   idPrefix?: string
+  /** The Quick Settings layout: Custom as an accordion, the confirmation in place. */
+  compact?: boolean
   /** Called with a complete selection, after any confirmation it requires. */
   onSelect: (selection: UnitSetSelection) => void
 }
@@ -97,10 +108,14 @@ export default function UnitSetEditor({
   description,
   busy = false,
   idPrefix = 'unit',
+  compact = false,
   onSelect,
 }: UnitSetEditorProps): React.ReactElement {
   const { t } = useTranslation('settings')
   const [pendingPreset, setPendingPreset] = useState<PresetChoice | null>(null)
+  // Compact only. Closed on every mount, even for a Custom account: the drawer
+  // opens for many reasons and editing eleven units is the rarest of them.
+  const [customOpen, setCustomOpen] = useState(false)
 
   // Control SELECTION, not a conversion: the caller's stored preference beside
   // a button's own value. No literal, so the units gate has nothing to report
@@ -134,108 +149,144 @@ export default function UnitSetEditor({
     setPendingPreset(null)
   }
 
-  return (
-    <div>
-      <label className="block text-sm font-medium text-garage-text mb-3">{t('units.label')}</label>
-      <div className="flex gap-3">
-        {PRESETS.map((preset) => (
-          <button
-            key={preset.value}
-            type="button"
-            aria-pressed={isChosen(preset.value)}
-            onClick={() => setPendingPreset(preset)}
-            disabled={busy}
-            className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 transition-all ${
-              isChosen(preset.value)
-                ? 'border-primary bg-primary/10 text-primary'
-                : 'border-garage-border bg-garage-bg text-garage-text hover:border-garage-border'
-            } ${busy ? 'opacity-50 cursor-not-allowed' : ''}`}
-          >
-            <Ruler className="w-5 h-5" />
-            <span className="font-medium">{t(preset.labelKey)}</span>
-          </button>
+  const segment = (
+    chosen: boolean,
+    label: string,
+    onClick: () => void
+  ): React.ReactElement => (
+    <button
+      key={label}
+      type="button"
+      aria-pressed={chosen}
+      onClick={onClick}
+      disabled={busy}
+      className={segmentClass(chosen, busy, compact ? 'sm' : 'md')}
+    >
+      {!compact && <Ruler className="w-5 h-5" />}
+      <span className="font-medium">{label}</span>
+    </button>
+  )
+
+  // The eleven selects, built only when Custom is the choice. Columns follow
+  // the EDITOR's width (the `@container` on the root below), not the
+  // screen's: a screen breakpoint put two columns into the 400 px drawer on
+  // every desktop.
+  const renderCustomGrid = (): React.ReactElement => (
+    <>
+      <p className="mb-3 text-sm text-garage-text-muted">{t('units.customDescription')}</p>
+      <div className="grid grid-cols-1 @md:grid-cols-2 gap-3">
+        {/* Every quantity `UnitSet` declares, derived from the vocabulary
+            rather than listed, so a twelfth cannot be silently omitted.
+            `secondary_gallon` is included with show-both OFF (D4b): the
+            widget endpoints always emit MPG and something has to say which
+            gallon that MPG means. */}
+        {UNIT_FIELD_NAMES.map((field) => (
+          <div key={field}>
+            <label
+              htmlFor={`${idPrefix}-${field}`}
+              className="block text-xs text-garage-text-muted mb-1"
+            >
+              {t(UNIT_OPTION_LABELS[field].labelKey)}
+            </label>
+            <Select
+              id={`${idPrefix}-${field}`}
+              value={units[field]}
+              disabled={busy}
+              onChange={(e) => chooseQuantity(field, e.target.value)}
+              // D10: the NAME is translated and only the symbol is a
+              // literal, so this renders "Kilopascals (kPa)" and never the
+              // stored token `kpa`.
+              options={unitOptionsFor(field).map((option) => ({
+                value: option.value,
+                label: t(option.labelKey),
+              }))}
+            />
+          </div>
         ))}
-        <button
-          type="button"
-          aria-pressed={isChosen('custom')}
-          onClick={() => onSelect({ unit_preference: 'custom', units })}
-          disabled={busy}
-          className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 transition-all ${
-            isChosen('custom')
-              ? 'border-primary bg-primary/10 text-primary'
-              : 'border-garage-border bg-garage-bg text-garage-text hover:border-garage-border'
-          } ${busy ? 'opacity-50 cursor-not-allowed' : ''}`}
-        >
-          <Ruler className="w-5 h-5" />
-          <span className="font-medium">{t('units.custom')}</span>
-        </button>
       </div>
+    </>
+  )
+
+  const confirm =
+    pendingPreset === null ? null : (
+      <InlineConfirm
+        id={`${idPrefix}-preset-confirm`}
+        title={t('units.presetConfirmTitle', { preset: t(pendingPreset.labelKey) })}
+        confirmLabel={t('units.presetConfirmAction')}
+        onConfirm={confirmPreset}
+        onCancel={() => setPendingPreset(null)}
+        className={
+          compact
+            ? undefined
+            : 'bg-garage-surface border border-garage-border rounded-lg p-6 max-w-md mx-4 space-y-4'
+        }
+        size={compact ? 'sm' : 'md'}
+      >
+        <p className="text-sm text-garage-text-muted">{t('units.presetConfirmMessage')}</p>
+        {losesUkGallon && <p className="text-sm text-warning">{t('units.presetConfirmGallon')}</p>}
+      </InlineConfirm>
+    )
+
+  return (
+    <div className="@container">
+      <label
+        className={compact ? 'ui-eyebrow mb-2 block' : 'block text-sm font-medium text-garage-text mb-3'}
+      >
+        {t('units.label')}
+      </label>
+      <div className={compact ? 'flex gap-2' : 'flex gap-3'}>
+        {PRESETS.map((preset) =>
+          segment(isChosen(preset.value), t(preset.labelKey), () => setPendingPreset(preset))
+        )}
+        {segment(isChosen('custom'), t('units.custom'), () => {
+          onSelect({ unit_preference: 'custom', units })
+          setCustomOpen(true)
+        })}
+      </div>
+
+      {compact && confirm}
 
       {description}
 
-      {isChosen('custom') && (
-        <div className="mt-4">
-          <p className="mb-3 text-sm text-garage-text-muted">{t('units.customDescription')}</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* Every quantity `UnitSet` declares, derived from the vocabulary
-                rather than listed, so a twelfth cannot be silently omitted.
-                `secondary_gallon` is included with show-both OFF (D4b): the
-                widget endpoints always emit MPG and something has to say which
-                gallon that MPG means. */}
-            {UNIT_FIELD_NAMES.map((field) => (
-              <div key={field}>
-                <label
-                  htmlFor={`${idPrefix}-${field}`}
-                  className="block text-xs text-garage-text-muted mb-1"
-                >
-                  {t(UNIT_OPTION_LABELS[field].labelKey)}
-                </label>
-                <Select
-                  id={`${idPrefix}-${field}`}
-                  value={units[field]}
-                  disabled={busy}
-                  onChange={(e) => chooseQuantity(field, e.target.value)}
-                  // D10: the NAME is translated and only the symbol is a
-                  // literal, so this renders "Kilopascals (kPa)" and never the
-                  // stored token `kpa`.
-                  options={unitOptionsFor(field).map((option) => ({
-                    value: option.value,
-                    label: t(option.labelKey),
-                  }))}
-                />
+      {isChosen('custom') &&
+        (compact ? (
+          <div className="mt-3">
+            <button
+              type="button"
+              aria-expanded={customOpen}
+              aria-controls={`${idPrefix}-custom-panel`}
+              onClick={() => setCustomOpen((open) => !open)}
+              className="ui-focus-ring flex w-full items-center justify-between rounded-lg border border-garage-border bg-garage-bg px-3 py-2 text-sm font-medium text-garage-text hover:bg-garage-surface transition-colors"
+            >
+              {t('units.customToggle')}
+              <ChevronDown
+                aria-hidden="true"
+                className={`h-4 w-4 transition-transform duration-200 motion-reduce:transition-none ${
+                  customOpen ? 'rotate-180' : ''
+                }`}
+              />
+            </button>
+            {/* Opens downward and closes back up: the row animates from 0fr to
+                1fr. `inert` while closed, so the hidden selects take no focus
+                and are not read out. */}
+            <div
+              id={`${idPrefix}-custom-panel`}
+              className={`grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none ${
+                customOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+              }`}
+            >
+              <div className="overflow-hidden" inert={!customOpen}>
+                <div className="pt-3">{renderCustomGrid()}</div>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {pendingPreset !== null && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-garage-surface border border-garage-border rounded-lg p-6 max-w-md mx-4 space-y-4">
-            <h3 className="text-lg font-semibold text-garage-text">
-              {t('units.presetConfirmTitle', { preset: t(pendingPreset.labelKey) })}
-            </h3>
-            <p className="text-sm text-garage-text-muted">{t('units.presetConfirmMessage')}</p>
-            {losesUkGallon && (
-              <p className="text-sm text-warning">{t('units.presetConfirmGallon')}</p>
-            )}
-            <div className="flex gap-3 justify-end">
-              <button
-                type="button"
-                onClick={() => setPendingPreset(null)}
-                className="px-4 py-2 text-sm text-garage-text-muted hover:text-garage-text rounded-lg border border-garage-border hover:bg-garage-bg transition-colors"
-              >
-                {t('common:cancel')}
-              </button>
-              <button
-                type="button"
-                onClick={confirmPreset}
-                className="px-4 py-2 text-sm bg-primary text-(--accent-on-solid) rounded-lg hover:bg-primary/90 transition-colors font-medium"
-              >
-                {t('units.presetConfirmAction')}
-              </button>
             </div>
           </div>
+        ) : (
+          <div className="mt-4">{renderCustomGrid()}</div>
+        ))}
+
+      {!compact && confirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          {confirm}
         </div>
       )}
     </div>

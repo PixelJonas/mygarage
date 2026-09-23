@@ -428,6 +428,32 @@ describe('UnitPreferencesCard: the account writer', () => {
   })
 })
 
+describe('UnitPreferencesCard, in Quick Settings', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+    reloadBrowserPrefs()
+    h.refreshUser = vi.fn()
+    mockedApi.put.mockResolvedValue({ data: {} })
+  })
+
+  it('uses the drawer layout: Custom behind an accordion', () => {
+    h.isAuthenticated = true
+    h.user = makeUser({ unit_preference: 'custom', resolved_units: METRIC_UNITS })
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <UnitPreferencesCard />
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getByRole('button', { name: label('units.customToggle') })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
+  })
+})
+
 describe('UnitPreferencesCard: the client with no account', () => {
   beforeEach(() => {
     vi.clearAllMocks()

@@ -392,14 +392,12 @@ function tryParseJson(raw: string): unknown {
 /**
  * Re-read on a `storage` event, from another tab or from this one.
  *
- * ★ THE KEY TEST IS DELIBERATELY LENIENT. `SettingsSystemTab` fires
- * `window.dispatchEvent(new Event('storage'))` from its time-format handler
- * (`useTimeFormat` is the listener): a synthetic `Event`, not a
- * `StorageEvent`, with no `key` property at all. Phase 4 task 4 removed the two
- * unit handlers that fired it, so one such site is left rather than three. A
- * handler written `if (event.key !== STORAGE_KEY) return` discards every one of
- * them. The same lenience matches a real `StorageEvent` carrying `key === null`,
- * which is how a whole-store clear arrives.
+ * ★ THE KEY TEST IS DELIBERATELY LENIENT: an event with no key is re-read too.
+ * A real `StorageEvent` carrying `key === null` is how a whole-store clear
+ * arrives, and a synthetic `Event` has no `key` at all. The app's own
+ * preference saves announce themselves with a KEYED event
+ * (`hooks/useSavePersonalPreference`), so a time-format or currency change no
+ * longer makes this store re-read and every unit consumer re-render.
  *
  * @param event The storage event, real or synthetic.
  */

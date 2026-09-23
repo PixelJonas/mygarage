@@ -36,6 +36,12 @@ vi.mock('react-router-dom', async (importOriginal) => ({
 }))
 vi.mock('../../../services/api', () => ({ default: { put: h.put } }))
 vi.mock('sonner', () => ({ toast: { error: h.toastError } }))
+// The preference controls have their own tests (settings/__tests__); here they
+// are stand-ins, so this file checks only that the drawer hosts them.
+vi.mock('../../settings/UnitPreferencesCard', () => ({ default: () => <div data-testid="pref-units" /> }))
+vi.mock('../../settings/TimeFormatControl', () => ({ default: () => <div data-testid="pref-time" /> }))
+vi.mock('../../settings/LanguageControl', () => ({ default: () => <div data-testid="pref-language" /> }))
+vi.mock('../../settings/CurrencyControl', () => ({ default: () => <div data-testid="pref-currency" /> }))
 
 import QuickSettingsDrawer from '../QuickSettingsDrawer'
 
@@ -60,6 +66,20 @@ describe('QuickSettingsDrawer', () => {
   it('opens from the settings gear into a drawer', async () => {
     openDrawer()
     expect(await screen.findByRole('dialog', { name: 'quickSettings' })).toBeInTheDocument()
+  })
+
+  it("holds this person's display preferences, above About and All settings", async () => {
+    openDrawer()
+    // Loaded lazily, on the drawer's first open.
+    await screen.findByTestId('pref-units')
+
+    const order = ['pref-units', 'pref-time', 'pref-language', 'pref-currency'].map((id) =>
+      screen.getByTestId(id),
+    )
+    order.push(screen.getByRole('link', { name: /about/ }))
+    for (let i = 1; i < order.length; i++) {
+      expect(order[i - 1].compareDocumentPosition(order[i]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    }
   })
 
   it('links to About and to full Settings', async () => {
