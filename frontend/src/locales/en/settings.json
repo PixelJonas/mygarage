@@ -502,8 +502,19 @@
       "title": "Fuel Commands",
       "description": "Log a fill-up by messaging this bot. Only the chat ID above can use it.",
       "enable": "Accept fuel commands",
-      "registerHint": "Register the bot's webhook with Telegram once. It needs a public HTTPS address, and your webhook token (Integrations > Inbound Webhooks) as its secret: letters, digits, _ and - only.",
-      "commandHint": "Then send:"
+      "commandHint": "Send the bot:",
+      "groupHint": "In a group, start the command with /fuel.",
+      "status": {
+        "listening": "Listening for commands",
+        "starting": "Starting",
+        "off": "Off",
+        "botTokenRejected": "Telegram rejected the bot token",
+        "conflict": "Another program is reading this bot's messages",
+        "rateLimited": "Telegram asked MyGarage to slow down",
+        "unreachable": "Can't reach Telegram",
+        "databaseError": "Can't reach the database",
+        "unexpected": "Something went wrong; see the server log"
+      }
     }
   },
   "email": {

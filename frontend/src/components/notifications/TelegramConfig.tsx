@@ -1,7 +1,8 @@
 import { AtSign, Send, Info, ExternalLink, Fuel } from 'lucide-react';
 import { useTranslation } from 'react-i18next'
 import { Toggle } from '@/components/ui'
-import { withBase } from '@/utils/basePath'
+
+import { FuelCommandStatus } from './FuelCommandStatus'
 
 interface TelegramConfigProps {
   settings: Record<string, unknown>;
@@ -23,8 +24,6 @@ export function TelegramConfig({
   const { t } = useTranslation('settings')
   const isEnabled = settings.telegram_enabled === 'true';
   const hasRequiredFields = Boolean(settings.telegram_bot_token && settings.telegram_chat_id);
-  // Where Telegram posts fuel commands: this page's own address.
-  const webhookUrl = `${window.location.origin}${withBase('/api/v1/webhooks/telegram')}`
 
   return (
     <div className="bg-garage-surface rounded-lg border border-garage-border p-6">
@@ -135,16 +134,13 @@ export function TelegramConfig({
             onChange={(next) => onSettingChange('telegram_inbound_enabled', next)}
             disabled={saving || !isEnabled}
           />
+          <FuelCommandStatus />
           <div className="p-3 bg-garage-bg/50 border border-garage-border rounded-lg space-y-2 text-xs text-garage-text-muted">
-            <p>{t('telegram.fuel.registerHint')}</p>
-            {/* i18n-exempt — a shell command; the placeholders name Telegram API fields */}
-            <p className="font-mono break-all">
-              curl https://api.telegram.org/bot&lt;BOT_TOKEN&gt;/setWebhook -d url={webhookUrl} -d secret_token=&lt;WEBHOOK_TOKEN&gt;
-            </p>
             <p>{t('telegram.fuel.commandHint')}</p>
             <p className="font-mono">
               fuel &lt;vin|nickname&gt; &lt;odo&gt;[km|mi] &lt;vol&gt;[L|gal|kWh] [price] [cost]
             </p>
+            <p>{t('telegram.fuel.groupHint')}</p>
           </div>
         </section>
       </div>

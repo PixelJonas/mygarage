@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { SettingsProvider, useSettings } from '@/contexts/SettingsContext'
 
 // EventNotificationsCard, rendered by this tab, reads `useUnitFormat()` for the
@@ -52,19 +53,32 @@ function ActiveNotificationsTab() {
 }
 
 function renderTab(): void {
+  // The Telegram section's status line is a query.
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
-    <SettingsProvider>
-      <ActiveNotificationsTab />
-    </SettingsProvider>,
+    <QueryClientProvider client={client}>
+      <SettingsProvider>
+        <ActiveNotificationsTab />
+      </SettingsProvider>
+    </QueryClientProvider>,
+  )
+}
+
+const FUEL_STATUS = { state: 'off', error_code: null, description: null, since: '2026-09-23T00:00:00Z' }
+
+/** The settings list for GET /settings; the poller's state for its own URL. */
+function answerGet(settings: Array<{ key: string; value: string }>): void {
+  mockedApi.get.mockImplementation(async (url: string) =>
+    url === '/notifications/telegram/fuel-commands'
+      ? { data: FUEL_STATUS }
+      : { data: { settings } },
   )
 }
 
 describe('SettingsNotificationsTab — DEF-low settings (Task 17)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockedApi.get.mockResolvedValue({
-      data: { settings: [{ key: 'ntfy_enabled', value: 'true' }] },
-    })
+    answerGet([{ key: 'ntfy_enabled', value: 'true' }])
     mockedApi.post.mockResolvedValue({ data: {} })
   })
 
@@ -102,14 +116,10 @@ describe('SettingsNotificationsTab — DEF-low settings (Task 17)', () => {
 describe('SettingsNotificationsTab — Telegram fuel commands', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockedApi.get.mockResolvedValue({
-      data: {
-        settings: [
+    answerGet([
           { key: 'telegram_enabled', value: 'true' },
           { key: 'telegram_inbound_enabled', value: 'true' },
-        ],
-      },
-    })
+        ])
     mockedApi.post.mockResolvedValue({ data: {} })
   })
 
