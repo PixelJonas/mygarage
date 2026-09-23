@@ -528,3 +528,37 @@ class TestNotificationRoutes:
         )
 
         assert response.status_code == 403
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_failed_discord_test_logs_no_webhook_url(
+    client: AsyncClient, auth_headers, db_session, caplog
+):
+    """The Discord test's raise_for_status error holds the webhook URL, the secret."""
+    import httpx
+
+    from app.routes import notifications as notifications_routes
+
+    await set_settings(
+        db_session,
+        {
+            "discord_enabled": "true",
+            "discord_webhook_url": "https://discord.com/api/webhooks/1/SECRET-hook",
+        },
+    )
+    real_client = httpx.AsyncClient
+
+    def client_factory(*args, **kwargs):
+        return real_client(
+            transport=httpx.MockTransport(lambda request: httpx.Response(400, request=request))
+        )
+
+    caplog.set_level("DEBUG")
+    with patch.object(notifications_routes.httpx, "AsyncClient", client_factory):
+        response = await client.post("/api/notifications/test/discord", headers=auth_headers)
+
+    assert response.status_code == 200
+    assert response.json()["success"] is False
+    assert "SECRET-hook" not in caplog.text
+    assert "SECRET-hook" not in response.text

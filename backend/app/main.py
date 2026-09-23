@@ -68,6 +68,9 @@ def _configure_logging() -> None:
         fmt = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
     logging.basicConfig(level=level, format=fmt, handlers=handlers, force=True)
+    # httpx logs every request's full URL at INFO. Telegram's bot token is in
+    # its URL path, and Discord and Slack webhook URLs are themselves secrets.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 _configure_logging()

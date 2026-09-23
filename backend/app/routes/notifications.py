@@ -19,6 +19,7 @@ from app.services.odometer_service import latest_odometer_km_and_date
 from app.services.reminder_service import is_reminder_overdue, is_reminder_snoozed
 from app.services.settings_service import SettingsService
 from app.utils.household_time import household_today
+from app.utils.http_errors import describe_http_error
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +67,7 @@ async def test_ntfy_connection(
             response.raise_for_status()
             return {"success": True, "message": "Test notification sent"}
     except Exception as e:
-        logger.error("ntfy test failed: %s", e)
+        logger.error("ntfy test failed: %s", describe_http_error(e))
         return {
             "success": False,
             "message": "Failed to send test notification. Check server logs for details.",
@@ -107,7 +108,7 @@ async def test_gotify_connection(
             response.raise_for_status()
             return {"success": True, "message": "Test notification sent"}
     except Exception as e:
-        logger.error("Gotify test failed: %s", e)
+        logger.error("Gotify test failed: %s", describe_http_error(e))
         return {
             "success": False,
             "message": "Failed to connect to Gotify server. Check server logs for details.",
@@ -161,7 +162,7 @@ async def test_pushover_connection(
             response.raise_for_status()
             return {"success": True, "message": "Test notification sent"}
     except Exception as e:
-        logger.error("Pushover test failed: %s", e)
+        logger.error("Pushover test failed: %s", describe_http_error(e))
         return {
             "success": False,
             "message": "Failed to send Pushover test. Check server logs for details.",
@@ -205,7 +206,7 @@ async def test_slack_connection(
                 "message": f"Unexpected response: {response.text}",
             }
     except Exception as e:
-        logger.error("Slack test failed: %s", e)
+        logger.error("Slack test failed: %s", describe_http_error(e))
         return {
             "success": False,
             "message": "Failed to send Slack test. Check server logs for details.",
@@ -247,7 +248,7 @@ async def test_discord_connection(
             response.raise_for_status()
             return {"success": False, "message": "Unexpected response"}
     except Exception as e:
-        logger.error("Discord test failed: %s", e)
+        logger.error("Discord test failed: %s", describe_http_error(e))
         return {
             "success": False,
             "message": "Failed to send Discord test. Check server logs for details.",
@@ -284,7 +285,7 @@ async def test_matrix_connection(
         finally:
             await service.close()
     except Exception as e:
-        logger.error("Matrix test failed: %s", e)
+        logger.error("Matrix test failed: %s", describe_http_error(e))
         return {
             "success": False,
             "message": "Failed to send Matrix test. Check server logs for details.",
@@ -336,7 +337,7 @@ async def test_telegram_connection(
                 "message": result.get("description", "Unknown error"),
             }
     except Exception as e:
-        logger.error("Telegram test failed: %s", e)
+        logger.error("Telegram test failed: %s", describe_http_error(e))
         return {
             "success": False,
             "message": "Failed to send Telegram test. Check server logs for details.",
@@ -406,7 +407,7 @@ async def test_email_connection(
 
         return {"success": True, "message": "Test email sent"}
     except Exception as e:
-        logger.error("Email test failed: %s", e)
+        logger.error("Email test failed: %s", describe_http_error(e))
         return {
             "success": False,
             "message": "Failed to send email test. Check server logs for details.",
