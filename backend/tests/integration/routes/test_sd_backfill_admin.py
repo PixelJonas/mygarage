@@ -12,6 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.livelink_device import LiveLinkDevice
 
+# LiveLink's master switch gates the ingest pipeline and SD backfill, and it is
+# off by default. Explicit, not inherited from whatever an earlier test left in
+# the shared database.
+pytestmark = pytest.mark.usefixtures("livelink_enabled")
+
 
 @pytest.mark.integration
 @pytest.mark.asyncio
@@ -138,6 +143,32 @@ class TestBackfillTriggerAdmin:
         assert data["rows_ingested"] == 42
         assert data["rows_skipped"] == 1
         assert data["errors"] == []
+
+    @pytest.mark.asyncio
+    async def test_backfill_trigger_is_refused_while_livelink_is_off(
+        self,
+        client: AsyncClient,
+        auth_headers: dict[str, str],
+        db_session: AsyncSession,
+    ) -> None:
+        """409, and the service is never asked: "pull now" doing nothing
+        silently would look like a broken dongle."""
+        from app.models.settings import Setting
+
+        device = LiveLinkDevice(device_id="sdtest000009", vin="1HGBH41JXMN109186")
+        db_session.add(device)
+        row = await db_session.get(Setting, "livelink_enabled")
+        row.value = "false"  # the module's fixture put it on, and puts it back
+        await db_session.commit()
+
+        with patch("app.routes.livelink_admin.SdBackfillService") as mock_svc_cls:
+            response = await client.post(
+                f"/api/livelink/devices/{device.device_id}/backfill",
+                headers=auth_headers,
+            )
+
+        assert response.status_code == 409
+        mock_svc_cls.assert_not_called()
 
     async def test_backfill_trigger_unauthenticated(
         self,

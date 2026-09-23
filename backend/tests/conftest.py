@@ -97,6 +97,41 @@ async def db_session(test_sessionmaker, init_test_db) -> AsyncGenerator[AsyncSes
         yield session
 
 
+@pytest_asyncio.fixture
+async def livelink_enabled(db_session: AsyncSession) -> AsyncGenerator[None]:
+    """Switch LiveLink's master switch on for one test, then put it back.
+
+    The switch gates every ingest path (`livelink_ingest.ingest`, the HTTPS
+    route, SD backfill), and migration 034 seeds it off. A test that drives
+    ingest without it asserts against an early return: "no session opened"
+    passes for the wrong reason. Not autouse, because the tests pinning the
+    switched-off behaviour must see the real default. The suite shares one
+    database, so the prior value is restored.
+    """
+    from app.models.settings import Setting
+
+    existing = await db_session.get(Setting, "livelink_enabled")
+    previous = existing.value if existing is not None else None
+    if existing is not None:
+        existing.value = "true"
+    else:
+        db_session.add(Setting(key="livelink_enabled", value="true"))
+    await db_session.commit()
+
+    yield
+
+    # A failed test can leave the session mid-transaction; restoring through
+    # it would raise here and bury the real failure under a teardown error.
+    await db_session.rollback()
+    row = await db_session.get(Setting, "livelink_enabled")
+    if previous is None:
+        if row is not None:
+            await db_session.delete(row)
+    elif row is not None:
+        row.value = previous
+    await db_session.commit()
+
+
 @pytest.fixture(scope="session")
 def test_data_dir():
     """Create a temporary data directory for file upload tests.

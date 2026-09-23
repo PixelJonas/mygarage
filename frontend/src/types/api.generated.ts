@@ -2199,7 +2199,15 @@ export interface paths {
          */
         get: operations["list_devices_api_livelink_devices_get"];
         put?: never;
-        post?: never;
+        /**
+         * Create Device
+         * @description Create a device by hand.
+         *
+         *     Auto-discovery covers WiCAN and a token flow covers Torque; a generic MQTT
+         *     device has neither, so without this an admin can save topic maps against a
+         *     device id that does not exist and every reading is silently discarded.
+         */
+        post: operations["create_device_api_livelink_devices_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2258,6 +2266,10 @@ export interface paths {
         /**
          * Trigger Backfill
          * @description Pull and backfill the device's SD logs immediately.
+         *
+         *     409 while LiveLink is switched off: the service would quietly do nothing
+         *     (it checks the master switch too, for queued backfills), and an operator
+         *     who pressed "pull now" deserves to be told why nothing arrived.
          *
          *     **Security:**
          *     - Requires admin authentication
@@ -2335,6 +2347,69 @@ export interface paths {
          *     - Requires admin authentication
          */
         delete: operations["unskip_firmware_version_api_livelink_devices__device_id__firmware_skip_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/livelink/devices/{device_id}/param-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Device Param Keys
+         * @description Distinct parameter keys THIS device has reported.
+         *
+         *     Per-device on purpose. `vehicle_telemetry_latest` has no device_id column
+         *     and is keyed (vin, param_key), so a per-vehicle list would offer a Torque
+         *     phone the co-located WiCAN's A6-ODOMETER, which it never emits.
+         */
+        get: operations["list_device_param_keys_api_livelink_devices__device_id__param_keys_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/livelink/devices/{device_id}/readings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Device Readings
+         * @description Every parameter this device is mapped to, with its current value.
+         *
+         *     Which keys comes from `livelink_topic_maps`: those rows are what route a
+         *     topic to a parameter, so a device's mapped key set IS its parameter list.
+         *
+         *     Whose value cannot come from `vehicle_telemetry_latest`. That table is
+         *     UNIQUE(vin, param_key) with no device_id, so two devices on one vehicle
+         *     mapping the same key means the last writer owns the row and the other
+         *     device's sidecar would display a reading that is not its own. Values come
+         *     from `vehicle_telemetry`, which carries device_id.
+         *
+         *     The cost is recency: `vehicle_telemetry` is written subject to
+         *     `storage_interval_seconds`. The timestamp is returned so the UI can show
+         *     how old the value actually is rather than implying it is live.
+         *
+         *     Values are the device's under its CURRENT vehicle. A device relinked to
+         *     another vehicle starts again rather than showing the old one's readings.
+         *
+         *     **Security:**
+         *     - Requires admin
+         */
+        get: operations["get_device_readings_api_livelink_devices__device_id__readings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2523,6 +2598,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/livelink/integrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Integrations
+         * @description The integrations card's tab strip, with each tab's status.
+         *
+         *     One request replaces the card's previous four. The status rules live in
+         *     `app.services.livelink_integrations` so they can be unit-tested without a
+         *     database, a broker or an HTTP client.
+         *
+         *     **Security:**
+         *     - Requires admin
+         */
+        get: operations["list_integrations_api_livelink_integrations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/livelink/mqtt/restart": {
         parameters: {
             query?: never;
@@ -2681,6 +2783,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/livelink/presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Presets
+         * @description Sensor templates, with the readings each sensor publishes.
+         */
+        get: operations["list_presets_api_livelink_presets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/livelink/presets/{name}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Preset
+         * @description Add one sensor: its own device, and a topic map per reading given.
+         *
+         *     Which readings a preset has, and which it requires, is the preset's, so
+         *     `topics` is checked against it here rather than on the schema.
+         *
+         *     Each reading's parameter gets the preset's `storage_interval_seconds`.
+         *     REQUIRED, not tuning: retained messages replay on every resubscribe and
+         *     the storage path stamps server time, so without it each reconnect writes a
+         *     fresh row.
+         */
+        post: operations["apply_preset_api_livelink_presets__name__apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/livelink/settings": {
         parameters: {
             query?: never;
@@ -2711,6 +2861,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/livelink/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Sources
+         * @description Every registered source kind and what it produces.
+         */
+        get: operations["list_sources_api_livelink_sources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/livelink/token": {
         parameters: {
             query?: never;
@@ -2734,6 +2904,79 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/livelink/topic-discovery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Discover Topics
+         * @description Listen briefly and report what the broker is publishing.
+         */
+        post: operations["discover_topics_api_livelink_topic_discovery_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/livelink/topic-maps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Topic Maps
+         * @description All topic maps, optionally for one device.
+         */
+        get: operations["list_topic_maps_api_livelink_topic_maps_get"];
+        put?: never;
+        /**
+         * Create Topic Map
+         * @description Add a mapping and resubscribe.
+         */
+        post: operations["create_topic_map_api_livelink_topic_maps_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/livelink/topic-maps/{map_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Topic Map
+         * @description Remove a mapping and resubscribe.
+         */
+        delete: operations["delete_topic_map_api_livelink_topic_maps__map_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Topic Map
+         * @description Change a mapping and resubscribe.
+         *
+         *     Re-validates the MERGED row through TopicMapCreate rather than assigning
+         *     the patch fields directly: otherwise a PATCH could null `param_key` on a
+         *     telemetry row, set a wildcard topic, or skip param-key canonicalisation,
+         *     all of which create rejects.
+         */
+        patch: operations["update_topic_map_api_livelink_topic_maps__map_id__patch"];
         trace?: never;
     };
     "/api/maintenance-types": {
@@ -2768,6 +3011,26 @@ export interface paths {
          * @description Return actionable in-app alerts (overdue and soon-due reminders).
          */
         get: operations["notification_inbox_api_notifications_inbox_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notifications/telegram/fuel-commands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Telegram Fuel Status
+         * @description Whether Telegram fuel commands are being fetched, and the last error if not.
+         */
+        get: operations["get_telegram_fuel_status_api_notifications_telegram_fuel_commands_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3907,29 +4170,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/webhooks/telegram": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Webhook Telegram
-         * @description Telegram bot webhook — structured text fuel commands only (no OCR).
-         *
-         *     Enable with ``telegram_inbound_enabled=true``. Auth: same webhook ingest
-         *     token via the ``X-Webhook-Token`` header.
-         */
-        post: operations["webhook_telegram_api_v1_webhooks_telegram_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v2/widget/summary": {
         parameters: {
             query?: never;
@@ -4922,6 +5162,36 @@ export interface paths {
          *     - Requires authentication
          */
         get: operations["get_last_location_api_vehicles__vin__livelink_location_last_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vehicles/{vin}/livelink/parameters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Vehicle Parameters
+         * @description List the parameters this vehicle actually reports.
+         *
+         *     The admin `/api/livelink/parameters` catalog is global: it holds every
+         *     parameter any device has ever sent, fleet-wide. Charting from it offers a
+         *     propane trailer a list of engine PIDs that can only ever draw an empty
+         *     graph. Scoping to `get_latest_values` reuses its staleness rule, so a
+         *     parameter the rest of the vehicle has left behind drops out of the picker
+         *     the same way it drops off the live dashboard.
+         *
+         *     **Security:**
+         *     - Requires authentication and access to the vehicle
+         */
+        get: operations["list_vehicle_parameters_api_vehicles__vin__livelink_parameters_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -8959,6 +9229,81 @@ export interface components {
             update_available: boolean | null;
         };
         /**
+         * DeviceReading
+         * @description One mapped parameter and its most recent device-attributed value.
+         */
+        DeviceReading: {
+            /**
+             * Alert Lines
+             * @description The alert lines Settings offers for this reading: a preset sensor's tank level offers low and critical, its battery low. Empty for anything else.
+             */
+            alert_lines?: ("low" | "critical")[];
+            /**
+             * Critical Min
+             * @description The critical alert line, if set
+             */
+            critical_min?: number | null;
+            /** Display Name */
+            display_name?: string | null;
+            /**
+             * Format
+             * @description How to show the value: through the unit adapter, as Yes/No, as a whole number, or as 'n of max_value'. A preset sensor's readings say; anything else is a plain value.
+             * @default value
+             * @enum {string}
+             */
+            format: "value" | "boolean" | "count" | "of_max";
+            /**
+             * Max Value
+             * @description The top of the scale for an 'of_max' reading
+             */
+            max_value?: number | null;
+            /** Param Key */
+            param_key: string;
+            /**
+             * Show On Dashboard
+             * @default true
+             */
+            show_on_dashboard: boolean;
+            /**
+             * Timestamp
+             * @description When that value was stored. Subject to storage_interval_seconds, so it is not the wall-clock moment the sensor published.
+             */
+            timestamp?: string | null;
+            /** Unit */
+            unit?: string | null;
+            /**
+             * Value
+             * @description None when never reported
+             */
+            value?: number | null;
+            /**
+             * Warning Min
+             * @description The low alert line, if set
+             */
+            warning_min?: number | null;
+        };
+        /**
+         * DeviceReadingsResponse
+         * @description Every parameter one device is mapped to, with current values.
+         */
+        DeviceReadingsResponse: {
+            /** Device Id */
+            device_id: string;
+            /**
+             * Online
+             * @description Whether the device is reporting now: the integrations card's own rule, so a device with no status topic counts as online while it has reported within the offline timeout.
+             * @default false
+             */
+            online: boolean;
+            /** Readings */
+            readings: components["schemas"]["DeviceReading"][];
+            /**
+             * Vin
+             * @description None when the device is unlinked
+             */
+            vin?: string | null;
+        };
+        /**
          * DocumentListResponse
          * @description Schema for list of documents.
          */
@@ -11092,6 +11437,70 @@ export interface components {
             vehicles?: components["schemas"]["PolicyVehicleUpsert"][] | null;
         };
         /**
+         * IntegrationListResponse
+         * @description The whole tab strip, in display order.
+         */
+        IntegrationListResponse: {
+            /** Tabs */
+            tabs: components["schemas"]["IntegrationTab"][];
+        };
+        /**
+         * IntegrationTab
+         * @description One entry in the integrations card's tab strip.
+         */
+        IntegrationTab: {
+            /**
+             * Description
+             * @description Literal text, sent only for preset tabs
+             */
+            description?: string | null;
+            /**
+             * Device Count
+             * @default 0
+             */
+            device_count: number;
+            /**
+             * Firmware Updates
+             * @default 0
+             */
+            firmware_updates: number;
+            /**
+             * Id
+             * @description 'wican' | 'torque' | 'broker' | 'preset:<preset name>' (every sensor made from that preset) | 'device:<device_id>' (any other generic MQTT device)
+             */
+            id: string;
+            /**
+             * Kind
+             * @description Source-module kind; None for the broker
+             */
+            kind?: string | null;
+            /**
+             * Label
+             * @description Proper noun. Never translated.
+             */
+            label: string;
+            /**
+             * Linked Count
+             * @default 0
+             */
+            linked_count: number;
+            /**
+             * Online Count
+             * @default 0
+             */
+            online_count: number;
+            /**
+             * Reason
+             * @description Why it has that status. Status and counts alone cannot tell an unlinked device from one that has never reported: both are 'attention' with zero online.
+             */
+            reason: string;
+            /**
+             * Status
+             * @description 'ok' | 'attention' | 'off'
+             */
+            status: string;
+        };
+        /**
          * IntervalOverride
          * @description Intervals the caller typed while applying a pack, for one item.
          *
@@ -11183,6 +11592,30 @@ export interface components {
             total: number;
         };
         /**
+         * LiveLinkDeviceManualCreate
+         * @description Schema for creating a device by hand, rather than by auto-discovery.
+         *
+         *     `LiveLinkDeviceCreate` above is the auto-discovery shape: it carries no
+         *     `kind` and no `vin` because a WiCAN dongle announces itself and is linked
+         *     afterwards. A `generic_mqtt` device declares neither AUTO_DISCOVER nor a
+         *     token flow, so without this route the only way such a device can exist is
+         *     by applying a preset.
+         *
+         *     `vin` is optional, matching every other device: the pipeline returns early
+         *     for a device with no VIN, so an unlinked device is a valid intermediate
+         *     state rather than an error.
+         */
+        LiveLinkDeviceManualCreate: {
+            /** Device Id */
+            device_id: string;
+            /** Kind */
+            kind: string;
+            /** Label */
+            label?: string | null;
+            /** Vin */
+            vin?: string | null;
+        };
+        /**
          * LiveLinkDeviceResponse
          * @description Schema for device response.
          */
@@ -11238,6 +11671,12 @@ export interface components {
             /** Id */
             id: number;
             /**
+             * Kind
+             * @description Source module that owns this device (see GET /sources)
+             * @default wican
+             */
+            kind: string;
+            /**
              * Label
              * @description User-friendly device name
              */
@@ -11256,10 +11695,20 @@ export interface components {
              */
             movement_unreadable: boolean;
             /**
+             * Odometer Param Key
+             * @description Which reported parameter carries this device's odometer
+             */
+            odometer_param_key?: string | null;
+            /**
              * Odometer Unit
              * @description Declared odometer units ('km'/'mi'); None means inferred from the key
              */
             odometer_unit?: string | null;
+            /**
+             * Preset Key
+             * @description The preset that created this device, if any. A preset device's tab is named by its preset, and its mappings are the preset's, not hand-made.
+             */
+            preset_key?: string | null;
             /**
              * Rssi
              * @description WiFi signal strength (dBm)
@@ -11300,13 +11749,18 @@ export interface components {
              */
             label?: string | null;
             /**
+             * Odometer Param Key
+             * @description Which reported parameter carries this device's odometer. Omitted leaves it unchanged, an empty string clears it, a key sets it (uppercased). The empty string must NOT be coerced to None here, or the service cannot tell 'clear it' from 'not supplied'.
+             */
+            odometer_param_key?: string | null;
+            /**
              * Odometer Unit
              * @description Units this device reports its odometer in. 'auto' clears the override and infers from the param key shape. None leaves it unchanged.
              */
             odometer_unit?: ("km" | "mi" | "auto") | null;
             /**
              * Vin
-             * @description VIN to link device to
+             * @description VIN to link the device to, any case. An empty string UNLINKS it; omitted or null leaves the link unchanged. Same convention as odometer_param_key below.
              */
             vin?: string | null;
         };
@@ -11334,6 +11788,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Critical Min */
+            critical_min: number | null;
             /**
              * Display Name
              * @description User-friendly display name
@@ -11386,6 +11842,11 @@ export interface components {
              * @description Category for grouping
              */
             category?: string | null;
+            /**
+             * Critical Min
+             * @description Urgent alert if value drops below; must sit under warning_min
+             */
+            critical_min?: number | null;
             /**
              * Display Name
              * @description User-friendly display name
@@ -11556,6 +12017,60 @@ export interface components {
             session_timeout_minutes?: number | null;
             /** Telemetry Retention Days */
             telemetry_retention_days?: number | null;
+        };
+        /**
+         * LiveSensor
+         * @description One preset sensor on this vehicle (a propane tank), drawn as its own card.
+         *
+         *     Its readings' values are in `latest_values`, looked up by `param_key`.
+         */
+        LiveSensor: {
+            /** Device Id */
+            device_id: string;
+            /**
+             * Fill Key
+             * @description The reading drawn as the tank's fill (its level), when mapped
+             */
+            fill_key?: string | null;
+            /**
+             * Label
+             * @description The sensor's name, which its readings' display names start with
+             */
+            label: string;
+            /** Last Seen */
+            last_seen?: string | null;
+            /**
+             * Online
+             * @description Reporting now, by the integrations card's rule
+             */
+            online: boolean;
+            /** Preset Key */
+            preset_key: string;
+            /**
+             * Readings
+             * @description Every reading the sensor maps, in the preset's order, the fill included
+             */
+            readings?: components["schemas"]["LiveSensorReading"][];
+        };
+        /**
+         * LiveSensorReading
+         * @description One of a preset sensor's readings, and how to show it.
+         */
+        LiveSensorReading: {
+            /**
+             * Format
+             * @description Through the unit adapter, as Yes/No, as a whole number, or as 'n of max_value'
+             * @default value
+             * @enum {string}
+             */
+            format: "value" | "boolean" | "count" | "of_max";
+            /**
+             * Max Value
+             * @description The top of the scale for an 'of_max' reading
+             */
+            max_value?: number | null;
+            /** Param Key */
+            param_key: string;
         };
         /**
          * LocationPointOut
@@ -12913,6 +13428,70 @@ export interface components {
             premium_share?: number | string | null;
             /** Vin */
             vin: string;
+        };
+        /**
+         * PresetApplyRequest
+         * @description Body for adding one sensor from a preset.
+         *
+         *     Which readings exist, and which are required, is the preset's, so the
+         *     route checks `topics` against it. What does not depend on the preset is
+         *     checked here.
+         */
+        PresetApplyRequest: {
+            /** Label */
+            label: string;
+            /**
+             * Topics
+             * @description The exact topic carrying each reading, keyed by reading suffix (LEVEL_PCT). A reading left out or blank is not mapped.
+             */
+            topics: {
+                [key: string]: string;
+            };
+            /** Vin */
+            vin?: string | null;
+        };
+        /**
+         * PresetInfo
+         * @description A sensor template, as the add-sensor form needs it.
+         */
+        PresetInfo: {
+            /** Description */
+            description: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Readings */
+            readings: components["schemas"]["PresetReadingInfo"][];
+            /** Title */
+            title: string;
+        };
+        /**
+         * PresetReadingInfo
+         * @description One reading a preset's sensor publishes.
+         */
+        PresetReadingInfo: {
+            /**
+             * Default Topic
+             * @description Last topic segment in the reference layout; suggested when none is heard
+             */
+            default_topic: string;
+            /**
+             * Keywords
+             * @description Lowercase substrings that identify this reading's topic in any layout
+             */
+            keywords: string[];
+            /** Name */
+            name: string;
+            /** Required */
+            required: boolean;
+            /**
+             * Suffix
+             * @description Key into PresetApplyRequest.topics
+             */
+            suffix: string;
+            /** Unit */
+            unit: string | null;
         };
         /**
          * QuickEntryVehicle
@@ -15005,16 +15584,24 @@ export interface components {
             tax_type?: ("Registration" | "Inspection" | "Property Tax" | "Tolls") | null;
         };
         /**
-         * TelegramUpdate
-         * @description Minimal Telegram Bot API Update subset.
+         * TelegramFuelStatus
+         * @description The Telegram fuel-command poller's state, for Settings > Notifications > Telegram.
          */
-        TelegramUpdate: {
-            /** Message */
-            message?: {
-                [key: string]: unknown;
-            } | null;
-            /** Update Id */
-            update_id?: number | null;
+        TelegramFuelStatus: {
+            /** Description */
+            description?: string | null;
+            /** Error Code */
+            error_code?: ("bot_token_rejected" | "conflict" | "rate_limited" | "unreachable" | "database_error" | "unexpected") | null;
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "off" | "starting" | "listening" | "error";
         };
         /**
          * TelemetryDataPoint
@@ -15035,6 +15622,11 @@ export interface components {
          */
         TelemetryLatestValue: {
             /**
+             * Alert Band
+             * @description Which alert line the value is past: below low, below critical (a tank's red line, under low), or above high. None inside its lines.
+             */
+            alert_band?: ("low" | "critical" | "high") | null;
+            /**
              * Display Name
              * @description User-friendly name
              */
@@ -15050,6 +15642,12 @@ export interface components {
              * @description Parameter key
              */
             param_key: string;
+            /**
+             * Show On Dashboard
+             * @description Whether the Live tab draws a gauge for this reading. Every value is still returned: the vehicle widget looks keys up by name and must not lose one because its gauge is hidden.
+             * @default true
+             */
+            show_on_dashboard: boolean;
             /**
              * Timestamp
              * Format: date-time
@@ -15975,6 +16573,119 @@ export interface components {
              * @description Transaction date
              */
             transaction_date?: string | null;
+        };
+        /**
+         * TopicDiscoveryRequest
+         * @description Body for a discovery run.
+         */
+        TopicDiscoveryRequest: {
+            /** Prefix */
+            prefix: string;
+            /**
+             * Seconds
+             * @default 15
+             */
+            seconds: number;
+        };
+        /**
+         * TopicMapCreate
+         * @description Request body for POST.
+         */
+        TopicMapCreate: {
+            /** Device Id */
+            device_id: string;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Param Class */
+            param_class?: string | null;
+            /** Param Key */
+            param_key?: string | null;
+            /**
+             * Role
+             * @default telemetry
+             * @enum {string}
+             */
+            role: "telemetry" | "status";
+            /**
+             * Scale
+             * @default 1
+             */
+            scale: number | string;
+            /** Topic */
+            topic: string;
+            /** Unit */
+            unit?: string | null;
+            /**
+             * Value Offset
+             * @default 0
+             */
+            value_offset: number | string;
+            /** Value Path */
+            value_path?: string | null;
+        };
+        /**
+         * TopicMapResponse
+         * @description One stored row.
+         */
+        TopicMapResponse: {
+            /** Device Id */
+            device_id: string;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Id */
+            id: number;
+            /** Param Class */
+            param_class?: string | null;
+            /** Param Key */
+            param_key?: string | null;
+            /**
+             * Role
+             * @default telemetry
+             * @enum {string}
+             */
+            role: "telemetry" | "status";
+            /**
+             * Scale
+             * @default 1
+             */
+            scale: string;
+            /** Topic */
+            topic: string;
+            /** Unit */
+            unit?: string | null;
+            /**
+             * Value Offset
+             * @default 0
+             */
+            value_offset: string;
+            /** Value Path */
+            value_path?: string | null;
+        };
+        /**
+         * TopicMapUpdate
+         * @description Request body for PATCH. Every field optional.
+         */
+        TopicMapUpdate: {
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Param Class */
+            param_class?: string | null;
+            /** Param Key */
+            param_key?: string | null;
+            /** Scale */
+            scale?: number | string | null;
+            /** Unit */
+            unit?: string | null;
+            /** Value Offset */
+            value_offset?: number | string | null;
+            /** Value Path */
+            value_path?: string | null;
         };
         /**
          * TorqueSourceCreate
@@ -17269,6 +17980,11 @@ export interface components {
              */
             battery_voltage?: number | null;
             /**
+             * Capabilities
+             * @description Union of Capability values across every device linked to this VIN. The UI gates sub-tabs on these: a propane gateway declares telemetry alone and must not be offered DTCs, sessions or trips.
+             */
+            capabilities?: string[];
+            /**
              * Current Session Id
              * @description Active session ID
              */
@@ -17291,6 +18007,11 @@ export interface components {
              */
             ecu_status: string;
             /**
+             * Kind
+             * @description Source kind of the reporting device
+             */
+            kind?: string | null;
+            /**
              * Last Seen
              * @description Last data received
              */
@@ -17301,10 +18022,21 @@ export interface components {
              */
             latest_values?: components["schemas"]["TelemetryLatestValue"][];
             /**
+             * Online
+             * @description Whether the reporting device is reporting now, by the integrations card's rule: a source with no status topic (a Mopeka sensor) keeps device_status 'unknown' and counts as online while it has reported within the offline timeout. Read this, not device_status.
+             * @default false
+             */
+            online: boolean;
+            /**
              * Rssi
              * @description WiFi signal (dBm)
              */
             rssi?: number | null;
+            /**
+             * Sensors
+             * @description Preset sensors on this vehicle, in the order they were added. Their readings are in latest_values too; the Live tab draws them on the sensor's card instead of as separate gauges.
+             */
+            sensors?: components["schemas"]["LiveSensor"][];
             /**
              * Session Duration Seconds
              * @description Session duration so far
@@ -22354,6 +23086,39 @@ export interface operations {
             };
         };
     };
+    create_device_api_livelink_devices_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiveLinkDeviceManualCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveLinkDeviceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_device_api_livelink_devices__device_id__get: {
         parameters: {
             query?: never;
@@ -22568,6 +23333,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeviceFirmwareStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_device_param_keys_api_livelink_devices__device_id__param_keys_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_device_readings_api_livelink_devices__device_id__readings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceReadingsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -22854,6 +23681,26 @@ export interface operations {
             };
         };
     };
+    list_integrations_api_livelink_integrations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationListResponse"];
+                };
+            };
+        };
+    };
     restart_mqtt_subscriber_api_livelink_mqtt_restart_post: {
         parameters: {
             query?: never;
@@ -23053,6 +23900,61 @@ export interface operations {
             };
         };
     };
+    list_presets_api_livelink_presets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresetInfo"][];
+                };
+            };
+        };
+    };
+    apply_preset_api_livelink_presets__name__apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PresetApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveLinkDeviceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_livelink_settings_api_livelink_settings_get: {
         parameters: {
             query?: never;
@@ -23106,6 +24008,28 @@ export interface operations {
             };
         };
     };
+    list_sources_api_livelink_sources_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
     regenerate_global_token_api_livelink_token_post: {
         parameters: {
             query?: never;
@@ -23122,6 +24046,169 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TokenGenerateResponse"];
+                };
+            };
+        };
+    };
+    discover_topics_api_livelink_topic_discovery_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopicDiscoveryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_topic_maps_api_livelink_topic_maps_get: {
+        parameters: {
+            query?: {
+                device_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopicMapResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_topic_map_api_livelink_topic_maps_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopicMapCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopicMapResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_topic_map_api_livelink_topic_maps__map_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                map_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_topic_map_api_livelink_topic_maps__map_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                map_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopicMapUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopicMapResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -23162,6 +24249,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InboxResponse"];
+                };
+            };
+        };
+    };
+    get_telegram_fuel_status_api_notifications_telegram_fuel_commands_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramFuelStatus"];
                 };
             };
         };
@@ -24915,41 +26022,6 @@ export interface operations {
             };
         };
     };
-    webhook_telegram_api_v1_webhooks_telegram_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TelegramUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     get_summary_api_v2_widget_summary_get: {
         parameters: {
             query?: never;
@@ -26511,6 +27583,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LastLocationResponse"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_vehicle_parameters_api_vehicles__vin__livelink_parameters_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveLinkParameterListResponse"];
                 };
             };
             /** @description Validation Error */

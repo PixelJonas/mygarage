@@ -53,10 +53,8 @@ describe('Integrations settings casing', () => {
     const NAME_KEYS = [
       'nhtsa',
       'carComplaints',
-      'shopFinder',
       'livelink',
       'webhooks',
-      'telegramInbound',
       'llmSection',
       'webhookToken',
       'llmBaseUrl',
@@ -82,7 +80,6 @@ describe('Integrations settings casing', () => {
       'enableNHTSA',
       'enableAutoCheck',
       'enableCarComplaints',
-      'enableTelegramInbound',
       'enableLlmReceipt',
       'enableLlmAssistant',
     ]

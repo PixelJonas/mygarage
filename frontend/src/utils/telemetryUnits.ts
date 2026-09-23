@@ -45,6 +45,7 @@
 import type { UnitQuantity } from '@/types/units'
 import { UNIT_ADAPTERS } from './unitAdapters'
 import { formatAtPrecision, type UnitFormat } from './unitFormat'
+import { UnitConverter } from './units'
 
 /**
  * Unit symbols a device may declare, mapped to what they measure. Consulted
@@ -62,6 +63,11 @@ const UNIT_BY_DECLARED_SYMBOL: Readonly<Record<string, UnitQuantity>> = {
   kpa: 'pressure',
   bar: 'pressure',
 }
+
+/** A millimetre reading in inches, and as itself. A propane tank's depth
+ *  moves a few millimetres per percent. */
+const INCH_PRECISION = 1
+const MILLIMETRE_PRECISION = 0
 
 /** Decimals for a parameter outside the unit system, by kind. */
 const RPM_PRECISION = 0
@@ -87,6 +93,7 @@ export interface ConvertedTelemetry {
 export type TelemetryClass =
   | { readonly kind: 'quantity'; readonly quantity: UnitQuantity }
   | { readonly kind: 'dimensionless'; readonly precision: number }
+  | { readonly kind: 'millimetres' }
 
 /**
  * Decide what a telemetry parameter measures, from its key and reported unit.
@@ -138,6 +145,9 @@ export function classifyTelemetryParam(paramKey: string, unit: string | null): T
   // collision somewhere else; deferring to the declaration removes the class.
   const declared = UNIT_BY_DECLARED_SYMBOL[unitLower]
   if (declared) return { kind: 'quantity', quantity: declared }
+  // The unit system has no small-length quantity (`tread` is 32nds of an
+  // inch, `length` is metres or feet), so a declared mm has a class of its own.
+  if (unitLower === 'mm') return { kind: 'millimetres' }
 
   if (key.includes('speed')) {
     return { kind: 'quantity', quantity: 'speed' }
@@ -197,6 +207,18 @@ export function convertTelemetryValue(
   format: UnitFormat
 ): ConvertedTelemetry {
   const classified = classifyTelemetryParam(paramKey, unit)
+
+  if (classified.kind === 'millimetres') {
+    // Follows the account's LENGTH choice: feet reads inches, metres reads
+    // millimetres. The inch is UnitConverter's, so no factor is new here.
+    if (format.length.unit === 'ft') {
+      return {
+        text: formatAtPrecision(value / 1000 / UnitConverter.INCH_TO_METERS, INCH_PRECISION),
+        unit: 'in',
+      }
+    }
+    return { text: formatAtPrecision(value, MILLIMETRE_PRECISION), unit: 'mm' }
+  }
 
   if (classified.kind === 'dimensionless') {
     return {

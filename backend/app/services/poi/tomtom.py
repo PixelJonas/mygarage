@@ -8,6 +8,7 @@ import httpx
 
 from app.exceptions import SSRFProtectionError
 from app.services.poi.base import BasePOIProvider, POICategory
+from app.utils.http_errors import describe_http_error
 from app.utils.url_validation import validate_tomtom_url
 
 logger = logging.getLogger(__name__)
@@ -83,7 +84,11 @@ class TomTomProvider(BasePOIProvider):
                     results = await self._search_propane(latitude, longitude, radius_meters)
                     all_results.extend(results)
             except Exception as e:
-                logger.warning("TomTom search failed for category %s: %s", category.value, str(e))
+                logger.warning(
+                    "TomTom search failed for category %s: %s",
+                    category.value,
+                    describe_http_error(e),
+                )
                 continue
 
         return all_results
@@ -178,7 +183,9 @@ class TomTomProvider(BasePOIProvider):
                 logger.error("TomTom API timeout for category %s", category.value)
                 raise
             except httpx.HTTPStatusError as e:
-                logger.error("TomTom API error for category %s: %s", category.value, str(e))
+                logger.error(
+                    "TomTom API error for category %s: %s", category.value, describe_http_error(e)
+                )
                 raise
 
     def normalize_result(self, raw_result: dict, category: POICategory = None) -> dict[str, Any]:

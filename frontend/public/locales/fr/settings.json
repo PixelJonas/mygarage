@@ -227,7 +227,6 @@
     "enableCarComplaints": "Activer l'intégration CarComplaints",
     "enableCarComplaintsDesc": "Ajouter des liens vers CarComplaints.com pour rechercher les problèmes connus des véhicules.",
     "aboutCarComplaints": "À propos de CarComplaints",
-    "shopFinder": "Recherche d'ateliers",
     "shopFinderDesc": "Configurez les fournisseurs de points d'intérêt pour trouver des garages et centres d'entretien à proximité.",
     "provider": "Fournisseur",
     "active": "Actif",

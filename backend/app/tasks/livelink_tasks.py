@@ -3,8 +3,6 @@
 import logging
 from datetime import timedelta
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.database import AsyncSessionLocal
 from app.services.firmware_service import FirmwareService
 from app.services.livelink_service import LiveLinkService
@@ -108,7 +106,9 @@ async def check_device_offline_status():
             cutoff = utc_now() - timedelta(minutes=offline_timeout)
 
             # Check notification setting
-            notify_enabled = await _get_bool_setting(db, "livelink_notify_device_offline", True)
+            notify_enabled = await SettingsService.get_bool(
+                db, "livelink_notify_device_offline", default=True
+            )
 
             # Get all online devices that haven't been seen recently
             devices = await livelink_service.list_devices()
@@ -169,7 +169,9 @@ async def check_firmware_updates():
                 return
 
             # Check if firmware check is enabled
-            check_enabled = await _get_bool_setting(db, "livelink_firmware_check_enabled", True)
+            check_enabled = await SettingsService.get_bool(
+                db, "livelink_firmware_check_enabled", default=True
+            )
             if not check_enabled:
                 return
 
@@ -191,7 +193,9 @@ async def check_firmware_updates():
             )
 
             # Check notification setting
-            notify_enabled = await _get_bool_setting(db, "livelink_notify_firmware_update", True)
+            notify_enabled = await SettingsService.get_bool(
+                db, "livelink_notify_firmware_update", default=True
+            )
             if not notify_enabled:
                 return
 
@@ -305,8 +309,8 @@ async def generate_daily_summaries():
                 return
 
             # Check if aggregation is enabled
-            aggregation_enabled = await _get_bool_setting(
-                db, "livelink_daily_aggregation_enabled", True
+            aggregation_enabled = await SettingsService.get_bool(
+                db, "livelink_daily_aggregation_enabled", default=True
             )
             if not aggregation_enabled:
                 return
@@ -395,14 +399,6 @@ async def finalize_pending_offlines():
 
         except Exception as e:
             logger.error("Error finalizing pending offlines: %s", e)
-
-
-async def _get_bool_setting(db: AsyncSession, key: str, default: bool = False) -> bool:
-    """Get a boolean setting value."""
-    setting = await SettingsService.get(db, key)
-    if not setting or not setting.value:
-        return default
-    return setting.value.lower() in ("true", "1", "yes")
 
 
 # =============================================================================

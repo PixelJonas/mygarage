@@ -120,3 +120,11 @@ migrations must swallow their own operational errors.
 | `107_household_insurance_policies` | **FATAL** — Make an insurance policy a household record that covers many vehicles. |
 | `108_insurance_standard_coverages` | **FATAL** — Turn each vehicle's free-text coverage limits into standard coverage rows. |
 | `109_user_defined_reminder_packs` | Add the tables that hold user-saved reminder packs. |
+| `110_widen_livelink_device_kind` | **FATAL** — Widen ``livelink_devices.kind`` from VARCHAR(10) to VARCHAR(20). |
+| `111_livelink_topic_maps` | Add ``livelink_topic_maps``, the table behind config-driven MQTT sources. |
+| `112_device_odometer_param_key` | **FATAL** — Add ``livelink_devices.odometer_param_key``: which parameter carries this device's odometer. |
+| `113_livelink_device_preset_key` | **FATAL** — Add ``livelink_devices.preset_key``: which preset created this device. |
+| `114_livelink_parameter_dashboard_default` | **FATAL** — Reset ``livelink_parameters.show_on_dashboard`` to TRUE everywhere. |
+| `116_livelink_enable_for_active_installs` | **FATAL** — Switch LiveLink on for installs already receiving MQTT or Torque data. |
+| `117_livelink_alert_lines` | **FATAL** — Add a critical alert line and a notify-once state to ``livelink_parameters``. |
+| `118_livelink_notify_switch_keys` | Carry LiveLink notification switches over to the keys Settings writes. |

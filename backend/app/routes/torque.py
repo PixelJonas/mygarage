@@ -15,20 +15,14 @@ scoped and revocable (Task 13 DELETE) as defence in depth.
 import logging
 import re
 from collections.abc import Mapping
-from datetime import UTC, datetime
-from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Request, Response
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models.vehicle import Vehicle
-from app.services.location_service import LocationService
-from app.services.session_service import SessionService
-from app.services.telemetry_service import TelemetryService
-from app.services.torque_pid_map import parse_torque_query
-from app.services.torque_service import TorqueService
+from app.services.livelink_ingest import ingest
+from app.services.livelink_sources.base import HttpEnvelope
+from app.services.livelink_sources.torque import TorqueModule
 
 router = APIRouter(prefix="/api/v1/torque", tags=["torque"])
 _OK = Response(content="OK!", media_type="text/plain")
@@ -63,74 +57,24 @@ class TorqueTokenRedactionFilter(logging.Filter):
         return True
 
 
-def _to_decimal(value: float | None) -> Decimal | None:
-    """Convert an optional float PID value to Decimal for a Numeric column."""
-    return Decimal(str(value)) if value is not None else None
-
-
 async def _ingest(token: str, params: Mapping[str, str], db: AsyncSession) -> Response:
-    """Resolve the Torque path token and store OBD telemetry / GPS breadcrumbs.
+    """Resolve the Torque path token and apply the upload through the pipeline.
 
-    Owns the transaction: calls the non-committing service methods, then
-    commits once. Always returns 200 `OK!` on success (including an unlinked
-    device, so Torque stops retrying) and 403 plain-text on an invalid token.
+    Owns the transaction: the pipeline does not commit. Answers 200 `OK!` on
+    success, INCLUDING an unlinked device (the pipeline stores nothing for it,
+    and Torque retries forever on anything but OK!), and 403 plain text on an
+    invalid token.
+
+    Parsing lives in `app.services.livelink_sources.torque`, orchestration in
+    `app.services.livelink_ingest`. The device is resolved twice, here for the
+    403 and again inside the pipeline: two indexed lookups in one transaction,
+    and it keeps the 403-versus-OK decision where the HTTP contract lives.
     """
-    device = await TorqueService(db).resolve_by_token(token)
-    if device is None:
+    module = TorqueModule()
+    if await module.resolve_device(db, token) is None:
         return Response(content="Invalid token", media_type="text/plain", status_code=403)
-    if not device.vin:
-        return _OK  # unlinked source — accept so Torque stops retrying, but no-op
 
-    reading = parse_torque_query(params)
-    now = datetime.now(UTC).replace(tzinfo=None)
-    ts = now
-    if reading.time_ms:
-        try:
-            candidate = datetime.fromtimestamp(reading.time_ms / 1000, tz=UTC).replace(tzinfo=None)
-        except OverflowError, OSError, ValueError:
-            # `time_ms` is only digit-validated (torque_pid_map.parse_torque_query), not
-            # range-checked — an out-of-range value (e.g. a 20-digit garbage `time`) blows
-            # up fromtimestamp. Degrade to server-now rather than 500ing: Torque retries on
-            # any non-OK! response, so a bad device clock plugin would otherwise wedge in a
-            # retry loop.
-            candidate = now
-        # Trust the device clock for PAST timestamps (legit replay/backfill), but never
-        # allow a FUTURE started_at/data ts — clamp to now. A future started_at would
-        # finalize (at server-now) to a NEGATIVE duration and poison ordering/dedup (R2-H2).
-        ts = min(candidate, now)
-
-    # resolve_torque_session sets device.last_seen = server utc_now() internally (never `ts`).
-    session = await SessionService(db).resolve_torque_session(device, reading.session, ts)
-
-    if reading.obd or reading.gps:
-        # An actively-uploading device is online. resolve_torque_session's newer-drive
-        # branch may have just called end_session (which sets ecu_status='offline') to
-        # finalize a stale prior trip — re-assert online whenever real data arrives so
-        # the status endpoint doesn't show an actively-uploading device as offline.
-        device.ecu_status = "online"
-
-    if reading.obd:
-        await TelemetryService(db).store_torque_telemetry(
-            device.vin, device.device_id, ts, reading.obd
-        )
-
-    if reading.gps.get("latitude") is not None and reading.gps.get("longitude") is not None:
-        vehicle = (
-            await db.execute(select(Vehicle).where(Vehicle.vin == device.vin))
-        ).scalar_one_or_none()
-        if vehicle and vehicle.location_tracking_enabled:
-            await LocationService(db).record_point(
-                vin=device.vin,
-                device_id=device.device_id,
-                drive_session_id=session.id if session else None,
-                timestamp=ts,
-                latitude=Decimal(str(reading.gps["latitude"])),
-                longitude=Decimal(str(reading.gps["longitude"])),
-                speed=_to_decimal(reading.gps.get("speed")),
-                heading=_to_decimal(reading.gps.get("heading")),
-                altitude=_to_decimal(reading.gps.get("altitude")),
-            )
-
+    await ingest(module, HttpEnvelope(token=token, params=params), db)
     await db.commit()
     return _OK
 

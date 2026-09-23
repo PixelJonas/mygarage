@@ -110,7 +110,11 @@ export default function VehicleDetail() {
   const [importing, setImporting] = useState(false)
   const [fromCache, setFromCache] = useState(false)
   const [showMobileMenu, setShowMobileMenu] = useState(false)
-  const [hasLiveLinkDevice, setHasLiveLinkDevice] = useState(false)
+  // Capabilities of every LiveLink device linked to this vehicle, unioned by
+  // the backend. `null` means no linked device at all, which is what hides the
+  // LiveLink primary tab; an empty array would mean a device whose kind
+  // declares nothing, which is a different (and loggable) condition.
+  const [liveLinkCaps, setLiveLinkCaps] = useState<string[] | null>(null)
   const [lastLocation, setLastLocation] = useState<LastLocation | null>(null)
   const [detailStats, setDetailStats] = useState<VehicleDetailStats | null>(null)
   const [equipmentDrawer, setEquipmentDrawer] = useState<'standard' | 'optional' | null>(null)
@@ -173,20 +177,30 @@ export default function VehicleDetail() {
     loadVehicle()
   }, [loadVehicle])
 
-  // Check if vehicle has a linked LiveLink device
+  // What this vehicle's LiveLink sources can actually do. Gates both the
+  // primary tab and its sub-tabs: a propane gateway declares telemetry alone,
+  // and offering it DTCs, drive sessions or trips shows an OBD2 dashboard for
+  // a sensor that will never fill one in.
   useEffect(() => {
-    const checkLiveLinkDevice = async () => {
+    const loadLiveLinkCapabilities = async () => {
       if (!vin) return
       try {
-        const hasDevice = await livelinkService.hasLinkedDevice(vin)
-        setHasLiveLinkDevice(hasDevice)
+        const status = await livelinkService.getVehicleStatus(vin)
+        setLiveLinkCaps(status.device_id ? (status.capabilities ?? []) : null)
       } catch {
         // Silently fail - LiveLink tab just won't show
-        setHasLiveLinkDevice(false)
+        setLiveLinkCaps(null)
       }
     }
-    checkLiveLinkDevice()
+    void loadLiveLinkCapabilities()
   }, [vin])
+
+  // Values are `Capability` enum values from the backend registry
+  // (`app/services/livelink_sources/base.py`), not free-form strings.
+  const canLiveLink = useCallback(
+    (capability: string): boolean => liveLinkCaps?.includes(capability) ?? false,
+    [liveLinkCaps],
+  )
 
   // Fetch the vehicle's most-recent GPS location for the Overview "Last seen
   // here" card (Task 16). Independent of hasLiveLinkDevice: Torque Pro
@@ -563,7 +577,7 @@ export default function VehicleDetail() {
       hasSubTabs: true
     },
     // LiveLink tab - only visible when vehicle has linked device
-    ...(hasLiveLinkDevice ? [{
+    ...(liveLinkCaps !== null ? [{
       id: 'livelink' as const,
       label: 'LiveLink',
       icon: Radio,
@@ -603,13 +617,15 @@ export default function VehicleDetail() {
       { id: 'spotrentals' as const, label: t('spotRentalList.title'), icon: MapPin, visible: isRVOrFifthWheel },
       { id: 'suppliesused' as const, label: t('detail.misc.supplies'), icon: Package },
     ],
+    // Each sub-tab is gated on the Capability that fills it. Live and Charts
+    // need only TELEMETRY, which every source declares, so they are ungated.
     livelink: [
       { id: 'live' as const, label: t('detail.misc.live'), icon: Activity },
       // i18n-exempt — DTCs is an untranslated acronym (Diagnostic Trouble Codes)
-      { id: 'dtcs' as const, label: 'DTCs', icon: AlertTriangle },
-      { id: 'sessions' as const, label: t('detail.misc.sessions'), icon: Clock },
+      { id: 'dtcs' as const, label: 'DTCs', icon: AlertTriangle, visible: canLiveLink('dtc') },
+      { id: 'sessions' as const, label: t('detail.misc.sessions'), icon: Clock, visible: canLiveLink('drive_session') },
       { id: 'charts' as const, label: t('detail.misc.charts'), icon: BarChart3 },
-      { id: 'trips' as const, label: t('detail.misc.trips'), icon: MapPin },
+      { id: 'trips' as const, label: t('detail.misc.trips'), icon: MapPin, visible: canLiveLink('location') },
     ],
   }
 
@@ -749,10 +765,13 @@ export default function VehicleDetail() {
 
         {/* LiveLink Sub-tabs */}
         {activePrimaryTab === 'livelink' && activeSubTab === 'live' && vin && <LiveLinkLiveTab vin={vin} />}
-        {activePrimaryTab === 'livelink' && activeSubTab === 'dtcs' && vin && <LiveLinkDTCsTab vin={vin} />}
-        {activePrimaryTab === 'livelink' && activeSubTab === 'sessions' && vin && <LiveLinkSessionsTab vin={vin} />}
+        {/* Capability is re-checked here, not just on the tab strip: these
+            sub-tabs are deep-linkable by query string (`?tab=dtcs`), which
+            reaches the content without ever passing a hidden button. */}
+        {activePrimaryTab === 'livelink' && activeSubTab === 'dtcs' && canLiveLink('dtc') && vin && <LiveLinkDTCsTab vin={vin} />}
+        {activePrimaryTab === 'livelink' && activeSubTab === 'sessions' && canLiveLink('drive_session') && vin && <LiveLinkSessionsTab vin={vin} />}
         {activePrimaryTab === 'livelink' && activeSubTab === 'charts' && vin && <LiveLinkChartsTab vin={vin} />}
-        {activePrimaryTab === 'livelink' && activeSubTab === 'trips' && vin && <LiveLinkTripsTab vin={vin} />}
+        {activePrimaryTab === 'livelink' && activeSubTab === 'trips' && canLiveLink('location') && vin && <LiveLinkTripsTab vin={vin} />}
       </div>
 
       {/* Vehicle Remove Modal */}

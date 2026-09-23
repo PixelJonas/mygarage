@@ -17,6 +17,11 @@ from app.models.vehicle import Vehicle
 from app.models.vehicle_telemetry import VehicleTelemetry
 from app.services.sd_backfill_service import SdBackfillService
 
+# LiveLink's master switch gates the ingest pipeline and SD backfill, and it is
+# off by default. Explicit, not inherited from whatever an earlier test left in
+# the shared database.
+pytestmark = pytest.mark.usefixtures("livelink_enabled")
+
 # Module-level counter — persists for the entire test session so that each
 # make_vehicle_and_device call gets globally unique usernames/VINs/device IDs
 # even though the underlying DB session outlives individual test functions.
@@ -236,3 +241,28 @@ async def test_backfill_dedups_against_live_row(db_session, make_vehicle_and_dev
     )
     row_count = count_result.scalar()
     assert row_count == 1, f"expected exactly 1 telemetry row (merged), found {row_count}"
+
+
+@pytest.mark.asyncio
+async def test_backfill_does_nothing_while_livelink_is_off(
+    db_session, make_vehicle_and_device, monkeypatch
+):
+    """A backfill queued before the master switch went off still runs through
+    here afterwards (run_sd_backfill), so the check lives in the service, not
+    only in the route. The device is fully configured: only the switch stops it."""
+    from app.models.settings import Setting
+
+    vin, device_id = await make_vehicle_and_device(
+        db_session, device_address="http://10.0.0.5", sd_backfill_enabled=True
+    )
+    contacted: list[str] = []
+    svc = SdBackfillService(db_session)
+    monkeypatch.setattr(svc, "_client_for", lambda addr: contacted.append(addr))
+    row = await db_session.get(Setting, "livelink_enabled")
+    row.value = "false"  # the module's fixture put it on, and puts it back
+    await db_session.commit()
+
+    result = await svc.backfill_device(device_id)
+
+    assert contacted == []
+    assert (result.files_seen, result.rows_ingested) == (0, 0)

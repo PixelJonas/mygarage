@@ -39,9 +39,17 @@ class LiveLinkParameter(Base):
     # Alert thresholds (ntfy notifications)
     warning_min: Mapped[float | None] = mapped_column(Float)  # Alert if value drops below
     warning_max: Mapped[float | None] = mapped_column(Float)  # Alert if value exceeds
+    critical_min: Mapped[float | None] = mapped_column(
+        Float
+    )  # Urgent alert below, under warning_min
     warning_last_notified_at: Mapped[datetime | None] = mapped_column(
         DateTime
     )  # Cooldown stamp — set only when a threshold notification is actually sent
+    # The band a notify-once reading last notified (low, critical, high), None
+    # when re-armed. See app/services/livelink_alerts.py.
+    alert_state: Mapped[str | None] = mapped_column(String(10))
+    # When such a reading may try again after a send no service accepted.
+    alert_retry_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     # Display control
     display_order: Mapped[int] = mapped_column(Integer, default=0)  # User-configurable gauge order

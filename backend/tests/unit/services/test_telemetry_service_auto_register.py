@@ -241,3 +241,82 @@ class TestAutoRegisterBackfillInference:
         param = await svc.auto_register_parameter("2F-FUELTANKLEVEL", unit=None, param_class=None)
 
         assert param.param_class == "power_factor"
+
+
+@pytest.mark.asyncio
+class TestAutoRegisterDashboardDefaults:
+    """Which classes are chartable out of the box, and that all are shown.
+
+    `archive_only` keeps a parameter out of the chart picker, so a headline
+    reading whose class is unlisted is registered unchartable. That is what
+    happened to the Mopeka preset's tank level. It never kept anything off a
+    gauge: the Live tab drew every reading until `show_on_dashboard` became a
+    per-reading switch, and every new parameter now starts with it on.
+    """
+
+    async def test_propane_level_is_chartable_on_registration(self, db_session):
+        """Ingest tests register this key without a class and leave the row.
+
+        A key registered earlier returns its existing row, so clear it first or
+        this test reads their archive-only row whenever it runs after them.
+        """
+        from sqlalchemy import delete
+
+        key = "PROPANE_T1_LEVEL_PCT"
+        await db_session.execute(
+            delete(LiveLinkParameter).where(LiveLinkParameter.param_key == key)
+        )
+        await db_session.commit()
+
+        param = await TelemetryService(db_session).auto_register_parameter(
+            key, unit="%", param_class="propane"
+        )
+
+        assert param.show_on_dashboard is True
+        assert param.archive_only is False
+
+    async def test_diagnostics_stay_archive_only(self, db_session):
+        """The negative control: widening the list must not surface every row.
+
+        Reading quality, rejected counts and gateway uptime are real
+        parameters worth storing and worth nobody's chart.
+        """
+        svc = TelemetryService(db_session)
+
+        for key, klass in (
+            ("PROPANE_T1_QUALITY", "diagnostic"),
+            ("RV_GATEWAY_RSSI", "signal"),
+        ):
+            param = await svc.auto_register_parameter(key, unit=None, param_class=klass)
+            assert param.archive_only is True, key
+
+    async def test_every_class_registers_on_the_dashboard(self, db_session):
+        """Hiding a gauge is a per-reading switch now, not a class default.
+
+        Before migration 114 the class list decided this too, and on a
+        production copy it had hidden 36 of 53 parameters' gauges, none of them
+        by anyone's choice. Keys are unique per run: the suite shares one
+        database, and a key registered earlier returns its existing row.
+        """
+        import uuid
+
+        svc = TelemetryService(db_session)
+        tag = uuid.uuid4().hex[:8].upper()
+        cases = [
+            (f"ZZDASH_PRESSURE_{tag}", "pressure"),
+            (f"ZZDASH_DISTANCE_{tag}", "distance"),
+            (f"ZZDASH_DIAGNOSTIC_{tag}", "diagnostic"),
+            # No class, and a key with no catalog substring: `None` is inferred
+            # from the key first, and a lucky inference would prove nothing.
+            (f"ZZ_UNCLASSIFIABLE_{tag}", None),
+        ]
+        for key, klass in cases:
+            param = await svc.auto_register_parameter(key, unit=None, param_class=klass)
+            assert param.show_on_dashboard is True, key
+
+        from sqlalchemy import delete
+
+        await db_session.execute(
+            delete(LiveLinkParameter).where(LiveLinkParameter.param_key.in_([k for k, _ in cases]))
+        )
+        await db_session.commit()

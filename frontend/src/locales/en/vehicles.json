@@ -772,7 +772,6 @@
       "unknownCode": "Unknown code",
       "willAppear": "DTCs will appear here if your WiCAN device detects any issues"
     },
-    "ensureDeviceLinked": "Make sure a WiCAN device is linked to this vehicle",
     "fetchStatusError": "Failed to fetch status",
     "lastUpdate": "Last update",
     "noData": "No LiveLink data available",
@@ -820,12 +819,18 @@
       "tripCount": "{{count}} trips recorded"
     },
     "unknownUnit": "(unknown unit)",
-    "vehicleParked": "Vehicle Parked — WiCAN Connected",
     "vehicleRunning": "Vehicle Running",
-    "wicanOffline": "WiCAN Offline",
     "widget": {
       "title": "LiveLink"
-    }
+    },
+    "statusDeviceOffline": "Device Offline",
+    "statusVehicleParked": "Vehicle Parked",
+    "statusConnected": "Connected",
+    "ensureSourceLinked": "Make sure a LiveLink source is linked to this vehicle",
+    "allReadingsHidden": "Every reading from this vehicle is hidden from the dashboard. Turn them back on under Settings, Integrations, LiveLink.",
+    "tankLevel": "Level {{level}}%",
+    "tankLevelUnknown": "Level not reported yet",
+    "lastReading": "Last reading {{age}}"
   },
   "noteList": {
     "addFirstNote": "Add First Note",
@@ -1743,7 +1748,8 @@
     "statusRunning": "Running",
     "statusParked": "Parked",
     "statusOffline": "Offline",
-    "coolant": "Coolant"
+    "coolant": "Coolant",
+    "statusConnected": "Connected"
   },
   "eventTypes": {
     "maintenance": "Maintenance",

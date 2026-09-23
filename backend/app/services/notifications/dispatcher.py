@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.livelink_alerts import AlertBand
 from app.services.notifications.base import NotificationService
 from app.services.notifications.discord import DiscordNotificationService
 from app.services.notifications.email import EmailNotificationService
@@ -35,11 +36,13 @@ EVENT_SETTINGS_MAP = {
     "warranty_expiring": ("ntfy_enabled", "notify_warranty_expiring"),
     # Milestone notifications
     "odometer_milestone": ("ntfy_enabled", "notify_milestones"),
-    # LiveLink notifications
-    "livelink_new_device": ("ntfy_enabled", "notify_livelink_new_device"),
-    "livelink_device_offline": ("ntfy_enabled", "notify_livelink_device_offline"),
-    "livelink_threshold_alert": ("ntfy_enabled", "notify_livelink_threshold_alerts"),
-    "livelink_firmware_update": ("ntfy_enabled", "notify_livelink_firmware_update"),
+    # LiveLink notifications: the switches in Settings -> LiveLink. Migration
+    # 034 also seeded `notify_livelink_*` keys that no screen ever wrote;
+    # migration 118 carries any that were switched off over to these.
+    "livelink_new_device": ("ntfy_enabled", "livelink_notify_new_device"),
+    "livelink_device_offline": ("ntfy_enabled", "livelink_notify_device_offline"),
+    "livelink_threshold_alert": ("ntfy_enabled", "livelink_notify_threshold_alerts"),
+    "livelink_firmware_update": ("ntfy_enabled", "livelink_notify_firmware_update"),
     # DEF (Diesel Exhaust Fluid) notifications
     "def_low": ("ntfy_enabled", "notify_def_low"),
 }
@@ -77,6 +80,14 @@ EVENT_TAGS_MAP = {
 }
 
 
+#: How a threshold alert says which line was crossed.
+_THRESHOLD_DIRECTION: dict[AlertBand, str] = {
+    "high": "exceeded maximum",
+    "low": "dropped below minimum",
+    "critical": "dropped below critical",
+}
+
+
 class NotificationDispatcher:
     """Routes notifications to enabled services with priority-based retry."""
 
@@ -101,9 +112,8 @@ class NotificationDispatcher:
         return setting.value if setting and setting.value else default
 
     async def _get_setting_bool(self, key: str, default: bool = False) -> bool:
-        """Get a boolean setting value."""
-        value = await self._get_setting(key, str(default).lower())
-        return value.lower() in ("true", "1", "yes")
+        """Get a boolean setting value (see ``SettingsService.get_bool``)."""
+        return await SettingsService.get_bool(self.db, key, default)
 
     async def _get_setting_int(self, key: str, default: int = 0) -> int:
         """Get an integer setting value."""
@@ -448,14 +458,18 @@ class NotificationDispatcher:
         vehicle_name: str,
         parameter_name: str,
         value: float,
-        threshold_type: str,
+        band: AlertBand,
         threshold_value: float,
         unit: str | None = None,
         url: str | None = None,
     ) -> dict[str, bool]:
-        """Send notification when telemetry value exceeds threshold."""
+        """Send notification when telemetry value crosses a threshold.
+
+        `band` is the line crossed: "high", "low", or "critical" (the urgent
+        line below "low", as on a propane tank).
+        """
         unit_str = f" {unit}" if unit else ""
-        direction = "exceeded maximum" if threshold_type == "max" else "dropped below minimum"
+        direction = _THRESHOLD_DIRECTION[band]
         return await self.dispatch(
             event_type="livelink_threshold_alert",
             title=f"Threshold Alert: {vehicle_name}",

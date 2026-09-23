@@ -38,6 +38,8 @@ vi.mock('@/components/MapDisplay', () => ({
   ),
 }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+// Not an admin: the search providers sidecar has its own suite.
+vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ isAdmin: false, authMode: 'local' }) }))
 
 import POIFinder from '../POIFinder'
 

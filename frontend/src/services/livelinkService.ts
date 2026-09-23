@@ -37,11 +37,123 @@ import type {
   BackfillResultResponse,
   TorqueSourceCreateResponse,
   TorqueSourceListResponse,
+  IntegrationListResponse,
+  DeviceReadingsResponse,
 } from '../types/livelink'
 import type { TripList, LocationTrackingResponse, TripPointsResponse, LastLocation } from '../types/trips'
 import { withBase } from '../utils/basePath'
+import type {
+  DiscoveredTopic,
+  PresetApplyRequest,
+  PresetInfo,
+  SourceInfo,
+  TopicMap,
+  TopicMapCreate,
+} from '@/types/livelinkTopicMap'
 
 export const livelinkService = {
+
+  // ===========================================================================
+  // Source modules, topic maps, discovery and presets
+  // ===========================================================================
+
+  /** Distinct parameter keys THIS device has reported. */
+  async getDeviceParamKeys(deviceId: string): Promise<string[]> {
+    const response = await api.get<string[]>(`/livelink/devices/${deviceId}/param-keys`)
+    return response.data
+  },
+
+  /** Registered source kinds and what each produces. */
+  async listSources(): Promise<SourceInfo[]> {
+    const response = await api.get<SourceInfo[]>('/livelink/sources')
+    return response.data
+  },
+
+  /**
+   * The integrations card's tab strip, with each tab's derived status.
+   *
+   * One request replaces the four the card used to make. The status rules live
+   * in the backend so they are unit-tested rather than spread across JSX.
+   */
+  async getIntegrations(): Promise<IntegrationListResponse> {
+    const response = await api.get<IntegrationListResponse>('/livelink/integrations')
+    return response.data
+  },
+
+  /**
+   * One device's mapped parameters and their current values.
+   *
+   * Device-attributed: values come from `vehicle_telemetry`, not from the
+   * VIN-scoped latest cache, so a vehicle carrying two sources cannot show one
+   * device's reading under the other's name.
+   *
+   * Encoded because a hand-created device id is free text: `rv/gw` would
+   * otherwise route to a different path entirely.
+   */
+  async getDeviceReadings(deviceId: string): Promise<DeviceReadingsResponse> {
+    const response = await api.get<DeviceReadingsResponse>(
+      `/livelink/devices/${encodeURIComponent(deviceId)}/readings`,
+    )
+    return response.data
+  },
+
+  /** Create a device by hand (generic MQTT has no auto-discovery). */
+  async createDevice(body: {
+    device_id: string
+    kind: string
+    label?: string | null
+    vin?: string | null
+  }): Promise<LiveLinkDevice> {
+    const response = await api.post<LiveLinkDevice>('/livelink/devices', body)
+    return response.data
+  },
+
+  /** Topic maps, optionally for one device. */
+  async listTopicMaps(deviceId?: string): Promise<TopicMap[]> {
+    const response = await api.get<TopicMap[]>('/livelink/topic-maps', {
+      params: deviceId ? { device_id: deviceId } : undefined,
+    })
+    return response.data
+  },
+
+  /** Add a mapping. The backend resubscribes. */
+  async createTopicMap(body: TopicMapCreate): Promise<TopicMap> {
+    const response = await api.post<TopicMap>('/livelink/topic-maps', body)
+    return response.data
+  },
+
+  /** Change a mapping. The backend resubscribes. */
+  async updateTopicMap(id: number, body: Partial<TopicMapCreate>): Promise<TopicMap> {
+    const response = await api.patch<TopicMap>(`/livelink/topic-maps/${id}`, body)
+    return response.data
+  },
+
+  /** Remove a mapping. The backend resubscribes. */
+  async deleteTopicMap(id: number): Promise<void> {
+    await api.delete(`/livelink/topic-maps/${id}`)
+  },
+
+  /** Listen briefly and report what the broker is publishing. */
+  async discoverTopics(prefix: string, seconds = 15): Promise<DiscoveredTopic[]> {
+    const response = await api.post<DiscoveredTopic[]>('/livelink/topic-discovery', {
+      prefix,
+      seconds,
+    })
+    return response.data
+  },
+
+  /** Named device templates. */
+  async listPresets(): Promise<PresetInfo[]> {
+    const response = await api.get<PresetInfo[]>('/livelink/presets')
+    return response.data
+  },
+
+  /** Add one sensor from a preset: its own device, and a topic map per
+   *  reading given. The server picks the device id. */
+  async applyPreset(name: string, body: PresetApplyRequest): Promise<LiveLinkDevice> {
+    const response = await api.post<LiveLinkDevice>(`/livelink/presets/${name}/apply`, body)
+    return response.data
+  },
   // ===========================================================================
   // Settings
   // ===========================================================================
@@ -125,10 +237,25 @@ export const livelinkService = {
   // ===========================================================================
 
   /**
-   * Get all discovered parameters
+   * Get all discovered parameters, fleet-wide. Admin surfaces only.
    */
   async getParameters(): Promise<LiveLinkParameterListResponse> {
     const response = await api.get<LiveLinkParameterListResponse>('/livelink/parameters')
+    return response.data
+  },
+
+  /**
+   * Get the parameters one vehicle actually reports.
+   *
+   * Anything vehicle-facing wants this, not `getParameters`: the global
+   * catalog holds every parameter any device has ever sent, so charting from
+   * it offers a propane trailer a list of engine PIDs that can only draw an
+   * empty graph.
+   */
+  async getVehicleParameters(vin: string): Promise<LiveLinkParameterListResponse> {
+    const response = await api.get<LiveLinkParameterListResponse>(
+      `/vehicles/${vin}/livelink/parameters`,
+    )
     return response.data
   },
 
@@ -225,17 +352,6 @@ export const livelinkService = {
     return response.data
   },
 
-  /**
-   * Check if vehicle has a linked LiveLink device
-   */
-  async hasLinkedDevice(vin: string): Promise<boolean> {
-    try {
-      const status = await this.getVehicleStatus(vin)
-      return status.device_id !== null
-    } catch {
-      return false
-    }
-  },
 
   // ===========================================================================
   // Vehicle Telemetry (historical)

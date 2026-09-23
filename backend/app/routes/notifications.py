@@ -1,7 +1,7 @@
 """Notification API endpoints for testing notification services and in-app inbox."""
 
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any, Literal
 
 import httpx
@@ -18,7 +18,9 @@ from app.services.hours_service import latest_engine_hours_and_date
 from app.services.odometer_service import latest_odometer_km_and_date
 from app.services.reminder_service import is_reminder_overdue, is_reminder_snoozed
 from app.services.settings_service import SettingsService
+from app.services.telegram_poller import PollerErrorCode, PollerState, telegram_poller
 from app.utils.household_time import household_today
+from app.utils.http_errors import describe_http_error
 
 logger = logging.getLogger(__name__)
 
@@ -31,10 +33,21 @@ async def _get_setting(db: AsyncSession, key: str, default: str = "") -> str:
     return setting.value if setting and setting.value else default
 
 
-async def _get_setting_bool(db: AsyncSession, key: str, default: bool = False) -> bool:
-    """Get a boolean setting value."""
-    value = await _get_setting(db, key, str(default).lower())
-    return value.lower() in ("true", "1", "yes")
+class TelegramFuelStatus(BaseModel):
+    """The Telegram fuel-command poller's state, for Settings > Notifications > Telegram."""
+
+    state: PollerState
+    error_code: PollerErrorCode | None = None
+    description: str | None = None
+    since: datetime
+
+
+@router.get("/telegram/fuel-commands", response_model=TelegramFuelStatus)
+async def get_telegram_fuel_status(
+    current_user: User = Depends(get_current_admin_user),
+) -> TelegramFuelStatus:
+    """Whether Telegram fuel commands are being fetched, and the last error if not."""
+    return TelegramFuelStatus(**telegram_poller.status)
 
 
 @router.post("/test/ntfy")
@@ -44,7 +57,7 @@ async def test_ntfy_connection(
 ) -> dict[str, Any]:
     """Test ntfy server connection."""
     try:
-        ntfy_enabled = await _get_setting_bool(db, "ntfy_enabled")
+        ntfy_enabled = await SettingsService.get_bool(db, "ntfy_enabled")
         ntfy_server = await _get_setting(db, "ntfy_server")
         ntfy_topic = await _get_setting(db, "ntfy_topic")
         ntfy_token = await _get_setting(db, "ntfy_token")
@@ -72,7 +85,7 @@ async def test_ntfy_connection(
             response.raise_for_status()
             return {"success": True, "message": "Test notification sent"}
     except Exception as e:
-        logger.error("ntfy test failed: %s", e)
+        logger.error("ntfy test failed: %s", describe_http_error(e))
         return {
             "success": False,
             "message": "Failed to send test notification. Check server logs for details.",
@@ -86,7 +99,7 @@ async def test_gotify_connection(
 ) -> dict[str, Any]:
     """Test Gotify server connection."""
     try:
-        gotify_enabled = await _get_setting_bool(db, "gotify_enabled")
+        gotify_enabled = await SettingsService.get_bool(db, "gotify_enabled")
         gotify_server = await _get_setting(db, "gotify_server")
         gotify_token = await _get_setting(db, "gotify_token")
 
@@ -113,7 +126,7 @@ async def test_gotify_connection(
             response.raise_for_status()
             return {"success": True, "message": "Test notification sent"}
     except Exception as e:
-        logger.error("Gotify test failed: %s", e)
+        logger.error("Gotify test failed: %s", describe_http_error(e))
         return {
             "success": False,
             "message": "Failed to connect to Gotify server. Check server logs for details.",
@@ -127,7 +140,7 @@ async def test_pushover_connection(
 ) -> dict[str, Any]:
     """Test Pushover connection."""
     try:
-        pushover_enabled = await _get_setting_bool(db, "pushover_enabled")
+        pushover_enabled = await SettingsService.get_bool(db, "pushover_enabled")
         user_key = await _get_setting(db, "pushover_user_key")
         api_token = await _get_setting(db, "pushover_api_token")
 
@@ -167,7 +180,7 @@ async def test_pushover_connection(
             response.raise_for_status()
             return {"success": True, "message": "Test notification sent"}
     except Exception as e:
-        logger.error("Pushover test failed: %s", e)
+        logger.error("Pushover test failed: %s", describe_http_error(e))
         return {
             "success": False,
             "message": "Failed to send Pushover test. Check server logs for details.",
@@ -181,7 +194,7 @@ async def test_slack_connection(
 ) -> dict[str, Any]:
     """Test Slack webhook connection."""
     try:
-        slack_enabled = await _get_setting_bool(db, "slack_enabled")
+        slack_enabled = await SettingsService.get_bool(db, "slack_enabled")
         webhook_url = await _get_setting(db, "slack_webhook_url")
 
         if not slack_enabled:
@@ -211,7 +224,7 @@ async def test_slack_connection(
                 "message": f"Unexpected response: {response.text}",
             }
     except Exception as e:
-        logger.error("Slack test failed: %s", e)
+        logger.error("Slack test failed: %s", describe_http_error(e))
         return {
             "success": False,
             "message": "Failed to send Slack test. Check server logs for details.",
@@ -225,7 +238,7 @@ async def test_discord_connection(
 ) -> dict[str, Any]:
     """Test Discord webhook connection."""
     try:
-        discord_enabled = await _get_setting_bool(db, "discord_enabled")
+        discord_enabled = await SettingsService.get_bool(db, "discord_enabled")
         webhook_url = await _get_setting(db, "discord_webhook_url")
 
         if not discord_enabled:
@@ -253,7 +266,7 @@ async def test_discord_connection(
             response.raise_for_status()
             return {"success": False, "message": "Unexpected response"}
     except Exception as e:
-        logger.error("Discord test failed: %s", e)
+        logger.error("Discord test failed: %s", describe_http_error(e))
         return {
             "success": False,
             "message": "Failed to send Discord test. Check server logs for details.",
@@ -269,7 +282,7 @@ async def test_matrix_connection(
     try:
         from app.services.notifications.matrix import MatrixNotificationService
 
-        matrix_enabled = await _get_setting_bool(db, "matrix_enabled")
+        matrix_enabled = await SettingsService.get_bool(db, "matrix_enabled")
         homeserver = await _get_setting(db, "matrix_homeserver")
         access_token = await _get_setting(db, "matrix_access_token")
         room_id = await _get_setting(db, "matrix_room_id")
@@ -290,7 +303,7 @@ async def test_matrix_connection(
         finally:
             await service.close()
     except Exception as e:
-        logger.error("Matrix test failed: %s", e)
+        logger.error("Matrix test failed: %s", describe_http_error(e))
         return {
             "success": False,
             "message": "Failed to send Matrix test. Check server logs for details.",
@@ -304,7 +317,7 @@ async def test_telegram_connection(
 ) -> dict[str, Any]:
     """Test Telegram bot connection."""
     try:
-        telegram_enabled = await _get_setting_bool(db, "telegram_enabled")
+        telegram_enabled = await SettingsService.get_bool(db, "telegram_enabled")
         bot_token = await _get_setting(db, "telegram_bot_token")
         chat_id = await _get_setting(db, "telegram_chat_id")
 
@@ -342,7 +355,7 @@ async def test_telegram_connection(
                 "message": result.get("description", "Unknown error"),
             }
     except Exception as e:
-        logger.error("Telegram test failed: %s", e)
+        logger.error("Telegram test failed: %s", describe_http_error(e))
         return {
             "success": False,
             "message": "Failed to send Telegram test. Check server logs for details.",
@@ -361,14 +374,14 @@ async def test_email_connection(
 
         import aiosmtplib
 
-        email_enabled = await _get_setting_bool(db, "email_enabled")
+        email_enabled = await SettingsService.get_bool(db, "email_enabled")
         smtp_host = await _get_setting(db, "email_smtp_host")
         smtp_port_str = await _get_setting(db, "email_smtp_port", "587")
         smtp_user = await _get_setting(db, "email_smtp_user")
         smtp_password = await _get_setting(db, "email_smtp_password")
         from_address = await _get_setting(db, "email_from")
         to_address = await _get_setting(db, "email_to")
-        use_tls = await _get_setting_bool(db, "email_smtp_tls", default=True)
+        use_tls = await SettingsService.get_bool(db, "email_smtp_tls", default=True)
 
         if not email_enabled:
             return {"success": False, "message": "Email notifications are disabled"}
@@ -412,7 +425,7 @@ async def test_email_connection(
 
         return {"success": True, "message": "Test email sent"}
     except Exception as e:
-        logger.error("Email test failed: %s", e)
+        logger.error("Email test failed: %s", describe_http_error(e))
         return {
             "success": False,
             "message": "Failed to send email test. Check server logs for details.",

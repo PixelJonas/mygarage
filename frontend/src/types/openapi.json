@@ -3880,6 +3880,172 @@
         "title": "DeviceFirmwareStatus",
         "type": "object"
       },
+      "DeviceReading": {
+        "description": "One mapped parameter and its most recent device-attributed value.",
+        "properties": {
+          "alert_lines": {
+            "description": "The alert lines Settings offers for this reading: a preset sensor's tank level offers low and critical, its battery low. Empty for anything else.",
+            "items": {
+              "enum": [
+                "low",
+                "critical"
+              ],
+              "type": "string"
+            },
+            "title": "Alert Lines",
+            "type": "array"
+          },
+          "critical_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The critical alert line, if set",
+            "title": "Critical Min"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "format": {
+            "default": "value",
+            "description": "How to show the value: through the unit adapter, as Yes/No, as a whole number, or as 'n of max_value'. A preset sensor's readings say; anything else is a plain value.",
+            "enum": [
+              "value",
+              "boolean",
+              "count",
+              "of_max"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "max_value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The top of the scale for an 'of_max' reading",
+            "title": "Max Value"
+          },
+          "param_key": {
+            "title": "Param Key",
+            "type": "string"
+          },
+          "show_on_dashboard": {
+            "default": true,
+            "title": "Show On Dashboard",
+            "type": "boolean"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When that value was stored. Subject to storage_interval_seconds, so it is not the wall-clock moment the sensor published.",
+            "title": "Timestamp"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "None when never reported",
+            "title": "Value"
+          },
+          "warning_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The low alert line, if set",
+            "title": "Warning Min"
+          }
+        },
+        "required": [
+          "param_key"
+        ],
+        "title": "DeviceReading",
+        "type": "object"
+      },
+      "DeviceReadingsResponse": {
+        "description": "Every parameter one device is mapped to, with current values.",
+        "properties": {
+          "device_id": {
+            "title": "Device Id",
+            "type": "string"
+          },
+          "online": {
+            "default": false,
+            "description": "Whether the device is reporting now: the integrations card's own rule, so a device with no status topic counts as online while it has reported within the offline timeout.",
+            "title": "Online",
+            "type": "boolean"
+          },
+          "readings": {
+            "items": {
+              "$ref": "#/components/schemas/DeviceReading"
+            },
+            "title": "Readings",
+            "type": "array"
+          },
+          "vin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "None when the device is unlinked",
+            "title": "Vin"
+          }
+        },
+        "required": [
+          "device_id",
+          "readings"
+        ],
+        "title": "DeviceReadingsResponse",
+        "type": "object"
+      },
       "DocumentListResponse": {
         "description": "Schema for list of documents.",
         "properties": {
@@ -9144,6 +9310,100 @@
         "title": "InsurancePolicyUpdate",
         "type": "object"
       },
+      "IntegrationListResponse": {
+        "description": "The whole tab strip, in display order.",
+        "properties": {
+          "tabs": {
+            "items": {
+              "$ref": "#/components/schemas/IntegrationTab"
+            },
+            "title": "Tabs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "tabs"
+        ],
+        "title": "IntegrationListResponse",
+        "type": "object"
+      },
+      "IntegrationTab": {
+        "description": "One entry in the integrations card's tab strip.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Literal text, sent only for preset tabs",
+            "title": "Description"
+          },
+          "device_count": {
+            "default": 0,
+            "title": "Device Count",
+            "type": "integer"
+          },
+          "firmware_updates": {
+            "default": 0,
+            "title": "Firmware Updates",
+            "type": "integer"
+          },
+          "id": {
+            "description": "'wican' | 'torque' | 'broker' | 'preset:<preset name>' (every sensor made from that preset) | 'device:<device_id>' (any other generic MQTT device)",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Source-module kind; None for the broker",
+            "title": "Kind"
+          },
+          "label": {
+            "description": "Proper noun. Never translated.",
+            "title": "Label",
+            "type": "string"
+          },
+          "linked_count": {
+            "default": 0,
+            "title": "Linked Count",
+            "type": "integer"
+          },
+          "online_count": {
+            "default": 0,
+            "title": "Online Count",
+            "type": "integer"
+          },
+          "reason": {
+            "description": "Why it has that status. Status and counts alone cannot tell an unlinked device from one that has never reported: both are 'attention' with zero online.",
+            "title": "Reason",
+            "type": "string"
+          },
+          "status": {
+            "description": "'ok' | 'attention' | 'off'",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "status",
+          "reason"
+        ],
+        "title": "IntegrationTab",
+        "type": "object"
+      },
       "IntervalOverride": {
         "description": "Intervals the caller typed while applying a pack, for one item.\n\nSubclasses `RecurrenceSpec` so the rules a rule obeys (at least one\ninterval, never distance and hours together) are enforced from one place\nrather than restated here.\n\nAn override is not the pack's value, it is a number the caller typed just\nnow, so it wins over BOTH the pack's own interval and the destination\nvehicle's existing rule. See `maintenance_service._plan_item`: without that\nsecond part the override is planned, previewed, and then dropped on a reuse.",
         "properties": {
@@ -9334,6 +9594,53 @@
         "title": "LiveLinkDeviceListResponse",
         "type": "object"
       },
+      "LiveLinkDeviceManualCreate": {
+        "description": "Schema for creating a device by hand, rather than by auto-discovery.\n\n`LiveLinkDeviceCreate` above is the auto-discovery shape: it carries no\n`kind` and no `vin` because a WiCAN dongle announces itself and is linked\nafterwards. A `generic_mqtt` device declares neither AUTO_DISCOVER nor a\ntoken flow, so without this route the only way such a device can exist is\nby applying a preset.\n\n`vin` is optional, matching every other device: the pipeline returns early\nfor a device with no VIN, so an unlinked device is a valid intermediate\nstate rather than an error.",
+        "properties": {
+          "device_id": {
+            "maxLength": 20,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$",
+            "title": "Device Id",
+            "type": "string"
+          },
+          "kind": {
+            "maxLength": 20,
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "vin": {
+            "anyOf": [
+              {
+                "maxLength": 17,
+                "minLength": 17,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vin"
+          }
+        },
+        "required": [
+          "device_id",
+          "kind"
+        ],
+        "title": "LiveLinkDeviceManualCreate",
+        "type": "object"
+      },
       "LiveLinkDeviceResponse": {
         "description": "Schema for device response.",
         "properties": {
@@ -9440,6 +9747,12 @@
             "title": "Id",
             "type": "integer"
           },
+          "kind": {
+            "default": "wican",
+            "description": "Source module that owns this device (see GET /sources)",
+            "title": "Kind",
+            "type": "string"
+          },
           "label": {
             "anyOf": [
               {
@@ -9483,6 +9796,18 @@
             "title": "Movement Unreadable",
             "type": "boolean"
           },
+          "odometer_param_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which reported parameter carries this device's odometer",
+            "title": "Odometer Param Key"
+          },
           "odometer_unit": {
             "anyOf": [
               {
@@ -9494,6 +9819,18 @@
             ],
             "description": "Declared odometer units ('km'/'mi'); None means inferred from the key",
             "title": "Odometer Unit"
+          },
+          "preset_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The preset that created this device, if any. A preset device's tab is named by its preset, and its mappings are the preset's, not hand-made.",
+            "title": "Preset Key"
           },
           "rssi": {
             "anyOf": [
@@ -9591,6 +9928,19 @@
             "description": "User-friendly device name",
             "title": "Label"
           },
+          "odometer_param_key": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which reported parameter carries this device's odometer. Omitted leaves it unchanged, an empty string clears it, a key sets it (uppercased). The empty string must NOT be coerced to None here, or the service cannot tell 'clear it' from 'not supplied'.",
+            "title": "Odometer Param Key"
+          },
           "odometer_unit": {
             "anyOf": [
               {
@@ -9612,14 +9962,13 @@
             "anyOf": [
               {
                 "maxLength": 17,
-                "minLength": 17,
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "VIN to link device to",
+            "description": "VIN to link the device to, any case. An empty string UNLINKS it; omitted or null leaves the link unchanged. Same convention as odometer_param_key below.",
             "title": "Vin"
           }
         },
@@ -9670,6 +10019,17 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "critical_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Critical Min"
           },
           "display_name": {
             "anyOf": [
@@ -9780,6 +10140,7 @@
           "category",
           "icon",
           "warning_min",
+          "critical_min",
           "warning_max",
           "display_order",
           "show_on_dashboard",
@@ -9817,6 +10178,18 @@
             ],
             "description": "Category for grouping",
             "title": "Category"
+          },
+          "critical_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Urgent alert if value drops below; must sit under warning_min",
+            "title": "Critical Min"
           },
           "display_name": {
             "anyOf": [
@@ -10188,6 +10561,107 @@
           }
         },
         "title": "LiveLinkSettingsUpdate",
+        "type": "object"
+      },
+      "LiveSensor": {
+        "description": "One preset sensor on this vehicle (a propane tank), drawn as its own card.\n\nIts readings' values are in `latest_values`, looked up by `param_key`.",
+        "properties": {
+          "device_id": {
+            "title": "Device Id",
+            "type": "string"
+          },
+          "fill_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The reading drawn as the tank's fill (its level), when mapped",
+            "title": "Fill Key"
+          },
+          "label": {
+            "description": "The sensor's name, which its readings' display names start with",
+            "title": "Label",
+            "type": "string"
+          },
+          "last_seen": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen"
+          },
+          "online": {
+            "description": "Reporting now, by the integrations card's rule",
+            "title": "Online",
+            "type": "boolean"
+          },
+          "preset_key": {
+            "title": "Preset Key",
+            "type": "string"
+          },
+          "readings": {
+            "description": "Every reading the sensor maps, in the preset's order, the fill included",
+            "items": {
+              "$ref": "#/components/schemas/LiveSensorReading"
+            },
+            "title": "Readings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "device_id",
+          "label",
+          "preset_key",
+          "online"
+        ],
+        "title": "LiveSensor",
+        "type": "object"
+      },
+      "LiveSensorReading": {
+        "description": "One of a preset sensor's readings, and how to show it.",
+        "properties": {
+          "format": {
+            "default": "value",
+            "description": "Through the unit adapter, as Yes/No, as a whole number, or as 'n of max_value'",
+            "enum": [
+              "value",
+              "boolean",
+              "count",
+              "of_max"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "max_value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The top of the scale for an 'of_max' reading",
+            "title": "Max Value"
+          },
+          "param_key": {
+            "title": "Param Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "param_key"
+        ],
+        "title": "LiveSensorReading",
         "type": "object"
       },
       "LocationPointOut": {
@@ -13571,6 +14045,133 @@
           "policy_type"
         ],
         "title": "PolicyVehicleUpsert",
+        "type": "object"
+      },
+      "PresetApplyRequest": {
+        "description": "Body for adding one sensor from a preset.\n\nWhich readings exist, and which are required, is the preset's, so the\nroute checks `topics` against it. What does not depend on the preset is\nchecked here.",
+        "properties": {
+          "label": {
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "topics": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "The exact topic carrying each reading, keyed by reading suffix (LEVEL_PCT). A reading left out or blank is not mapped.",
+            "title": "Topics",
+            "type": "object"
+          },
+          "vin": {
+            "anyOf": [
+              {
+                "maxLength": 17,
+                "minLength": 17,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vin"
+          }
+        },
+        "required": [
+          "label",
+          "topics"
+        ],
+        "title": "PresetApplyRequest",
+        "type": "object"
+      },
+      "PresetInfo": {
+        "description": "A sensor template, as the add-sensor form needs it.",
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "readings": {
+            "items": {
+              "$ref": "#/components/schemas/PresetReadingInfo"
+            },
+            "title": "Readings",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "title",
+          "description",
+          "kind",
+          "readings"
+        ],
+        "title": "PresetInfo",
+        "type": "object"
+      },
+      "PresetReadingInfo": {
+        "description": "One reading a preset's sensor publishes.",
+        "properties": {
+          "default_topic": {
+            "description": "Last topic segment in the reference layout; suggested when none is heard",
+            "title": "Default Topic",
+            "type": "string"
+          },
+          "keywords": {
+            "description": "Lowercase substrings that identify this reading's topic in any layout",
+            "items": {
+              "type": "string"
+            },
+            "title": "Keywords",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "required": {
+            "title": "Required",
+            "type": "boolean"
+          },
+          "suffix": {
+            "description": "Key into PresetApplyRequest.topics",
+            "title": "Suffix",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "suffix",
+          "name",
+          "unit",
+          "default_topic",
+          "keywords",
+          "required"
+        ],
+        "title": "PresetReadingInfo",
         "type": "object"
       },
       "QuickEntryVehicle": {
@@ -19236,34 +19837,60 @@
         "title": "TaxRecordUpdate",
         "type": "object"
       },
-      "TelegramUpdate": {
-        "description": "Minimal Telegram Bot API Update subset.",
+      "TelegramFuelStatus": {
+        "description": "The Telegram fuel-command poller's state, for Settings > Notifications > Telegram.",
         "properties": {
-          "message": {
+          "description": {
             "anyOf": [
               {
-                "additionalProperties": true,
-                "type": "object"
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Message"
+            "title": "Description"
           },
-          "update_id": {
+          "error_code": {
             "anyOf": [
               {
-                "type": "integer"
+                "enum": [
+                  "bot_token_rejected",
+                  "conflict",
+                  "rate_limited",
+                  "unreachable",
+                  "database_error",
+                  "unexpected"
+                ],
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Update Id"
+            "title": "Error Code"
+          },
+          "since": {
+            "format": "date-time",
+            "title": "Since",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "off",
+              "starting",
+              "listening",
+              "error"
+            ],
+            "title": "State",
+            "type": "string"
           }
         },
-        "title": "TelegramUpdate",
+        "required": [
+          "state",
+          "since"
+        ],
+        "title": "TelegramFuelStatus",
         "type": "object"
       },
       "TelemetryDataPoint": {
@@ -19289,6 +19916,23 @@
       "TelemetryLatestValue": {
         "description": "Schema for a single latest telemetry value.",
         "properties": {
+          "alert_band": {
+            "anyOf": [
+              {
+                "enum": [
+                  "low",
+                  "critical",
+                  "high"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which alert line the value is past: below low, below critical (a tank's red line, under low), or above high. None inside its lines.",
+            "title": "Alert Band"
+          },
           "display_name": {
             "anyOf": [
               {
@@ -19311,6 +19955,12 @@
             "description": "Parameter key",
             "title": "Param Key",
             "type": "string"
+          },
+          "show_on_dashboard": {
+            "default": true,
+            "description": "Whether the Live tab draws a gauge for this reading. Every value is still returned: the vehicle widget looks keys up by name and must not lose one because its gauge is hidden.",
+            "title": "Show On Dashboard",
+            "type": "boolean"
           },
           "timestamp": {
             "description": "When value was recorded",
@@ -21589,6 +22239,331 @@
           }
         },
         "title": "TollTransactionUpdate",
+        "type": "object"
+      },
+      "TopicDiscoveryRequest": {
+        "description": "Body for a discovery run.",
+        "properties": {
+          "prefix": {
+            "maxLength": 255,
+            "title": "Prefix",
+            "type": "string"
+          },
+          "seconds": {
+            "default": 15,
+            "maximum": 60.0,
+            "minimum": 1.0,
+            "title": "Seconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "prefix"
+        ],
+        "title": "TopicDiscoveryRequest",
+        "type": "object"
+      },
+      "TopicMapCreate": {
+        "description": "Request body for POST.",
+        "properties": {
+          "device_id": {
+            "maxLength": 20,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$",
+            "title": "Device Id",
+            "type": "string"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "param_class": {
+            "anyOf": [
+              {
+                "maxLength": 50,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Param Class"
+          },
+          "param_key": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Param Key"
+          },
+          "role": {
+            "default": "telemetry",
+            "enum": [
+              "telemetry",
+              "status"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "default": "1",
+            "title": "Scale"
+          },
+          "topic": {
+            "maxLength": 255,
+            "title": "Topic",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "value_offset": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "default": "0",
+            "title": "Value Offset"
+          },
+          "value_path": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Path"
+          }
+        },
+        "required": [
+          "device_id",
+          "topic"
+        ],
+        "title": "TopicMapCreate",
+        "type": "object"
+      },
+      "TopicMapResponse": {
+        "description": "One stored row.",
+        "properties": {
+          "device_id": {
+            "maxLength": 20,
+            "title": "Device Id",
+            "type": "string"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "param_class": {
+            "anyOf": [
+              {
+                "maxLength": 50,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Param Class"
+          },
+          "param_key": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Param Key"
+          },
+          "role": {
+            "default": "telemetry",
+            "enum": [
+              "telemetry",
+              "status"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "scale": {
+            "default": "1",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Scale",
+            "type": "string"
+          },
+          "topic": {
+            "maxLength": 255,
+            "title": "Topic",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "value_offset": {
+            "default": "0",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Value Offset",
+            "type": "string"
+          },
+          "value_path": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Path"
+          }
+        },
+        "required": [
+          "device_id",
+          "topic",
+          "id"
+        ],
+        "title": "TopicMapResponse",
+        "type": "object"
+      },
+      "TopicMapUpdate": {
+        "additionalProperties": false,
+        "description": "Request body for PATCH. Every field optional.",
+        "properties": {
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "param_class": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Param Class"
+          },
+          "param_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Param Key"
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scale"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "value_offset": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Offset"
+          },
+          "value_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Path"
+          }
+        },
+        "title": "TopicMapUpdate",
         "type": "object"
       },
       "TorqueSourceCreate": {
@@ -24587,6 +25562,14 @@
             "description": "Vehicle battery (V)",
             "title": "Battery Voltage"
           },
+          "capabilities": {
+            "description": "Union of Capability values across every device linked to this VIN. The UI gates sub-tabs on these: a propane gateway declares telemetry alone and must not be offered DTCs, sessions or trips.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
           "current_session_id": {
             "anyOf": [
               {
@@ -24623,6 +25606,18 @@
             "title": "Ecu Status",
             "type": "string"
           },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Source kind of the reporting device",
+            "title": "Kind"
+          },
           "last_seen": {
             "anyOf": [
               {
@@ -24644,6 +25639,12 @@
             "title": "Latest Values",
             "type": "array"
           },
+          "online": {
+            "default": false,
+            "description": "Whether the reporting device is reporting now, by the integrations card's rule: a source with no status topic (a Mopeka sensor) keeps device_status 'unknown' and counts as online while it has reported within the offline timeout. Read this, not device_status.",
+            "title": "Online",
+            "type": "boolean"
+          },
           "rssi": {
             "anyOf": [
               {
@@ -24655,6 +25656,14 @@
             ],
             "description": "WiFi signal (dBm)",
             "title": "Rssi"
+          },
+          "sensors": {
+            "description": "Preset sensors on this vehicle, in the order they were added. Their readings are in latest_values too; the Live tab draws them on the sensor's card instead of as separate gauges.",
+            "items": {
+              "$ref": "#/components/schemas/LiveSensor"
+            },
+            "title": "Sensors",
+            "type": "array"
           },
           "session_duration_seconds": {
             "anyOf": [
@@ -34915,6 +35924,51 @@
         "tags": [
           "LiveLink Admin"
         ]
+      },
+      "post": {
+        "description": "Create a device by hand.\n\nAuto-discovery covers WiCAN and a token flow covers Torque; a generic MQTT\ndevice has neither, so without this an admin can save topic maps against a\ndevice id that does not exist and every reading is silently discarded.",
+        "operationId": "create_device_api_livelink_devices_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LiveLinkDeviceManualCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveLinkDeviceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Device",
+        "tags": [
+          "LiveLink Admin"
+        ]
       }
     },
     "/api/livelink/devices/{device_id}": {
@@ -35062,7 +36116,7 @@
     },
     "/api/livelink/devices/{device_id}/backfill": {
       "post": {
-        "description": "Pull and backfill the device's SD logs immediately.\n\n**Security:**\n- Requires admin authentication",
+        "description": "Pull and backfill the device's SD logs immediately.\n\n409 while LiveLink is switched off: the service would quietly do nothing\n(it checks the master switch too, for queued backfills), and an operator\nwho pressed \"pull now\" deserves to be told why nothing arrived.\n\n**Security:**\n- Requires admin authentication",
         "operationId": "trigger_backfill_api_livelink_devices__device_id__backfill_post",
         "parameters": [
           {
@@ -35265,6 +36319,106 @@
           }
         ],
         "summary": "Skip Firmware Version",
+        "tags": [
+          "LiveLink Admin"
+        ]
+      }
+    },
+    "/api/livelink/devices/{device_id}/param-keys": {
+      "get": {
+        "description": "Distinct parameter keys THIS device has reported.\n\nPer-device on purpose. `vehicle_telemetry_latest` has no device_id column\nand is keyed (vin, param_key), so a per-vehicle list would offer a Torque\nphone the co-located WiCAN's A6-ODOMETER, which it never emits.",
+        "operationId": "list_device_param_keys_api_livelink_devices__device_id__param_keys_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "title": "Device Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Response List Device Param Keys Api Livelink Devices  Device Id  Param Keys Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Device Param Keys",
+        "tags": [
+          "LiveLink Admin"
+        ]
+      }
+    },
+    "/api/livelink/devices/{device_id}/readings": {
+      "get": {
+        "description": "Every parameter this device is mapped to, with its current value.\n\nWhich keys comes from `livelink_topic_maps`: those rows are what route a\ntopic to a parameter, so a device's mapped key set IS its parameter list.\n\nWhose value cannot come from `vehicle_telemetry_latest`. That table is\nUNIQUE(vin, param_key) with no device_id, so two devices on one vehicle\nmapping the same key means the last writer owns the row and the other\ndevice's sidecar would display a reading that is not its own. Values come\nfrom `vehicle_telemetry`, which carries device_id.\n\nThe cost is recency: `vehicle_telemetry` is written subject to\n`storage_interval_seconds`. The timestamp is returned so the UI can show\nhow old the value actually is rather than implying it is live.\n\nValues are the device's under its CURRENT vehicle. A device relinked to\nanother vehicle starts again rather than showing the old one's readings.\n\n**Security:**\n- Requires admin",
+        "operationId": "get_device_readings_api_livelink_devices__device_id__readings_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "title": "Device Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceReadingsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Device Readings",
         "tags": [
           "LiveLink Admin"
         ]
@@ -35700,6 +36854,33 @@
         ]
       }
     },
+    "/api/livelink/integrations": {
+      "get": {
+        "description": "The integrations card's tab strip, with each tab's status.\n\nOne request replaces the card's previous four. The status rules live in\n`app.services.livelink_integrations` so they can be unit-tested without a\ndatabase, a broker or an HTTP client.\n\n**Security:**\n- Requires admin",
+        "operationId": "list_integrations_api_livelink_integrations_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Integrations",
+        "tags": [
+          "LiveLink Admin"
+        ]
+      }
+    },
     "/api/livelink/mqtt/restart": {
       "post": {
         "description": "Restart the MQTT subscriber.\n\nUse this after updating MQTT settings to apply changes.\n\n**Security:**\n- Requires authentication",
@@ -35984,6 +37165,95 @@
         ]
       }
     },
+    "/api/livelink/presets": {
+      "get": {
+        "description": "Sensor templates, with the readings each sensor publishes.",
+        "operationId": "list_presets_api_livelink_presets_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PresetInfo"
+                  },
+                  "title": "Response List Presets Api Livelink Presets Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Presets",
+        "tags": [
+          "LiveLink Admin"
+        ]
+      }
+    },
+    "/api/livelink/presets/{name}/apply": {
+      "post": {
+        "description": "Add one sensor: its own device, and a topic map per reading given.\n\nWhich readings a preset has, and which it requires, is the preset's, so\n`topics` is checked against it here rather than on the schema.\n\nEach reading's parameter gets the preset's `storage_interval_seconds`.\nREQUIRED, not tuning: retained messages replay on every resubscribe and\nthe storage path stamps server time, so without it each reconnect writes a\nfresh row.",
+        "operationId": "apply_preset_api_livelink_presets__name__apply_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PresetApplyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveLinkDeviceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Apply Preset",
+        "tags": [
+          "LiveLink Admin"
+        ]
+      }
+    },
     "/api/livelink/settings": {
       "get": {
         "description": "Get LiveLink settings.\n\n**Security:**\n- Requires authentication",
@@ -36056,6 +37326,38 @@
         ]
       }
     },
+    "/api/livelink/sources": {
+      "get": {
+        "description": "Every registered source kind and what it produces.",
+        "operationId": "list_sources_api_livelink_sources_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response List Sources Api Livelink Sources Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Sources",
+        "tags": [
+          "LiveLink Admin"
+        ]
+      }
+    },
     "/api/livelink/token": {
       "post": {
         "description": "Generate a new global API token.\n\n**Important:** The token is only shown once. Store it securely.\n\n**Security:**\n- Requires authentication",
@@ -36078,6 +37380,259 @@
           }
         ],
         "summary": "Regenerate Global Token",
+        "tags": [
+          "LiveLink Admin"
+        ]
+      }
+    },
+    "/api/livelink/topic-discovery": {
+      "post": {
+        "description": "Listen briefly and report what the broker is publishing.",
+        "operationId": "discover_topics_api_livelink_topic_discovery_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TopicDiscoveryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Discover Topics Api Livelink Topic Discovery Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Discover Topics",
+        "tags": [
+          "LiveLink Admin"
+        ]
+      }
+    },
+    "/api/livelink/topic-maps": {
+      "get": {
+        "description": "All topic maps, optionally for one device.",
+        "operationId": "list_topic_maps_api_livelink_topic_maps_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "device_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Device Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TopicMapResponse"
+                  },
+                  "title": "Response List Topic Maps Api Livelink Topic Maps Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Topic Maps",
+        "tags": [
+          "LiveLink Admin"
+        ]
+      },
+      "post": {
+        "description": "Add a mapping and resubscribe.",
+        "operationId": "create_topic_map_api_livelink_topic_maps_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TopicMapCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopicMapResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Topic Map",
+        "tags": [
+          "LiveLink Admin"
+        ]
+      }
+    },
+    "/api/livelink/topic-maps/{map_id}": {
+      "delete": {
+        "description": "Remove a mapping and resubscribe.",
+        "operationId": "delete_topic_map_api_livelink_topic_maps__map_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "map_id",
+            "required": true,
+            "schema": {
+              "title": "Map Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Topic Map",
+        "tags": [
+          "LiveLink Admin"
+        ]
+      },
+      "patch": {
+        "description": "Change a mapping and resubscribe.\n\nRe-validates the MERGED row through TopicMapCreate rather than assigning\nthe patch fields directly: otherwise a PATCH could null `param_key` on a\ntelemetry row, set a wildcard topic, or skip param-key canonicalisation,\nall of which create rejects.",
+        "operationId": "update_topic_map_api_livelink_topic_maps__map_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "map_id",
+            "required": true,
+            "schema": {
+              "title": "Map Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TopicMapUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopicMapResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Topic Map",
         "tags": [
           "LiveLink Admin"
         ]
@@ -36136,6 +37691,33 @@
           }
         ],
         "summary": "Notification Inbox",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/api/notifications/telegram/fuel-commands": {
+      "get": {
+        "description": "Whether Telegram fuel commands are being fetched, and the last error if not.",
+        "operationId": "get_telegram_fuel_status_api_notifications_telegram_fuel_commands_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramFuelStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Telegram Fuel Status",
         "tags": [
           "Notifications"
         ]
@@ -38765,50 +40347,6 @@
           }
         },
         "summary": "Webhook Complete Reminder",
-        "tags": [
-          "webhooks"
-        ]
-      }
-    },
-    "/api/v1/webhooks/telegram": {
-      "post": {
-        "description": "Telegram bot webhook \u2014 structured text fuel commands only (no OCR).\n\nEnable with ``telegram_inbound_enabled=true``. Auth: same webhook ingest\ntoken via the ``X-Webhook-Token`` header.",
-        "operationId": "webhook_telegram_api_v1_webhooks_telegram_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TelegramUpdate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Webhook Telegram Api V1 Webhooks Telegram Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Webhook Telegram",
         "tags": [
           "webhooks"
         ]
@@ -41569,6 +43107,54 @@
           }
         ],
         "summary": "Get Last Location",
+        "tags": [
+          "Vehicle LiveLink"
+        ]
+      }
+    },
+    "/api/vehicles/{vin}/livelink/parameters": {
+      "get": {
+        "description": "List the parameters this vehicle actually reports.\n\nThe admin `/api/livelink/parameters` catalog is global: it holds every\nparameter any device has ever sent, fleet-wide. Charting from it offers a\npropane trailer a list of engine PIDs that can only ever draw an empty\ngraph. Scoping to `get_latest_values` reuses its staleness rule, so a\nparameter the rest of the vehicle has left behind drops out of the picker\nthe same way it drops off the live dashboard.\n\n**Security:**\n- Requires authentication and access to the vehicle",
+        "operationId": "list_vehicle_parameters_api_vehicles__vin__livelink_parameters_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vin",
+            "required": true,
+            "schema": {
+              "title": "Vin",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveLinkParameterListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Vehicle Parameters",
         "tags": [
           "Vehicle LiveLink"
         ]

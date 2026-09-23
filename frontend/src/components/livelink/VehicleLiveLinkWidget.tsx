@@ -102,8 +102,12 @@ export default function VehicleLiveLinkWidget({ vin }: VehicleLiveLinkWidgetProp
     return null
   }
 
-  const isRunning = status.ecu_status === 'online'
-  const isOnline = status.device_status === 'online'
+  // A source without DRIVE_SESSION is never "running" and never "parked": it
+  // has no engine to read. See LiveLinkLiveTab for the same reasoning.
+  const tracksDriving = status.capabilities?.includes('drive_session') ?? false
+  const isRunning = tracksDriving && status.ecu_status === 'online'
+  // The server's reachability rule; see LiveLinkLiveTab.
+  const isOnline = status.online
 
   const openLiveTab = () => {
     navigate(`/vehicles/${vin}?tab=live`)
@@ -150,7 +154,9 @@ export default function VehicleLiveLinkWidget({ vin }: VehicleLiveLinkWidgetProp
           {isRunning
             ? t('vehicleLiveLinkWidget.statusRunning')
             : isOnline
-              ? t('vehicleLiveLinkWidget.statusParked')
+              ? tracksDriving
+                ? t('vehicleLiveLinkWidget.statusParked')
+                : t('vehicleLiveLinkWidget.statusConnected')
               : t('vehicleLiveLinkWidget.statusOffline')}
         </span>
       </div>

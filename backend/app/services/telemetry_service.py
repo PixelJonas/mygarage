@@ -4,15 +4,15 @@ import hashlib
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, cast
 
 from sqlalchemy import and_, delete, func, not_, or_, select, text
 from sqlalchemy.engine import CursorResult
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import is_sqlite
+from app.services.livelink_sources.base import Reading, StoragePolicy
 from app.utils.datetime_utils import utc_now
 
 if is_sqlite:
@@ -112,6 +112,11 @@ ODOMETER_PID_PATTERNS = [
 LATEST_VALUE_STALE_AFTER = timedelta(days=30)
 
 logger = logging.getLogger(__name__)
+
+#: VIN -> date of the last "declared odometer never records" warning. Bounded by
+#: the number of vehicles, which is a household's worth, so it never needs
+#: eviction.
+_DECLARED_ODOMETER_WARNED: dict[str, date] = {}
 
 
 class TelemetryService:
@@ -231,17 +236,29 @@ class TelemetryService:
         category = self._classify_param(resolved_class)
         display_name = self._format_display_name(param_key)
 
-        # Set sensible defaults based on the resolved class. Only applied to
-        # brand-new rows — existing rows keep whatever show_on_dashboard/
-        # archive_only a user has hand-tuned in the admin UI.
-        show_on_dashboard = resolved_class in (
+        # Defaults for brand-new rows only; existing rows keep whatever a user
+        # has set.
+        #
+        # Every new parameter starts on the dashboard. The Live tab has always
+        # drawn every reading, and hiding one is now an explicit per-reading
+        # switch in the integrations settings, not a class default nobody chose
+        # (migration 114 reset the rows this used to decide).
+        #
+        # The class list governs only archive_only, which keeps a parameter out
+        # of the chart picker. It predates config-driven sources, when every
+        # class came from a WiCAN config block, so a new source whose headline
+        # reading has a new class is unchartable by default. That is what
+        # happened to the Mopeka preset until `propane` was added.
+        chartable = resolved_class in (
             "speed",
             "frequency",
             "temperature",
             "voltage",
             "battery",
+            "propane",
         )
-        archive_only = not show_on_dashboard
+        show_on_dashboard = True
+        archive_only = not chartable
 
         param = LiveLinkParameter(
             param_key=param_key,
@@ -280,18 +297,42 @@ class TelemetryService:
         else:
             return "other"
 
-    def _format_display_name(self, param_key: str) -> str:
-        """Format a parameter key into a display name."""
+    @staticmethod
+    def _format_display_name(param_key: str) -> str:
+        """Format a parameter key into a display name.
+
+        Also the test for "still the auto name" when a preset applies its own
+        names (routes/livelink_admin.apply_preset), so the two cannot drift.
+        """
         # Replace underscores with spaces and title case
         return param_key.replace("_", " ").title()
 
-    def _is_odometer_param(self, param_key: str) -> bool:
-        """Check if a parameter key represents an odometer reading."""
+    def _is_odometer_param(self, param_key: str, declared: str | None = None) -> bool:
+        """Check if a parameter key represents an odometer reading.
+
+        ``declared`` is the device's ``odometer_param_key``. When set it
+        REPLACES the pattern scan for that one key, so a device can name a
+        parameter no pattern would match (a vendor custom PID, say) without
+        widening the match for anything else.
+        """
+        if declared:
+            return param_key.upper() == declared.upper()
         param_upper = param_key.upper()
         for pattern in ODOMETER_PID_PATTERNS:
             if pattern.upper() in param_upper:
                 return True
         return False
+
+    async def _declared_odometer_key(self, device_id: str) -> str | None:
+        """The device's `odometer_param_key`, or None when it declares nothing.
+
+        NULL is the default and the reason existing installs are unaffected:
+        every predicate falls back to its usual name matching.
+        """
+        row = await self.db.execute(
+            select(LiveLinkDevice.odometer_param_key).where(LiveLinkDevice.device_id == device_id)
+        )
+        return row.scalar_one_or_none()
 
     async def _odometer_units_for(self, device_id: str) -> tuple[str | None, str | None]:
         """Return the device's declared `(odometer_unit, kind)`, or `(None, None)`."""
@@ -308,6 +349,7 @@ class TelemetryService:
         self,
         device_id: str,
         autopid_data: dict[str, float | int | str | None],
+        declared: str | None = None,
     ) -> dict[str, float | int | str | None]:
         """Return ``autopid_data`` with any odometer value converted to km.
 
@@ -316,14 +358,14 @@ class TelemetryService:
         car. The device's declared `odometer_unit` decides, falling back to the
         key shape (WiCAN only) when it has not been set.
         """
-        if not any(self._is_odometer_param(k) for k in autopid_data):
+        if not any(self._is_odometer_param(k, declared) for k in autopid_data):
             return autopid_data
 
         device_unit, device_kind = await self._odometer_units_for(device_id)
 
         normalized = dict(autopid_data)
         for param_key, value in autopid_data.items():
-            if value is None or not self._is_odometer_param(param_key):
+            if value is None or not self._is_odometer_param(param_key, declared):
                 continue
             try:
                 converted = odometer_value_to_km(float(value), param_key, device_unit, device_kind)
@@ -419,7 +461,8 @@ class TelemetryService:
         # consumer (raw storage, the latest-value table, the odometer record and
         # the session stamp) reads the same units. Doing it per-consumer is what
         # let the record path and the storage path disagree for four months.
-        autopid_data = await self._normalize_odometer_units(device_id, autopid_data)
+        declared_key = await self._declared_odometer_key(device_id)
+        autopid_data = await self._normalize_odometer_units(device_id, autopid_data, declared_key)
 
         received_at = utc_now()
 
@@ -519,7 +562,7 @@ class TelemetryService:
         await self._observe_movement(vin, device_id, valid_data, timestamp, received_at)
 
         # Check for odometer reading and sync
-        await self._sync_odometer_from_telemetry(vin, autopid_data, timestamp)
+        await self._sync_odometer_from_telemetry(vin, autopid_data, timestamp, declared_key)
 
         # A replayed reading can belong to a session that has already closed.
         await self._refresh_closed_session(vin, device_id, timestamp)
@@ -604,6 +647,7 @@ class TelemetryService:
         vin: str,
         autopid_data: dict[str, float | int | str | None],
         timestamp: datetime,
+        declared: str | None = None,
     ) -> None:
         """Sync odometer record from telemetry if odometer PID is present.
 
@@ -620,14 +664,12 @@ class TelemetryService:
             if value is None:
                 continue
 
-            # Check if this is an odometer parameter
-            param_upper = param_key.upper()
-            for pattern in ODOMETER_PID_PATTERNS:
-                if pattern.upper() in param_upper:
-                    odometer_value = float(value)
-                    odometer_key = param_key
-                    break
-            if odometer_value is not None:
+            # Was an inline copy of the pattern scan. It has to go through the
+            # predicate, or a device's declaration never reaches this path and a
+            # declared key that matches no pattern records nothing, silently.
+            if self._is_odometer_param(param_key, declared):
+                odometer_value = float(value)
+                odometer_key = param_key
                 break
 
         if odometer_value is None or odometer_key is None:
@@ -668,13 +710,38 @@ class TelemetryService:
         # Logged because a units mismatch makes every reading look backwards, and
         # a silent return here hid exactly that for four months (see 6f04e53).
         if odometer_km <= float(max_odometer_km):
-            logger.debug(
-                "Skipped odometer %d km for %s (%s): not above existing max %s",
-                odometer_km,
-                vin[:8],
-                odometer_key,
-                max_odometer_km,
-            )
+            if declared:
+                # A DECLARED odometer that never records is the expected steady
+                # state for an app-accumulated total that drifts low (Torque's
+                # ff120C) once any fuel record sits above it. Debug is too quiet
+                # for that: the feature would produce nothing and say nothing.
+                #
+                # Throttled to once per VIN per day. Torque uploads every few
+                # seconds, so an unthrottled warning is ~1,800 lines per
+                # half-hour drive. Module-level because TelemetryService is
+                # constructed per request, so instance state would never survive
+                # to throttle anything.
+                today_utc = utc_now().date()
+                if _DECLARED_ODOMETER_WARNED.get(vin) != today_utc:
+                    _DECLARED_ODOMETER_WARNED[vin] = today_utc
+                    logger.warning(
+                        "Declared odometer %s for %s read %d km, at or below the "
+                        "existing maximum %s. No record written. If this repeats, "
+                        "the declared parameter may be a trip counter or an "
+                        "app-accumulated total rather than the vehicle odometer.",
+                        odometer_key,
+                        vin[:8],
+                        odometer_km,
+                        max_odometer_km,
+                    )
+            else:
+                logger.debug(
+                    "Skipped odometer %d km for %s (%s): not above existing max %s",
+                    odometer_km,
+                    vin[:8],
+                    odometer_key,
+                    max_odometer_km,
+                )
             return
 
         # Cap date to today (don't allow future dates from device clock issues)
@@ -1384,77 +1451,163 @@ class TelemetryService:
     # Simple Value Storage (for route compatibility)
     # =========================================================================
 
-    async def store_value(
+    async def store_readings(
         self,
+        *,
         vin: str,
         device_id: str,
-        param_key: str,
-        value: float,
-    ) -> bool:
-        """Store a single telemetry value.
+        readings: list[Reading],
+        timestamp: datetime,
+        policy: StoragePolicy,
+        device: LiveLinkDevice | None = None,
+    ) -> StoreResult:
+        """Store normalized readings under a source's storage policy.
 
-        Returns True if stored to historical table, False if skipped due to interval.
-        Always updates the latest value cache.
+        The single storage entry point for `app.services.livelink_ingest`.
+        Does NOT commit; the caller owns the transaction.
+
+        When the policy asks for odometer sync or movement observation this
+        delegates to `store_telemetry` UNCHANGED. That path also runs
+        validation, odometer unit normalization and sanitization, movement
+        observation and closed-session refresh. Reimplementing it here is how
+        the port would silently lose behavior, so it does not.
         """
-        timestamp = utc_now()
-        received_at = timestamp
+        _refuse_if_in_maintenance("store_readings")
+        if not readings:
+            return StoreResult()
 
-        # Get parameter for storage interval check
-        param = await self.get_parameter(param_key)
+        # `device` is optional here and REQUIRED by Task 17: it carries
+        # `odometer_param_key`, which decides whether an odometer normalisation
+        # step runs before any row is written. Task 17 adds that step; leave the
+        # parameter unused for now rather than changing the signature twice.
 
-        # Always update latest value
-        await self._upsert_latest_value(vin, param_key, value, timestamp, received_at)
+        if policy.sync_odometer or policy.observe_movement:
+            autopid: dict[str, float | int | str | None] = {r.param_key: r.value for r in readings}
+            config: dict[str, dict[str, str | None]] = {
+                r.param_key: {"unit": r.unit, "class": r.param_class}
+                for r in readings
+                if r.unit is not None or r.param_class is not None
+            }
+            return await self.store_telemetry(vin, device_id, autopid, config, timestamp)
 
-        # Check storage interval
-        if param and param.storage_interval_seconds > 0:
-            should_store = await self._should_store_historical(
-                vin, param_key, param.storage_interval_seconds
+        ts = timestamp.replace(tzinfo=None) if timestamp.tzinfo else timestamp
+
+        # Normalise the odometer to canonical km ONCE, here, before any row is
+        # written, exactly as store_telemetry does at its own entry point. Every
+        # downstream consumer (the raw row, the latest-value table and the
+        # odometer record) must read the same units; converting per-consumer is
+        # what let the record path and the storage path disagree for four
+        # months. `device` is None when the module lacks the ODOMETER
+        # capability, so this is dead for a source that has no business
+        # recording one.
+        declared = device.odometer_param_key if device else None
+        if declared:
+            normalised = await self._normalize_odometer_units(
+                device_id, {r.param_key: r.value for r in readings}, declared
             )
-            if not should_store:
-                return False
+            readings = [
+                Reading(
+                    r.param_key,
+                    float(normalised[r.param_key]),
+                    r.unit,
+                    r.param_class,
+                )
+                if normalised.get(r.param_key) is not None
+                else r
+                for r in readings
+            ]
 
-        # Store to historical table
-        try:
-            telemetry = VehicleTelemetry(
-                vin=vin,
-                device_id=device_id,
-                param_key=param_key,
-                value=value,
-                timestamp=timestamp,
-                received_at=received_at,
+        stored = 0
+        validated: dict[str, float | int | str | None] = {}
+
+        for reading in readings:
+            await self.auto_register_parameter(
+                reading.param_key, unit=reading.unit, param_class=reading.param_class
             )
-            self.db.add(telemetry)
-            return True
-        except IntegrityError:
-            return False
+            validated[reading.param_key] = reading.value
+
+            if policy.latest == "if_newer":
+                await self._update_latest_if_newer(vin, reading.param_key, reading.value, ts)
+            else:
+                await self._upsert_latest_value(
+                    vin, reading.param_key, reading.value, ts, utc_now()
+                )
+
+            if policy.apply_storage_interval:
+                param = await self.get_parameter(reading.param_key)
+                if param is not None and param.storage_interval_seconds > 0:
+                    keep = await self._should_store_historical(
+                        vin,
+                        device_id,
+                        reading.param_key,
+                        param.storage_interval_seconds,
+                        ts,
+                    )
+                    if not keep:
+                        continue
+
+            stmt = (
+                dialect_insert(VehicleTelemetry)
+                .values(
+                    vin=vin,
+                    device_id=device_id,
+                    param_key=reading.param_key,
+                    value=float(reading.value),
+                    timestamp=ts,
+                )
+                .on_conflict_do_nothing(index_elements=["device_id", "param_key", "timestamp"])
+            )
+            result = await self.db.execute(stmt)
+            stored += cast(CursorResult[Any], result).rowcount or 0
+
+        # Record the odometer for a source whose module does NOT already do it
+        # inside store_telemetry. WiCAN returns above via the delegating branch,
+        # so it cannot double-record.
+        if declared:
+            await self._sync_odometer_from_telemetry(vin, validated, ts, declared)
+
+        return StoreResult(stored_count=stored, validated_data=validated)
 
     async def check_thresholds(
         self,
         vin: str,
         param_key: str,
         value: float,
+        *,
+        once: bool = False,
     ) -> None:
-        """Check if a value exceeds parameter thresholds and send notifications.
+        """Notify when a value crosses one of its parameter's alert lines.
 
-        Respects alert cooldown to prevent notification spam.
+        `once`: notify once per crossing (`alert_state`, see `livelink_alerts`),
+        as a preset sensor's readings do. Otherwise every breaching reading
+        notifies again, held back by the alert cooldown.
         """
+        from app.services.livelink_alerts import alert_band, band_line, crossing
+
         param = await self.get_parameter(param_key)
         if not param:
             return
 
-        # Check if value is outside thresholds
-        alert_type = None
-        threshold_value = None
+        now = utc_now()
+        if once:
+            # Held, or re-armed by a value back clear of its line: the state
+            # is stored as is. A band to notify leaves it unchanged.
+            band, param.alert_state = crossing(param.alert_state, value, param)
+            if band is None:
+                return
+            # A send no service accepted is tried again once the cooldown has
+            # passed, not on every reading: a tank sits below its line for
+            # days, and each send to a service that is down retries inline.
+            if param.alert_retry_at is not None and now < param.alert_retry_at:
+                return
+        else:
+            band = alert_band(value, param)
+            if band is None:
+                return
 
-        if param.warning_max is not None and value > param.warning_max:
-            alert_type = "max"
-            threshold_value = param.warning_max
-        elif param.warning_min is not None and value < param.warning_min:
-            alert_type = "min"
-            threshold_value = param.warning_min
+        from app.services.livelink_service import LiveLinkService
 
-        if not alert_type or threshold_value is None:
-            return
+        livelink = LiveLinkService(self.db)
 
         # Cooldown - skip dispatch while a prior notification for this
         # parameter is still within the admin-configured cooldown window
@@ -1463,12 +1616,10 @@ class TelemetryService:
         # this every one would dispatch. Thresholds live on the param (not
         # per-vehicle), so the cooldown is global-per-param. The setting is
         # only read once a prior stamp exists — first-ever breaches skip
-        # the extra settings query.
-        now = utc_now()
-        if param.warning_last_notified_at is not None:
-            from app.services.livelink_service import LiveLinkService
-
-            cooldown_minutes = await LiveLinkService(self.db).get_alert_cooldown_minutes()
+        # the extra settings query. A notify-once reading has no cooldown:
+        # it notifies each band once, whenever it enters it.
+        if not once and param.warning_last_notified_at is not None:
+            cooldown_minutes = await livelink.get_alert_cooldown_minutes()
             if now - param.warning_last_notified_at < timedelta(minutes=cooldown_minutes):
                 return
 
@@ -1492,16 +1643,23 @@ class TelemetryService:
             vehicle_name=vehicle_name,
             parameter_name=param.display_name or param_key,
             value=value,
-            threshold_type=alert_type,
-            threshold_value=threshold_value,
+            band=band,
+            threshold_value=band_line(band, param),
             unit=param.unit,
         )
 
-        # Stamp the cooldown only when at least one service actually accepted
-        # the notification. The dispatcher records False for attempted-but-
-        # failed sends, so an all-failed dict (e.g. transient outage) must not
-        # start the cooldown clock and silence real alerts; nor must an empty
-        # dict (event disabled / no services enabled). The caller commits the
-        # surrounding transaction, so no explicit commit here.
+        # Stamp the cooldown, and a notify-once reading's band, only when at
+        # least one service actually accepted the notification. The
+        # dispatcher records False for attempted-but-failed sends, so an
+        # all-failed dict (e.g. transient outage) must not start the cooldown
+        # clock and silence real alerts; nor must an empty dict (event
+        # disabled / no services enabled). The caller commits the surrounding
+        # transaction, so no explicit commit here.
         if any(dispatch_results.values()):
             param.warning_last_notified_at = now
+            if once:
+                param.alert_state = band
+                param.alert_retry_at = None
+        elif once:
+            cooldown_minutes = await livelink.get_alert_cooldown_minutes()
+            param.alert_retry_at = now + timedelta(minutes=cooldown_minutes)

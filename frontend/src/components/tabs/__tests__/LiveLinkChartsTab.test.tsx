@@ -36,12 +36,12 @@ vi.mock('react-i18next', () => {
 // The wrappers then spread the matching `Parameters<…>` TUPLE (a plain `unknown[]` spread into a typed
 // fn is also TS2556). getTelemetryExportUrl is SYNC → string (set via mockReturnValue in beforeEach).
 type LLService = (typeof import('@/services/livelinkService'))['livelinkService']
-const getParameters = vi.fn<LLService['getParameters']>()
+const getVehicleParameters = vi.fn<LLService['getVehicleParameters']>()
 const getTelemetry = vi.fn<LLService['getTelemetry']>()
 const getTelemetryExportUrl = vi.fn<LLService['getTelemetryExportUrl']>()
 vi.mock('@/services/livelinkService', () => ({
   livelinkService: {
-    getParameters: () => getParameters(),
+    getVehicleParameters: (vin: string) => getVehicleParameters(vin),
     getTelemetry: (...a: Parameters<LLService['getTelemetry']>) => getTelemetry(...a),
     getTelemetryExportUrl: (...a: Parameters<LLService['getTelemetryExportUrl']>) => getTelemetryExportUrl(...a),
   },
@@ -102,7 +102,7 @@ const mkParam = (id: number, param_key: string, display_name: string, unit: stri
     id, param_key, display_name, unit,
     archive_only: false, category: null, created_at: 'x', display_order: id,
     icon: null, show_on_dashboard: true, storage_interval_seconds: 1,
-    updated_at: null, warning_max: null, warning_min: null,
+    updated_at: null, warning_max: null, warning_min: null, critical_min: null,
   }) satisfies LiveLinkParameter
 const PARAMS = {
   parameters: [
@@ -129,7 +129,7 @@ beforeEach(() => {
   vi.setSystemTime(new Date(FROZEN))
   captured.lineChartData = undefined
   captured.tooltipLabelFormatter = undefined
-  getParameters.mockResolvedValue(PARAMS)
+  getVehicleParameters.mockResolvedValue(PARAMS)
   getTelemetry.mockResolvedValue(TELEMETRY)
   getTelemetryExportUrl.mockReturnValue('https://export.example/csv')
 })
@@ -140,7 +140,7 @@ afterEach(() => {
 
 describe('LiveLinkChartsTab — controls + data boundary (SDQ-C, §5c, M4)', () => {
   it('shows the no-params empty state when there are no chartable parameters', async () => {
-    getParameters.mockResolvedValue({ parameters: [], total: 0 })
+    getVehicleParameters.mockResolvedValue({ parameters: [], total: 0 })
     render(<LiveLinkChartsTab vin="V1" />)
     expect(await screen.findByText('livelink.charts.noParams')).toBeInTheDocument()
   })
@@ -149,7 +149,9 @@ describe('LiveLinkChartsTab — controls + data boundary (SDQ-C, §5c, M4)', () 
     render(<LiveLinkChartsTab vin="V1" />)
     await waitFor(() => expect(getTelemetry).toHaveBeenCalledTimes(1))
     const { start, end } = rangeFor('24h')
-    expect(getParameters.mock.calls).toStrictEqual([[]]) // M1: getParameters() called once, no args
+    // M1: scoped to THIS vehicle. The fleet-wide catalog would offer an RV
+    // engine PIDs it can never chart, which is the defect this pins.
+    expect(getVehicleParameters.mock.calls).toStrictEqual([['V1']])
     expect(getTelemetry.mock.calls).toStrictEqual([['V1', start, end, ['p1', 'p2', 'p3'], undefined]])
   })
 

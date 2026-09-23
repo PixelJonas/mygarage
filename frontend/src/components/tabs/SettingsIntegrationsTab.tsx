@@ -1,18 +1,15 @@
 import { useState, useEffect, useCallback, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { CheckCircle, AlertCircle, Plug, Shield, Pencil, Trash2, Plus, Radio, Settings, ArrowUpCircle, HelpCircle, Webhook, Sparkles, AtSign } from 'lucide-react'
+import { CheckCircle, AlertCircle, Plug, Shield, Radio, HelpCircle, Webhook, Sparkles, Settings } from 'lucide-react'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useAuth } from '@/contexts/AuthContext'
 import api from '@/services/api'
-import { getActionErrorMessage } from '@/utils/httpErrorHandler'
-import { livelinkService } from '@/services/livelinkService'
-import type { LiveLinkSettings, LiveLinkDeviceListResponse, DeviceFirmwareStatus } from '@/types/livelink'
-import AddProviderModal from '../modals/AddProviderModal'
-import EditProviderModal from '../modals/EditProviderModal'
-import LiveLinkSettingsModal from '../modals/LiveLinkSettingsModal'
 import WidgetKeysPanel from '../settings/WidgetKeysPanel'
-import { Card, Chip, IconButton, Select, Toggle, Drawer } from '../ui'
+import { Card, IconButton, Select, Toggle, Drawer } from '../ui'
 import type { IconType } from '../ui/types'
+import AddSourceDrawer from '@/components/livelink/AddSourceDrawer'
+import LiveLinkIntegrationsCard from '@/components/livelink/LiveLinkIntegrationsCard'
+import LiveLinkSettingsDrawers, { type SettingsTarget } from '@/components/livelink/settings/LiveLinkSettingsDrawers'
 
 // Sample VIN for testing NHTSA API connection
 const TEST_VIN = '1HGCM82633A123456'
@@ -24,17 +21,6 @@ type SettingRecord = {
 
 type SettingsResponse = {
   settings: SettingRecord[]
-}
-
-type POIProvider = {
-  name: string
-  display_name: string
-  enabled: boolean
-  is_default: boolean
-  api_key_masked?: string
-  api_usage: number
-  api_limit: number | null
-  priority: number
 }
 
 /**
@@ -103,19 +89,16 @@ export default function SettingsIntegrationsTab() {
   const { triggerSave, registerSaveHandler, unregisterSaveHandler } = useSettings()
   const [testing, setTesting] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
-  const [providers, setProviders] = useState<POIProvider[]>([])
-  const [isAddProviderModalOpen, setIsAddProviderModalOpen] = useState(false)
-  const [selectedProvider, setSelectedProvider] = useState<POIProvider | null>(null)
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
-  const [isLiveLinkModalOpen, setIsLiveLinkModalOpen] = useState(false)
   // Which card's "About" help sidecar is open (null = closed).
   const [helpDrawer, setHelpDrawer] = useState<'carcomplaints' | 'livelink' | null>(null)
 
-  // LiveLink state
-  const [livelinkSettings, setLivelinkSettings] = useState<LiveLinkSettings | null>(null)
-  const [livelinkDevices, setLivelinkDevices] = useState<LiveLinkDeviceListResponse | null>(null)
-  const [livelinkFirmware, setLivelinkFirmware] = useState<DeviceFirmwareStatus[]>([])
-  const [livelinkLoading, setLivelinkLoading] = useState(true)
+  // Bumped whenever something that can change the integrations strip closes,
+  // so the card refetches instead of showing the state from before the edit.
+  const [integrationsRefresh, setIntegrationsRefresh] = useState(0)
+  const [addSourceOpen, setAddSourceOpen] = useState(false)
+  const bumpStrip = useCallback(() => setIntegrationsRefresh((n) => n + 1), [])
+  // Which LiveLink settings drawer is open: the gear's, or one tab's.
+  const [settingsTarget, setSettingsTarget] = useState<SettingsTarget | null>(null)
 
   const [formData, setFormData] = useState({
     nhtsa_enabled: 'true',
@@ -126,7 +109,6 @@ export default function SettingsIntegrationsTab() {
     tomtom_api_key: '',
     tomtom_enabled: 'false',
     webhook_ingest_token: '',
-    telegram_inbound_enabled: 'false',
     llm_receipt_parse_enabled: 'false',
     llm_garage_assistant_enabled: 'false',
     llm_base_url: 'http://127.0.0.1:11434/v1',
@@ -154,7 +136,6 @@ export default function SettingsIntegrationsTab() {
         tomtom_api_key: settingsMap['tomtom_api_key'] || '',
         tomtom_enabled: settingsMap['tomtom_enabled'] || 'false',
         webhook_ingest_token: settingsMap['webhook_ingest_token'] || '',
-        telegram_inbound_enabled: settingsMap['telegram_inbound_enabled'] || 'false',
         llm_receipt_parse_enabled: settingsMap['llm_receipt_parse_enabled'] || 'false',
         llm_garage_assistant_enabled: settingsMap['llm_garage_assistant_enabled'] || 'false',
         llm_base_url: settingsMap['llm_base_url'] || 'http://127.0.0.1:11434/v1',
@@ -171,67 +152,9 @@ export default function SettingsIntegrationsTab() {
     }
   }, [t])
 
-  const loadProviders = useCallback(async () => {
-    try {
-      console.log('Loading POI providers...')
-      const response = await api.get('/settings/poi-providers')
-      console.log('POI providers response:', response.data)
-      setProviders(response.data.providers || [])
-    } catch (error) {
-      console.error('Failed to load POI providers:', error)
-      setMessage({ type: 'error', text: t('integrations.loadProvidersError') })
-    }
-  }, [t])
-
-  const loadLiveLinkData = useCallback(async () => {
-    setLivelinkLoading(true)
-    try {
-      const [settings, devices, firmware] = await Promise.all([
-        livelinkService.getSettings(),
-        livelinkService.getDevices(),
-        livelinkService.getDeviceFirmwareStatus(),
-      ])
-      setLivelinkSettings(settings)
-      setLivelinkDevices(devices)
-      setLivelinkFirmware(firmware)
-    } catch {
-      // LiveLink may not be configured yet, silently ignore
-      setLivelinkSettings(null)
-      setLivelinkDevices(null)
-      setLivelinkFirmware([])
-    } finally {
-      setLivelinkLoading(false)
-    }
-  }, [])
-
   useEffect(() => {
     loadSettings()
-    loadProviders()
-    // LiveLink infra endpoints are admin-only (allowed in none-mode); skip the
-    // fetch for non-admins in an auth-enabled deployment.
-    if (canManageLiveLink) {
-      loadLiveLinkData()
-    } else {
-      setLivelinkLoading(false)
-    }
-  }, [loadSettings, loadLiveLinkData, loadProviders, canManageLiveLink])
-
-  const handleEditProvider = (provider: POIProvider) => {
-    setSelectedProvider(provider)
-    setIsEditModalOpen(true)
-  }
-
-  const handleRemoveProvider = async (providerName: string) => {
-    if (!confirm(t('integrationsTab.confirmRemoveProvider', { name: providerName }))) return
-
-    try {
-      await api.delete(`/settings/poi-providers/${providerName}`)
-      await loadProviders()
-      setMessage({ type: 'success', text: t('integrations.providerRemoved') })
-    } catch (error: unknown) {
-      setMessage({ type: 'error', text: getActionErrorMessage(error, t('integrations.removeProviderAction')) })
-    }
-  }
+  }, [loadSettings])
 
   const handleSave = useCallback(async () => {
     await api.post('/settings/batch', {
@@ -244,7 +167,6 @@ export default function SettingsIntegrationsTab() {
         tomtom_api_key: formData.tomtom_api_key,
         tomtom_enabled: formData.tomtom_enabled,
         webhook_ingest_token: formData.webhook_ingest_token,
-        telegram_inbound_enabled: formData.telegram_inbound_enabled,
         llm_receipt_parse_enabled: formData.llm_receipt_parse_enabled,
         llm_garage_assistant_enabled: formData.llm_garage_assistant_enabled,
         llm_base_url: formData.llm_base_url,
@@ -406,8 +328,8 @@ export default function SettingsIntegrationsTab() {
           </div>
         </IntegrationCard>
 
-      {/* The remaining four (five with LiveLink) flow as a masonry rather than
-          sitting in a fixed 2-col grid. The grid paired a ~530px NHTSA card
+      {/* The remaining cards flow as a masonry rather than sitting in a fixed
+          2-col grid. The grid paired a ~530px NHTSA card
           against ~280px of stacked cards and left the rest of that row empty;
           columns let the short ones close the gap themselves. Source order is
           preserved, so the one-column mobile reading order still groups. */}
@@ -534,33 +456,6 @@ export default function SettingsIntegrationsTab() {
         </IntegrationCard>
 
         <IntegrationCard
-          icon={AtSign}
-          title={t('integrations.telegramInbound')}
-          description={t('integrations.telegramInboundDesc')}
-        >
-          <div className="space-y-4">
-            <div>
-              <Toggle
-                label={t('integrations.enableTelegramInbound')}
-                checked={formData.telegram_inbound_enabled === 'true'}
-                onChange={(next) =>
-                  setFormData({ ...formData, telegram_inbound_enabled: next ? 'true' : 'false' })
-                }
-              />
-              <p className="mt-1 ml-14 text-sm text-garage-text-muted">
-                {t('integrations.enableTelegramInboundDesc')}
-              </p>
-            </div>
-            <div className="p-3 bg-garage-bg/50 border border-garage-border rounded-lg">
-              <p className="text-xs text-garage-text-muted">{t('integrations.telegramCommandHint')}</p>
-              <p className="text-xs text-garage-text-muted font-mono mt-1">
-                fuel &lt;vin|nickname&gt; &lt;odo&gt;[km|mi] &lt;vol&gt;[L|gal|kWh] [price] [cost]
-              </p>
-            </div>
-          </div>
-        </IntegrationCard>
-
-        <IntegrationCard
           icon={Plug}
           title={t('integrations.carComplaints')}
           description={t('integrations.carComplaintsDesc')}
@@ -593,179 +488,58 @@ export default function SettingsIntegrationsTab() {
         <IntegrationCard
           icon={Radio}
           title={t('integrations.livelink')}
-          description={t('integrations.livelinkDesc')}
+          description={t('integrations.livelinkSourcesDesc')}
           actions={
-            <IconButton
-              icon={HelpCircle}
-              label={t('integrations.aboutLiveLink')}
-              variant="surface"
-              onClick={() => setHelpDrawer('livelink')}
-            />
+            <div className="flex items-center gap-2">
+              {/* LiveLink's global settings (master switch, retention,
+                  alerts), which belong to no single source's drawer. */}
+              <IconButton
+                icon={Settings}
+                label={t('integrations.livelinkGeneral')}
+                variant="surface"
+                onClick={() => setSettingsTarget({ type: 'general' })}
+              />
+              <IconButton
+                icon={HelpCircle}
+                label={t('integrations.aboutLiveLink')}
+                variant="surface"
+                onClick={() => setHelpDrawer('livelink')}
+              />
+            </div>
           }
         >
 
-          <div className="space-y-6">
-            {livelinkLoading ? (
-              <div className="text-sm text-garage-text-muted">{t('integrations.livelinkLoading')}</div>
-            ) : (
-              <>
-                {/* Status Indicator */}
-                <div className="flex items-center gap-2">
-                  <div
-                    className={`w-3 h-3 rounded-full ${
-                      !livelinkSettings?.enabled
-                        ? 'bg-gray-500'
-                        : livelinkDevices && livelinkDevices.online_count > 0
-                        ? 'bg-green-500'
-                        : 'bg-yellow-500'
-                    }`}
-                  />
-                  <span className="text-sm text-garage-text">
-                    {!livelinkSettings?.enabled
-                      ? t('integrations.disabled')
-                      : livelinkDevices && livelinkDevices.online_count > 0
-                      ? t('integrations.receivingData')
-                      : livelinkDevices && livelinkDevices.total > 0
-                      ? t('integrationsTab.noDataDevicesOffline')
-                      : t('integrations.noDevices')}
-                  </span>
-                </div>
-
-                {/* Device Summary */}
-                {livelinkDevices && livelinkDevices.total > 0 && (
-                  <div className="text-sm text-garage-text-muted">
-                    {t('integrationsTab.devicesLinked', { count: livelinkDevices.total })}
-                    {livelinkDevices.online_count > 0 && (
-                      <span className="text-green-500">
-                        {t('integrationsTab.devicesOnlineSuffix', { count: livelinkDevices.online_count })}
-                      </span>
-                    )}
-                  </div>
-                )}
-
-                {/* Firmware Update Badge */}
-                {livelinkFirmware.some((d) => d.update_available) && (
-                  <div className="flex items-center gap-2 text-sm text-yellow-500">
-                    <ArrowUpCircle className="w-4 h-4" />
-                    <span>{t('integrations.firmwareUpdate')}</span>
-                  </div>
-                )}
-
-                {/* Configure Button */}
-                <div className="pt-4 border-t border-garage-border">
-                  <button
-                    onClick={() => setIsLiveLinkModalOpen(true)}
-                    className="flex items-center gap-2 btn btn-primary rounded-lg transition-colors"
-                  >
-                    <Settings size={16} />
-                    {t('integrations.configureLiveLink')}
-                  </button>
-                  <p className="mt-2 text-sm text-garage-text-muted">
-                    {t('integrations.configureDesc')}
-                  </p>
-                </div>
-              </>
-            )}
-          </div>
+          {/* Admin-gated like the card around it: /integrations is an admin
+              endpoint, and this card only renders when canManageLiveLink. */}
+          <LiveLinkIntegrationsCard
+            refreshKey={integrationsRefresh}
+            onOpenSettings={(tab) => setSettingsTarget({ type: 'tab', tab })}
+            onAddSource={() => setAddSourceOpen(true)}
+          />
         </IntegrationCard>
         )}
       </div>
 
-      {/* Shop Finder is full width for the provider table. */}
-      <IntegrationCard
-          icon={Plug}
-          title={t('integrations.shopFinder')}
-          description={t('integrations.shopFinderDesc')}
-        >
+      {canManageLiveLink && (
+        <AddSourceDrawer
+          open={addSourceOpen}
+          onClose={() => setAddSourceOpen(false)}
+          onCreated={bumpStrip}
+        />
+      )}
 
-        <div className="space-y-4">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-garage-border">
-                <th className="text-left py-2 px-3 text-garage-text">{t('integrations.provider')}</th>
-                <th className="text-left py-2 px-3 text-garage-text">{t('integrations.status')}</th>
-                <th className="text-left py-2 px-3 text-garage-text">{t('integrations.apiLimits')}</th>
-                <th className="text-right py-2 px-3 text-garage-text">{t('integrations.options')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {providers.map((provider) => (
-                <tr key={provider.name} className="border-b border-garage-border">
-                  <td className="py-3 px-3 text-garage-text">
-                    {provider.is_default
-                      ? t('integrationsTab.providerDefault', { name: provider.display_name })
-                      : provider.display_name}
-                  </td>
-                  <td className="py-3 px-3">
-                    {/* Was a bare lucide Check / X with no accessible name, so a
-                        screen reader announced an empty cell for every provider,
-                        and five red X glyphs read as five errors rather than as
-                        five switched-off providers. */}
-                    <Chip tone={provider.enabled ? 'success' : 'muted'}>
-                      {provider.enabled
-                        ? t('integrations.statusActive')
-                        : t('integrations.statusInactive')}
-                    </Chip>
-                  </td>
-                  <td className="py-3 px-3 text-garage-text-muted">
-                    {provider.api_limit
-                      ? `${provider.api_usage}/${provider.api_limit}`
-                      : `${provider.api_usage || 0}/${t('integrationsTab.unlimited')}`}
-                  </td>
-                  <td className="py-3 px-3">
-                    {/* Icon buttons rather than two text links: a red "Remove" on
-                        every row made a routine table look destructive. The label
-                        is what a screen reader reads, so nothing is lost. */}
-                    <div className="flex items-center justify-end gap-2">
-                      <IconButton
-                        icon={Pencil}
-                        label={t('integrationsTab.edit')}
-                        variant="surface"
-                        onClick={() => handleEditProvider(provider)}
-                      />
-                      {!provider.is_default && (
-                        <IconButton
-                          icon={Trash2}
-                          label={t('integrationsTab.remove')}
-                          variant="danger"
-                          onClick={() => handleRemoveProvider(provider.name)}
-                        />
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          <button
-            onClick={() => setIsAddProviderModalOpen(true)}
-            className="flex items-center gap-2 btn btn-primary rounded-lg transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            {t('integrations.addService')}
-          </button>
-        </div>
-        </IntegrationCard>
-
-      {/* Modals — rendered at the tab root, outside the grid */}
-      <AddProviderModal
-        isOpen={isAddProviderModalOpen}
-        onClose={() => setIsAddProviderModalOpen(false)}
-        onProviderAdded={loadProviders}
-      />
-
-      <EditProviderModal
-        isOpen={isEditModalOpen}
-        provider={selectedProvider}
-        onClose={() => setIsEditModalOpen(false)}
-        onSave={loadProviders}
-      />
-
-      <LiveLinkSettingsModal
-        isOpen={isLiveLinkModalOpen}
-        onClose={() => setIsLiveLinkModalOpen(false)}
-      />
+      {canManageLiveLink && (
+        <LiveLinkSettingsDrawers
+          target={settingsTarget}
+          onClose={() => {
+            setSettingsTarget(null)
+            // Closing is also a refresh point: whatever the drawer changed
+            // may have changed a tab's status.
+            bumpStrip()
+          }}
+          onChanged={bumpStrip}
+        />
+      )}
 
       {/* About / help sidecar — opened from each card's upper-right help button. */}
       <Drawer

@@ -240,7 +240,7 @@ function collectLiteralTexts(file: string): string[] {
  * That distinction is the whole fix. This codebase's dominant conditional-
  * class idiom is a ternary inside a template substitution —
  * `` `ui-motion ${isActive ? 'transition-transform' : ''}` `` (10+ call
- * sites, e.g. Calendar.tsx, WarrantyForm.tsx, LiveLinkSettingsModal.tsx) —
+ * sites, e.g. Calendar.tsx, WarrantyForm.tsx) —
  * and a ternary's two branches are their own independent StringLiteral AST
  * nodes, siblings of the TemplateHead/TemplateTail, not merged with them by
  * the parser. collectLiteralTexts's flat, per-literal output reports that

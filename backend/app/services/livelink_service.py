@@ -9,10 +9,11 @@ from collections.abc import Sequence
 from datetime import timedelta
 from urllib.parse import urlsplit
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.livelink_device import LiveLinkDevice
+from app.models.livelink_topic_map import LiveLinkTopicMap
 from app.models.vehicle_telemetry import VehicleTelemetry
 from app.services.settings_service import SettingsService
 from app.utils.datetime_utils import utc_now
@@ -198,6 +199,22 @@ class LiveLinkService:
             .limit(1)
         )
         return result.scalar_one_or_none()
+
+    async def list_devices_by_vin(self, vin: str) -> list[LiveLinkDevice]:
+        """Every device linked to a vehicle, most-recently-active first.
+
+        `get_device_by_vin` returns only the first of these. Capability
+        questions need all of them: a trailer carrying both a WiCAN and a
+        propane gateway supports drive sessions via one and telemetry via
+        both, and answering from a single device would hide whichever one
+        reported second.
+        """
+        result = await self.db.execute(
+            select(LiveLinkDevice)
+            .where(LiveLinkDevice.vin == vin)
+            .order_by(LiveLinkDevice.last_seen.desc().nullslast())
+        )
+        return list(result.scalars().all())
 
     async def list_devices(self) -> list[LiveLinkDevice]:
         """List all discovered devices."""
@@ -475,11 +492,19 @@ class LiveLinkService:
         vin: str | None = None,
         enabled: bool | None = None,
         odometer_unit: str | None = None,
+        odometer_param_key: str | None = None,
     ) -> LiveLinkDevice | None:
         """Update device settings.
 
         ``odometer_unit`` accepts 'km', 'mi', or 'auto' to clear the override
         back to key-shape inference. None leaves the current value untouched.
+
+        ``odometer_param_key`` names the parameter carrying this device's
+        odometer. `""` clears it; None leaves it untouched. The empty string is
+        this field's equivalent of odometer_unit's ``'auto'`` sentinel, and it
+        is the SERVICE that maps it to NULL: if the schema coerced `""` to None
+        the route could no longer tell "clear it" from "not supplied" and
+        clearing would silently no-op.
         """
         device = await self.get_device_by_id(device_id)
         if not device:
@@ -488,12 +513,15 @@ class LiveLinkService:
         if label is not None:
             device.label = label
         if vin is not None:
-            device.vin = vin if vin else None
+            # "" is the unlink sentinel (schemas.livelink.LiveLinkDeviceUpdate.vin).
+            device.vin = vin or None
         if enabled is not None:
             device.enabled = enabled
         if odometer_unit is not None:
             resolved = None if odometer_unit == "auto" else odometer_unit
-            if resolved != device.odometer_unit and await self._has_odometer_history(device_id):
+            if resolved != device.odometer_unit and await self._has_odometer_history(
+                device_id, device.odometer_param_key
+            ):
                 raise ValueError(
                     "This device has already recorded odometer readings under its current "
                     "unit. Changing the unit now would leave that history in one unit and "
@@ -504,13 +532,37 @@ class LiveLinkService:
                 )
             device.odometer_unit = resolved
 
+        if odometer_param_key is not None:
+            resolved_key = odometer_param_key.upper().replace(" ", "_") or None
+            # Same reasoning as the unit guard above: changing which parameter
+            # IS the odometer mid-stream splits the history between two keys.
+            # Checked against the CURRENT declaration, or the predicate falls
+            # back to name matching and answers False for exactly the devices
+            # this feature serves.
+            if resolved_key != device.odometer_param_key and await self._has_odometer_history(
+                device_id, device.odometer_param_key
+            ):
+                raise ValueError(
+                    "This device has already recorded odometer readings under its "
+                    "current parameter. Changing it now would split that history. "
+                    "Normalise the stored data first, then change the parameter."
+                )
+            device.odometer_param_key = resolved_key
+
         device.updated_at = utc_now()
         await self.db.commit()
 
         return device
 
-    async def _has_odometer_history(self, device_id: str) -> bool:
-        """Whether this device has stored any odometer reading."""
+    async def _has_odometer_history(self, device_id: str, declared: str | None = None) -> bool:
+        """Whether this device has stored any odometer reading.
+
+        `declared` is the device's `odometer_param_key`. It MUST be passed by
+        every caller that guards a change, or the predicate falls back to name
+        matching and answers False forever for a device whose odometer key the
+        patterns do not recognise. That silently disables the guard for exactly
+        the devices the declaration exists to serve.
+        """
         from app.models.vehicle_telemetry import VehicleTelemetry
         from app.utils.odometer_units import is_odometer_param_key
 
@@ -519,7 +571,24 @@ class LiveLinkService:
             .where(VehicleTelemetry.device_id == device_id)
             .distinct()
         )
-        return any(is_odometer_param_key(key) for (key,) in result.all())
+        return any(is_odometer_param_key(key, declared) for (key,) in result.all())
+
+    async def device_reported_param_keys(self, device_id: str) -> list[str]:
+        """Distinct parameter keys THIS device has reported.
+
+        Per-device on purpose. `vehicle_telemetry_latest` has no `device_id`
+        column and is keyed (vin, param_key), so a per-vehicle list would offer
+        a Torque phone the WiCAN dongle's `A6-ODOMETER`, which it never emits.
+        """
+        from app.models.vehicle_telemetry import VehicleTelemetry
+
+        result = await self.db.execute(
+            select(VehicleTelemetry.param_key)
+            .where(VehicleTelemetry.device_id == device_id)
+            .distinct()
+            .order_by(VehicleTelemetry.param_key)
+        )
+        return [key for (key,) in result.all()]
 
     async def delete_device(self, device_id: str) -> bool:
         """Delete a device record.
@@ -530,6 +599,16 @@ class LiveLinkService:
         device = await self.get_device_by_id(device_id)
         if not device:
             return False
+
+        # Topic maps are CONFIGURATION, not history. Telemetry, sessions and
+        # DTCs are deliberately retained above; a mapping row for a deleted
+        # device is dead weight that would keep a broker subscription alive
+        # forever. The caller must also await mqtt_subscriber.reload() after
+        # this commit, or the broker keeps sending topics that resolve to no
+        # module.
+        await self.db.execute(
+            delete(LiveLinkTopicMap).where(LiveLinkTopicMap.device_id == device_id)
+        )
 
         await self.db.delete(device)
         await self.db.commit()

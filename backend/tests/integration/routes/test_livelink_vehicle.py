@@ -48,7 +48,7 @@ class TestVehicleLiveLinkStatus:
             patch("app.routes.livelink_vehicle.SessionService") as mock_session_class,
         ):
             mock_livelink = MagicMock()
-            mock_livelink.get_device_by_vin = AsyncMock(return_value=None)
+            mock_livelink.list_devices_by_vin = AsyncMock(return_value=[])
             mock_livelink_class.return_value = mock_livelink
 
             mock_telemetry = MagicMock()

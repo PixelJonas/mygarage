@@ -224,7 +224,6 @@
     "enableCarComplaints": "Включить интеграцию CarComplaints",
     "enableCarComplaintsDesc": "Добавить ссылки на CarComplaints.com для исследования известных проблем транспортных средств.",
     "aboutCarComplaints": "О CarComplaints",
-    "shopFinder": "Поиск мастерских",
     "shopFinderDesc": "Настройка провайдеров точек интереса для поиска ближайших автомастерских и сервисных центров.",
     "provider": "Провайдер",
     "active": "Активен",

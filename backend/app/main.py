@@ -68,6 +68,9 @@ def _configure_logging() -> None:
         fmt = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
     logging.basicConfig(level=level, format=fmt, handlers=handlers, force=True)
+    # httpx logs every request's full URL at INFO. Telegram's bot token is in
+    # its URL path, and Discord and Slack webhook URLs are themselves secrets.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 _configure_logging()
@@ -164,6 +167,7 @@ async def lifespan(app: FastAPI):
             logger.warning("=" * 80)
 
     # Start scheduled background tasks (session timeouts, device offline detection, etc.)
+    from app.services.telegram_poller import telegram_poller
     from app.tasks.livelink_tasks import start_mqtt_subscriber, stop_mqtt_subscriber
     from app.tasks.scheduled import start_scheduler, stop_scheduler
 
@@ -186,8 +190,12 @@ async def lifespan(app: FastAPI):
 
     await start_mqtt_subscriber()
 
+    # Always started: it watches its own switches (Settings > Notifications > Telegram).
+    await telegram_poller.start()
+
     yield
 
+    await telegram_poller.stop()
     # Stop MQTT subscriber on shutdown
     await stop_mqtt_subscriber()
     stop_scheduler()

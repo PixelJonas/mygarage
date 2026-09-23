@@ -7,12 +7,14 @@
 
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { MapPin, Loader2, Navigation, AlertTriangle, Search } from 'lucide-react'
+import { MapPin, Loader2, Navigation, AlertTriangle, Search, SlidersHorizontal } from 'lucide-react'
 import { toast } from 'sonner'
 import api from '@/services/api'
 import { getActionErrorMessage } from '@/utils/httpErrorHandler'
-import { Button, Select, Toggle } from '@/components/ui'
+import { Button, IconButton, Select, Toggle } from '@/components/ui'
 import POICard from '@/components/POICard'
+import PoiProvidersDrawer from '@/components/poi/PoiProvidersDrawer'
+import { useAuth } from '@/contexts/AuthContext'
 import MapDisplay from '@/components/MapDisplay'
 import { useUnitPreference } from '@/hooks/useUnitPreference'
 import { useUnitFormat } from '@/hooks/useUnitFormat'
@@ -51,6 +53,11 @@ export default function POIFinder() {
   // keys the radius table and the metre conversion.
   const { units } = useUnitPreference()
   const u = useUnitFormat()
+  // Changing a search provider is admin-only on the server; with sign-in off
+  // there is one user and the server lets them. Everyone else searches.
+  const { isAdmin, authMode } = useAuth()
+  const canManageProviders = isAdmin || authMode === 'none'
+  const [providersOpen, setProvidersOpen] = useState(false)
   const [step, setStep] = useState<Step>('permission')
   const [recommendations, setRecommendations] = useState<POIRecommendation[]>([])
   const [searchResults, setSearchResults] = useState<POIResult[]>([])
@@ -271,14 +278,24 @@ export default function POIFinder() {
           <div className="p-3 bg-primary/10 rounded-full">
             <MapPin className="w-8 h-8 text-primary" />
           </div>
-          <div>
+          <div className="min-w-0 flex-1">
             <h1 className="text-3xl font-bold text-garage-text">{t('poiFinder.title')}</h1>
             <p className="text-garage-text-muted">
               {t('poiFinder.subtitle')}
             </p>
           </div>
+          {canManageProviders ? (
+            <IconButton
+              icon={SlidersHorizontal}
+              label={t('settings:integrations.searchProviders')}
+              variant="surface"
+              onClick={() => setProvidersOpen(true)}
+            />
+          ) : null}
         </div>
       </div>
+
+      <PoiProvidersDrawer open={providersOpen} onClose={() => setProvidersOpen(false)} />
 
       {/* Step 1: Permission Request */}
       {step === 'permission' && (
