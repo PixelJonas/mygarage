@@ -31,7 +31,7 @@
     {
       "path": "public/locales/de/common.json",
       "disposition": "no unit behaviour",
-      "digest": "66c4905513143950aa7e36ebcd194ca61bacab89ba07cf9c63f2cbead1cb4618",
+      "digest": "7cedc59deec970bfe11f7ce290d590c4082a298d2d3f184c7e709296b90ae282",
       "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched 9 of them; every hit was read in context and none is a unit decision or a unit-bearing quantity."
     },
     {
@@ -53,7 +53,7 @@
     {
       "path": "public/locales/de/settings.json",
       "disposition": "audited",
-      "digest": "a16c9a6b4f97bc55717119db38c18afb919170f02a9c2f101719d8cdff3402df",
+      "digest": "188b53200049d8d630a35b1c3139aaeccbb9b064337840aa6dd810bf5ff34ec0",
       "reason": "units.resolvedDescription is COMPOSED from the resolved set, so it carries no unit names of its own: the labels are interpolated from UNIT_ADAPTERS, which is the same table every rendered quantity reads (plan 3b R1). units.gallonUs / units.gallonUk state literal conversion facts and units.showBothDescription is an example; none is a converted quantity. Task 6b removed this bundle's stale copies of the unit-naming keys it corrected rather than leaving them saying the old thing in another language, so those keys fall back to the corrected English; a missing key is non-blocking in validate-translations.ts, and English that is true beats a translation that is not. Re-translating them is a translation pass, not unit work. __tests__/unitCopy.resolvedProse.test.tsx walks every bundle on disk and fails if any of them names a unit unconditionally again. Phase 4 task 6 added this bundle's translations of the 47 `units.*` keys tasks 4 and 5 added to `en`: eleven quantity NAMES, twenty-six per-quantity OPTION labels, the preset-switch confirmation and the instance-default copy. They name units the way `units.gallonUs` / `units.gallonUk` already do and for the same reason: an option label in a unit PICKER is the choice on offer, not a converted quantity, and the picker's selection is what the resolved set is built FROM. Every unit SYMBOL inside them (km, mi, m, ft, L, gal, km/L, L/100km, MPG, kPa, bar, PSI, °C, °F, kg, lb, Nm, lb-ft, mm, /32 in, km/h, mph) is copied verbatim from `en` per D10, checked mechanically over all 162 parenthesised tokens in the six bundles with zero misses; only unit NAMES are translated. The one number that moves is the decimal mark in the two gallon volumes (3.785 L -> 3,785 L), because the app formats every other number through `Intl.NumberFormat(getActiveLocale())` and `decimalInput.ts` reads the locale's own separator, so a dot here would be the inconsistent choice, not the safe one. `units.showBothDescription` was deliberately NOT translated: it is in `unitCopy.resolvedProse.test.tsx`'s FIXED list, whose cross-bundle receipt pins which bundles carry a FIXED key, so translating it here would be a units decision rather than a translation pass. 2026-09-18: re-reviewed for the household-timezone change: date defaults, the zone store and copy only; no unit-bearing value, conversion or label touched.",
       "tests": [
         "__tests__/unitDescriptionLocales.test.ts",
@@ -83,7 +83,7 @@
     {
       "path": "public/locales/fr/common.json",
       "disposition": "no unit behaviour",
-      "digest": "cbf32fcc6690e586d506ffd7652c35e5891d108eaa31adadfbc37dc6d72cea1a",
+      "digest": "76169f571253717cd6f57feecbd92fdbb983c9c5f3535621cb10287b1156cd03",
       "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched 9 of them; every hit was read in context and none is a unit decision or a unit-bearing quantity."
     },
     {
@@ -105,7 +105,7 @@
     {
       "path": "public/locales/fr/settings.json",
       "disposition": "audited",
-      "digest": "dd46c35fabebb375d8d124328798f5c9917a39c31dbac700f65f06f40b43b51d",
+      "digest": "c5cea066c34e8246124b6259e50300614982f46d6661b552508f5ab38f412a1f",
       "reason": "units.resolvedDescription is COMPOSED from the resolved set, so it carries no unit names of its own: the labels are interpolated from UNIT_ADAPTERS, which is the same table every rendered quantity reads (plan 3b R1). units.gallonUs / units.gallonUk state literal conversion facts and units.showBothDescription is an example; none is a converted quantity. Task 6b removed this bundle's stale copies of the unit-naming keys it corrected rather than leaving them saying the old thing in another language, so those keys fall back to the corrected English; a missing key is non-blocking in validate-translations.ts, and English that is true beats a translation that is not. Re-translating them is a translation pass, not unit work. __tests__/unitCopy.resolvedProse.test.tsx walks every bundle on disk and fails if any of them names a unit unconditionally again. Phase 4 task 6 added this bundle's translations of the 47 `units.*` keys tasks 4 and 5 added to `en`: eleven quantity NAMES, twenty-six per-quantity OPTION labels, the preset-switch confirmation and the instance-default copy. They name units the way `units.gallonUs` / `units.gallonUk` already do and for the same reason: an option label in a unit PICKER is the choice on offer, not a converted quantity, and the picker's selection is what the resolved set is built FROM. Every unit SYMBOL inside them (km, mi, m, ft, L, gal, km/L, L/100km, MPG, kPa, bar, PSI, °C, °F, kg, lb, Nm, lb-ft, mm, /32 in, km/h, mph) is copied verbatim from `en` per D10, checked mechanically over all 162 parenthesised tokens in the six bundles with zero misses; only unit NAMES are translated. The one number that moves is the decimal mark in the two gallon volumes (3.785 L -> 3,785 L), because the app formats every other number through `Intl.NumberFormat(getActiveLocale())` and `decimalInput.ts` reads the locale's own separator, so a dot here would be the inconsistent choice, not the safe one. `units.showBothDescription` was deliberately NOT translated: it is in `unitCopy.resolvedProse.test.tsx`'s FIXED list, whose cross-bundle receipt pins which bundles carry a FIXED key, so translating it here would be a units decision rather than a translation pass. 2026-09-18: re-reviewed for the household-timezone change: date defaults, the zone store and copy only; no unit-bearing value, conversion or label touched.",
       "tests": [
         "__tests__/unitDescriptionLocales.test.ts",
@@ -134,7 +134,7 @@
     {
       "path": "public/locales/pl/common.json",
       "disposition": "no unit behaviour",
-      "digest": "8deead56bd2b5e390fa0c8f519ea26fe38e47bd9e5df5e20c1105dd11a857257",
+      "digest": "7ad181210715d81ac1a7098a4fa724ceafc34e62a45e53ffa459d3ea79542880",
       "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched 2 of them; every hit was read in context and none is a unit decision or a unit-bearing quantity."
     },
     {
@@ -152,7 +152,7 @@
     {
       "path": "public/locales/pl/settings.json",
       "disposition": "audited",
-      "digest": "89805cc12b915675147d929bfe3932a230ee00a4a7493f86b0f65e8754c3029b",
+      "digest": "a9d9f9c73a2ef2b38346d7ae05bbe0c1a2e04422df787c537598b1bd97fa8062",
       "reason": "units.resolvedDescription is COMPOSED from the resolved set, so it carries no unit names of its own: the labels are interpolated from UNIT_ADAPTERS, which is the same table every rendered quantity reads (plan 3b R1). units.gallonUs / units.gallonUk state literal conversion facts and units.showBothDescription is an example; none is a converted quantity. Task 6b removed this bundle's stale copies of the unit-naming keys it corrected rather than leaving them saying the old thing in another language, so those keys fall back to the corrected English; a missing key is non-blocking in validate-translations.ts, and English that is true beats a translation that is not. Re-translating them is a translation pass, not unit work. __tests__/unitCopy.resolvedProse.test.tsx walks every bundle on disk and fails if any of them names a unit unconditionally again. Phase 4 task 6 added this bundle's translations of the 47 `units.*` keys tasks 4 and 5 added to `en`: eleven quantity NAMES, twenty-six per-quantity OPTION labels, the preset-switch confirmation and the instance-default copy. They name units the way `units.gallonUs` / `units.gallonUk` already do and for the same reason: an option label in a unit PICKER is the choice on offer, not a converted quantity, and the picker's selection is what the resolved set is built FROM. Every unit SYMBOL inside them (km, mi, m, ft, L, gal, km/L, L/100km, MPG, kPa, bar, PSI, °C, °F, kg, lb, Nm, lb-ft, mm, /32 in, km/h, mph) is copied verbatim from `en` per D10, checked mechanically over all 162 parenthesised tokens in the six bundles with zero misses; only unit NAMES are translated. The one number that moves is the decimal mark in the two gallon volumes (3.785 L -> 3,785 L), because the app formats every other number through `Intl.NumberFormat(getActiveLocale())` and `decimalInput.ts` reads the locale's own separator, so a dot here would be the inconsistent choice, not the safe one. `units.showBothDescription` was deliberately NOT translated: it is in `unitCopy.resolvedProse.test.tsx`'s FIXED list, whose cross-bundle receipt pins which bundles carry a FIXED key, so translating it here would be a units decision rather than a translation pass.",
       "tests": [
         "__tests__/unitDescriptionLocales.test.ts",
@@ -181,7 +181,7 @@
     {
       "path": "public/locales/pt-BR/common.json",
       "disposition": "no unit behaviour",
-      "digest": "47dcd67788108ccab554c8af945046087bde68e2c9008b5283a692f6d01774b1",
+      "digest": "d08757f2cd01c4dd1a67ae8fcf6ef2816c8e94241e3e29985775919d861795d6",
       "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched 2 of them; every hit was read in context and none is a unit decision or a unit-bearing quantity."
     },
     {
@@ -202,7 +202,7 @@
     {
       "path": "public/locales/pt-BR/settings.json",
       "disposition": "audited",
-      "digest": "34b496bb2ce04f92c88e4865976a96fd36079a4e1ad6445c824b0ef7e91369de",
+      "digest": "490c6ee422af3ee4ec58d4c83e8d8c642cf64135be307c6486de818769fe8464",
       "reason": "units.resolvedDescription is COMPOSED from the resolved set, so it carries no unit names of its own: the labels are interpolated from UNIT_ADAPTERS, which is the same table every rendered quantity reads (plan 3b R1). units.gallonUs / units.gallonUk state literal conversion facts and units.showBothDescription is an example; none is a converted quantity. Task 6b removed this bundle's stale copies of the unit-naming keys it corrected rather than leaving them saying the old thing in another language, so those keys fall back to the corrected English; a missing key is non-blocking in validate-translations.ts, and English that is true beats a translation that is not. Re-translating them is a translation pass, not unit work. __tests__/unitCopy.resolvedProse.test.tsx walks every bundle on disk and fails if any of them names a unit unconditionally again. Phase 4 task 6 added this bundle's translations of the 47 `units.*` keys tasks 4 and 5 added to `en`: eleven quantity NAMES, twenty-six per-quantity OPTION labels, the preset-switch confirmation and the instance-default copy. They name units the way `units.gallonUs` / `units.gallonUk` already do and for the same reason: an option label in a unit PICKER is the choice on offer, not a converted quantity, and the picker's selection is what the resolved set is built FROM. Every unit SYMBOL inside them (km, mi, m, ft, L, gal, km/L, L/100km, MPG, kPa, bar, PSI, °C, °F, kg, lb, Nm, lb-ft, mm, /32 in, km/h, mph) is copied verbatim from `en` per D10, checked mechanically over all 162 parenthesised tokens in the six bundles with zero misses; only unit NAMES are translated. The one number that moves is the decimal mark in the two gallon volumes (3.785 L -> 3,785 L), because the app formats every other number through `Intl.NumberFormat(getActiveLocale())` and `decimalInput.ts` reads the locale's own separator, so a dot here would be the inconsistent choice, not the safe one. `units.showBothDescription` was deliberately NOT translated: it is in `unitCopy.resolvedProse.test.tsx`'s FIXED list, whose cross-bundle receipt pins which bundles carry a FIXED key, so translating it here would be a units decision rather than a translation pass.",
       "tests": [
         "__tests__/unitDescriptionLocales.test.ts",
@@ -231,7 +231,7 @@
     {
       "path": "public/locales/ru/common.json",
       "disposition": "no unit behaviour",
-      "digest": "af408db5391256e1bcfe73bdf1a07d33a0c0a6b5edbb276d785cde28564022e3",
+      "digest": "f78a5a9159475f52a9b5485e8991aba7ef6575aba1be283c3bf39c4ad7379c09",
       "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched 2 of them; every hit was read in context and none is a unit decision or a unit-bearing quantity."
     },
     {
@@ -252,7 +252,7 @@
     {
       "path": "public/locales/ru/settings.json",
       "disposition": "audited",
-      "digest": "bbd8f14e2b7c1b204591e56182c1df23e663a0af02b60c468955b912bb997fc5",
+      "digest": "fb7d2a46c9c935ed87cf8050ea3949906157c03ba430b43cd04657741ed415c6",
       "reason": "units.resolvedDescription is COMPOSED from the resolved set, so it carries no unit names of its own: the labels are interpolated from UNIT_ADAPTERS, which is the same table every rendered quantity reads (plan 3b R1). units.gallonUs / units.gallonUk state literal conversion facts and units.showBothDescription is an example; none is a converted quantity. Task 6b removed this bundle's stale copies of the unit-naming keys it corrected rather than leaving them saying the old thing in another language, so those keys fall back to the corrected English; a missing key is non-blocking in validate-translations.ts, and English that is true beats a translation that is not. Re-translating them is a translation pass, not unit work. __tests__/unitCopy.resolvedProse.test.tsx walks every bundle on disk and fails if any of them names a unit unconditionally again. Phase 4 task 6 added this bundle's translations of the 47 `units.*` keys tasks 4 and 5 added to `en`: eleven quantity NAMES, twenty-six per-quantity OPTION labels, the preset-switch confirmation and the instance-default copy. They name units the way `units.gallonUs` / `units.gallonUk` already do and for the same reason: an option label in a unit PICKER is the choice on offer, not a converted quantity, and the picker's selection is what the resolved set is built FROM. Every unit SYMBOL inside them (km, mi, m, ft, L, gal, km/L, L/100km, MPG, kPa, bar, PSI, °C, °F, kg, lb, Nm, lb-ft, mm, /32 in, km/h, mph) is copied verbatim from `en` per D10, checked mechanically over all 162 parenthesised tokens in the six bundles with zero misses; only unit NAMES are translated. The one number that moves is the decimal mark in the two gallon volumes (3.785 L -> 3,785 L), because the app formats every other number through `Intl.NumberFormat(getActiveLocale())` and `decimalInput.ts` reads the locale's own separator, so a dot here would be the inconsistent choice, not the safe one. `units.showBothDescription` was deliberately NOT translated: it is in `unitCopy.resolvedProse.test.tsx`'s FIXED list, whose cross-bundle receipt pins which bundles carry a FIXED key, so translating it here would be a units decision rather than a translation pass.",
       "tests": [
         "__tests__/unitDescriptionLocales.test.ts",
@@ -281,7 +281,7 @@
     {
       "path": "public/locales/uk/common.json",
       "disposition": "no unit behaviour",
-      "digest": "e31920a17cb38af5993abb80c5a9cd927947997abf092c1aa32724c1a01a8a4c",
+      "digest": "d0f59c16b72f81633299a8ab03ea1668ae69e6372ed985c21407d2cc5f4202ea",
       "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched 2 of them; every hit was read in context and none is a unit decision or a unit-bearing quantity."
     },
     {
@@ -302,7 +302,7 @@
     {
       "path": "public/locales/uk/settings.json",
       "disposition": "audited",
-      "digest": "33f16b00bf7613e81adf54a1f84214b8e46ce3d2f84eac32e11d9f2bdaf3c687",
+      "digest": "ac37c128970e5b6b6b24dc4dc67389a797c55dc3983f3675998a911ba3a7fcea",
       "reason": "units.resolvedDescription is COMPOSED from the resolved set, so it carries no unit names of its own: the labels are interpolated from UNIT_ADAPTERS, which is the same table every rendered quantity reads (plan 3b R1). units.gallonUs / units.gallonUk state literal conversion facts and units.showBothDescription is an example; none is a converted quantity. Task 6b removed this bundle's stale copies of the unit-naming keys it corrected rather than leaving them saying the old thing in another language, so those keys fall back to the corrected English; a missing key is non-blocking in validate-translations.ts, and English that is true beats a translation that is not. Re-translating them is a translation pass, not unit work. __tests__/unitCopy.resolvedProse.test.tsx walks every bundle on disk and fails if any of them names a unit unconditionally again. Phase 4 task 6 added this bundle's translations of the 47 `units.*` keys tasks 4 and 5 added to `en`: eleven quantity NAMES, twenty-six per-quantity OPTION labels, the preset-switch confirmation and the instance-default copy. They name units the way `units.gallonUs` / `units.gallonUk` already do and for the same reason: an option label in a unit PICKER is the choice on offer, not a converted quantity, and the picker's selection is what the resolved set is built FROM. Every unit SYMBOL inside them (km, mi, m, ft, L, gal, km/L, L/100km, MPG, kPa, bar, PSI, °C, °F, kg, lb, Nm, lb-ft, mm, /32 in, km/h, mph) is copied verbatim from `en` per D10, checked mechanically over all 162 parenthesised tokens in the six bundles with zero misses; only unit NAMES are translated. The one number that moves is the decimal mark in the two gallon volumes (3.785 L -> 3,785 L), because the app formats every other number through `Intl.NumberFormat(getActiveLocale())` and `decimalInput.ts` reads the locale's own separator, so a dot here would be the inconsistent choice, not the safe one. `units.showBothDescription` was deliberately NOT translated: it is in `unitCopy.resolvedProse.test.tsx`'s FIXED list, whose cross-bundle receipt pins which bundles carry a FIXED key, so translating it here would be a units decision rather than a translation pass.",
       "tests": [
         "__tests__/unitDescriptionLocales.test.ts",
@@ -340,8 +340,8 @@
     {
       "path": "src/App.tsx",
       "disposition": "no unit behaviour",
-      "digest": "9956c91eedfac55467a297857179d235aecbd92a38a409ee705611479c0a7140",
-      "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched 2 of them; every hit was read in context and none is a unit decision or a unit-bearing quantity. Phase 4 task 5 re-read this file whole and removed its last unit-adjacent line: the `useGallonStandardSync()` call and its import. That hook pulled `imperial_gallon_standard` from `/settings/public` into a subscribed store on every boot; the store and the hook are both deleted, and the instance-wide default is the whole `default_unit_prefs` set `AuthContext` already reads from the same payload. Re-scanned for every unit stem, token, quantity name and canonical field suffix: ZERO matches now, where the disposition above recorded 2, and both of those were the deleted import and call. Re-reviewed 2026-09-19 (household insurance, migration 107): added the /insurance route; money, dates and text only, still no unit-bearing quantity."
+      "digest": "64965f99d7194590d31c37738dc3ab49157901b5a160845da1bce09b87fe926c",
+      "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched 2 of them; every hit was read in context and none is a unit decision or a unit-bearing quantity. Phase 4 task 5 re-read this file whole and removed its last unit-adjacent line: the `useGallonStandardSync()` call and its import. That hook pulled `imperial_gallon_standard` from `/settings/public` into a subscribed store on every boot; the store and the hook are both deleted, and the instance-wide default is the whole `default_unit_prefs` set `AuthContext` already reads from the same payload. Re-scanned for every unit stem, token, quantity name and canonical field suffix: ZERO matches now, where the disposition above recorded 2, and both of those were the deleted import and call. Re-reviewed 2026-09-19 (household insurance, migration 107): added the /insurance route; money, dates and text only, still no unit-bearing quantity. 2026-09-22: /shop-finder redirects to /poi-finder; the old page is gone. No unit behaviour."
     },
     {
       "path": "src/components/AddressBookAutocomplete.tsx",
@@ -1245,8 +1245,8 @@
     {
       "path": "src/components/modals/AddProviderModal.tsx",
       "disposition": "no unit behaviour",
-      "digest": "340686076bc5fe2779468a5a9bb43adb438a715f3151506c39f26b0832931093",
-      "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched NONE of them."
+      "digest": "8290b7fdbbc635e82b738e586ddd2e4d9dfebf7fe6cdac7a226a8346acd3ed3f",
+      "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched NONE of them. 2026-09-22: a nested prop, to stack over the providers sidecar. No unit behaviour."
     },
     {
       "path": "src/components/modals/BulkArchiveModal.tsx",
@@ -1269,8 +1269,8 @@
     {
       "path": "src/components/modals/EditProviderModal.tsx",
       "disposition": "no unit behaviour",
-      "digest": "19222a02b1f3217df7f41fe2d428b8e0aedc5d7ba92f6d11ac39f28a9401412c",
-      "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched NONE of them."
+      "digest": "1cdfa23fc40c5c47d04732a4585c92074e76c2f0fcb00b091430553af02d3a8a",
+      "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched NONE of them. 2026-09-22: a nested prop, to stack over the providers sidecar. No unit behaviour."
     },
     {
       "path": "src/components/modals/ExternalVehicleModal.tsx",
@@ -1395,6 +1395,12 @@
       "disposition": "no unit behaviour",
       "digest": "7b28f894fc078236eb9efb8c433d45cb3feaedb3d63df01bcc009690839f7921",
       "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched NONE of them."
+    },
+    {
+      "path": "src/components/poi/PoiProvidersDrawer.tsx",
+      "disposition": "no unit behaviour",
+      "digest": "1c089400c4723848542a3c33307c0366900595051075eb56e8ad75d14fadfe4d",
+      "reason": "no unit behaviour: Find POI's search providers sidecar (2026-09-22, moved from Settings > Integrations > Shop Finder). A table of provider names, an enabled chip and API call counts (usage/limit, dimensionless), with add/edit/remove. No quantity is shown or converted."
     },
     {
       "path": "src/components/settings/InstanceUnitDefaultsCard.tsx",
@@ -1626,8 +1632,8 @@
     {
       "path": "src/components/tabs/SettingsIntegrationsTab.tsx",
       "disposition": "no unit behaviour",
-      "digest": "a41f02abef2b0217791fa1444c9900b5d8bdf947793415bc3b3cd91e752ac721",
-      "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched 5 of them; every hit was read in context and none is a unit decision or a unit-bearing quantity. 2026-09-22: re-reviewed for the LiveLink integrations card. The LiveLink card's status dot, device summary, firmware badge and Configure button are replaced by <LiveLinkIntegrationsCard>, and the settings/devices/firmware loader that fed them is deleted with its four state variables. The subtitle moves to integrations.livelinkSourcesDesc and the LiveLink modal's onClose bumps a refresh counter. Every removed line was a status word or a device count; no unit-bearing value, conversion or label is added or touched. 2026-09-22 (Task 9): mounts <AddSourceDrawer> behind canManageLiveLink, passes onAddSource to the strip, and adds integrationsRefresh to the MQTT device-list effect's dependencies. State and wiring only; no unit-bearing value. 2026-09-22 (sidecars Task 5): adds the gear IconButton, the LiveLinkSettingsDrawers mount and routing of the strip's Settings button through hasDedicatedDrawer. State and wiring only. 2026-09-22 (sidecars Task 9): MqttSourcesCard mount, its device selector and the device-list effect removed. No unit-bearing value. 2026-09-22 (sidecars Task 10): LiveLinkSettingsModal import, state and mount removed; Settings always opens the tab's drawer. No unit-bearing value."
+      "digest": "75385b326d13e0c86443e89896c3147beb1f61959842a8efdbdf6c025323b6e7",
+      "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched 5 of them; every hit was read in context and none is a unit decision or a unit-bearing quantity. 2026-09-22: re-reviewed for the LiveLink integrations card. The LiveLink card's status dot, device summary, firmware badge and Configure button are replaced by <LiveLinkIntegrationsCard>, and the settings/devices/firmware loader that fed them is deleted with its four state variables. The subtitle moves to integrations.livelinkSourcesDesc and the LiveLink modal's onClose bumps a refresh counter. Every removed line was a status word or a device count; no unit-bearing value, conversion or label is added or touched. 2026-09-22 (Task 9): mounts <AddSourceDrawer> behind canManageLiveLink, passes onAddSource to the strip, and adds integrationsRefresh to the MQTT device-list effect's dependencies. State and wiring only; no unit-bearing value. 2026-09-22 (sidecars Task 5): adds the gear IconButton, the LiveLinkSettingsDrawers mount and routing of the strip's Settings button through hasDedicatedDrawer. State and wiring only. 2026-09-22 (sidecars Task 9): MqttSourcesCard mount, its device selector and the device-list effect removed. No unit-bearing value. 2026-09-22 (sidecars Task 10): LiveLinkSettingsModal import, state and mount removed; Settings always opens the tab's drawer. No unit-bearing value. 2026-09-22: the Shop Finder provider table moved to Find POI (PoiProvidersDrawer). No unit behaviour."
     },
     {
       "path": "src/components/tabs/SettingsNotificationsTab.tsx",
@@ -2318,7 +2324,7 @@
     {
       "path": "src/locales/en/common.json",
       "disposition": "no unit behaviour",
-      "digest": "257bf731d03100f04f75b5ff7eda77ee5373ad3739a02c6cf190bc3d6a4d3fab",
+      "digest": "56eb3217e5f8b072e0112eecd6897cc7eebbb759fecbce73d3e568cffffb043a",
       "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched 10 of them; every hit was read in context and none is a unit decision or a unit-bearing quantity. Re-reviewed for octane validation (#164, 2026-09-18): three validation.fuel keys (octaneTooSmall/TooLarge/Invalid) naming the 50-150 band of a dimensionless rating, merged into the existing block after a first paste created a duplicate 'fuel' sibling that json parsing silently dropped; no unit named. 2026-09-22 (tank cards): ofMax ('{{value}} of {{max}}'). No unit strings."
     },
     {
@@ -2348,7 +2354,7 @@
     {
       "path": "src/locales/en/settings.json",
       "disposition": "audited",
-      "digest": "66cd33183ee0f3de3cfc6d68c95c45bff71de1188db15e8bc1857c8a8ec2acd6",
+      "digest": "5caef05dd3b935f20ffd72448c99f4a01c6a004e9ca5cfe01c2280264aca27b6",
       "reason": "units.resolvedDescription is COMPOSED from the resolved set, so it carries no unit names of its own: the labels are interpolated from UNIT_ADAPTERS, which is the same table every rendered quantity reads (plan 3b R1). Task 6b composed units.showBothDescription the same way, replacing its fixed 25 MPG example with one rendered through the reader's own consumption formatter, and moved events.card.milesBefore onto the reader's distance label. units.gallonUs / units.gallonUk state literal conversion facts, and units.gallonStandardDescription names the gallon on purpose: that IS the setting's subject. What it stopped saying is \"when the unit system is Imperial\", which is not a thing a resolved set has. Phase 4 task 4 added the Custom editor's English strings: `units.custom`, `units.customDescription`, the four preset-confirmation keys, eleven `units.quantities.*` headings and twenty-six `units.options.*` names, one per OPTION rather than one per quantity (D10: names are translated, symbols are not, so the select reads 'Kilopascals (kPa)' and never `kpa`). English lands in this task because a missing English key has no fallback and renders the raw identifier; the other six locales are a later task and fall back to these. `units.gallonUs` / `units.gallonUk` are deliberately NOT reused for `units.options.secondary_gallon.*`: the panel names an instance-wide setting and the option names a per-account quantity, and one string serving both would couple two retirements. Phase 4 task 5 added four keys for the instance-default card: `units.instanceDefault`, `units.instanceDefaultDescription`, `units.instanceDefaultSaved` and `units.instanceDefaultError`. None names a unit: the card renders the eleven per-quantity labels through `units.options.*`, which this bundle already carried and which `UnitSetEditor` reads, so the new copy describes WHO the default applies to and nothing about what it is. The six gallon-panel keys (`units.gallonStandard`, `gallonStandardDescription`, `gallonUs`, `gallonUk`, `gallonSaved`, `gallonError`) are KEPT although task 5 deleted their only reader, on the same ruling this file already records for `defList.gallons` and `propaneList.gallons`: unreferenced keys are not stale translations, and `__tests__/unitCopy.resolvedProse.test.tsx` carries a live recorded decision about two of them that deleting would silently discard. Verified by grep that no code reads any of the six. 2026-09-18: re-reviewed for the household-timezone change: date defaults, the zone store and copy only; no unit-bearing value, conversion or label touched. 2026-09-22: re-reviewed for the LiveLink integrations card. Fourteen new `integrations.*` keys: three source descriptions, seven status phrases, the card subtitle, an Add-source label, a `{{source}} settings` label and a load error. Read each: none names a unit, quantity, formatter output or magnitude. `livelinkDesc` is deliberately left unchanged rather than rewritten, because all six translated locales carry a WiCAN-specific translation of it that would silently go stale; the new subtitle is a new key so the gap shows as missing. 2026-09-22 (Task 9): eight more `integrations.*` keys for the Add-source drawer (vehicle label, unlinked option and its hint, the device-id rule as hint and error, a blank-device heading and description, and an error-action phrase). Read each: none names a unit, quantity or magnitude. 2026-09-22 (visual pass): deviceIdInvalid replaced by deviceIdStart and deviceIdBadChar (`{{char}}` is a single character). No unit. 2026-09-22 (sidecars Task 3): integrations.sourceBrokerDescription reworded to name no vendor. No unit word. 2026-09-22 (sidecars Task 5): adds integrations.livelinkGeneral, numberOutOfRange, saveSettingsAction, settingsLoadError. No unit word. 2026-09-22 (sidecars Task 6): adds integrations.brokerSaveFirst and discoverFailed. No unit word. 2026-09-22 (sidecars Task 7): adds integrations.wicanTopicPrefix and wicanTopicPrefixHint. No unit word. 2026-09-22 (sidecars Task 8): adds integrations.noSourceDevices. No unit word. 2026-09-22 (sidecars Task 9): adds the MQTT device drawer's keys (readings, linking, label, delete) and removes four dead MqttSourcesCard keys. No unit word. 2026-09-22 (visual review): adds torqueDrawerDescription, chooseVehicle, brokerSubscriptionHint, livelinkEnableHint. No unit word. 2026-09-22 (Plan 3 Task 6): add-sensor, sensor block and compact-readings strings; the master-switch hint now says it gates every source. No unit strings added or changed.",
       "tests": [
         "__tests__/unitDescriptionLocales.test.ts",
@@ -2456,8 +2462,8 @@
     {
       "path": "src/pages/POIFinder.tsx",
       "disposition": "audited",
-      "digest": "bd407f39649310428f12b81336665d03a64cfebeb53307ba78135af734f961b8",
-      "reason": "radius options keyed on units.distance",
+      "digest": "ca1b457c3cad8ea43615aaa3f481c02150c5b79b94dc7b9afa724b0f01648c15",
+      "reason": "radius options keyed on units.distance 2026-09-22 (providers sidecar): adds an admin-only button that opens PoiProvidersDrawer; radius handling unchanged.",
       "tests": [
         "pages/__tests__/POIFinder.radius.test.tsx"
       ]
@@ -2479,15 +2485,6 @@
       "disposition": "no unit behaviour",
       "digest": "3b13c57bb2ea47f70bf1b0d7dc2d6e386124d9f0be2ec128a4f7bbea52ff810b",
       "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched NONE of them."
-    },
-    {
-      "path": "src/pages/ShopFinder.tsx",
-      "disposition": "audited",
-      "digest": "3d64fc5276af6a9ad6a9592108314a8ef2d7a81e57a83f3b4dd59de840526ab2",
-      "reason": "radius options keyed on units.distance",
-      "tests": [
-        "pages/__tests__/ShopFinder.radius.test.tsx"
-      ]
     },
     {
       "path": "src/pages/Supplies.tsx",
@@ -2859,12 +2856,6 @@
       "disposition": "no unit behaviour",
       "digest": "18f7f4f75e98a6077fa9c1d05920983788dcb5f2eac65557156c5f84c89104cd",
       "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched 4 of them; every hit was read in context and none is a unit decision or a unit-bearing quantity. Re-reviewed for v3.5.0: maintenance_type added to the line-item shapes; a string code, no quantity."
-    },
-    {
-      "path": "src/types/shopDiscovery.ts",
-      "disposition": "no unit behaviour",
-      "digest": "b5f0979f823a110722a270d6b4c8e3d7ec9d3df874e4fdfffecd448a3554847c",
-      "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched 1 of them; every hit was read in context and none is a unit decision or a unit-bearing quantity."
     },
     {
       "path": "src/types/spotRental.ts",

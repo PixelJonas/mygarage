@@ -1,14 +1,11 @@
 import { useState, useEffect, useCallback, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { CheckCircle, AlertCircle, Plug, Shield, Pencil, Trash2, Plus, Radio, HelpCircle, Webhook, Sparkles, AtSign, Settings } from 'lucide-react'
+import { CheckCircle, AlertCircle, Plug, Shield, Radio, HelpCircle, Webhook, Sparkles, AtSign, Settings } from 'lucide-react'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useAuth } from '@/contexts/AuthContext'
 import api from '@/services/api'
-import { getActionErrorMessage } from '@/utils/httpErrorHandler'
-import AddProviderModal from '../modals/AddProviderModal'
-import EditProviderModal from '../modals/EditProviderModal'
 import WidgetKeysPanel from '../settings/WidgetKeysPanel'
-import { Card, Chip, IconButton, Select, Toggle, Drawer } from '../ui'
+import { Card, IconButton, Select, Toggle, Drawer } from '../ui'
 import type { IconType } from '../ui/types'
 import AddSourceDrawer from '@/components/livelink/AddSourceDrawer'
 import LiveLinkIntegrationsCard from '@/components/livelink/LiveLinkIntegrationsCard'
@@ -24,17 +21,6 @@ type SettingRecord = {
 
 type SettingsResponse = {
   settings: SettingRecord[]
-}
-
-type POIProvider = {
-  name: string
-  display_name: string
-  enabled: boolean
-  is_default: boolean
-  api_key_masked?: string
-  api_usage: number
-  api_limit: number | null
-  priority: number
 }
 
 /**
@@ -103,10 +89,6 @@ export default function SettingsIntegrationsTab() {
   const { triggerSave, registerSaveHandler, unregisterSaveHandler } = useSettings()
   const [testing, setTesting] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
-  const [providers, setProviders] = useState<POIProvider[]>([])
-  const [isAddProviderModalOpen, setIsAddProviderModalOpen] = useState(false)
-  const [selectedProvider, setSelectedProvider] = useState<POIProvider | null>(null)
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   // Which card's "About" help sidecar is open (null = closed).
   const [helpDrawer, setHelpDrawer] = useState<'carcomplaints' | 'livelink' | null>(null)
 
@@ -172,39 +154,9 @@ export default function SettingsIntegrationsTab() {
     }
   }, [t])
 
-  const loadProviders = useCallback(async () => {
-    try {
-      console.log('Loading POI providers...')
-      const response = await api.get('/settings/poi-providers')
-      console.log('POI providers response:', response.data)
-      setProviders(response.data.providers || [])
-    } catch (error) {
-      console.error('Failed to load POI providers:', error)
-      setMessage({ type: 'error', text: t('integrations.loadProvidersError') })
-    }
-  }, [t])
-
   useEffect(() => {
     loadSettings()
-    loadProviders()
-  }, [loadSettings, loadProviders])
-
-  const handleEditProvider = (provider: POIProvider) => {
-    setSelectedProvider(provider)
-    setIsEditModalOpen(true)
-  }
-
-  const handleRemoveProvider = async (providerName: string) => {
-    if (!confirm(t('integrationsTab.confirmRemoveProvider', { name: providerName }))) return
-
-    try {
-      await api.delete(`/settings/poi-providers/${providerName}`)
-      await loadProviders()
-      setMessage({ type: 'success', text: t('integrations.providerRemoved') })
-    } catch (error: unknown) {
-      setMessage({ type: 'error', text: getActionErrorMessage(error, t('integrations.removeProviderAction')) })
-    }
-  }
+  }, [loadSettings])
 
   const handleSave = useCallback(async () => {
     await api.post('/settings/batch', {
@@ -597,97 +549,6 @@ export default function SettingsIntegrationsTab() {
         </IntegrationCard>
         )}
       </div>
-
-      {/* Shop Finder is full width for the provider table. */}
-      <IntegrationCard
-          icon={Plug}
-          title={t('integrations.shopFinder')}
-          description={t('integrations.shopFinderDesc')}
-        >
-
-        <div className="space-y-4">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-garage-border">
-                <th className="text-left py-2 px-3 text-garage-text">{t('integrations.provider')}</th>
-                <th className="text-left py-2 px-3 text-garage-text">{t('integrations.status')}</th>
-                <th className="text-left py-2 px-3 text-garage-text">{t('integrations.apiLimits')}</th>
-                <th className="text-right py-2 px-3 text-garage-text">{t('integrations.options')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {providers.map((provider) => (
-                <tr key={provider.name} className="border-b border-garage-border">
-                  <td className="py-3 px-3 text-garage-text">
-                    {provider.is_default
-                      ? t('integrationsTab.providerDefault', { name: provider.display_name })
-                      : provider.display_name}
-                  </td>
-                  <td className="py-3 px-3">
-                    {/* Was a bare lucide Check / X with no accessible name, so a
-                        screen reader announced an empty cell for every provider,
-                        and five red X glyphs read as five errors rather than as
-                        five switched-off providers. */}
-                    <Chip tone={provider.enabled ? 'success' : 'muted'}>
-                      {provider.enabled
-                        ? t('integrations.statusActive')
-                        : t('integrations.statusInactive')}
-                    </Chip>
-                  </td>
-                  <td className="py-3 px-3 text-garage-text-muted">
-                    {provider.api_limit
-                      ? `${provider.api_usage}/${provider.api_limit}`
-                      : `${provider.api_usage || 0}/${t('integrationsTab.unlimited')}`}
-                  </td>
-                  <td className="py-3 px-3">
-                    {/* Icon buttons rather than two text links: a red "Remove" on
-                        every row made a routine table look destructive. The label
-                        is what a screen reader reads, so nothing is lost. */}
-                    <div className="flex items-center justify-end gap-2">
-                      <IconButton
-                        icon={Pencil}
-                        label={t('integrationsTab.edit')}
-                        variant="surface"
-                        onClick={() => handleEditProvider(provider)}
-                      />
-                      {!provider.is_default && (
-                        <IconButton
-                          icon={Trash2}
-                          label={t('integrationsTab.remove')}
-                          variant="danger"
-                          onClick={() => handleRemoveProvider(provider.name)}
-                        />
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          <button
-            onClick={() => setIsAddProviderModalOpen(true)}
-            className="flex items-center gap-2 btn btn-primary rounded-lg transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            {t('integrations.addService')}
-          </button>
-        </div>
-        </IntegrationCard>
-
-      {/* Modals — rendered at the tab root, outside the grid */}
-      <AddProviderModal
-        isOpen={isAddProviderModalOpen}
-        onClose={() => setIsAddProviderModalOpen(false)}
-        onProviderAdded={loadProviders}
-      />
-
-      <EditProviderModal
-        isOpen={isEditModalOpen}
-        provider={selectedProvider}
-        onClose={() => setIsEditModalOpen(false)}
-        onSave={loadProviders}
-      />
 
       {canManageLiveLink && (
         <AddSourceDrawer

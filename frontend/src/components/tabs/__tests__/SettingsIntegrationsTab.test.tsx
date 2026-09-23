@@ -8,10 +8,8 @@
  * card quietly disappears behind a mis-paired `</div>`.
  *
  * So this asserts the inventory (every section is present, and the two that
- * carry an About sidecar still offer it), plus the provider table's state
- * column, which is a real accessibility fix rather than a cosmetic one: it
- * rendered a bare lucide Check / X with no accessible name, so a screen reader
- * announced an empty cell for every provider.
+ * carry an About sidecar still offer it). The Shop Finder provider table moved
+ * to Find POI's own sidecar (`components/poi/PoiProvidersDrawer`), tested there.
  */
 
 import { useEffect } from 'react'
@@ -158,7 +156,6 @@ describe('SettingsIntegrationsTab', () => {
       'integrations.nhtsa',
       'integrations.carComplaints',
       'integrations.livelink',
-      'integrations.shopFinder',
     ]) {
       expect(await screen.findByText(key), key).toBeInTheDocument()
     }
@@ -178,17 +175,13 @@ describe('SettingsIntegrationsTab', () => {
     ).toBeInTheDocument()
   })
 
-  it('names the enabled state of each provider in text, not only as an icon', async () => {
+  it('leaves the search providers to Find POI', async () => {
     renderTab()
+    await screen.findByText('integrations.livelink')
 
-    await waitFor(() => {
-      expect(screen.getByText('TomTom Places API')).toBeInTheDocument()
-    })
-
-    // Both rows must carry a readable state. The retired Check / X icons had no
-    // accessible name, so this assertion is false against that version.
-    expect(screen.getByText('integrations.statusActive')).toBeInTheDocument()
-    expect(screen.getByText('integrations.statusInactive')).toBeInTheDocument()
+    expect(screen.queryByText('integrations.shopFinderDesc')).not.toBeInTheDocument()
+    expect(screen.queryByText('TomTom Places API')).not.toBeInTheDocument()
+    expect(mockedApi.get).not.toHaveBeenCalledWith('/settings/poi-providers')
   })
 
   it('describes LiveLink by its sources, not by one vendor', async () => {

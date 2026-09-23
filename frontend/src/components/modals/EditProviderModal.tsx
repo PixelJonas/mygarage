@@ -20,9 +20,11 @@ interface Props {
   provider: POIProvider | null
   onClose: () => void
   onSave: () => void
+  /** Opened from inside another drawer (Find POI's providers sidecar): stack over it. */
+  nested?: boolean
 }
 
-function EditProviderModalContent({ provider, onClose, onSave }: Omit<Props, 'isOpen'>) {
+function EditProviderModalContent({ provider, onClose, onSave, nested }: Omit<Props, 'isOpen'>) {
   const { t } = useTranslation('forms')
   const [enabled, setEnabled] = useState(provider?.enabled ?? false)
   const [apiKey, setApiKey] = useState('')
@@ -52,6 +54,7 @@ function EditProviderModalContent({ provider, onClose, onSave }: Omit<Props, 'is
   return (
     <Drawer
       open
+      nested={nested}
       onClose={onClose}
       title={t('modal.editProvider', { name: provider.display_name })}
       width="sm"
@@ -121,9 +124,17 @@ function EditProviderModalContent({ provider, onClose, onSave }: Omit<Props, 'is
   )
 }
 
-export default function EditProviderModal({ isOpen, provider, onClose, onSave }: Props) {
+export default function EditProviderModal({ isOpen, provider, onClose, onSave, nested }: Props) {
   if (!isOpen || !provider) return null
 
   // Use key prop to reset component state when provider changes
-  return <EditProviderModalContent key={provider.name} provider={provider} onClose={onClose} onSave={onSave} />
+  return (
+    <EditProviderModalContent
+      key={provider.name}
+      provider={provider}
+      onClose={onClose}
+      onSave={onSave}
+      nested={nested}
+    />
+  )
 }

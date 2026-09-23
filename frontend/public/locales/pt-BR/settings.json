@@ -224,7 +224,6 @@
     "enableCarComplaints": "Ativar integração do CarComplaints",
     "enableCarComplaintsDesc": "Adicionar links para o CarComplaints.com para pesquisar problemas conhecidos dos veículos.",
     "aboutCarComplaints": "Sobre o CarComplaints",
-    "shopFinder": "Buscador de oficinas",
     "shopFinderDesc": "Configuração de provedores de pontos de interesse (POI) para buscar oficinas e centros de serviço próximos.",
     "provider": "Provedor",
     "active": "Ativo",

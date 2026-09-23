@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A disabled LiveLink device no longer has its status refreshed by status or battery messages
 - **Enable LiveLink** now gates MQTT, Torque and SD-card backfill too: off, nothing is stored and no new device is discovered
 - Installs already receiving MQTT or Torque data have LiveLink switched on at upgrade (migration 116)
+- Search providers moved from Settings > Integrations to a button on **Find POI** (admins only); `/shop-finder` now opens Find POI
 
 ## [3.6.0] - 2026-09-21
 
