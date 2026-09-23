@@ -49,3 +49,25 @@ async def test_reads_on_as_the_dispatcher_does(db_session, value, on):
     await db_session.commit()
 
     assert await SettingsService.get_bool(db_session, _KEY) is on
+
+
+@pytest.mark.asyncio
+async def test_default_applies_when_never_saved(db_session):
+    assert await SettingsService.get_bool(db_session, _KEY, default=True) is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("value", ["", None])
+async def test_default_applies_to_an_empty_value(db_session, value):
+    db_session.add(Setting(key=_KEY, value=value))
+    await db_session.commit()
+
+    assert await SettingsService.get_bool(db_session, _KEY, default=True) is True
+
+
+@pytest.mark.asyncio
+async def test_a_saved_false_beats_a_true_default(db_session):
+    db_session.add(Setting(key=_KEY, value="false"))
+    await db_session.commit()
+
+    assert await SettingsService.get_bool(db_session, _KEY, default=True) is False

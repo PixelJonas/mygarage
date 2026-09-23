@@ -31,12 +31,6 @@ async def _get_setting(db: AsyncSession, key: str, default: str = "") -> str:
     return setting.value if setting and setting.value else default
 
 
-async def _get_setting_bool(db: AsyncSession, key: str, default: bool = False) -> bool:
-    """Get a boolean setting value."""
-    value = await _get_setting(db, key, str(default).lower())
-    return value.lower() in ("true", "1", "yes")
-
-
 @router.post("/test/ntfy")
 async def test_ntfy_connection(
     db: AsyncSession = Depends(get_db),
@@ -44,7 +38,7 @@ async def test_ntfy_connection(
 ) -> dict[str, Any]:
     """Test ntfy server connection."""
     try:
-        ntfy_enabled = await _get_setting_bool(db, "ntfy_enabled")
+        ntfy_enabled = await SettingsService.get_bool(db, "ntfy_enabled")
         ntfy_server = await _get_setting(db, "ntfy_server")
         ntfy_topic = await _get_setting(db, "ntfy_topic")
         ntfy_token = await _get_setting(db, "ntfy_token")
@@ -86,7 +80,7 @@ async def test_gotify_connection(
 ) -> dict[str, Any]:
     """Test Gotify server connection."""
     try:
-        gotify_enabled = await _get_setting_bool(db, "gotify_enabled")
+        gotify_enabled = await SettingsService.get_bool(db, "gotify_enabled")
         gotify_server = await _get_setting(db, "gotify_server")
         gotify_token = await _get_setting(db, "gotify_token")
 
@@ -127,7 +121,7 @@ async def test_pushover_connection(
 ) -> dict[str, Any]:
     """Test Pushover connection."""
     try:
-        pushover_enabled = await _get_setting_bool(db, "pushover_enabled")
+        pushover_enabled = await SettingsService.get_bool(db, "pushover_enabled")
         user_key = await _get_setting(db, "pushover_user_key")
         api_token = await _get_setting(db, "pushover_api_token")
 
@@ -181,7 +175,7 @@ async def test_slack_connection(
 ) -> dict[str, Any]:
     """Test Slack webhook connection."""
     try:
-        slack_enabled = await _get_setting_bool(db, "slack_enabled")
+        slack_enabled = await SettingsService.get_bool(db, "slack_enabled")
         webhook_url = await _get_setting(db, "slack_webhook_url")
 
         if not slack_enabled:
@@ -225,7 +219,7 @@ async def test_discord_connection(
 ) -> dict[str, Any]:
     """Test Discord webhook connection."""
     try:
-        discord_enabled = await _get_setting_bool(db, "discord_enabled")
+        discord_enabled = await SettingsService.get_bool(db, "discord_enabled")
         webhook_url = await _get_setting(db, "discord_webhook_url")
 
         if not discord_enabled:
@@ -269,7 +263,7 @@ async def test_matrix_connection(
     try:
         from app.services.notifications.matrix import MatrixNotificationService
 
-        matrix_enabled = await _get_setting_bool(db, "matrix_enabled")
+        matrix_enabled = await SettingsService.get_bool(db, "matrix_enabled")
         homeserver = await _get_setting(db, "matrix_homeserver")
         access_token = await _get_setting(db, "matrix_access_token")
         room_id = await _get_setting(db, "matrix_room_id")
@@ -304,7 +298,7 @@ async def test_telegram_connection(
 ) -> dict[str, Any]:
     """Test Telegram bot connection."""
     try:
-        telegram_enabled = await _get_setting_bool(db, "telegram_enabled")
+        telegram_enabled = await SettingsService.get_bool(db, "telegram_enabled")
         bot_token = await _get_setting(db, "telegram_bot_token")
         chat_id = await _get_setting(db, "telegram_chat_id")
 
@@ -361,14 +355,14 @@ async def test_email_connection(
 
         import aiosmtplib
 
-        email_enabled = await _get_setting_bool(db, "email_enabled")
+        email_enabled = await SettingsService.get_bool(db, "email_enabled")
         smtp_host = await _get_setting(db, "email_smtp_host")
         smtp_port_str = await _get_setting(db, "email_smtp_port", "587")
         smtp_user = await _get_setting(db, "email_smtp_user")
         smtp_password = await _get_setting(db, "email_smtp_password")
         from_address = await _get_setting(db, "email_from")
         to_address = await _get_setting(db, "email_to")
-        use_tls = await _get_setting_bool(db, "email_smtp_tls", default=True)
+        use_tls = await SettingsService.get_bool(db, "email_smtp_tls", default=True)
 
         if not email_enabled:
             return {"success": False, "message": "Email notifications are disabled"}

@@ -141,20 +141,28 @@ async def get_livelink_settings(
         telemetry_retention_days=await service.get_retention_days(),
         session_timeout_minutes=await service.get_session_timeout_minutes(),
         device_offline_timeout_minutes=await service.get_device_offline_timeout_minutes(),
-        daily_aggregation_enabled=await _get_bool_setting(
-            db, "livelink_daily_aggregation_enabled", True
+        daily_aggregation_enabled=await SettingsService.get_bool(
+            db, "livelink_daily_aggregation_enabled", default=True
         ),
-        firmware_check_enabled=await _get_bool_setting(db, "livelink_firmware_check_enabled", True),
+        firmware_check_enabled=await SettingsService.get_bool(
+            db, "livelink_firmware_check_enabled", default=True
+        ),
         alert_cooldown_minutes=await service.get_alert_cooldown_minutes(),
         session_grace_period_seconds=await service.get_session_grace_period_seconds(),
         session_gap_minutes=await service.get_session_gap_minutes(),
         session_boundary_mode=await service.get_session_boundary_mode(),
-        notify_device_offline=await _get_bool_setting(db, "livelink_notify_device_offline", True),
-        notify_threshold_alerts=await _get_bool_setting(
-            db, "livelink_notify_threshold_alerts", True
+        notify_device_offline=await SettingsService.get_bool(
+            db, "livelink_notify_device_offline", default=True
         ),
-        notify_firmware_update=await _get_bool_setting(db, "livelink_notify_firmware_update", True),
-        notify_new_device=await _get_bool_setting(db, "livelink_notify_new_device", True),
+        notify_threshold_alerts=await SettingsService.get_bool(
+            db, "livelink_notify_threshold_alerts", default=True
+        ),
+        notify_firmware_update=await SettingsService.get_bool(
+            db, "livelink_notify_firmware_update", default=True
+        ),
+        notify_new_device=await SettingsService.get_bool(
+            db, "livelink_notify_new_device", default=True
+        ),
     )
 
 
@@ -852,13 +860,13 @@ async def get_mqtt_settings(
     **Security:**
     - Requires authentication
     """
-    enabled = await _get_bool_setting(db, "livelink_mqtt_enabled", False)
+    enabled = await SettingsService.get_bool(db, "livelink_mqtt_enabled", default=False)
     broker_host = await SettingsService.get(db, "livelink_mqtt_broker_host")
     broker_port = await SettingsService.get(db, "livelink_mqtt_broker_port")
     username = await SettingsService.get(db, "livelink_mqtt_username")
     password = await SettingsService.get(db, "livelink_mqtt_password")
     topic_prefix = await SettingsService.get(db, "livelink_mqtt_topic_prefix")
-    use_tls = await _get_bool_setting(db, "livelink_mqtt_use_tls", False)
+    use_tls = await SettingsService.get_bool(db, "livelink_mqtt_use_tls", default=False)
 
     return MQTTSettingsResponse(
         enabled=enabled,
@@ -966,7 +974,7 @@ async def test_mqtt_connection(
     broker_port = await SettingsService.get(db, "livelink_mqtt_broker_port")
     username = await SettingsService.get(db, "livelink_mqtt_username")
     password = await SettingsService.get(db, "livelink_mqtt_password")
-    use_tls = await _get_bool_setting(db, "livelink_mqtt_use_tls", False)
+    use_tls = await SettingsService.get_bool(db, "livelink_mqtt_use_tls", default=False)
 
     if not broker_host or not broker_host.value:
         return MQTTTestResult(
@@ -1103,14 +1111,6 @@ async def _get_device_for_owner_or_404(db: AsyncSession, device_id: str, current
     elif current_user is not None and not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Only an admin can manage an unlinked device")
     return device
-
-
-async def _get_bool_setting(db: AsyncSession, key: str, default: bool = False) -> bool:
-    """Get a boolean setting value."""
-    setting = await SettingsService.get(db, key)
-    if not setting or not setting.value:
-        return default
-    return setting.value.lower() in ("true", "1", "yes")
 
 
 # =========================================================================

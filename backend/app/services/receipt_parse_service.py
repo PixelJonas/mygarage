@@ -9,6 +9,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services import llm_client
+from app.services.settings_service import SettingsService
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,7 @@ async def parse_receipt_draft(
     content_type: str | None = None,
 ) -> dict[str, Any]:
     """Return ``{"draft": {...}, "source": "llm"}``. Raises 403 when disabled."""
-    if not await llm_client.setting_enabled(db, "llm_receipt_parse_enabled"):
+    if not await SettingsService.get_bool(db, "llm_receipt_parse_enabled"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="LLM receipt parsing is disabled",

@@ -256,20 +256,15 @@ class TestNotificationDispatcher:
         assert fake_service.sent_messages == []
 
     @pytest.mark.asyncio
-    async def test_get_setting_bool_true_values(self, dispatcher):
-        """Test boolean setting parsing for true values."""
-        for val in ("true", "1", "yes", "True", "YES"):
-            with patch.object(dispatcher, "_get_setting", return_value=val):
-                result = await dispatcher._get_setting_bool("key")
-                assert result is True, f"Expected True for '{val}'"
+    async def test_get_setting_bool_reads_through_settings_service(self, dispatcher):
+        """The dispatcher reads switches exactly as every other caller does."""
+        with patch(
+            "app.services.notifications.dispatcher.SettingsService.get_bool",
+            new=AsyncMock(return_value=True),
+        ) as get_bool:
+            assert await dispatcher._get_setting_bool("key", default=True) is True
 
-    @pytest.mark.asyncio
-    async def test_get_setting_bool_false_values(self, dispatcher):
-        """Test boolean setting parsing for false values."""
-        for val in ("false", "0", "no", ""):
-            with patch.object(dispatcher, "_get_setting", return_value=val):
-                result = await dispatcher._get_setting_bool("key")
-                assert result is False, f"Expected False for '{val}'"
+        get_bool.assert_awaited_once_with(dispatcher.db, "key", True)
 
     @pytest.mark.asyncio
     async def test_get_setting_int_valid(self, dispatcher):

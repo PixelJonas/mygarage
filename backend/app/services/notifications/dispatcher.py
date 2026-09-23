@@ -112,9 +112,8 @@ class NotificationDispatcher:
         return setting.value if setting and setting.value else default
 
     async def _get_setting_bool(self, key: str, default: bool = False) -> bool:
-        """Get a boolean setting value."""
-        value = await self._get_setting(key, str(default).lower())
-        return value.lower() in ("true", "1", "yes")
+        """Get a boolean setting value (see ``SettingsService.get_bool``)."""
+        return await SettingsService.get_bool(self.db, key, default)
 
     async def _get_setting_int(self, key: str, default: int = 0) -> int:
         """Get an integer setting value."""
