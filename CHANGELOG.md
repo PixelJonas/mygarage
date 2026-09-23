@@ -21,16 +21,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The notification switches in LiveLink settings now gate their notifications; **Parameter threshold breaches** did nothing (migration 118 keeps any alert switched off the old way off)
 - Removed `TelemetryService.store_value`, which was unreachable and raised `TypeError`
 - Widened `livelink_devices.kind` so PostgreSQL accepts `generic_mqtt`
-- Telegram fuel commands can authenticate from Telegram: the webhook reads Telegram's own secret-token header (`secret_token` in setWebhook)
 - The Inbound Webhooks hint no longer offers `?token=`, which is refused
+- Notification secrets (the Telegram bot token, Discord and Slack webhook URLs) are no longer written to the logs
 
 ### Changed
 - A disabled LiveLink device no longer has its status refreshed by status or battery messages
 - **Enable LiveLink** now gates MQTT, Torque and SD-card backfill too: off, nothing is stored and no new device is discovered
 - Installs already receiving MQTT or Torque data have LiveLink switched on at upgrade (migration 116)
 - Search providers moved from Settings > Integrations to a button on **Find POI** (admins only); `/shop-finder` now opens Find POI
-- Telegram fuel commands moved from Settings > Integrations to Settings > Notifications > Telegram, and are off while Telegram is off
-- Telegram fuel commands answer only the chat ID set for Telegram; with none set, no chat can log fuel
+- Telegram fuel commands moved to Settings > Notifications > Telegram and fetch messages from Telegram, so no public address or webhook is needed; they are off while Telegram is off and answer only the chat ID set there
+- Telegram fuel commands accept `/fuel`, so they work in group chats, and date a fill-up the day its message was sent
+
+### Removed
+- `POST /api/v1/webhooks/telegram` (fuel commands are fetched by polling)
 
 ## [3.6.0] - 2026-09-21
 
