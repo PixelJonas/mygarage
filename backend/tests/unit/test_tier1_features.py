@@ -580,6 +580,7 @@ def test_parse_fuel_command_rejects_garbage():
     with pytest.raises(HTTPException) as exc:
         parse_fuel_command("charge now please")
     assert exc.value.status_code == 400
+    assert "Use: /fuel <vin|nickname>" in exc.value.detail  # the form a group delivers
 
 
 def test_fuel_record_create_accepts_ev_charge_session_fields():

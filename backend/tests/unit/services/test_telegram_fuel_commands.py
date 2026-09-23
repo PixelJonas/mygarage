@@ -17,8 +17,12 @@ from app.models.odometer import OdometerRecord
 from app.services.telegram_fuel_commands import USAGE, handle_message
 
 
-def _message(text, chat=42, sent_at=None):
-    message = {"message_id": 1, "chat": {"id": chat}, "date": sent_at or 1_790_000_000}
+def _message(text, chat=42, sent_at=None, chat_type="private"):
+    message = {
+        "message_id": 1,
+        "chat": {"id": chat, "type": chat_type},
+        "date": sent_at or 1_790_000_000,
+    }
     if text is not None:
         message["text"] = text
     return message
@@ -80,6 +84,32 @@ async def test_a_group_chat_with_a_negative_id_is_allowed(db_session):
         db_session, _message("help", chat=-1001234567890), "-1001234567890"
     )
     assert result.reply == USAGE
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("chat_type", ["group", "supergroup"])
+@pytest.mark.parametrize("configured", ["-100123", "999"], ids=["this-group", "another-chat"])
+async def test_a_group_bot_that_sees_everything_ignores_chatter(db_session, chat_type, configured):
+    """A bot made a group admin receives every message; it answers only commands."""
+    result = await handle_message(
+        db_session,
+        _message("fuel prices are wild today", chat=-100123, chat_type=chat_type),
+        configured,
+    )
+    assert (result.reply, result.logged) == (None, False)
+
+
+@pytest.mark.asyncio
+async def test_a_command_from_another_group_is_told_its_id(db_session):
+    result = await handle_message(
+        db_session, _message("/fuel Civic 10000 40", chat=-100123, chat_type="supergroup"), "42"
+    )
+    assert "-100123" in result.reply
+
+
+def test_the_usage_shows_the_form_a_group_delivers():
+    """In a group with privacy mode on, only messages starting with / reach the bot."""
+    assert USAGE.splitlines()[1].startswith("/fuel ")
 
 
 @pytest.mark.asyncio

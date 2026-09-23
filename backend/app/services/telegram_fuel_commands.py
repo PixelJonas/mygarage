@@ -23,8 +23,10 @@ from app.utils.units import UnitConverter
 
 logger = logging.getLogger(__name__)
 
+# The "/" form, because in a group with privacy mode on (the Telegram default)
+# only messages starting with "/" reach the bot. It works in a private chat too.
 USAGE = (
-    "MyGarage fuel bot\nfuel <vin|nickname> <odometer>[km|mi] <volume>[L|gal|kWh] [price] [cost]"
+    "MyGarage fuel bot\n/fuel <vin|nickname> <odometer>[km|mi] <volume>[L|gal|kWh] [price] [cost]"
 )
 _HELP = ("help", "/help", "start", "/start")
 
@@ -67,7 +69,7 @@ def parse_fuel_command(text: str) -> tuple[str, WebhookFuelPayload]:
             status_code=400,
             detail=(
                 "Unrecognized command. Use: "
-                "fuel <vin|nickname> <odometer>[km|mi] <volume>[L|gal|kWh] [price] [cost]"
+                "/fuel <vin|nickname> <odometer>[km|mi] <volume>[L|gal|kWh] [price] [cost]"
             ),
         )
     try:
@@ -134,8 +136,14 @@ async def handle_message(
     acknowledge the update.
     """
     text = (message.get("text") or "").strip()
-    chat_id = (message.get("chat") or {}).get("id")
+    chat = message.get("chat") or {}
+    chat_id = chat.get("id")
     if not text:
+        return CommandResult(reply=None)
+    # In a group only commands are for the bot. With privacy mode on Telegram
+    # delivers nothing else, but a bot made a group admin sees every message
+    # and must not answer each one.
+    if chat.get("type") in ("group", "supergroup") and not text.startswith("/"):
         return CommandResult(reply=None)
     # Anyone can message a bot. With no chat set, no chat ID matches.
     if str(chat_id) != configured_chat.strip():
