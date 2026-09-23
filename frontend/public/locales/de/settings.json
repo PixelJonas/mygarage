@@ -17,12 +17,6 @@
     "label": "Zeitzone",
     "description": "Der Kalendertag, den MyGarage für Fälligkeiten, Überfällig-Markierungen, Benachrichtigungen und vorausgefüllte Formulardaten verwendet. Log-Zeitstempel bleiben in UTC."
   },
-  "debug": {
-    "label": "Debug-Modus",
-    "tooltip": "Erfordert einen Neustart der Anwendung",
-    "enable": "Ausführliche Protokollierung und detaillierte Fehlermeldungen aktivieren",
-    "warning": "⚠️ Erfordert einen Neustart der Anwendung, um wirksam zu werden. Nur zur Fehlerbehebung aktivieren."
-  },
   "units": {
     "label": "Einheitensystem",
     "imperial": "Imperial",
@@ -111,13 +105,11 @@
   },
   "language": {
     "label": "Sprache",
-    "description": "Wähle deine bevorzugte Anzeigesprache. Community-Übersetzungen sind möglicherweise unvollständig.",
     "saved": "Sprachpräferenz gespeichert!",
     "error": "Sprachpräferenz konnte nicht gespeichert werden"
   },
   "currency": {
     "label": "Währung",
-    "description": "Wähle deine bevorzugte Währung für die Anzeige von Kosten und Preisen.",
     "preview": "Vorschau: {{amount}}",
     "saved": "Währungspräferenz gespeichert!",
     "error": "Währungspräferenz konnte nicht gespeichert werden",
@@ -471,8 +463,7 @@
   "timeFormat": {
     "label": "Zeitformat",
     "twelveHour": "12-Stunden-Format (2:30 PM)",
-    "twentyFourHour": "24-Stunden-Format (14:30)",
-    "description": "Wähle aus, wie Uhrzeiten in der App angezeigt werden."
+    "twentyFourHour": "24-Stunden-Format (14:30)"
   },
   "widgetKeys": {
     "createTitle": "Neuer API-Schlüssel",

@@ -51,26 +51,17 @@
  * sentence for a `custom` account, which is what they now check and all they
  * now check.
  *
- * ★ AND THE TAB NOW CARRIES TWO UNIT EDITORS, which is why every query below is
- * scoped to a region. `UnitPreferencesCard` writes THIS CLIENT's units and
- * `InstanceUnitDefaultsCard` writes the instance default; their controls are
- * deliberately identical, so an unscoped `getByText('units.metric')` matches
- * both and throws. The mock below reports `isAdmin: true`, so the second card
- * is on screen for every case here.
- *
- * The tri-state control and the eleven Custom selects moved out to
- * `components/settings/UnitPreferencesCard.tsx` in phase 4 task 4, along with
- * the show-both toggle. This file still mounts the whole tab, so every case
- * below exercises the card exactly as a user reaches it; the card's own write
- * paths are covered in
- * `components/settings/__tests__/UnitPreferencesCard.test.tsx`.
+ * ★ THE CARD LIVES IN QUICK SETTINGS NOW, so it is mounted here on its own,
+ * in the drawer's `compact` layout. Settings > System keeps only
+ * `InstanceUnitDefaultsCard`, the instance default; the two editors' controls
+ * are deliberately identical, which is why every query below stays scoped to
+ * the account card's region (the drawer can be open over the settings page).
+ * The card's write paths are covered in `UnitPreferencesCard.test.tsx`.
  */
-import { useEffect } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { SettingsProvider, useSettings } from '@/contexts/SettingsContext'
 import {
   IMPERIAL_UNITS,
   METRIC_UNITS,
@@ -131,13 +122,6 @@ vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({
     isAuthenticated: true,
     isAdmin: true,
-    // `InstanceUnitDefaultsCard` hides itself until `/settings/public` has
-    // resolved once, because it cannot otherwise tell an absent row from a
-    // failed fetch. This mock stands in for that payload, so it has to report
-    // the payload as having arrived or the second card is off screen and this
-    // file's "two unit editors" premise, and the region scoping it forces,
-    // would be describing a screen no case actually renders.
-    publicSettingsLoaded: true,
     user: h.user,
     refreshUser: vi.fn(),
     refreshPublicSettings: vi.fn(),
@@ -145,14 +129,9 @@ vi.mock('@/contexts/AuthContext', () => ({
   }),
 }))
 
-// Children with their own data fetching; not under test here.
-vi.mock('@/components/ArchivedVehiclesList', () => ({ default: () => null }))
-vi.mock('@/components/modals/OIDCModal', () => ({ default: () => null }))
-vi.mock('@/components/modals/FamilyManagementModal', () => ({ default: () => null }))
-
 import i18n from '@/i18n'
 import api from '@/services/api'
-import SettingsSystemTab from '../SettingsSystemTab'
+import UnitPreferencesCard from '../UnitPreferencesCard'
 
 h.resolve = (key, opts) =>
   key === DESCRIPTION_KEY || key === SHOW_BOTH_KEY
@@ -161,21 +140,12 @@ h.resolve = (key, opts) =>
 
 const mockedApi = vi.mocked(api)
 
-function ActiveSystemTab(): React.ReactElement {
-  const { setCurrentTabId } = useSettings()
-  useEffect(() => {
-    setCurrentTabId('system')
-  }, [setCurrentTabId])
-  return <SettingsSystemTab />
-}
-
-function renderTab(): void {
+/** Mount the card as Quick Settings does. */
+function renderCard(): void {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={queryClient}>
-      <SettingsProvider>
-        <ActiveSystemTab />
-      </SettingsProvider>
+      <UnitPreferencesCard />
     </QueryClientProvider>,
   )
 }
@@ -199,11 +169,11 @@ async function readCard(): Promise<UnitsCard> {
 /** Mount as `user` and read the Units card back. */
 async function cardFor(user: User): Promise<UnitsCard> {
   h.user = user
-  renderTab()
+  renderCard()
   return readCard()
 }
 
-describe('SettingsSystemTab — the Units card reads the resolved set', () => {
+describe('UnitPreferencesCard — the Units card reads the resolved set', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
@@ -221,22 +191,6 @@ describe('SettingsSystemTab — the Units card reads the resolved set', () => {
     })
     mockedApi.post.mockResolvedValue({ data: { settings: [], total: 0 } })
     mockedApi.put.mockResolvedValue({ data: {} })
-  })
-
-  it('★ really does carry BOTH unit editors, which is what the region scoping is for', async () => {
-    // The file header says this screen holds two deliberately identical
-    // editors and that every query below is scoped because of it. Asserted
-    // rather than asserted-in-prose: `InstanceUnitDefaultsCard` now hides
-    // itself until `/settings/public` has resolved, so an `AuthContext` mock
-    // that forgot to say so would take the second card off screen, leave every
-    // scoped query passing for the wrong reason, and turn the scoping into
-    // ceremony nothing needs.
-    await cardFor(makeUser({ unit_preference: 'imperial', resolved_units: IMPERIAL_UNITS }))
-
-    expect(screen.getAllByRole('button', { name: 'units.metric' })).toHaveLength(2)
-    expect(accountCard()).not.toBe(
-      screen.getByRole('region', { name: 'units.instanceDefault' }),
-    )
   })
 
   it('describes a custom account resolving to UK gallons in gallons, not litres', async () => {
@@ -297,7 +251,7 @@ describe('SettingsSystemTab — the Units card reads the resolved set', () => {
   })
 })
 
-describe('SettingsSystemTab — D3: an override column beats the preset', () => {
+describe('UnitPreferencesCard — D3: an override column beats the preset', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
@@ -351,7 +305,7 @@ describe('SettingsSystemTab — D3: an override column beats the preset', () => 
     // the dedicated route, behind the confirmation D3 requires: choosing a
     // preset CLEARS every override column, and the UI has to say so first.
     h.user = makeUser({ unit_preference: 'custom', resolved_units: UK_IMPERIAL_UNITS })
-    renderTab()
+    renderCard()
     await screen.findByText(/^Using these units: /)
 
     await userEvent.click(within(accountCard()).getByText('units.metric'))
@@ -368,7 +322,7 @@ describe('SettingsSystemTab — D3: an override column beats the preset', () => 
   })
 })
 
-describe('SettingsSystemTab — the show-both example demonstrates the reader\'s own pair', () => {
+describe('UnitPreferencesCard — the show-both example demonstrates the reader\'s own pair', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
@@ -388,7 +342,7 @@ describe('SettingsSystemTab — the show-both example demonstrates the reader\'s
   /** Mount as `user` and read the show-both sentence back. */
   async function sentenceFor(user: User): Promise<string> {
     h.user = user
-    renderTab()
+    renderCard()
     const paragraph = await screen.findByText(/^Show each value with its counterpart/)
     return paragraph.textContent ?? ''
   }

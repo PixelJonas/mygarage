@@ -14,7 +14,7 @@ import { getActionErrorMessage } from '@/utils/httpErrorHandler'
 import { Button, IconButton, Select, Toggle } from '@/components/ui'
 import POICard from '@/components/POICard'
 import PoiProvidersDrawer from '@/components/poi/PoiProvidersDrawer'
-import { useAuth } from '@/contexts/AuthContext'
+import { useCanManageInstance } from '@/hooks/useCanManageInstance'
 import MapDisplay from '@/components/MapDisplay'
 import { useUnitPreference } from '@/hooks/useUnitPreference'
 import { useUnitFormat } from '@/hooks/useUnitFormat'
@@ -53,10 +53,8 @@ export default function POIFinder() {
   // keys the radius table and the metre conversion.
   const { units } = useUnitPreference()
   const u = useUnitFormat()
-  // Changing a search provider is admin-only on the server; with sign-in off
-  // there is one user and the server lets them. Everyone else searches.
-  const { isAdmin, authMode } = useAuth()
-  const canManageProviders = isAdmin || authMode === 'none'
+  // Changing a search provider is admin-only on the server. Everyone searches.
+  const canManageProviders = useCanManageInstance()
   const [providersOpen, setProvidersOpen] = useState(false)
   const [step, setStep] = useState<Step>('permission')
   const [recommendations, setRecommendations] = useState<POIRecommendation[]>([])

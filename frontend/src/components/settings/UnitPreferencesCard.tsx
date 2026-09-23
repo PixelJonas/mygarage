@@ -85,6 +85,11 @@ import UnitSetEditor, { type UnitSetSelection } from './UnitSetEditor'
  */
 const SHOW_BOTH_EXAMPLE_MPG = 25
 
+/** That sample as canonical L/100km, through the US preset's own consumption adapter. */
+const SHOW_BOTH_EXAMPLE_CANONICAL = makeUnitFormat(presetUnitsFor('imperial', 'us')).consumption.toCanonical(
+  SHOW_BOTH_EXAMPLE_MPG
+)
+
 /** The body `PUT /auth/me/units` accepts, in the two shapes it admits. */
 type UnitsRequestBody = {
   unit_preference: UnitPreference
@@ -111,6 +116,7 @@ function unitsBodyFor(
   return { unit_preference: 'custom', units, show_both_units: showBoth }
 }
 
+/** This person's units, in Quick Settings (hence `UnitSetEditor`'s compact layout). */
 export default function UnitPreferencesCard(): React.ReactElement {
   const { t } = useTranslation('settings')
   const { isAuthenticated, user: currentUser, refreshUser } = useAuth()
@@ -158,12 +164,9 @@ export default function UnitPreferencesCard(): React.ReactElement {
   // a reader whose consumption is L/100km was shown the reversed example. One
   // canonical figure through the resolved consumption formatter says what this
   // toggle will actually do to this account.
+  // The reader's set renders the fixed sample in whatever it holds.
   const showBothExample = makeUnitFormat(editorUnits, true).consumption.format(
-    // 25 US MPG as canonical L/100km, through the US preset's own consumption
-    // adapter. The reader's set then renders it in whatever it holds.
-    makeUnitFormat(presetUnitsFor('imperial', 'us')).consumption.toCanonical(
-      SHOW_BOTH_EXAMPLE_MPG
-    )
+    SHOW_BOTH_EXAMPLE_CANONICAL
   )
 
   /** Persist a complete selection, wherever this client's preferences live. */
@@ -238,13 +241,15 @@ export default function UnitPreferencesCard(): React.ReactElement {
   }
 
   return (
-    // Labelled as a region because the settings screen now carries TWO unit
-    // editors: this one writes the CLIENT's units and
-    // `InstanceUnitDefaultsCard` writes the instance default, and their controls
-    // are deliberately identical. A reader (and a test) needs to be able to say
-    // which set of Imperial / Metric / Custom buttons it means.
+    // Labelled as a region because the app carries TWO unit editors: this one
+    // (in Quick Settings) writes the CLIENT's units and
+    // `InstanceUnitDefaultsCard` (Settings > System) writes the instance
+    // default, and their controls are deliberately identical. A reader (and a
+    // test) needs to be able to say which set of Imperial / Metric / Custom
+    // buttons it means.
     <section aria-label={t('units.label')}>
       <UnitSetEditor
+        compact
         preference={preference}
         units={editorUnits}
         busy={saving}
@@ -256,7 +261,7 @@ export default function UnitPreferencesCard(): React.ReactElement {
         }
       />
 
-      <div className="mt-4">
+      <div className="mt-3">
         <Toggle
           label={t('units.showBoth')}
           checked={showBothUnits}

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import * as AuthContext from '../../../contexts/AuthContext'
 import RightCluster from '../RightCluster'
 
@@ -29,10 +30,14 @@ function setup(overrides: Partial<ReturnType<typeof AuthContext.useAuth>> = {}) 
     authMode: 'local',
     ...overrides,
   } as unknown as ReturnType<typeof AuthContext.useAuth>)
+  // The quick-settings drawer hosts the units card, which reads the query
+  // client; App.tsx provides one around the whole shell.
   render(
-    <MemoryRouter>
-      <RightCluster />
-    </MemoryRouter>
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <MemoryRouter>
+        <RightCluster />
+      </MemoryRouter>
+    </QueryClientProvider>
   )
 }
 

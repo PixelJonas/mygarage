@@ -1,19 +1,17 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Server, CheckCircle, AlertCircle, Info, Shield, Users, AlertTriangle, Key, Wrench, Fuel, Bell, FileText, StickyNote, Camera, Clock, Archive, Smartphone, Globe, DollarSign } from 'lucide-react'
+import { Server, AlertCircle, Info, Shield, Users, AlertTriangle, Key, Wrench, Fuel, Bell, FileText, StickyNote, Camera, Archive, Smartphone } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useSettings } from '@/contexts/SettingsContext'
+import { useCanManageInstance } from '@/hooks/useCanManageInstance'
 import type { DashboardResponse } from '@/types/dashboard'
-import { asTimeFormat } from '@/hooks/useTimeFormat'
 import api from '@/services/api'
 import { toast } from 'sonner'
-import { formatCurrency } from '@/utils/formatUtils'
-import { SUPPORTED_LANGUAGES, SUPPORTED_CURRENCIES, languageToLocale, getHouseholdTimeZone } from '@/constants/i18n'
+import { getHouseholdTimeZone } from '@/constants/i18n'
 import OIDCModal from '@/components/modals/OIDCModal'
 import FamilyManagementModal from '@/components/modals/FamilyManagementModal'
 import ArchivedVehiclesList from '@/components/ArchivedVehiclesList'
 import InstanceUnitDefaultsCard from '@/components/settings/InstanceUnitDefaultsCard'
-import UnitPreferencesCard from '@/components/settings/UnitPreferencesCard'
 import { Select, Toggle } from '../ui'
 
 type RawSetting = {
@@ -21,14 +19,24 @@ type RawSetting = {
   value?: string | null
 }
 
+/**
+ * Settings > System: what applies to the whole instance, for admins, plus the
+ * few cards that are each person's own (mobile quick entry, fuel defaults,
+ * archived vehicles). Units, time format, language and currency live in Quick
+ * Settings (`components/shell/QuickSettingsDrawer.tsx`).
+ *
+ * Every instance setting is admin-only on the server, so a non-admin is shown
+ * none of them and the tab asks for none of them: they used to get the whole
+ * tab, with the timezone reading UTC and switches that looked saved and never
+ * were. With auth off there is one user and no admin, so everything shows.
+ */
 export default function SettingsSystemTab() {
   const { t } = useTranslation('settings')
-  const { i18n } = useTranslation()
   const { isAuthenticated, isAdmin, user: currentUser, refreshUser, refreshPublicSettings } = useAuth()
+  const canManageInstance = useCanManageInstance()
   const { triggerSave, registerSaveHandler, unregisterSaveHandler } = useSettings()
   const [formData, setFormData] = useState({
     timezone: 'UTC',
-    debug: 'false',
     family_friends_enabled: 'false',
     auth_mode: 'none', // local, none, oidc
     oidc_enabled: 'false',
@@ -45,7 +53,7 @@ export default function SettingsSystemTab() {
     oidc_full_name_claim: 'name',
   })
   const [loadedFormData, setLoadedFormData] = useState<typeof formData | null>(null)
-  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
+  const [loadFailed, setLoadFailed] = useState(false)
   const [authenticatorDetected, setAuthenticatorDetected] = useState<boolean | null>(null)
   const [authEverEnabled, setAuthEverEnabled] = useState(false)
   const [dashboardStats, setDashboardStats] = useState<DashboardResponse | null>(null)
@@ -57,10 +65,6 @@ export default function SettingsSystemTab() {
   const [autoArchiveDays, setAutoArchiveDays] = useState('0')
   const [autoArchiveSaving, setAutoArchiveSaving] = useState(false)
 
-  // Time-format preference state (12h/24h)
-  const [timeFormat, setTimeFormat] = useState<'12h' | '24h'>('12h')
-  const [timeFormatSaving, setTimeFormatSaving] = useState(false)
-
   // Mobile experience state
   const [mobileQuickEntry, setMobileQuickEntry] = useState(true)
   const [mobileQuickEntrySaving, setMobileQuickEntrySaving] = useState(false)
@@ -69,14 +73,6 @@ export default function SettingsSystemTab() {
   const [defaultPaymentMethod, setDefaultPaymentMethod] = useState<string>('')
   const [defaultTripType, setDefaultTripType] = useState<string>('')
   const [fuelDefaultsSaving, setFuelDefaultsSaving] = useState(false)
-
-  // Language & currency state
-  const [selectedLanguage, setSelectedLanguage] = useState('en')
-  const [languageSaving, setLanguageSaving] = useState(false)
-  const [selectedCurrency, setSelectedCurrency] = useState('USD')
-  const [currencySaving, setCurrencySaving] = useState(false)
-  const [showCurrencyConfirm, setShowCurrencyConfirm] = useState(false)
-  const [pendingCurrency, setPendingCurrency] = useState<string | null>(null)
 
   // Common timezones
   const timezones = [
@@ -144,13 +140,12 @@ export default function SettingsSystemTab() {
         const oidcResponse = await api.get('/auth/oidc/config/admin')
         oidcAdmin = oidcResponse.data
       } catch {
-        // Non-admin users (or auth disabled) can't read admin OIDC config; fall back to public minimal config.
+        // If the admin OIDC config cannot be read, fall back to the public minimal config.
         oidcAdmin = null
       }
 
       const newFormData = {
         timezone: settingsMap.timezone || getHouseholdTimeZone() || 'UTC',
-        debug: settingsMap.debug || 'false',
         family_friends_enabled: settingsMap.family_friends_enabled || 'false',
         auth_mode: settingsMap.auth_mode || 'none',
         oidc_enabled: oidcAdmin ? (oidcAdmin.enabled ? 'true' : 'false') : settingsMap.oidc_enabled || 'false',
@@ -182,27 +177,21 @@ export default function SettingsSystemTab() {
         setAuthEverEnabled(false)
       }
     } catch {
-      setMessage({ type: 'error', text: t('common:errors.generic') })
+      setLoadFailed(true)
     }
-  }, [t])
+  }, [])
 
   useEffect(() => {
-    void loadSettings()
-  }, [loadSettings])
+    // Every key it reads is admin-only on the server.
+    if (canManageInstance) void loadSettings()
+  }, [loadSettings, canManageInstance])
 
   // Load user's preferences
   useEffect(() => {
     if (currentUser) {
-      setTimeFormat(asTimeFormat(currentUser.time_format))
       setMobileQuickEntry(currentUser.mobile_quick_entry_enabled ?? true)
-      setSelectedLanguage(currentUser.language || 'en')
-      setSelectedCurrency(currentUser.currency_code || 'USD')
       setDefaultPaymentMethod(currentUser.default_payment_method ?? '')
       setDefaultTripType(currentUser.default_trip_type ?? '')
-    } else {
-      setTimeFormat(asTimeFormat(localStorage.getItem('time_format')))
-      setSelectedLanguage(localStorage.getItem('i18nextLng') || 'en')
-      setSelectedCurrency(localStorage.getItem('currency_code') || 'USD')
     }
   }, [currentUser])
 
@@ -219,8 +208,9 @@ export default function SettingsSystemTab() {
     loadDashboardStats()
   }, [])
 
-  // Detect reverse proxy authenticators
+  // Detect reverse proxy authenticators (shown on the admin-only auth card)
   useEffect(() => {
+    if (!canManageInstance) return
     const detectAuthenticator = async () => {
       try {
         const response = await api.get('/health')
@@ -231,7 +221,7 @@ export default function SettingsSystemTab() {
     }
 
     detectAuthenticator()
-  }, [])
+  }, [canManageInstance])
 
   // Save settings.
   // OIDC settings go to the dedicated admin endpoint (enforces §5.4 contract:
@@ -247,7 +237,7 @@ export default function SettingsSystemTab() {
 
     // Only touch the OIDC admin endpoint when an OIDC field actually changed.
     // Saving is auto-triggered by any edit on this tab, so without this guard an
-    // unrelated change (timezone, debug) is blocked whenever the OIDC PUT fails
+    // unrelated change (timezone, say) is blocked whenever the OIDC PUT fails
     // — and auth_mode rides in the batch below, so a failure there strands the
     // mode. The PUT still goes FIRST when OIDC is dirty: the provider config
     // must land before auth_mode flips to 'oidc', or the mode is enabled against
@@ -281,15 +271,6 @@ export default function SettingsSystemTab() {
       // update the browser store before leaving the saving state.
       await refreshPublicSettings()
     }
-
-    const restartRequired = formData.debug !== 'false'
-    if (restartRequired) {
-      setMessage({
-        type: 'success',
-        text: '⚠️ Restart the application for debug mode changes to take effect.'
-      })
-      setTimeout(() => setMessage(null), 5000)
-    }
   }, [formData, loadedFormData, refreshPublicSettings])
 
   const handleAutoArchiveDaysChange = (raw: string) => {
@@ -312,34 +293,6 @@ export default function SettingsSystemTab() {
     }
   }
 
-  const handleTimeFormatChange = async (format: '12h' | '24h') => {
-    setTimeFormatSaving(true)
-    setTimeFormat(format)
-
-    try {
-      if (isAuthenticated) {
-        await api.put('/auth/me', { time_format: format })
-        await refreshUser()
-      } else {
-        localStorage.setItem('time_format', format)
-      }
-
-      toast.success(t('preferences.timeSaved'))
-      // Force a re-render of displays subscribed to the storage event.
-      window.dispatchEvent(new Event('storage'))
-    } catch {
-      toast.error(t('preferences.timeError'))
-      // Revert on error
-      if (isAuthenticated) {
-        setTimeFormat(asTimeFormat(currentUser?.time_format))
-      } else {
-        setTimeFormat(asTimeFormat(localStorage.getItem('time_format')))
-      }
-    } finally {
-      setTimeFormatSaving(false)
-    }
-  }
-
   const handleMobileQuickEntryChange = async (enabled: boolean) => {
     setMobileQuickEntrySaving(true)
     setMobileQuickEntry(enabled)
@@ -353,65 +306,6 @@ export default function SettingsSystemTab() {
       setMobileQuickEntry(currentUser?.mobile_quick_entry_enabled ?? true)
     } finally {
       setMobileQuickEntrySaving(false)
-    }
-  }
-
-  // Handle language change
-  const handleLanguageChange = async (lang: string) => {
-    setLanguageSaving(true)
-    const prevLang = selectedLanguage
-    setSelectedLanguage(lang)
-
-    try {
-      // Change i18next language immediately for instant feedback
-      await i18n.changeLanguage(lang)
-
-      if (isAuthenticated) {
-        await api.put('/auth/me', { language: lang })
-        await refreshUser()
-      } else {
-        localStorage.setItem('i18nextLng', lang)
-      }
-
-      toast.success(t('language.saved'))
-    } catch {
-      toast.error(t('language.error'))
-      setSelectedLanguage(prevLang)
-      await i18n.changeLanguage(prevLang)
-    } finally {
-      setLanguageSaving(false)
-    }
-  }
-
-  // Handle currency change — show confirmation first
-  const handleCurrencyRequest = (code: string) => {
-    if (code === selectedCurrency) return
-    setPendingCurrency(code)
-    setShowCurrencyConfirm(true)
-  }
-
-  const handleCurrencyConfirm = async () => {
-    if (!pendingCurrency) return
-    setShowCurrencyConfirm(false)
-    setCurrencySaving(true)
-    const prevCurrency = selectedCurrency
-    setSelectedCurrency(pendingCurrency)
-
-    try {
-      if (isAuthenticated) {
-        await api.put('/auth/me', { currency_code: pendingCurrency })
-        await refreshUser()
-      } else {
-        localStorage.setItem('currency_code', pendingCurrency)
-      }
-
-      toast.success(t('currency.saved'))
-    } catch {
-      toast.error(t('currency.error'))
-      setSelectedCurrency(prevCurrency)
-    } finally {
-      setCurrencySaving(false)
-      setPendingCurrency(null)
     }
   }
 
@@ -478,6 +372,7 @@ export default function SettingsSystemTab() {
       {/* Left Column */}
       <div className="space-y-6">
       {/* System Configuration Section */}
+      {canManageInstance && (
       <div className="bg-garage-surface rounded-lg border border-garage-border p-6 space-y-6">
         {/* Header */}
         <div className="flex items-start gap-3">
@@ -512,30 +407,6 @@ export default function SettingsSystemTab() {
           </p>
         </div>
 
-        {/* Debug Mode Setting */}
-        <div>
-          <div className="flex items-center gap-3 mb-2">
-            <span className="text-sm font-medium text-garage-text">
-              {t('debug.label')}
-            </span>
-            <div className="relative group">
-              <Info className="w-4 h-4 text-garage-text-muted cursor-help" />
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
-                {t('debug.tooltip')}
-              </div>
-            </div>
-          </div>
-          <Toggle
-            id="debug"
-            label={t('debug.enable')}
-            checked={formData.debug === 'true'}
-            onChange={(next) => setFormData({ ...formData, debug: next ? 'true' : 'false' })}
-          />
-          <p className="mt-2 text-sm text-garage-text-muted">
-            {t('debug.warning')}
-          </p>
-        </div>
-
         {/* Garage sections */}
         <div>
           <h3 className="text-sm font-medium text-garage-text mb-1">
@@ -564,10 +435,8 @@ export default function SettingsSystemTab() {
           </div>
         </div>
 
-        {/* Unit System Setting: this client's own units, then the instance
-            default an admin sets for everyone who has not chosen. */}
-        <UnitPreferencesCard />
-
+        {/* The instance default an admin sets for everyone who has not
+            chosen. Each person's own units are in Quick Settings. */}
         <InstanceUnitDefaultsCard />
 
         <div>
@@ -595,127 +464,6 @@ export default function SettingsSystemTab() {
           </p>
         </div>
 
-        {/* Time Format Setting */}
-        <div>
-          <label className="block text-sm font-medium text-garage-text mb-3">
-            <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4" />
-              {t('timeFormat.label')}
-            </div>
-          </label>
-          <div className="flex gap-3">
-            <button
-              onClick={() => handleTimeFormatChange('12h')}
-              disabled={timeFormatSaving}
-              className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 transition-all ${
-                timeFormat === '12h'
-                  ? 'border-primary bg-primary/10 text-primary'
-                  : 'border-garage-border bg-garage-bg text-garage-text hover:border-garage-border'
-              } ${timeFormatSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
-            >
-              <Clock className="w-5 h-5" />
-              <span className="font-medium">{t('timeFormat.twelveHour')}</span>
-            </button>
-            <button
-              onClick={() => handleTimeFormatChange('24h')}
-              disabled={timeFormatSaving}
-              className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 transition-all ${
-                timeFormat === '24h'
-                  ? 'border-primary bg-primary/10 text-primary'
-                  : 'border-garage-border bg-garage-bg text-garage-text hover:border-garage-border'
-              } ${timeFormatSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
-            >
-              <Clock className="w-5 h-5" />
-              <span className="font-medium">{t('timeFormat.twentyFourHour')}</span>
-            </button>
-          </div>
-          <p className="mt-2 text-sm text-garage-text-muted">
-            {t('timeFormat.description')}
-          </p>
-        </div>
-
-        {/* Language Setting */}
-        <div>
-          <label className="block text-sm font-medium text-garage-text mb-3">
-            <div className="flex items-center gap-2">
-              <Globe className="w-4 h-4" />
-              {t('language.label')}
-            </div>
-          </label>
-          <Select
-            value={selectedLanguage}
-            onChange={(e) => handleLanguageChange(e.target.value)}
-            disabled={languageSaving}
-            className="md:w-96"
-            options={SUPPORTED_LANGUAGES.map((lang) => ({
-              value: lang.code,
-              label: `${lang.nativeName} (${lang.name})`,
-            }))}
-          />
-          <p className="mt-2 text-sm text-garage-text-muted">
-            {t('language.description')}
-          </p>
-        </div>
-
-        {/* Currency Setting */}
-        <div>
-          <label className="block text-sm font-medium text-garage-text mb-3">
-            <div className="flex items-center gap-2">
-              <DollarSign className="w-4 h-4" />
-              {t('currency.label')}
-            </div>
-          </label>
-          <Select
-            value={selectedCurrency}
-            onChange={(e) => handleCurrencyRequest(e.target.value)}
-            disabled={currencySaving}
-            className="md:w-96"
-            options={SUPPORTED_CURRENCIES.map((curr) => ({
-              value: curr.code,
-              label: `${curr.code} — ${curr.name}`,
-            }))}
-          />
-          <p className="mt-2 text-sm text-garage-text-muted">
-            {t('currency.description')}
-          </p>
-          <p className="mt-1 text-sm text-garage-text-muted">
-            {t('currency.preview', {
-              amount: formatCurrency(1234.56, {
-                currencyCode: selectedCurrency,
-                locale: languageToLocale(selectedLanguage),
-              }),
-            })}
-          </p>
-        </div>
-
-        {/* Currency Change Confirmation Dialog */}
-        {showCurrencyConfirm && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-garage-surface border border-garage-border rounded-lg p-6 max-w-md mx-4 space-y-4">
-              <h3 className="text-lg font-semibold text-garage-text">
-                {t('currency.confirmTitle')}
-              </h3>
-              <p className="text-sm text-garage-text-muted">
-                {t('currency.confirmMessage')}
-              </p>
-              <div className="flex gap-3 justify-end">
-                <button
-                  onClick={() => { setShowCurrencyConfirm(false); setPendingCurrency(null) }}
-                  className="px-4 py-2 text-sm text-garage-text-muted hover:text-garage-text rounded-lg border border-garage-border hover:bg-garage-bg transition-colors"
-                >
-                  {t('common:cancel')}
-                </button>
-                <button
-                  onClick={handleCurrencyConfirm}
-                  className="px-4 py-2 text-sm bg-primary text-(--accent-on-solid) rounded-lg hover:bg-primary/90 transition-colors font-medium"
-                >
-                  {t('currency.confirmAction')}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Info Box - Secret Key */}
         <div className="p-4 bg-primary/10 border border-primary/30 rounded-lg">
           <div className="flex items-start gap-2">
@@ -727,22 +475,14 @@ export default function SettingsSystemTab() {
           </div>
         </div>
 
-        {/* Message */}
-        {message && (
-          <div className={`p-4 rounded-lg border flex items-start gap-2 ${
-            message.type === 'success'
-              ? 'bg-success-500/10 border-success-500 text-success-500'
-              : 'bg-danger-500/10 border-danger-500 text-danger-500'
-          }`}>
-            {message.type === 'success' ? (
-              <CheckCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-            ) : (
-              <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-            )}
-            <div className="flex-1">{message.text}</div>
+        {loadFailed && (
+          <div className="p-4 rounded-lg border flex items-start gap-2 bg-danger-500/10 border-danger-500 text-danger-500">
+            <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">{t('common:errors.generic')}</div>
           </div>
         )}
       </div>
+      )}
 
       {/* Mobile Experience Card */}
       {isAuthenticated && (
@@ -890,6 +630,7 @@ export default function SettingsSystemTab() {
       {/* Right Column */}
       <div className="space-y-6">
       {/* Authentication Mode Card - Separate Section */}
+      {canManageInstance && (
       <div className="bg-garage-surface rounded-lg border border-garage-border overflow-hidden">
         {/* Header */}
         <div className="p-6 pb-0">
@@ -1032,6 +773,7 @@ export default function SettingsSystemTab() {
           )}
         </div>
       </div>
+      )}
 
       {/* Archive Management Card */}
       <div className="bg-garage-surface rounded-lg border border-garage-border p-6 space-y-6">

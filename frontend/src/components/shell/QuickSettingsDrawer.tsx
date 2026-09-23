@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Info, LogOut, Settings } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -8,6 +8,10 @@ import { useAccent } from '../../contexts/AccentContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { ACCENTS, ACCENT_KEYS, type AccentKey } from '../../constants/accents'
 import api from '../../services/api'
+
+// Loaded on the drawer's first open (a closed Drawer mounts no children), so
+// its unit code stays out of the main bundle.
+const QuickSettingsPreferences = lazy(() => import('../settings/QuickSettingsPreferences'))
 
 interface QuickSettingsDrawerProps {
   className?: string
@@ -22,9 +26,11 @@ const ROW =
  * selectors.ts:14 is defined but never called, and every spec reaches Settings
  * via page.goto('/settings'), so the gear being a button breaks nothing.
  *
- * Content: the Appearance accent picker (per-account; see below) + an About row
- * (Jamey's decision — About lives here) + a one-tap "All settings" link + a
- * logout row (auth-enabled + signed-in only). The dark/light theme is a
+ * Content: the Appearance accent picker (per-account; see below), then this
+ * person's own display preferences (units, time format, language, currency),
+ * + an About row (Jamey's decision — About lives here) + a one-tap "All
+ * settings" link + a logout row (auth-enabled + signed-in only). Settings >
+ * System keeps only what applies to the whole instance. The dark/light theme is a
  * standalone toggle in RightCluster, not duplicated here. The gear is reachable
  * on every viewport (RightCluster no longer hides it below md), so phone users
  * reach the accent picker and logout here — the standalone logout button in
@@ -78,9 +84,7 @@ export default function QuickSettingsDrawer({ className = '' }: QuickSettingsDra
         <div className="flex flex-col gap-4">
           {/* Appearance — per-account accent picker */}
           <div>
-            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[.06em] text-text-faint">
-              {t('appearance')}
-            </div>
+            <div className="ui-eyebrow mb-2">{t('appearance')}</div>
             <div className="flex flex-wrap gap-2" role="group" aria-label={t('accent')}>
               {ACCENT_KEYS.map((key) => (
                 <button
@@ -98,6 +102,10 @@ export default function QuickSettingsDrawer({ className = '' }: QuickSettingsDra
               ))}
             </div>
           </div>
+
+          <Suspense fallback={null}>
+            <QuickSettingsPreferences />
+          </Suspense>
 
           <Link to="/about" onClick={() => setOpen(false)} className={ROW}>
             <Info aria-hidden="true" className="h-4 w-4" />

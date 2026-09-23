@@ -25,7 +25,7 @@
  * `resolved_units` ONLY when `unit_preference === 'custom'`; for `'metric'` and
  * `'imperial'` it returns the preference verbatim while `units` stays the fully
  * resolved set. `PUT /auth/me` writes the preference and never clears an
- * override column (`SettingsSystemTab.tsx` says so at length), and
+ * override column (`UnitPreferencesCard.tsx` says so at length), and
  * `backend/app/utils/unit_resolution.py:resolve_units` applies the eleven
  * override columns on top of the preset for EVERY account, `custom` or not. So
  * `{preference:'metric', overrides: UK imperial}` reaches this file as

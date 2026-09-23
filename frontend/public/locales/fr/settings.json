@@ -17,12 +17,6 @@
     "label": "Fuseau horaire",
     "description": "Le jour calendaire que MyGarage utilise pour les échéances, les badges de retard, les notifications et les dates préremplies dans les formulaires. Les horodatages des journaux restent en UTC."
   },
-  "debug": {
-    "label": "Mode débogage",
-    "tooltip": "Nécessite un redémarrage de l'application",
-    "enable": "Activer la journalisation détaillée et les messages d'erreur complets",
-    "warning": "⚠️ Nécessite un redémarrage de l'application pour prendre effet. À activer uniquement pour le dépannage."
-  },
   "units": {
     "label": "Système d'unités",
     "imperial": "Impérial",
@@ -105,13 +99,11 @@
   },
   "language": {
     "label": "Langue",
-    "description": "Choisissez votre langue d'affichage préférée. Les traductions communautaires peuvent être incomplètes.",
     "saved": "Préférence de langue enregistrée !",
     "error": "Échec de l'enregistrement de la préférence de langue"
   },
   "currency": {
     "label": "Devise",
-    "description": "Choisissez votre devise préférée pour l'affichage des coûts et des prix.",
     "preview": "Aperçu : {{amount}}",
     "saved": "Préférence de devise enregistrée !",
     "error": "Échec de l'enregistrement de la préférence de devise",
@@ -446,8 +438,7 @@
   "timeFormat": {
     "label": "Format de l'heure",
     "twelveHour": "12 heures (2:30 PM)",
-    "twentyFourHour": "24 heures (14:30)",
-    "description": "Choisissez comment les heures sont affichées dans toute l'application."
+    "twentyFourHour": "24 heures (14:30)"
   },
   "widgetKeys": {
     "createTitle": "Nouvelle clé API",

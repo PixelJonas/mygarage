@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CheckCircle, AlertCircle, Plug, Shield, Radio, HelpCircle, Webhook, Sparkles, Settings } from 'lucide-react'
 import { useSettings } from '@/contexts/SettingsContext'
-import { useAuth } from '@/contexts/AuthContext'
+import { useCanManageInstance } from '@/hooks/useCanManageInstance'
 import api from '@/services/api'
 import WidgetKeysPanel from '../settings/WidgetKeysPanel'
 import { Card, IconButton, Select, Toggle, Drawer } from '../ui'
@@ -76,15 +76,25 @@ function IntegrationCard({
   )
 }
 
-export default function SettingsIntegrationsTab() {
+/**
+ * Settings > Integrations. A non-admin gets only their own widget keys: every
+ * other card is an instance setting, admin-only on the server (LiveLink infra
+ * since v2.28.0), so the admin view never mounts for them and loads nothing.
+ */
+export default function SettingsIntegrationsTab(): React.ReactElement {
+  const canManageInstance = useCanManageInstance()
+  if (!canManageInstance) {
+    return (
+      <div className="max-w-6xl mx-auto space-y-6">
+        <WidgetKeysPanel />
+      </div>
+    )
+  }
+  return <IntegrationsAdminView />
+}
+
+function IntegrationsAdminView(): React.ReactElement {
   const { t } = useTranslation('settings')
-  // LiveLink infra (settings/token/MQTT/parameters/firmware/global device list)
-  // is admin-only on the backend as of v2.28.0; gate the UI to match so
-  // non-admins don't see controls that would 403. In none-mode auth is disabled
-  // and the backend allows infra access (get_current_admin_user returns None),
-  // so the single dev user must still see the panel.
-  const { isAdmin, authMode } = useAuth()
-  const canManageLiveLink = isAdmin || authMode === 'none'
   const [loading, setLoading] = useState(true)
   const { triggerSave, registerSaveHandler, unregisterSaveHandler } = useSettings()
   const [testing, setTesting] = useState(false)
@@ -484,7 +494,6 @@ export default function SettingsIntegrationsTab() {
         </div>
         </IntegrationCard>
 
-        {canManageLiveLink && (
         <IntegrationCard
           icon={Radio}
           title={t('integrations.livelink')}
@@ -509,37 +518,32 @@ export default function SettingsIntegrationsTab() {
           }
         >
 
-          {/* Admin-gated like the card around it: /integrations is an admin
-              endpoint, and this card only renders when canManageLiveLink. */}
+          {/* Admin-only like this whole view: /integrations is an admin
+              endpoint. */}
           <LiveLinkIntegrationsCard
             refreshKey={integrationsRefresh}
             onOpenSettings={(tab) => setSettingsTarget({ type: 'tab', tab })}
             onAddSource={() => setAddSourceOpen(true)}
           />
         </IntegrationCard>
-        )}
       </div>
 
-      {canManageLiveLink && (
-        <AddSourceDrawer
-          open={addSourceOpen}
-          onClose={() => setAddSourceOpen(false)}
-          onCreated={bumpStrip}
-        />
-      )}
+      <AddSourceDrawer
+        open={addSourceOpen}
+        onClose={() => setAddSourceOpen(false)}
+        onCreated={bumpStrip}
+      />
 
-      {canManageLiveLink && (
-        <LiveLinkSettingsDrawers
-          target={settingsTarget}
-          onClose={() => {
-            setSettingsTarget(null)
-            // Closing is also a refresh point: whatever the drawer changed
-            // may have changed a tab's status.
-            bumpStrip()
-          }}
-          onChanged={bumpStrip}
-        />
-      )}
+      <LiveLinkSettingsDrawers
+        target={settingsTarget}
+        onClose={() => {
+          setSettingsTarget(null)
+          // Closing is also a refresh point: whatever the drawer changed
+          // may have changed a tab's status.
+          bumpStrip()
+        }}
+        onChanged={bumpStrip}
+      />
 
       {/* About / help sidecar — opened from each card's upper-right help button. */}
       <Drawer

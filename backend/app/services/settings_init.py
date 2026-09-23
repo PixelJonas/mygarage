@@ -21,12 +21,6 @@ DEFAULT_SETTINGS = {
         "description": "Application version",
         "encrypted": False,
     },
-    "debug_mode": {
-        "value": "false",
-        "category": "general",
-        "description": "Enable debug mode for troubleshooting",
-        "encrypted": False,
-    },
     "auth_mode": {
         "value": "none",
         "category": "security",

@@ -41,8 +41,8 @@
  * `resolved_units` IS the recorded choice, seeded from that default at account
  * creation; for a client with no account the browser store is. Ranking the
  * default above it looks harmless until you notice that on an `auth_mode=none`
- * instance `SettingsSystemTab` is where such a client sets its units,
- * `ProtectedRoute` lets `auth_mode=none` reach `/settings`, and migration 093
+ * instance Quick Settings (the gear, on every page) is where such a client
+ * sets its units, and migration 093
  * seeds `default_unit_prefs` to the imperial or UK-imperial preset and NEVER to
  * metric. A metric household upgrading would have been flipped to imperial with
  * no way back, while the toggle went on highlighting the choice it could no

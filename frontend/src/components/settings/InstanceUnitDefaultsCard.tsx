@@ -15,12 +15,10 @@
  * PDF and notification from it. It is the instance's answer for everyone who has
  * not given one.
  *
- * ★ `isAdmin || authMode === 'none'`, NEVER `isAdmin` ALONE. In `auth_mode=none`
- * the backend deliberately allows settings administration and returns no user
- * (`app/services/auth.py`), so `AuthContext` reports `isAdmin === false` for the
- * single dev user. An `isAdmin` gate would hide this control from precisely the
- * population whose instance default it exists to manage. Same shape as
- * `SettingsIntegrationsTab`'s LiveLink gate, for the same reason.
+ * ★ GATED ON `useCanManageInstance`, NEVER `isAdmin` ALONE. In `auth_mode=none`
+ * the backend deliberately allows settings administration and returns no user,
+ * so an `isAdmin` gate would hide this control from precisely the population
+ * whose instance default it exists to manage (see `hooks/useCanManageInstance`).
  *
  * ★ `POST /settings/batch`, NOT `PUT /settings/{key}`. The single-key PUT 404s
  * when the row is absent; the batch route upserts. Migration 093 seeds the row,
@@ -54,6 +52,7 @@ import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
+import { useCanManageInstance } from '@/hooks/useCanManageInstance'
 import api from '@/services/api'
 import { basePresetFor, presetTagFor, type UnitSet } from '@/types/units'
 import { DEFAULT_UNIT_PREFS_KEY } from '@/utils/publicUnitDefaults'
@@ -61,14 +60,15 @@ import UnitSetEditor, { type UnitSetSelection } from './UnitSetEditor'
 
 export default function InstanceUnitDefaultsCard(): React.ReactElement | null {
   const { t } = useTranslation('settings')
-  const { isAdmin, authMode, defaultUnitPrefs, publicSettingsLoaded, refreshUser } = useAuth()
+  const { defaultUnitPrefs, publicSettingsLoaded, refreshUser } = useAuth()
+  const canManageInstance = useCanManageInstance()
   const queryClient = useQueryClient()
   // Optimistic overlay, so the control responds before the round trip lands.
   // Null while the published row is authoritative.
   const [pendingUnits, setPendingUnits] = useState<UnitSet | null>(null)
   const [saving, setSaving] = useState(false)
 
-  if (!isAdmin && authMode !== 'none') return null
+  if (!canManageInstance) return null
   // Both halves of the gate above are read off `/settings/public`, and so is
   // the row this card writes. Until that request has resolved once, every one
   // of them is a default rather than an answer.
