@@ -1,9 +1,9 @@
 """A hand-supplied device id must be safe to put in a URL path segment.
 
 WiCAN ids arrive from an MQTT topic segment and Torque ids are generated, so
-neither can contain a separator. The three request bodies below are the only
-places an operator TYPES one, and every per-device admin route puts it in a
-path: `/api/livelink/devices/{device_id}/readings` and its siblings. An id of
+neither can contain a separator. The two request bodies below are the only
+places an operator TYPES one, and a preset makes its own; every per-device
+admin route puts it in a path: `/api/livelink/devices/{device_id}/readings` and its siblings. An id of
 `rv/gw` routes to a different path entirely, `gw#1` is truncated at the
 fragment, and an empty id produces `/devices//readings`.
 """
@@ -12,9 +12,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.schemas.livelink import LiveLinkDeviceManualCreate
-from app.schemas.livelink_topic_map import PresetApplyRequest, TopicMapCreate
-
-VIN = "1HGBH41JXMN109186"
+from app.schemas.livelink_topic_map import TopicMapCreate
 
 
 def _manual(device_id: str) -> LiveLinkDeviceManualCreate:
@@ -25,11 +23,7 @@ def _topic_map(device_id: str) -> TopicMapCreate:
     return TopicMapCreate(device_id=device_id, topic="a/b", param_key="LEVEL")
 
 
-def _preset(device_id: str) -> PresetApplyRequest:
-    return PresetApplyRequest(device_id=device_id, vin=VIN)
-
-
-BUILDERS = [_manual, _topic_map, _preset]
+BUILDERS = [_manual, _topic_map]
 
 
 @pytest.mark.parametrize("build", BUILDERS)
@@ -60,6 +54,23 @@ def test_ordinary_ids_are_accepted(build, device_id):
 def test_ids_that_break_a_url_path_are_rejected(build, device_id):
     with pytest.raises(ValidationError):
         build(device_id)
+
+
+@pytest.mark.parametrize("index", [1, 12, 999])
+def test_every_id_a_preset_makes_passes_the_same_rule(index):
+    """A preset sensor's id (`mopeka-t3`) is made, not typed, and then goes
+    into the same paths. Its topic mappings are edited through
+    `TopicMapCreate`, so an id that failed the rule would be uneditable."""
+    import re
+
+    from app.schemas.livelink import DEVICE_ID_PATTERN
+    from app.services.livelink_sources.presets import PRESETS
+
+    for preset in PRESETS.values():
+        device_id = preset.device_id(index)
+        assert re.fullmatch(DEVICE_ID_PATTERN, device_id)
+        assert len(device_id) <= 20
+        assert _topic_map(device_id).device_id == device_id
 
 
 def test_a_stored_row_with_a_legacy_id_still_serialises():

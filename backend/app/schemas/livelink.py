@@ -405,6 +405,14 @@ class DeviceReadingsResponse(BaseModel):
 
     device_id: str
     vin: str | None = Field(None, description="None when the device is unlinked")
+    online: bool = Field(
+        False,
+        description=(
+            "Whether the device is reporting now: the integrations card's own "
+            "rule, so a device with no status topic counts as online while it "
+            "has reported within the offline timeout."
+        ),
+    )
     readings: list[DeviceReading]
 
 

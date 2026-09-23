@@ -147,7 +147,7 @@ async def test_a_preset_device_gets_its_own_tab(client, auth_headers, db_session
     device = await _add_device(
         db_session,
         kind="generic_mqtt",
-        preset_key="mopeka_two_tank",
+        preset_key="mopeka",
         label="Mopeka propane (2 tanks)",
     )
 

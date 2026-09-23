@@ -7,10 +7,12 @@ import pytest_asyncio
 from sqlalchemy import delete
 
 BASE = "/api/livelink/topic-maps"
+#: Not a preset-shaped key (`PROPANE_T1_...`): those belong to one preset
+#: sensor's device alone, and `gw01` is a handmade one.
 ROW = {
     "device_id": "gw01",
     "topic": "mygarage/rv/propane/tank1/level_percent",
-    "param_key": "PROPANE_T1_LEVEL_PCT",
+    "param_key": "TANK1_LEVEL_PCT",
     "unit": "%",
 }
 
@@ -96,9 +98,9 @@ async def test_param_key_required_unless_role_is_status(client, auth_headers, no
 @pytest.mark.asyncio
 async def test_param_key_is_uppercased(client, auth_headers, no_reload):
     resp = await client.post(
-        BASE, json={**ROW, "param_key": "propane_t1_level_pct"}, headers=auth_headers
+        BASE, json={**ROW, "param_key": "tank1_level_pct"}, headers=auth_headers
     )
-    assert resp.json()["param_key"] == "PROPANE_T1_LEVEL_PCT"
+    assert resp.json()["param_key"] == "TANK1_LEVEL_PCT"
 
 
 @pytest.mark.asyncio

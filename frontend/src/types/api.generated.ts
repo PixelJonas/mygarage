@@ -2400,6 +2400,9 @@ export interface paths {
          *     `storage_interval_seconds`. The timestamp is returned so the UI can show
          *     how old the value actually is rather than implying it is live.
          *
+         *     Values are the device's under its CURRENT vehicle. A device relinked to
+         *     another vehicle starts again rather than showing the old one's readings.
+         *
          *     **Security:**
          *     - Requires admin
          */
@@ -2789,7 +2792,7 @@ export interface paths {
         };
         /**
          * List Presets
-         * @description Named device templates that can be applied in one action.
+         * @description Sensor templates, with the readings each sensor publishes.
          */
         get: operations["list_presets_api_livelink_presets_get"];
         put?: never;
@@ -2811,13 +2814,15 @@ export interface paths {
         put?: never;
         /**
          * Apply Preset
-         * @description Create a device plus all of its topic maps in one action.
+         * @description Add one sensor: its own device, and a topic map per reading given.
          *
-         *     Sets `storage_interval_seconds` on every telemetry parameter. That is
-         *     REQUIRED, not tuning: retained messages replay on every resubscribe and the
-         *     storage path stamps server time, so without an interval each reconnect
-         *     writes a fresh row. It is also what turns ~79,000 messages/day into ~4,600
-         *     stored rows/day.
+         *     Which readings a preset has, and which it requires, is the preset's, so
+         *     `topics` is checked against it here rather than on the schema.
+         *
+         *     Each reading's parameter gets the preset's `storage_interval_seconds`.
+         *     REQUIRED, not tuning: retained messages replay on every resubscribe and
+         *     the storage path stamps server time, so without it each reconnect writes a
+         *     fresh row.
          */
         post: operations["apply_preset_api_livelink_presets__name__apply_post"];
         delete?: never;
@@ -9260,6 +9265,12 @@ export interface components {
         DeviceReadingsResponse: {
             /** Device Id */
             device_id: string;
+            /**
+             * Online
+             * @description Whether the device is reporting now: the integrations card's own rule, so a device with no status topic counts as online while it has reported within the offline timeout.
+             * @default false
+             */
+            online: boolean;
             /** Readings */
             readings: components["schemas"]["DeviceReading"][];
             /**
@@ -13335,13 +13346,67 @@ export interface components {
         };
         /**
          * PresetApplyRequest
-         * @description Body for applying a named device preset.
+         * @description Body for adding one sensor from a preset.
+         *
+         *     Which readings exist, and which are required, is the preset's, so the
+         *     route checks `topics` against it. What does not depend on the preset is
+         *     checked here.
          */
         PresetApplyRequest: {
-            /** Device Id */
-            device_id: string;
+            /** Label */
+            label: string;
+            /**
+             * Topics
+             * @description The exact topic carrying each reading, keyed by reading suffix (LEVEL_PCT). A reading left out or blank is not mapped.
+             */
+            topics: {
+                [key: string]: string;
+            };
             /** Vin */
             vin?: string | null;
+        };
+        /**
+         * PresetInfo
+         * @description A sensor template, as the add-sensor form needs it.
+         */
+        PresetInfo: {
+            /** Description */
+            description: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Readings */
+            readings: components["schemas"]["PresetReadingInfo"][];
+            /** Title */
+            title: string;
+        };
+        /**
+         * PresetReadingInfo
+         * @description One reading a preset's sensor publishes.
+         */
+        PresetReadingInfo: {
+            /**
+             * Default Topic
+             * @description Last topic segment in the reference layout; suggested when none is heard
+             */
+            default_topic: string;
+            /**
+             * Keywords
+             * @description Lowercase substrings that identify this reading's topic in any layout
+             */
+            keywords: string[];
+            /** Name */
+            name: string;
+            /** Required */
+            required: boolean;
+            /**
+             * Suffix
+             * @description Key into PresetApplyRequest.topics
+             */
+            suffix: string;
+            /** Unit */
+            unit: string | null;
         };
         /**
          * QuickEntryVehicle
@@ -23741,9 +23806,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["PresetInfo"][];
                 };
             };
         };

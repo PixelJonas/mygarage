@@ -58,20 +58,36 @@ def _id() -> str:
     return f"vin{next(_SEQ):06d}"
 
 
+async def _sensors(db_session) -> list:
+    from app.models.livelink_device import LiveLinkDevice
+
+    return list(
+        (
+            await db_session.execute(
+                select(LiveLinkDevice).where(LiveLinkDevice.preset_key == "mopeka")
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+def _sensor(vin: str) -> dict:
+    """A preset picks its own device id, so the body names none."""
+    return {"label": "Tank", "vin": vin, "topics": {"LEVEL_PCT": f"test/vin/{_id()}"}}
+
+
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_preset_with_an_unknown_vin_is_404_and_creates_nothing(
     client, auth_headers, db_session, no_reload
 ):
-    device_id = _id()
     response = await client.post(
-        "/api/livelink/presets/mopeka_two_tank/apply",
-        json={"device_id": device_id, "vin": UNKNOWN_VIN},
-        headers=auth_headers,
+        "/api/livelink/presets/mopeka/apply", json=_sensor(UNKNOWN_VIN), headers=auth_headers
     )
 
     assert response.status_code == 404
-    assert await _device(db_session, device_id) is None
+    assert await _sensors(db_session) == []
     no_reload.assert_not_awaited()
 
 
@@ -80,14 +96,14 @@ async def test_preset_with_an_unknown_vin_is_404_and_creates_nothing(
 async def test_preset_stores_a_lowercase_vin_uppercased(
     client, auth_headers, db_session, test_vehicle, no_reload
 ):
-    device_id = _id()
     response = await client.post(
-        "/api/livelink/presets/mopeka_two_tank/apply",
-        json={"device_id": device_id, "vin": test_vehicle["vin"].lower()},
+        "/api/livelink/presets/mopeka/apply",
+        json=_sensor(test_vehicle["vin"].lower()),
         headers=auth_headers,
     )
 
     assert response.status_code == 201
+    device_id = response.json()["device_id"]
     assert (await _device(db_session, device_id)).vin == test_vehicle["vin"]
 
 

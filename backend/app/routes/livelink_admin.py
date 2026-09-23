@@ -49,6 +49,8 @@ from app.schemas.livelink import (
 )
 from app.schemas.livelink_topic_map import (
     PresetApplyRequest,
+    PresetInfo,
+    PresetReadingInfo,
     TopicDiscoveryRequest,
     TopicMapCreate,
     TopicMapResponse,
@@ -70,6 +72,11 @@ from app.services.livelink_integrations import (
 )
 from app.services.livelink_service import LiveLinkService
 from app.services.livelink_sources.presets import PRESETS
+from app.services.livelink_sources.presets.sensors import (
+    create_sensor,
+    reject_foreign_preset_key,
+    rename_sensor_parameters,
+)
 from app.services.livelink_sources.registry import default_registry
 from app.services.mqtt_subscriber import mqtt_subscriber
 from app.services.sd_backfill_service import SdBackfillService
@@ -330,6 +337,8 @@ async def update_device(
     """
     # Authorise against the current link first.
     device = await _get_device_for_owner_or_404(db, device_id, current_user)
+    # Read before `service.update_device`, which commits.
+    old_label = device.label
 
     # Relink: the target VIN must also be owned by the caller, else a user could
     # attach a device to a vehicle they don't own (cross-tenant telemetry).
@@ -356,6 +365,12 @@ async def update_device(
 
     if not device:
         raise HTTPException(status_code=404, detail=f"Device {device_id} not found")
+
+    # A preset sensor's readings are named after it ("Front tank level").
+    preset = PRESETS.get(device.preset_key or "")
+    if preset is not None and old_label and device.label != old_label:
+        await rename_sensor_parameters(db, preset, device, old_label)
+        await db.commit()
 
     return await _device_response(db, device)
 
@@ -1231,10 +1246,17 @@ async def get_device_readings(
     `storage_interval_seconds`. The timestamp is returned so the UI can show
     how old the value actually is rather than implying it is live.
 
+    Values are the device's under its CURRENT vehicle. A device relinked to
+    another vehicle starts again rather than showing the old one's readings.
+
     **Security:**
     - Requires admin
     """
     device = await _get_device_or_404(db, device_id)
+    livelink = LiveLinkService(db)
+    online = device_is_online(
+        device, await livelink.get_device_offline_timeout_minutes(), utc_now()
+    )
 
     # In the order they were first mapped, which for a preset is the preset's
     # own order (a tank's level first). GROUP BY rather than DISTINCT: one key
@@ -1252,15 +1274,20 @@ async def get_device_readings(
     param_keys = [key for (key,) in keys_result.all() if key]
 
     if not param_keys:
-        return DeviceReadingsResponse(device_id=device_id, vin=device.vin, readings=[])
+        return DeviceReadingsResponse(
+            device_id=device_id, vin=device.vin, online=online, readings=[]
+        )
 
     parameters = await TelemetryService(db).get_all_parameters()
 
     values: dict[str, tuple[float, datetime]] = {}
     if device.vin:
-        # Newest row per (device_id, param_key). Expressed as a grouped
-        # subquery rather than a window function so it runs unchanged on
-        # SQLite (production) and PostgreSQL (CI).
+        # Newest row per (device_id, param_key) under the current vehicle.
+        # Expressed as a grouped subquery rather than a window function so it
+        # runs unchanged on SQLite (production) and PostgreSQL (CI). The VIN
+        # filter lives here only: rows are UNIQUE(device_id, param_key,
+        # timestamp), so the one row at the newest current-vehicle timestamp
+        # is already this vehicle's.
         newest = (
             select(
                 VehicleTelemetry.param_key.label("param_key"),
@@ -1268,6 +1295,7 @@ async def get_device_readings(
             )
             .where(
                 VehicleTelemetry.device_id == device_id,
+                VehicleTelemetry.vin == device.vin,
                 VehicleTelemetry.param_key.in_(param_keys),
             )
             .group_by(VehicleTelemetry.param_key)
@@ -1300,7 +1328,9 @@ async def get_device_readings(
             )
         )
 
-    return DeviceReadingsResponse(device_id=device_id, vin=device.vin, readings=readings)
+    return DeviceReadingsResponse(
+        device_id=device_id, vin=device.vin, online=online, readings=readings
+    )
 
 
 async def _resolve_new_device_vin(
@@ -1408,7 +1438,7 @@ async def _reject_foreign_topic_claim(
 async def _register_mapped_parameter(db: AsyncSession, row: LiveLinkTopicMap) -> None:
     """Give a mapped telemetry key a `livelink_parameters` row.
 
-    `apply_preset` registers a parameter per row; these two write paths must
+    `apply_preset` registers a parameter per reading; these two write paths must
     too, or the integrations sidecar renders a show-on-dashboard switch whose
     `PUT /parameters/{key}` returns 404. Parameters are otherwise registered
     only at first ingest, and a freshly mapped topic has not ingested yet.
@@ -1433,6 +1463,7 @@ async def create_topic_map(
 ) -> LiveLinkTopicMap:
     """Add a mapping and resubscribe."""
     await _reject_foreign_topic_claim(db, body.topic, body.device_id)
+    reject_foreign_preset_key(body.param_key, body.device_id)
     row = LiveLinkTopicMap(**body.model_dump())
     db.add(row)
     await _register_mapped_parameter(db, row)
@@ -1483,6 +1514,10 @@ async def update_topic_map(
         raise RequestValidationError(exc.errors()) from exc
 
     await _reject_foreign_topic_claim(db, validated.topic, validated.device_id, exclude_id=map_id)
+    # Only a new claim: a mapping made before the rule (dev's two-tank
+    # `rvgateway`) must still be editable, or it can never be switched off.
+    if validated.param_key != row.param_key:
+        reject_foreign_preset_key(validated.param_key, validated.device_id)
     for field, value in validated.model_dump().items():
         setattr(row, field, value)
     await _register_mapped_parameter(db, row)
@@ -1521,19 +1556,29 @@ async def discover_topics(
         raise HTTPException(409, str(exc)) from exc
 
 
-@router.get("/presets")
+@router.get("/presets", response_model=list[PresetInfo])
 async def list_presets(
     current_user: User | None = Depends(get_current_admin_user),
-) -> list[dict[str, Any]]:
-    """Named device templates that can be applied in one action."""
+) -> list[PresetInfo]:
+    """Sensor templates, with the readings each sensor publishes."""
     return [
-        {
-            "name": p.name,
-            "title": p.title,
-            "description": p.description,
-            "kind": p.kind,
-            "row_count": len(p.rows),
-        }
+        PresetInfo(
+            name=p.name,
+            title=p.title,
+            description=p.description,
+            kind=p.kind,
+            readings=[
+                PresetReadingInfo(
+                    suffix=r.suffix,
+                    name=r.name,
+                    unit=r.unit,
+                    default_topic=r.default_topic,
+                    keywords=list(r.keywords),
+                    required=r.required,
+                )
+                for r in p.readings
+            ],
+        )
         for p in PRESETS.values()
     ]
 
@@ -1545,53 +1590,35 @@ async def apply_preset(
     db: AsyncSession = Depends(get_db),
     current_user: User | None = Depends(get_current_admin_user),
 ) -> LiveLinkDevice:
-    """Create a device plus all of its topic maps in one action.
+    """Add one sensor: its own device, and a topic map per reading given.
 
-    Sets `storage_interval_seconds` on every telemetry parameter. That is
-    REQUIRED, not tuning: retained messages replay on every resubscribe and the
-    storage path stamps server time, so without an interval each reconnect
-    writes a fresh row. It is also what turns ~79,000 messages/day into ~4,600
-    stored rows/day.
+    Which readings a preset has, and which it requires, is the preset's, so
+    `topics` is checked against it here rather than on the schema.
+
+    Each reading's parameter gets the preset's `storage_interval_seconds`.
+    REQUIRED, not tuning: retained messages replay on every resubscribe and
+    the storage path stamps server time, so without it each reconnect writes a
+    fresh row.
     """
     preset = PRESETS.get(name)
     if preset is None:
         raise HTTPException(status_code=404, detail=f"Unknown preset {name!r}")
 
-    service = LiveLinkService(db)
-    if await service.get_device_by_id(body.device_id) is not None:
-        raise HTTPException(status_code=409, detail=f"Device {body.device_id} already exists")
-    vin = await _resolve_new_device_vin(db, body.vin, current_user)
-
-    device = LiveLinkDevice(
-        device_id=body.device_id,
-        kind=preset.kind,
-        label=preset.title,
-        preset_key=name,
-        vin=vin,
-        enabled=True,
-    )
-    db.add(device)
-
-    telemetry = TelemetryService(db)
-    for row in preset.rows:
-        db.add(LiveLinkTopicMap(device_id=body.device_id, **row))
-        if row["role"] != "telemetry" or not row["param_key"]:
-            continue
-        param = await telemetry.get_or_create_parameter(
-            row["param_key"], unit=row["unit"], param_class=row["param_class"]
+    known = {reading.suffix for reading in preset.readings}
+    unknown = sorted(set(body.topics) - known)
+    if unknown:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{preset.title} has no reading {', '.join(unknown)}",
         )
-        if param is not None:
-            param.storage_interval_seconds = preset.storage_interval_seconds
-            # Only while the name is still the auto default: a name someone set
-            # by hand is theirs. get_or_create_parameter accepts a display_name
-            # argument and ignores it, so this cannot be done there.
-            wanted = preset.display_names.get(row["param_key"])
-            if wanted and param.display_name in (
-                None,
-                TelemetryService._format_display_name(row["param_key"]),
-            ):
-                param.display_name = wanted
+    missing = [r.name for r in preset.readings if r.required and r.suffix not in body.topics]
+    if missing:
+        raise HTTPException(
+            status_code=422, detail=f"A topic is required for: {', '.join(missing)}"
+        )
 
+    vin = await _resolve_new_device_vin(db, body.vin, current_user)
+    device = await create_sensor(db, preset, body.label, vin, body.topics)
     await db.commit()
     await db.refresh(device)
     await mqtt_subscriber.reload()

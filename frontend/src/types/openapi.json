@@ -3953,6 +3953,12 @@
             "title": "Device Id",
             "type": "string"
           },
+          "online": {
+            "default": false,
+            "description": "Whether the device is reporting now: the integrations card's own rule, so a device with no status topic counts as online while it has reported within the offline timeout.",
+            "title": "Online",
+            "type": "boolean"
+          },
           "readings": {
             "items": {
               "$ref": "#/components/schemas/DeviceReading"
@@ -13857,13 +13863,21 @@
         "type": "object"
       },
       "PresetApplyRequest": {
-        "description": "Body for applying a named device preset.",
+        "description": "Body for adding one sensor from a preset.\n\nWhich readings exist, and which are required, is the preset's, so the\nroute checks `topics` against it. What does not depend on the preset is\nchecked here.",
         "properties": {
-          "device_id": {
-            "maxLength": 20,
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$",
-            "title": "Device Id",
+          "label": {
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Label",
             "type": "string"
+          },
+          "topics": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "The exact topic carrying each reading, keyed by reading suffix (LEVEL_PCT). A reading left out or blank is not mapped.",
+            "title": "Topics",
+            "type": "object"
           },
           "vin": {
             "anyOf": [
@@ -13880,9 +13894,99 @@
           }
         },
         "required": [
-          "device_id"
+          "label",
+          "topics"
         ],
         "title": "PresetApplyRequest",
+        "type": "object"
+      },
+      "PresetInfo": {
+        "description": "A sensor template, as the add-sensor form needs it.",
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "readings": {
+            "items": {
+              "$ref": "#/components/schemas/PresetReadingInfo"
+            },
+            "title": "Readings",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "title",
+          "description",
+          "kind",
+          "readings"
+        ],
+        "title": "PresetInfo",
+        "type": "object"
+      },
+      "PresetReadingInfo": {
+        "description": "One reading a preset's sensor publishes.",
+        "properties": {
+          "default_topic": {
+            "description": "Last topic segment in the reference layout; suggested when none is heard",
+            "title": "Default Topic",
+            "type": "string"
+          },
+          "keywords": {
+            "description": "Lowercase substrings that identify this reading's topic in any layout",
+            "items": {
+              "type": "string"
+            },
+            "title": "Keywords",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "required": {
+            "title": "Required",
+            "type": "boolean"
+          },
+          "suffix": {
+            "description": "Key into PresetApplyRequest.topics",
+            "title": "Suffix",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "suffix",
+          "name",
+          "unit",
+          "default_topic",
+          "keywords",
+          "required"
+        ],
+        "title": "PresetReadingInfo",
         "type": "object"
       },
       "QuickEntryVehicle": {
@@ -36032,7 +36136,7 @@
     },
     "/api/livelink/devices/{device_id}/readings": {
       "get": {
-        "description": "Every parameter this device is mapped to, with its current value.\n\nWhich keys comes from `livelink_topic_maps`: those rows are what route a\ntopic to a parameter, so a device's mapped key set IS its parameter list.\n\nWhose value cannot come from `vehicle_telemetry_latest`. That table is\nUNIQUE(vin, param_key) with no device_id, so two devices on one vehicle\nmapping the same key means the last writer owns the row and the other\ndevice's sidecar would display a reading that is not its own. Values come\nfrom `vehicle_telemetry`, which carries device_id.\n\nThe cost is recency: `vehicle_telemetry` is written subject to\n`storage_interval_seconds`. The timestamp is returned so the UI can show\nhow old the value actually is rather than implying it is live.\n\n**Security:**\n- Requires admin",
+        "description": "Every parameter this device is mapped to, with its current value.\n\nWhich keys comes from `livelink_topic_maps`: those rows are what route a\ntopic to a parameter, so a device's mapped key set IS its parameter list.\n\nWhose value cannot come from `vehicle_telemetry_latest`. That table is\nUNIQUE(vin, param_key) with no device_id, so two devices on one vehicle\nmapping the same key means the last writer owns the row and the other\ndevice's sidecar would display a reading that is not its own. Values come\nfrom `vehicle_telemetry`, which carries device_id.\n\nThe cost is recency: `vehicle_telemetry` is written subject to\n`storage_interval_seconds`. The timestamp is returned so the UI can show\nhow old the value actually is rather than implying it is live.\n\nValues are the device's under its CURRENT vehicle. A device relinked to\nanother vehicle starts again rather than showing the old one's readings.\n\n**Security:**\n- Requires admin",
         "operationId": "get_device_readings_api_livelink_devices__device_id__readings_get",
         "parameters": [
           {
@@ -36821,7 +36925,7 @@
     },
     "/api/livelink/presets": {
       "get": {
-        "description": "Named device templates that can be applied in one action.",
+        "description": "Sensor templates, with the readings each sensor publishes.",
         "operationId": "list_presets_api_livelink_presets_get",
         "responses": {
           "200": {
@@ -36829,8 +36933,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "additionalProperties": true,
-                    "type": "object"
+                    "$ref": "#/components/schemas/PresetInfo"
                   },
                   "title": "Response List Presets Api Livelink Presets Get",
                   "type": "array"
@@ -36853,7 +36956,7 @@
     },
     "/api/livelink/presets/{name}/apply": {
       "post": {
-        "description": "Create a device plus all of its topic maps in one action.\n\nSets `storage_interval_seconds` on every telemetry parameter. That is\nREQUIRED, not tuning: retained messages replay on every resubscribe and the\nstorage path stamps server time, so without an interval each reconnect\nwrites a fresh row. It is also what turns ~79,000 messages/day into ~4,600\nstored rows/day.",
+        "description": "Add one sensor: its own device, and a topic map per reading given.\n\nWhich readings a preset has, and which it requires, is the preset's, so\n`topics` is checked against it here rather than on the schema.\n\nEach reading's parameter gets the preset's `storage_interval_seconds`.\nREQUIRED, not tuning: retained messages replay on every resubscribe and\nthe storage path stamps server time, so without it each reconnect writes a\nfresh row.",
         "operationId": "apply_preset_api_livelink_presets__name__apply_post",
         "parameters": [
           {

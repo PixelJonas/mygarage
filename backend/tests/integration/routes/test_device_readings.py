@@ -34,8 +34,7 @@ async def _clean(db_session):
         await db_session.execute(delete(LiveLinkTopicMap))
         await db_session.execute(delete(VehicleTelemetry))
         # Parameters this file registers. Without this a leftover row leaks
-        # into other files that count parameters by prefix: the preset test
-        # counts every PROPANE_* row and expects exactly 14.
+        # into other files that count or scan parameters by prefix.
         await db_session.execute(
             delete(LiveLinkParameter).where(LiveLinkParameter.param_key.startswith(_PREFIX))
         )
@@ -311,3 +310,63 @@ async def test_readings_come_in_the_order_they_were_mapped(
     body = (await client.get(_url(device.device_id), headers=auth_headers)).json()
 
     assert [r["param_key"] for r in body["readings"]] == mapped
+
+
+async def _other_vehicle(db_session, owner_id) -> str:
+    """A second vehicle, for a device relinked away from its first."""
+    from app.models.vehicle import Vehicle
+
+    vin = "DEVREADOTHERVIN01"
+    if await db_session.get(Vehicle, vin) is None:
+        db_session.add(Vehicle(vin=vin, user_id=owner_id, nickname="Other", vehicle_type="Car"))
+        await db_session.commit()
+    return vin
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_relinked_device_shows_only_its_current_vehicles_readings(
+    client, auth_headers, db_session, test_vehicle
+):
+    """Under its OLD vehicle the device reported more recently. Shown, that
+    reading would sit in the new vehicle's sensor block as if it were its own.
+
+    Without the filter the newest row wins (99.0). The filter has to be in the
+    newest-per-key subquery: applied only to the outer query, the subquery
+    still picks the old vehicle's instant and nothing is shown at all.
+    """
+    vin = test_vehicle["vin"]
+    old_vin = await _other_vehicle(db_session, test_vehicle["user_id"])
+    device = await _device(db_session, vin=vin)
+    key = f"RELINK_{next(_SEQ)}"
+    now = utc_now()
+    await _map(db_session, device.device_id, key)
+    await _reading(db_session, device.device_id, vin, key, 11.0, now - timedelta(hours=1))
+    await _reading(db_session, device.device_id, old_vin, key, 99.0, now)
+
+    body = (await client.get(_url(device.device_id), headers=auth_headers)).json()
+
+    assert body["readings"][0]["value"] == 11.0
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("minutes_ago", "online"),
+    [pytest.param(1, True, id="reported-recently"), pytest.param(600, False, id="gone-quiet")],
+)
+async def test_online_is_recent_reporting_for_a_device_with_no_status_topic(
+    client, auth_headers, db_session, test_vehicle, minutes_ago, online
+):
+    """A preset sensor has no status topic, so its status stays 'unknown' and
+    only `last_seen` can say it is reporting. The sensor block shows this."""
+    device = await _device(
+        db_session,
+        vin=test_vehicle["vin"],
+        device_status="unknown",
+        last_seen=utc_now() - timedelta(minutes=minutes_ago),
+    )
+
+    body = (await client.get(_url(device.device_id), headers=auth_headers)).json()
+
+    assert body["online"] is online

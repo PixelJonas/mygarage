@@ -10,6 +10,13 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from app.schemas.livelink import DEVICE_ID_PATTERN
 
 
+def _exact_topic(v: str) -> str:
+    """Mapped topics are exact. See LiveLinkTopicMap's docstring."""
+    if "+" in v or "#" in v:
+        raise ValueError("Mapped topics must be exact; + and # are not allowed")
+    return v
+
+
 class TopicMapBase(BaseModel):
     """Fields shared by create and update."""
 
@@ -28,9 +35,7 @@ class TopicMapBase(BaseModel):
     @classmethod
     def reject_wildcards(cls, v: str) -> str:
         """Mapped topics are exact. See LiveLinkTopicMap's docstring."""
-        if "+" in v or "#" in v:
-            raise ValueError("Mapped topics must be exact; + and # are not allowed")
-        return v
+        return _exact_topic(v)
 
     @field_validator("param_key")
     @classmethod
@@ -84,8 +89,68 @@ class TopicDiscoveryRequest(BaseModel):
     seconds: int = Field(15, ge=1, le=60)
 
 
-class PresetApplyRequest(BaseModel):
-    """Body for applying a named device preset."""
+class PresetReadingInfo(BaseModel):
+    """One reading a preset's sensor publishes."""
 
-    device_id: str = Field(..., max_length=20, pattern=DEVICE_ID_PATTERN)
+    suffix: str = Field(..., description="Key into PresetApplyRequest.topics")
+    name: str
+    unit: str | None
+    default_topic: str = Field(
+        ..., description="Last topic segment in the reference layout; suggested when none is heard"
+    )
+    keywords: list[str] = Field(
+        ..., description="Lowercase substrings that identify this reading's topic in any layout"
+    )
+    required: bool
+
+
+class PresetInfo(BaseModel):
+    """A sensor template, as the add-sensor form needs it."""
+
+    name: str
+    title: str
+    description: str
+    kind: str
+    readings: list[PresetReadingInfo]
+
+
+class PresetApplyRequest(BaseModel):
+    """Body for adding one sensor from a preset.
+
+    Which readings exist, and which are required, is the preset's, so the
+    route checks `topics` against it. What does not depend on the preset is
+    checked here.
+    """
+
+    label: str = Field(..., min_length=1, max_length=60)
     vin: str | None = Field(None, min_length=17, max_length=17)
+    topics: dict[str, str] = Field(
+        ...,
+        description=(
+            "The exact topic carrying each reading, keyed by reading suffix "
+            "(LEVEL_PCT). A reading left out or blank is not mapped."
+        ),
+    )
+
+    @field_validator("label")
+    @classmethod
+    def label_not_blank(cls, v: str) -> str:
+        """Every reading is named after the sensor ("Front tank level")."""
+        v = v.strip()
+        if not v:
+            raise ValueError("A sensor needs a name")
+        return v
+
+    @field_validator("topics")
+    @classmethod
+    def exact_distinct_topics(cls, v: dict[str, str]) -> dict[str, str]:
+        """Blank entries are dropped. The rest are exact, and each is used
+        once: one topic carries one reading."""
+        topics = {suffix: topic.strip() for suffix, topic in v.items() if topic.strip()}
+        for topic in topics.values():
+            if len(topic) > 255:
+                raise ValueError("A topic is at most 255 characters")
+            _exact_topic(topic)
+        if len(set(topics.values())) != len(topics):
+            raise ValueError("Each reading needs its own topic")
+        return topics
