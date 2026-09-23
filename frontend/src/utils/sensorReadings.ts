@@ -4,6 +4,7 @@
  * both places.
  */
 
+import type { Tone } from '@/components/ui'
 import type { LiveSensor, TelemetryLatestValue } from '@/types/livelink'
 import type { ConvertedTelemetry } from './telemetryUnits'
 import { convertTelemetryValue } from './telemetryUnits'
@@ -19,9 +20,14 @@ export interface ReadingShownAs {
 
 type Translate = (key: string, options?: Record<string, unknown>) => string
 
-/** The Live tab's fill turns amber below this, then red below the next. */
-const LOW_LEVEL = 25
-const EMPTY_LEVEL = 10
+/** Which alert line a reading is past, as the server works it out. */
+type AlertBand = TelemetryLatestValue['alert_band']
+
+export type TankTone = Extract<Tone, 'success' | 'warning' | 'danger'>
+
+/** Red below critical, amber past any other line (a low battery wants
+ *  replacing, it is not an emergency). */
+const BAND_TONE = { critical: 'danger', low: 'warning', high: 'warning' } as const
 
 /**
  * "Tank 1 sensor heard" under "Tank 1" is "Sensor heard". A name someone
@@ -68,11 +74,14 @@ export function formatSensorReading(
   return convertTelemetryValue(value, paramKey, unit, unitFormat)
 }
 
-/** The tank's fill colour for a level in percent. */
-export function tankLevelTone(level: number): 'success' | 'warning' | 'danger' {
-  if (level < EMPTY_LEVEL) return 'danger'
-  if (level < LOW_LEVEL) return 'warning'
-  return 'success'
+/** The tank's fill colour, from its own alert lines (set per tank in Settings). */
+export function tankLevelTone(band: AlertBand): TankTone {
+  return band ? BAND_TONE[band] : 'success'
+}
+
+/** A reading's colour beside the tank. */
+export function readingTone(band: AlertBand): Extract<Tone, 'danger' | 'warning' | 'default'> {
+  return band ? BAND_TONE[band] : 'default'
 }
 
 /** What one tank card shows. */

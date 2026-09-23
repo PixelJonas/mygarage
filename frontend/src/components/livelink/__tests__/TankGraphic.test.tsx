@@ -12,7 +12,7 @@ const BODY_HEIGHT = 116
 
 describe('TankGraphic', () => {
   it('fills to the level, from the bottom', () => {
-    const { container } = render(<TankGraphic level={72} label="Level 72%" />)
+    const { container } = render(<TankGraphic level={72} tone="success" label="Level 72%" />)
 
     const fill = fillOf(container)!
     expect(Number(fill.getAttribute('height'))).toBeCloseTo(BODY_HEIGHT * 0.72)
@@ -20,29 +20,25 @@ describe('TankGraphic', () => {
     expect(screen.getByRole('img', { name: 'Level 72%' })).toBeInTheDocument()
   })
 
-  it.each([
-    [72, 'fill-success'],
-    [20, 'fill-warning'],
-    [5, 'fill-danger'],
-  ])('colours %s%% as %s', (level, tone) => {
-    const { container } = render(<TankGraphic level={level} label="level" />)
+  it.each(['success', 'warning', 'danger'] as const)('fills in the %s colour it is given', (tone) => {
+    const { container } = render(<TankGraphic level={50} tone={tone} label="level" />)
 
-    expect(fillOf(container)).toHaveClass(tone)
+    expect(fillOf(container)).toHaveClass(`fill-${tone}`)
   })
 
   it('draws an empty tank before the first reading', () => {
-    const { container } = render(<TankGraphic level={null} label="Level not reported yet" />)
+    const { container } = render(<TankGraphic level={null} tone="success" label="Level not reported yet" />)
 
     expect(fillOf(container)).toBeNull()
     expect(screen.getByText('--')).toBeInTheDocument()
   })
 
   it('never draws past full or below empty', () => {
-    const over = render(<TankGraphic level={104} label="level" />)
+    const over = render(<TankGraphic level={104} tone="success" label="level" />)
     expect(Number(fillOf(over.container)!.getAttribute('height'))).toBeCloseTo(BODY_HEIGHT)
     over.unmount()
 
-    const under = render(<TankGraphic level={-3} label="level" />)
+    const under = render(<TankGraphic level={-3} tone="danger" label="level" />)
     expect(Number(fillOf(under.container)!.getAttribute('height'))).toBe(0)
   })
 })

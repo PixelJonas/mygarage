@@ -229,8 +229,20 @@ class LiveLinkParameterUpdate(BaseModel):
     display_name: str | None = Field(None, description="User-friendly display name")
     category: str | None = Field(None, description="Category for grouping")
     icon: str | None = Field(None, description="Icon identifier for frontend")
-    warning_min: float | None = Field(None, description="Alert if value drops below")
-    warning_max: float | None = Field(None, description="Alert if value exceeds")
+    # The three alert lines: an explicit null switches a line off, an omitted
+    # field leaves it as it is. Not NaN or infinity: NaN is a line no value
+    # ever crosses.
+    warning_min: float | None = Field(
+        None, description="Alert if value drops below", allow_inf_nan=False
+    )
+    critical_min: float | None = Field(
+        None,
+        description="Urgent alert if value drops below; must sit under warning_min",
+        allow_inf_nan=False,
+    )
+    warning_max: float | None = Field(
+        None, description="Alert if value exceeds", allow_inf_nan=False
+    )
     display_order: int | None = Field(None, description="Gauge display order", ge=0)
     show_on_dashboard: bool | None = Field(None, description="Show in live gauges")
     archive_only: bool | None = Field(None, description="Hide from default views")
@@ -246,6 +258,7 @@ class LiveLinkParameterResponse(LiveLinkParameterBase):
     category: str | None
     icon: str | None
     warning_min: float | None
+    critical_min: float | None
     warning_max: float | None
     display_order: int
     show_on_dashboard: bool
@@ -411,6 +424,16 @@ class DeviceReading(BaseModel):
         ),
     )
     max_value: int | None = Field(None, description="The top of the scale for an 'of_max' reading")
+    warning_min: float | None = Field(None, description="The low alert line, if set")
+    critical_min: float | None = Field(None, description="The critical alert line, if set")
+    alert_lines: list[Literal["low", "critical"]] = Field(
+        default_factory=list,
+        description=(
+            "The alert lines Settings offers for this reading: a preset sensor's "
+            "tank level offers low and critical, its battery low. Empty for "
+            "anything else."
+        ),
+    )
 
 
 class DeviceReadingsResponse(BaseModel):

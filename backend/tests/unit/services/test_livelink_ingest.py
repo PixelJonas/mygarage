@@ -155,6 +155,25 @@ async def test_thresholds_are_checked_for_each_validated_param(db_session, linke
         tel.return_value.check_thresholds = AsyncMock()
         await ingest(_Sessionless(linked_device.device_id), ENV, db_session)
         tel.return_value.check_thresholds.assert_awaited_once()
+        # Not a preset sensor: alerts repeat every cooldown, as WiCAN's do.
+        assert tel.return_value.check_thresholds.await_args.kwargs["once"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_preset_sensors_readings_alert_once_per_crossing(db_session, linked_device):
+    """A tank sits below its line for days: the cooldown would repeat it."""
+    linked_device.preset_key = "mopeka"
+    await db_session.commit()
+    with patch("app.services.livelink_ingest.TelemetryService") as tel:
+        tel.return_value.store_readings = AsyncMock(
+            return_value=type(
+                "R", (), {"validated_data": {"PROPANE_T1_LEVEL_PCT": 71.0}, "stored_count": 1}
+            )()
+        )
+        tel.return_value.check_thresholds = AsyncMock()
+        await ingest(_Sessionless(linked_device.device_id), ENV, db_session)
+
+    assert tel.return_value.check_thresholds.await_args.kwargs["once"] is True
 
 
 @pytest.mark.asyncio

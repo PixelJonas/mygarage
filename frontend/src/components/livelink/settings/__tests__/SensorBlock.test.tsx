@@ -19,6 +19,15 @@ vi.mock('../DeviceReadingsList', () => ({
   ),
 }))
 
+// Its own suite too: here, that it gets the readings and a save reloads them.
+vi.mock('../SensorAlerts', () => ({
+  default: ({ readings, sensorLabel, onSaved }: { readings: unknown[]; sensorLabel?: string; onSaved: () => void }) => (
+    <button type="button" onClick={onSaved}>
+      alerts for {sensorLabel} over {readings.length}
+    </button>
+  ),
+}))
+
 import SensorBlock from '../SensorBlock'
 
 const VEHICLE = { vin: '4EZFD3821P6080615', nickname: 'Durango', year: 2023, make: 'KZ', model: 'Durango' }
@@ -72,6 +81,16 @@ describe('SensorBlock', () => {
     // the one that is not an <option>.
     const found = await screen.findAllByText(word)
     expect(found.filter((el) => el.tagName !== 'OPTION')).toHaveLength(1)
+  })
+
+  it('hands its readings to the alert lines, and reloads them after a save', async () => {
+    const readings = [{ param_key: 'PROPANE_T1_LEVEL_PCT' }, { param_key: 'PROPANE_T1_TEMP_C' }]
+    svc.getDeviceReadings.mockResolvedValue({ device_id: 'mopeka-t1', vin: VEHICLE.vin, online: true, readings })
+    renderBlock()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'alerts for Front tank over 2' }))
+
+    await waitFor(() => expect(svc.getDeviceReadings).toHaveBeenCalledTimes(2))
   })
 
   it('renames the sensor and refreshes its readings, whose names follow', async () => {

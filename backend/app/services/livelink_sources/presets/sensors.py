@@ -28,7 +28,7 @@ from app.models.livelink_parameter import LiveLinkParameter
 from app.models.livelink_topic_map import LiveLinkTopicMap
 from app.schemas.telemetry import LiveSensor, LiveSensorReading
 from app.services.livelink_integrations import device_is_online
-from app.services.livelink_sources.presets import PRESETS, Preset, PresetReading, ReadingFormat
+from app.services.livelink_sources.presets import PRESETS, Preset, PresetReading
 from app.services.telemetry_service import TelemetryService
 
 #: `livelink_parameters.display_name` is VARCHAR(100). A long sensor name plus
@@ -165,6 +165,8 @@ async def create_sensor(
             # an interval each reconnect writes a fresh row.
             param.storage_interval_seconds = preset.storage_interval_seconds
             param.display_name = reading_display_name(label, reading)
+            param.warning_min = reading.low
+            param.critical_min = reading.critical
     return device
 
 
@@ -194,14 +196,10 @@ async def rename_sensor_parameters(
             param.display_name = reading_display_name(device.label, reading)
 
 
-def reading_shown_as(param_key: str, preset: Preset | None) -> tuple[ReadingFormat, int | None]:
-    """How to show one mapped key: its preset reading's format, else a plain value."""
-    if preset is not None:
-        parts = preset.split_key(param_key)
-        reading = preset.reading(parts[1]) if parts else None
-        if reading is not None:
-            return reading.format, reading.max_value
-    return "value", None
+def reading_of(param_key: str, preset: Preset | None) -> PresetReading | None:
+    """The preset reading one of a sensor's mapped keys is. None for a key
+    mapped by hand, or a device no preset made: those show as a plain value."""
+    return preset.reading_of_key(param_key) if preset else None
 
 
 async def live_sensors(
@@ -262,14 +260,15 @@ async def live_sensors(
                 online=device_is_online(device, offline_timeout_minutes, now),
                 last_seen=device.last_seen,
                 fill_key=next((k for k in keys if suffix(k) == preset.fill_suffix), None),
-                readings=[
-                    LiveSensorReading(
-                        param_key=key,
-                        format=reading_shown_as(key, preset)[0],
-                        max_value=reading_shown_as(key, preset)[1],
-                    )
-                    for key in keys
-                ],
+                readings=[_live_reading(key, reading_of(key, preset)) for key in keys],
             )
         )
     return cards
+
+
+def _live_reading(param_key: str, reading: PresetReading | None) -> LiveSensorReading:
+    if reading is None:
+        return LiveSensorReading(param_key=param_key)
+    return LiveSensorReading(
+        param_key=param_key, format=reading.format, max_value=reading.max_value
+    )

@@ -126,3 +126,5 @@ migrations must swallow their own operational errors.
 | `113_livelink_device_preset_key` | **FATAL** — Add ``livelink_devices.preset_key``: which preset created this device. |
 | `114_livelink_parameter_dashboard_default` | **FATAL** — Reset ``livelink_parameters.show_on_dashboard`` to TRUE everywhere. |
 | `116_livelink_enable_for_active_installs` | **FATAL** — Switch LiveLink on for installs already receiving MQTT or Torque data. |
+| `117_livelink_alert_lines` | **FATAL** — Add a critical alert line and a notify-once state to ``livelink_parameters``. |
+| `118_livelink_notify_switch_keys` | Carry LiveLink notification switches over to the keys Settings writes. |

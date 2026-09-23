@@ -10,6 +10,7 @@ import type { DeviceReadingsResponse, LiveLinkDevice } from '@/types/livelink'
 import type { Vehicle } from '@/types/vehicle'
 import { getActionErrorMessage } from '@/utils/httpErrorHandler'
 import DeviceReadingsList from './DeviceReadingsList'
+import SensorAlerts from './SensorAlerts'
 import TopicMapEditor from './TopicMapEditor'
 
 /**
@@ -17,8 +18,9 @@ import TopicMapEditor from './TopicMapEditor'
  * the way each WiCAN dongle is one row under WiCAN's.
  *
  * The header holds what belongs to the sensor itself (its name, whether it is
- * reporting, which vehicle it feeds); the body is its readings, two to a row.
- * Topic mappings and delete are one click away but not in the way.
+ * reporting, which vehicle it feeds); the body is its readings, two to a row,
+ * then its alert lines. Topic mappings and delete are one click away but not
+ * in the way.
  */
 
 interface Props {
@@ -168,12 +170,19 @@ export default function SensorBlock({ device, vehicles, onChanged }: Props): Rea
           </Button>
         </div>
       ) : readings ? (
-        <DeviceReadingsList
-          compact
-          sensorLabel={device.label ?? undefined}
-          readings={readings.readings}
-          onChanged={() => void loadReadings()}
-        />
+        <>
+          <DeviceReadingsList
+            compact
+            sensorLabel={device.label ?? undefined}
+            readings={readings.readings}
+            onChanged={() => void loadReadings()}
+          />
+          <SensorAlerts
+            readings={readings.readings}
+            sensorLabel={device.label ?? undefined}
+            onSaved={() => void loadReadings()}
+          />
+        </>
       ) : null}
 
       {showMappings ? (

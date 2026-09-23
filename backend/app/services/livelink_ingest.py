@@ -161,9 +161,12 @@ async def ingest(module: BaseSourceModule, env: Envelope, db: AsyncSession) -> N
         # Ungated, this port would start sending notifications that have never
         # fired for a Torque user or on a battery frame.
         if batch.alert_on_thresholds:
+            # A preset sensor (a propane tank) sits past its line for days, so
+            # its readings notify once per crossing rather than every cooldown.
+            once = device.preset_key is not None
             for param_key, value in result.validated_data.items():
                 if isinstance(value, (int, float)):
-                    await telemetry.check_thresholds(device.vin, param_key, float(value))
+                    await telemetry.check_thresholds(device.vin, param_key, float(value), once=once)
 
     if Capability.LOCATION in module.capabilities and batch.location is not None:
         vehicle = (

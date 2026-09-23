@@ -2,7 +2,7 @@ import { useId } from 'react'
 import type { ReactElement } from 'react'
 
 import { formatAtPrecision } from '@/utils/unitFormat'
-import { tankLevelTone } from '@/utils/sensorReadings'
+import type { TankTone } from '@/utils/sensorReadings'
 
 /**
  * An upright propane bottle filled to its level: collar and valve on top, a
@@ -15,6 +15,8 @@ import { tankLevelTone } from '@/utils/sensorReadings'
 interface Props {
   /** Percent, 0 to 100. Null before the first reading. */
   level: number | null
+  /** The fill's colour, from the tank's own alert lines. */
+  tone: TankTone
   /** What a screen reader hears, e.g. "Level 72%". */
   label: string
   className?: string
@@ -23,13 +25,13 @@ interface Props {
 /** The body, in viewBox units. */
 const BODY = { x: 10, y: 34, width: 80, height: 116, radius: 30 }
 
-const FILL_CLASS: Record<ReturnType<typeof tankLevelTone>, string> = {
+const FILL_CLASS: Record<TankTone, string> = {
   success: 'fill-success',
   warning: 'fill-warning',
   danger: 'fill-danger',
 }
 
-export default function TankGraphic({ level, label, className }: Props): ReactElement {
+export default function TankGraphic({ level, tone, label, className }: Props): ReactElement {
   const clipId = `tank-${useId().replace(/:/g, '')}`
   const clamped = level == null ? null : Math.min(100, Math.max(0, level))
   const fillHeight = clamped == null ? 0 : (BODY.height * clamped) / 100
@@ -64,7 +66,7 @@ export default function TankGraphic({ level, label, className }: Props): ReactEl
           width={BODY.width}
           height={fillHeight}
           clipPath={`url(#${clipId})`}
-          className={FILL_CLASS[tankLevelTone(clamped)]}
+          className={FILL_CLASS[tone]}
           opacity="0.85"
         />
       ) : null}

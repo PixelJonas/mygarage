@@ -53,6 +53,7 @@ from app.schemas.torque import (
 )
 from app.services.auth import get_vehicle_for_owner_or_403, get_vehicle_or_403, require_auth
 from app.services.dtc_service import DTCService
+from app.services.livelink_alerts import alert_band
 from app.services.livelink_integrations import device_is_online
 from app.services.livelink_service import LiveLinkService
 from app.services.livelink_sources.presets.sensors import live_sensors
@@ -184,17 +185,7 @@ async def get_vehicle_livelink_status(
     latest_with_thresholds = []
     for lv in latest_values:
         param = all_params.get(lv.param_key)
-        in_warning = False
-        warning_min = None
-        warning_max = None
-
-        if param:
-            warning_min = param.warning_min
-            warning_max = param.warning_max
-            if warning_min is not None and lv.value < warning_min:
-                in_warning = True
-            if warning_max is not None and lv.value > warning_max:
-                in_warning = True
+        band = alert_band(lv.value, param) if param else None
 
         latest_with_thresholds.append(
             TelemetryLatestValue(
@@ -203,9 +194,10 @@ async def get_vehicle_livelink_status(
                 unit=param.unit if param else None,
                 display_name=param.display_name if param else lv.param_key,
                 timestamp=lv.timestamp,
-                warning_min=warning_min,
-                warning_max=warning_max,
-                in_warning=in_warning,
+                warning_min=param.warning_min if param else None,
+                warning_max=param.warning_max if param else None,
+                in_warning=band is not None,
+                alert_band=band,
                 show_on_dashboard=bool(param.show_on_dashboard) if param else True,
             )
         )

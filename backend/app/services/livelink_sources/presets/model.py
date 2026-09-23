@@ -11,6 +11,10 @@ from typing import Literal
 #: a whole number; `of_max` is "3 of 3" against `PresetReading.max_value`.
 ReadingFormat = Literal["value", "boolean", "count", "of_max"]
 
+#: An alert line Settings can offer on a reading: `low` is `warning_min`,
+#: `critical` is `critical_min`.
+AlertLine = Literal["low", "critical"]
+
 
 @dataclass(frozen=True)
 class PresetReading:
@@ -31,6 +35,21 @@ class PresetReading:
     format: ReadingFormat = "value"
     #: The top of the scale for an `of_max` reading.
     max_value: int | None = None
+    #: The alert lines a new sensor starts with, which its owner can move or
+    #: switch off in Settings: below `low` warns, below `critical` is urgent.
+    #: None means the reading offers no such line.
+    low: float | None = None
+    critical: float | None = None
+
+    @property
+    def alert_lines(self) -> tuple[AlertLine, ...]:
+        """The lines Settings offers for this reading, in the order it shows them."""
+        offered: list[AlertLine] = []
+        if self.low is not None:
+            offered.append("low")
+        if self.critical is not None:
+            offered.append("critical")
+        return tuple(offered)
 
 
 @dataclass(frozen=True)
@@ -74,3 +93,8 @@ class Preset:
     def reading(self, suffix: str) -> PresetReading | None:
         """The reading with this suffix, if the preset has one."""
         return next((r for r in self.readings if r.suffix == suffix), None)
+
+    def reading_of_key(self, param_key: str) -> PresetReading | None:
+        """The reading a key of this preset's shape is, if the preset has it."""
+        parts = self.split_key(param_key)
+        return self.reading(parts[1]) if parts else None

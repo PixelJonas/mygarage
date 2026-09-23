@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatSensorReading, sensorReadingName, tankLevelTone } from '../sensorReadings'
+import { formatSensorReading, readingTone, sensorReadingName, tankLevelTone } from '../sensorReadings'
 import { makeUnitFormat } from '../unitFormat'
 import { presetUnitsFor } from '@/types/units'
 
@@ -64,13 +64,23 @@ describe('formatSensorReading', () => {
 
 describe('tankLevelTone', () => {
   it.each([
-    [100, 'success'],
-    [25, 'success'],
-    [24.9, 'warning'],
-    [10, 'warning'],
-    [9.9, 'danger'],
-    [0, 'danger'],
-  ])('%s%% is %s', (level, tone) => {
-    expect(tankLevelTone(level)).toBe(tone)
+    [null, 'success'],
+    [undefined, 'success'],
+    ['low', 'warning'],
+    ['critical', 'danger'],
+    ['high', 'warning'],
+  ] as const)('a tank past %s is %s', (band, tone) => {
+    expect(tankLevelTone(band)).toBe(tone)
+  })
+})
+
+describe('readingTone', () => {
+  it.each([
+    [null, 'default'],
+    ['low', 'warning'],
+    ['high', 'warning'],
+    ['critical', 'danger'],
+  ] as const)('a reading past %s is %s: a low battery is a warning, not an emergency', (band, tone) => {
+    expect(readingTone(band)).toBe(tone)
   })
 })

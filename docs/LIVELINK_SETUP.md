@@ -131,6 +131,17 @@ mygarage/rv/propane/tank1/rejected_readings
 mygarage/rv/propane/tank1/availability
 ```
 
+Each tank has its own alert lines, under **Alerts** in its block: the level
+warns below **Low** (25% on a new sensor) and again below **Critical** (10%),
+and the sensor battery warns below **Low** (20%). A blank line is off. The
+lines colour the tank on the Live tab, and each sends one notification when
+the reading drops below it, through LiveLink's threshold alert (switched off
+by **Parameter threshold breaches** in LiveLink's settings). It fires again
+only after the reading climbs 5 points back above the line, so a refill
+re-arms it and a level wobbling at 25% does not. If no notification service
+takes it, it tries again after the alert cooldown. WiCAN readings keep
+repeating their alerts every alert cooldown.
+
 Reading Mopeka values:
 
 - Signal quality gates only the level and depth. Temperature and battery

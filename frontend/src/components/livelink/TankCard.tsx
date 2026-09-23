@@ -7,7 +7,13 @@ import { Mono } from '@/components/ui'
 import type { LiveSensor, TelemetryLatestValue } from '@/types/livelink'
 import { getDateFnsLocale } from '@/utils/dateUtils'
 import { parseAPITimestamp } from '@/utils/parseAPITimestamp'
-import { formatSensorReading, sensorReadingName, tankContent } from '@/utils/sensorReadings'
+import {
+  formatSensorReading,
+  readingTone,
+  sensorReadingName,
+  tankContent,
+  tankLevelTone,
+} from '@/utils/sensorReadings'
 import { getParamDisplayName } from '@/utils/telemetryUnits'
 import type { UnitFormat } from '@/utils/unitFormat'
 import TankGraphic from './TankGraphic'
@@ -18,7 +24,8 @@ import TankGraphic from './TankGraphic'
  * "Tank 1 sensor heard": the card already says which tank).
  *
  * The show-on-dashboard switches from Settings still apply. A hidden reading
- * leaves the list; a hidden level takes the tank graphic with it.
+ * leaves the list; a hidden level takes the tank graphic with it. The colours
+ * follow the tank's own alert lines, also set in Settings.
  */
 
 interface Props {
@@ -63,6 +70,7 @@ export default function TankCard({ sensor, values, unitFormat }: Props): ReactEl
         {drawsTank ? (
           <TankGraphic
             level={fill?.value ?? null}
+            tone={tankLevelTone(fill?.alert_band)}
             label={
               fill ? t('livelink.tankLevel', { level: Math.round(fill.value) }) : t('livelink.tankLevelUnknown')
             }
@@ -86,7 +94,7 @@ export default function TankCard({ sensor, values, unitFormat }: Props): ReactEl
                 <div key={reading.param_key} className="contents">
                   <dt className="truncate text-text-mute">{sensorReadingName(name, sensor.label)}</dt>
                   <dd className="text-right">
-                    <Mono size="sm" tabular tone={value.in_warning ? 'danger' : 'default'}>
+                    <Mono size="sm" tabular tone={readingTone(value.alert_band)}>
                       {shown.text}
                       {shown.unit ? <span className="ml-1 text-text-mute">{shown.unit}</span> : null}
                     </Mono>

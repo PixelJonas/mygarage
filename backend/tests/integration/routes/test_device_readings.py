@@ -17,6 +17,8 @@ _SEQ = itertools.count()
 
 #: Prefix for parameters this file registers, so `_clean` can remove exactly those.
 _PREFIX = "DEVREAD_"
+#: The preset sensors here are `mopeka-t79nn`, clear of the preset tests' indexes.
+_SENSOR_KEYS = "PROPANE_T79"
 
 
 def _url(device_id: str) -> str:
@@ -36,7 +38,10 @@ async def _clean(db_session):
         # Parameters this file registers. Without this a leftover row leaks
         # into other files that count or scan parameters by prefix.
         await db_session.execute(
-            delete(LiveLinkParameter).where(LiveLinkParameter.param_key.startswith(_PREFIX))
+            delete(LiveLinkParameter).where(
+                LiveLinkParameter.param_key.startswith(_PREFIX)
+                | LiveLinkParameter.param_key.startswith(_SENSOR_KEYS)
+            )
         )
         await db_session.execute(
             delete(LiveLinkDevice).where(LiveLinkDevice.kind == "generic_mqtt")
@@ -389,3 +394,38 @@ async def test_each_reading_says_how_it_is_shown(client, auth_headers, db_sessio
 
     shown = {r["param_key"]: (r["format"], r["max_value"]) for r in body["readings"]}
     assert shown == {heard: ("boolean", None), quality: ("of_max", 3), plain: ("value", None)}
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_each_reading_says_which_alert_lines_it_offers(
+    client, auth_headers, db_session, test_vehicle
+):
+    """The tank settings edit a sensor's lines where they list its readings: a
+    level offers low and critical, a battery low, anything else none."""
+    from app.models.livelink_parameter import LiveLinkParameter
+
+    n = 7900 + next(_SEQ)
+    device = await _device(
+        db_session, vin=test_vehicle["vin"], device_id=f"mopeka-t{n}", preset_key="mopeka"
+    )
+    level, battery, temp = (f"PROPANE_T{n}_{s}" for s in ("LEVEL_PCT", "SENSOR_BATT_PCT", "TEMP_C"))
+    for key in (level, battery, temp):
+        await _map(db_session, device.device_id, key)
+    db_session.add(
+        LiveLinkParameter(param_key=level, unit="%", warning_min=30.0, critical_min=12.0)
+    )
+    db_session.add(LiveLinkParameter(param_key=battery, unit="%"))
+    await db_session.commit()
+
+    body = (await client.get(_url(device.device_id), headers=auth_headers)).json()
+
+    lines = {
+        r["param_key"]: (r["alert_lines"], r["warning_min"], r["critical_min"])
+        for r in body["readings"]
+    }
+    assert lines == {
+        level: (["low", "critical"], 30.0, 12.0),
+        battery: (["low"], None, None),
+        temp: ([], None, None),
+    }

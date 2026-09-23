@@ -33,9 +33,21 @@ STORAGE_INTERVAL_SECONDS = 300
 #: In the order a sensor's readings are shown. Keywords are lowercase
 #: substrings that identify a reading's topic segment in any layout.
 READINGS: tuple[PresetReading, ...] = (
-    PresetReading("LEVEL_PCT", "level", "%", "propane", "level_percent", ("level",), True),
+    PresetReading(
+        "LEVEL_PCT",
+        "level",
+        "%",
+        "propane",
+        "level_percent",
+        ("level",),
+        True,
+        low=25.0,
+        critical=10.0,
+    ),
     PresetReading("TEMP_C", "temperature", "C", "temperature", "temperature_c", ("temp",)),
-    PresetReading("SENSOR_BATT_PCT", "battery", "%", "battery", "battery_percent", ("batt",)),
+    PresetReading(
+        "SENSOR_BATT_PCT", "battery", "%", "battery", "battery_percent", ("batt",), low=20.0
+    ),
     # ESPHome publishes the sensor's own quality grade: 0 none, 1 low, 2 medium,
     # 3 high. The gateway's `minimum_signal_quality` gates level and depth on it.
     PresetReading(

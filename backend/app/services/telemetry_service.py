@@ -1573,28 +1573,41 @@ class TelemetryService:
         vin: str,
         param_key: str,
         value: float,
+        *,
+        once: bool = False,
     ) -> None:
-        """Check if a value exceeds parameter thresholds and send notifications.
+        """Notify when a value crosses one of its parameter's alert lines.
 
-        Respects alert cooldown to prevent notification spam.
+        `once`: notify once per crossing (`alert_state`, see `livelink_alerts`),
+        as a preset sensor's readings do. Otherwise every breaching reading
+        notifies again, held back by the alert cooldown.
         """
+        from app.services.livelink_alerts import alert_band, band_line, crossing
+
         param = await self.get_parameter(param_key)
         if not param:
             return
 
-        # Check if value is outside thresholds
-        alert_type = None
-        threshold_value = None
+        now = utc_now()
+        if once:
+            # Held, or re-armed by a value back clear of its line: the state
+            # is stored as is. A band to notify leaves it unchanged.
+            band, param.alert_state = crossing(param.alert_state, value, param)
+            if band is None:
+                return
+            # A send no service accepted is tried again once the cooldown has
+            # passed, not on every reading: a tank sits below its line for
+            # days, and each send to a service that is down retries inline.
+            if param.alert_retry_at is not None and now < param.alert_retry_at:
+                return
+        else:
+            band = alert_band(value, param)
+            if band is None:
+                return
 
-        if param.warning_max is not None and value > param.warning_max:
-            alert_type = "max"
-            threshold_value = param.warning_max
-        elif param.warning_min is not None and value < param.warning_min:
-            alert_type = "min"
-            threshold_value = param.warning_min
+        from app.services.livelink_service import LiveLinkService
 
-        if not alert_type or threshold_value is None:
-            return
+        livelink = LiveLinkService(self.db)
 
         # Cooldown - skip dispatch while a prior notification for this
         # parameter is still within the admin-configured cooldown window
@@ -1603,12 +1616,10 @@ class TelemetryService:
         # this every one would dispatch. Thresholds live on the param (not
         # per-vehicle), so the cooldown is global-per-param. The setting is
         # only read once a prior stamp exists — first-ever breaches skip
-        # the extra settings query.
-        now = utc_now()
-        if param.warning_last_notified_at is not None:
-            from app.services.livelink_service import LiveLinkService
-
-            cooldown_minutes = await LiveLinkService(self.db).get_alert_cooldown_minutes()
+        # the extra settings query. A notify-once reading has no cooldown:
+        # it notifies each band once, whenever it enters it.
+        if not once and param.warning_last_notified_at is not None:
+            cooldown_minutes = await livelink.get_alert_cooldown_minutes()
             if now - param.warning_last_notified_at < timedelta(minutes=cooldown_minutes):
                 return
 
@@ -1632,16 +1643,23 @@ class TelemetryService:
             vehicle_name=vehicle_name,
             parameter_name=param.display_name or param_key,
             value=value,
-            threshold_type=alert_type,
-            threshold_value=threshold_value,
+            band=band,
+            threshold_value=band_line(band, param),
             unit=param.unit,
         )
 
-        # Stamp the cooldown only when at least one service actually accepted
-        # the notification. The dispatcher records False for attempted-but-
-        # failed sends, so an all-failed dict (e.g. transient outage) must not
-        # start the cooldown clock and silence real alerts; nor must an empty
-        # dict (event disabled / no services enabled). The caller commits the
-        # surrounding transaction, so no explicit commit here.
+        # Stamp the cooldown, and a notify-once reading's band, only when at
+        # least one service actually accepted the notification. The
+        # dispatcher records False for attempted-but-failed sends, so an
+        # all-failed dict (e.g. transient outage) must not start the cooldown
+        # clock and silence real alerts; nor must an empty dict (event
+        # disabled / no services enabled). The caller commits the surrounding
+        # transaction, so no explicit commit here.
         if any(dispatch_results.values()):
             param.warning_last_notified_at = now
+            if once:
+                param.alert_state = band
+                param.alert_retry_at = None
+        elif once:
+            cooldown_minutes = await livelink.get_alert_cooldown_minutes()
+            param.alert_retry_at = now + timedelta(minutes=cooldown_minutes)

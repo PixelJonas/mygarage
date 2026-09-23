@@ -14,8 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Create a LiveLink device from Settings
 - Mopeka propane sensors: add each tank as its own device from its level topic, with the other readings' topics suggested from the broker
 - Propane tanks on the Live tab: one card per tank, drawn at its level, with its other readings beside it
+- Alert lines per tank in Settings (level low and critical, battery low): they colour the tank and notify once per crossing, re-armed by a refill
 
 ### Fixed
+- A request with NaN or infinity in a number field gets a 422, not a 500
+- The notification switches in LiveLink settings now gate their notifications; **Parameter threshold breaches** did nothing (migration 118 keeps any alert switched off the old way off)
 - Removed `TelemetryService.store_value`, which was unreachable and raised `TypeError`
 - Widened `livelink_devices.kind` so PostgreSQL accepts `generic_mqtt`
 

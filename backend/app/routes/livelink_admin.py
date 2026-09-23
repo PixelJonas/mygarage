@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.livelink_device import LiveLinkDevice
+from app.models.livelink_parameter import LiveLinkParameter
 from app.models.livelink_topic_map import LiveLinkTopicMap
 from app.models.user import User
 from app.models.vehicle_telemetry import VehicleTelemetry
@@ -74,7 +75,7 @@ from app.services.livelink_service import LiveLinkService
 from app.services.livelink_sources.presets import PRESETS
 from app.services.livelink_sources.presets.sensors import (
     create_sensor,
-    reading_shown_as,
+    reading_of,
     reject_foreign_preset_key,
     rename_sensor_parameters,
 )
@@ -560,6 +561,22 @@ async def get_parameter(
     return LiveLinkParameterResponse.model_validate(param)
 
 
+def _check_alert_lines(param: LiveLinkParameter, lines: dict[str, float | None]) -> None:
+    """Refuse lines no value could sensibly cross. Raises 422.
+
+    A percentage's lines stay within 0 to 100, and the critical line sits
+    below the low one, taking whichever of the two this update leaves stored.
+    """
+    if param.unit == "%":
+        for name, line in lines.items():
+            if line is not None and not 0 <= line <= 100:
+                raise HTTPException(status_code=422, detail=f"{name} must be between 0 and 100")
+    low = lines.get("warning_min", param.warning_min)
+    critical = lines.get("critical_min", param.critical_min)
+    if low is not None and critical is not None and critical >= low:
+        raise HTTPException(status_code=422, detail="critical_min must be below warning_min")
+
+
 @router.put("/parameters/{param_key}", response_model=LiveLinkParameterResponse)
 async def update_parameter(
     param_key: str,
@@ -586,10 +603,15 @@ async def update_parameter(
         param.category = updates.category
     if updates.icon is not None:
         param.icon = updates.icon
-    if updates.warning_min is not None:
-        param.warning_min = updates.warning_min
-    if updates.warning_max is not None:
-        param.warning_max = updates.warning_max
+    # An explicit null switches a line off; an omitted one stays as it is.
+    lines = {
+        name: getattr(updates, name)
+        for name in ("warning_min", "critical_min", "warning_max")
+        if name in updates.model_fields_set
+    }
+    _check_alert_lines(param, lines)
+    for name, line in lines.items():
+        setattr(param, name, line)
     if updates.display_order is not None:
         param.display_order = updates.display_order
     if updates.show_on_dashboard is not None:
@@ -1336,7 +1358,7 @@ async def get_device_readings(
     for key in param_keys:
         parameter = parameters.get(key)
         value, timestamp = values.get(key, (None, None))
-        shown_as, max_value = reading_shown_as(key, preset)
+        reading = reading_of(key, preset)
         readings.append(
             DeviceReading(
                 param_key=key,
@@ -1345,8 +1367,11 @@ async def get_device_readings(
                 value=value,
                 timestamp=timestamp,
                 show_on_dashboard=bool(parameter.show_on_dashboard) if parameter else True,
-                format=shown_as,
-                max_value=max_value,
+                format=reading.format if reading else "value",
+                max_value=reading.max_value if reading else None,
+                warning_min=parameter.warning_min if parameter else None,
+                critical_min=parameter.critical_min if parameter else None,
+                alert_lines=list(reading.alert_lines) if reading else [],
             )
         )
 

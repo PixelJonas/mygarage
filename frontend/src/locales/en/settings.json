@@ -371,7 +371,18 @@
     "confirmDeleteSensor": "Delete {{name}}? Its readings stay in the vehicle's history.",
     "sensorNoData": "No recent readings",
     "lastReading": "Last reading {{age}}",
-    "readingOld": "(old)"
+    "readingOld": "(old)",
+    "alertsHeading": "Alerts",
+    "alertsHint": "One notification each time a reading drops below a line. Leave a line blank to switch it off.",
+    "alertLow": "Low",
+    "alertCritical": "Critical",
+    "alertOff": "Off",
+    "alertField": "{{reading}}: {{line}}",
+    "alertRange": "Enter 0 to 100, or leave it blank.",
+    "alertCriticalBelowLow": "Critical must be below Low.",
+    "saveAlerts": "Save alerts",
+    "alertsSaved": "Alerts saved",
+    "saveAlertsAction": "save the alerts"
   },
   "notifications": {
     "loading": "Loading notification settings...",

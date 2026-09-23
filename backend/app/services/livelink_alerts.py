@@ -1,0 +1,87 @@
+"""When a LiveLink reading's alert lines notify.
+
+A reading may carry three lines on its `LiveLinkParameter`: a low warning
+(`warning_min`), a lower critical one (`critical_min`) and a high one
+(`warning_max`). A value past a line is in that line's band.
+
+Most readings (WiCAN's) notify on every reading past a line, held back only by
+the alert cooldown. A preset sensor's readings notify once per crossing
+instead: a propane tank below its low line stays there for days, and the
+cooldown would repeat the same alert every half hour until the refill. So they
+keep the band they last notified in `alert_state`, notify again only for a
+worse one, and re-arm once the value is clear of the line.
+"""
+
+from __future__ import annotations
+
+from typing import Literal, Protocol
+
+AlertBand = Literal["low", "critical", "high"]
+
+#: How far a value must come back past the line it crossed before that alert
+#: can fire again. Without it a level jittering around 25% notifies on every dip.
+REARM_MARGIN = 5.0
+
+
+class AlertLines(Protocol):
+    """A reading's lines: `LiveLinkParameter` in the app, anything alike in tests."""
+
+    warning_min: float | None
+    critical_min: float | None
+    warning_max: float | None
+
+
+def alert_band(value: float, lines: AlertLines) -> AlertBand | None:
+    """The band `value` is in, or None. The high line is checked first, as it always was."""
+    if lines.warning_max is not None and value > lines.warning_max:
+        return "high"
+    if lines.critical_min is not None and value < lines.critical_min:
+        return "critical"
+    if lines.warning_min is not None and value < lines.warning_min:
+        return "low"
+    return None
+
+
+def band_line(band: AlertBand, lines: AlertLines) -> float:
+    """The line whose crossing put a value in `band`.
+
+    Raises ValueError when that line is not set: no value can be in its band.
+    """
+    line = {
+        "high": lines.warning_max,
+        "critical": lines.critical_min,
+        "low": lines.warning_min,
+    }[band]
+    if line is None:
+        raise ValueError(f"no {band} line is set")
+    return line
+
+
+def crossing(
+    state: str | None, value: float, lines: AlertLines
+) -> tuple[AlertBand | None, str | None]:
+    """For a notify-once reading: (the band to notify now or None, the state to keep).
+
+    Notifies on entering a band it has not notified. Climbing from critical
+    back to low is a recovery, not a new alert. Re-arms (state None) only once
+    the value is REARM_MARGIN clear of the low line (the critical line when
+    there is no low one) or below the high line; until then it keeps its state,
+    so jitter at a line is silent.
+
+    When it returns a band to notify, the state it returns is the current one:
+    the caller stores the band only once a send is delivered, so a failed send
+    is tried again on the next reading.
+    """
+    band = alert_band(value, lines)
+    if band is not None:
+        if band == state or (band == "low" and state == "critical"):
+            return None, state
+        return band, state
+
+    if state == "high":
+        line = lines.warning_max
+        clear = line is None or value <= line - REARM_MARGIN
+    else:
+        line = lines.warning_min if lines.warning_min is not None else lines.critical_min
+        clear = line is None or value >= line + REARM_MARGIN
+    return None, None if clear else state

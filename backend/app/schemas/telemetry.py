@@ -23,6 +23,13 @@ class TelemetryLatestValue(BaseModel):
     warning_min: float | None = Field(None, description="Low warning threshold")
     warning_max: float | None = Field(None, description="High warning threshold")
     in_warning: bool = Field(False, description="Whether value is outside thresholds")
+    alert_band: Literal["low", "critical", "high"] | None = Field(
+        None,
+        description=(
+            "Which alert line the value is past: below low, below critical (a "
+            "tank's red line, under low), or above high. None inside its lines."
+        ),
+    )
     show_on_dashboard: bool = Field(
         True,
         description=(

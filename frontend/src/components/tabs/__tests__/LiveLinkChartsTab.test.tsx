@@ -102,7 +102,7 @@ const mkParam = (id: number, param_key: string, display_name: string, unit: stri
     id, param_key, display_name, unit,
     archive_only: false, category: null, created_at: 'x', display_order: id,
     icon: null, show_on_dashboard: true, storage_interval_seconds: 1,
-    updated_at: null, warning_max: null, warning_min: null,
+    updated_at: null, warning_max: null, warning_min: null, critical_min: null,
   }) satisfies LiveLinkParameter
 const PARAMS = {
   parameters: [

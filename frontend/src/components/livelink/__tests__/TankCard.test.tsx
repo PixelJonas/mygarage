@@ -93,6 +93,41 @@ describe('TankCard', () => {
     expect(screen.getByText('Sensor heard')).toBeInTheDocument()
   })
 
+  it.each([
+    [null, 'fill-success'],
+    ['low', 'fill-warning'],
+    ['critical', 'fill-danger'],
+  ] as const)('colours the tank by the line it is past (%s)', (band, fill) => {
+    const { container } = renderCard([value('LEVEL_PCT', 'level', 30, { unit: '%', alert_band: band })])
+
+    expect(container.querySelector('rect[clip-path]')).toHaveClass(fill)
+  })
+
+  it('reads a low battery amber and a reading past critical red', () => {
+    const sensor: LiveSensor = {
+      ...SENSOR,
+      readings: [
+        ...(SENSOR.readings ?? []),
+        { param_key: K('SENSOR_BATT_PCT'), format: 'value', max_value: null },
+        { param_key: K('DEPTH_MM'), format: 'value', max_value: null },
+      ],
+    }
+    renderCard(
+      [
+        ...VALUES,
+        value('SENSOR_BATT_PCT', 'battery', 15, { unit: '%', alert_band: 'low', in_warning: true }),
+        value('DEPTH_MM', 'depth', 5, { unit: 'mm', alert_band: 'critical', in_warning: true }),
+      ],
+      sensor,
+    )
+
+    const toneOf = (name: string): Element | null | undefined =>
+      screen.getByText(name, { selector: 'dt' }).nextElementSibling?.firstElementChild
+    expect(toneOf('Battery')).toHaveClass('text-warning')
+    expect(toneOf('Depth')).toHaveClass('text-danger')
+    expect(toneOf('Temperature')).toHaveClass('text-text')
+  })
+
   it('draws an empty tank until the level first reports', () => {
     renderCard(VALUES.filter((v) => v.param_key !== K('LEVEL_PCT')))
 

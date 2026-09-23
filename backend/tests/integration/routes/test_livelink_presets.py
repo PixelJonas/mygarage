@@ -143,6 +143,22 @@ def test_the_tank_is_filled_by_the_level():
     assert MOPEKA.reading(MOPEKA.fill_suffix) is not None
 
 
+def test_the_level_and_battery_offer_alert_lines():
+    lines = {r.suffix: (r.low, r.critical) for r in MOPEKA.readings if r.alert_lines}
+
+    assert lines == {"LEVEL_PCT": (25.0, 10.0), "SENSOR_BATT_PCT": (20.0, None)}
+    assert MOPEKA.reading("LEVEL_PCT").alert_lines == ("low", "critical")
+    assert MOPEKA.reading("SENSOR_BATT_PCT").alert_lines == ("low",)
+
+
+def test_only_percent_readings_offer_alert_lines():
+    """The settings edit lines as 0 to 100 with no unit conversion, so a line
+    on a converted reading (a temperature) would be saved in the wrong unit."""
+    for reading in MOPEKA.readings:
+        if reading.alert_lines:
+            assert reading.unit == "%", reading.suffix
+
+
 def test_every_default_topic_is_one_exact_segment():
     """It is appended to the level topic's folder, so it cannot carry a slash
     or a wildcard."""
@@ -206,6 +222,28 @@ async def test_adding_a_sensor_creates_its_device_maps_and_names(
     # reconnect writes a row.
     assert level_fields == ("Front tank level", 300)
     assert temp_fields == ("Front tank temperature", 300)
+
+
+@pytest.mark.asyncio
+async def test_a_new_sensor_starts_with_the_default_alert_lines(
+    client, auth_headers, db_session, no_reload
+):
+    n = await next_sensor_index(db_session, MOPEKA)
+
+    resp = await _add(
+        client, auth_headers, topics=_topics("lines", "LEVEL_PCT", "SENSOR_BATT_PCT", "TEMP_C")
+    )
+
+    assert resp.status_code == 201
+    level = await _parameter(db_session, f"PROPANE_T{n}_LEVEL_PCT")
+    level_lines = (level.warning_min, level.critical_min)
+    battery = await _parameter(db_session, f"PROPANE_T{n}_SENSOR_BATT_PCT")
+    battery_lines = (battery.warning_min, battery.critical_min)
+    temp = await _parameter(db_session, f"PROPANE_T{n}_TEMP_C")
+    temp_lines = (temp.warning_min, temp.critical_min)
+    assert level_lines == (25.0, 10.0)
+    assert battery_lines == (20.0, None)
+    assert temp_lines == (None, None)
 
 
 @pytest.mark.asyncio

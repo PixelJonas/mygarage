@@ -9236,6 +9236,16 @@ export interface components {
          * @description One mapped parameter and its most recent device-attributed value.
          */
         DeviceReading: {
+            /**
+             * Alert Lines
+             * @description The alert lines Settings offers for this reading: a preset sensor's tank level offers low and critical, its battery low. Empty for anything else.
+             */
+            alert_lines?: ("low" | "critical")[];
+            /**
+             * Critical Min
+             * @description The critical alert line, if set
+             */
+            critical_min?: number | null;
             /** Display Name */
             display_name?: string | null;
             /**
@@ -9269,6 +9279,11 @@ export interface components {
              * @description None when never reported
              */
             value?: number | null;
+            /**
+             * Warning Min
+             * @description The low alert line, if set
+             */
+            warning_min?: number | null;
         };
         /**
          * DeviceReadingsResponse
@@ -11776,6 +11791,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Critical Min */
+            critical_min: number | null;
             /**
              * Display Name
              * @description User-friendly display name
@@ -11828,6 +11845,11 @@ export interface components {
              * @description Category for grouping
              */
             category?: string | null;
+            /**
+             * Critical Min
+             * @description Urgent alert if value drops below; must sit under warning_min
+             */
+            critical_min?: number | null;
             /**
              * Display Name
              * @description User-friendly display name
@@ -15594,6 +15616,11 @@ export interface components {
          * @description Schema for a single latest telemetry value.
          */
         TelemetryLatestValue: {
+            /**
+             * Alert Band
+             * @description Which alert line the value is past: below low, below critical (a tank's red line, under low), or above high. None inside its lines.
+             */
+            alert_band?: ("low" | "critical" | "high") | null;
             /**
              * Display Name
              * @description User-friendly name
