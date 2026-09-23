@@ -5,6 +5,7 @@ index here is read from `next_sensor_index` at the start of the test, never
 assumed to be 1.
 """
 
+from datetime import timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -14,8 +15,15 @@ from sqlalchemy import delete, func, select
 from app.models.livelink_device import LiveLinkDevice
 from app.models.livelink_parameter import LiveLinkParameter
 from app.models.livelink_topic_map import LiveLinkTopicMap
+from app.models.vehicle import Vehicle
+from app.models.vehicle_telemetry import (
+    TelemetryDailySummary,
+    VehicleTelemetry,
+    VehicleTelemetryLatest,
+)
 from app.services.livelink_sources.presets import PRESETS
 from app.services.livelink_sources.presets.sensors import next_sensor_index
+from app.utils.datetime_utils import utc_now
 
 BASE = "/api/livelink/presets"
 MOPEKA = PRESETS["mopeka"]
@@ -279,9 +287,11 @@ async def test_each_sensor_gets_the_next_index(client, auth_headers, db_session,
 
 
 @pytest.mark.asyncio
-async def test_a_deleted_sensors_index_is_never_reused(client, auth_headers, db_session, no_reload):
-    """Reuse would merge a new sensor into the deleted one's history: its
-    parameters, and so its charts, outlive the device."""
+async def test_a_new_sensor_never_takes_an_older_sensors_index(
+    client, auth_headers, db_session, no_reload
+):
+    """One more than the highest index held, so the gap a deleted sensor
+    leaves stays a gap: a third tank is t3, never a second t1."""
     n = await next_sensor_index(db_session, MOPEKA)
     await _add(client, auth_headers, label="Front tank")
     await _add(client, auth_headers, label="Rear tank")
@@ -291,6 +301,120 @@ async def test_a_deleted_sensors_index_is_never_reused(client, auth_headers, db_
 
     assert deleted.status_code == 204
     assert third.json()["device_id"] == f"mopeka-t{n + 2}"
+
+
+@pytest.mark.asyncio
+async def test_deleting_a_sensor_deletes_its_readings(
+    client, auth_headers, db_session, test_user, test_vehicle, no_reload
+):
+    """A sensor's keys are its own, so once it is gone nothing can show them in
+    context: left behind they were loose tiles on the Live tab and a second
+    "Front tank level" in Charts. Every vehicle it reported to, and a reading
+    whose mapping was removed earlier, go with it. A key mapped by hand on the
+    sensor may be shared with another device, and stays, as does every other
+    sensor's: t10, which shares t1's digits, and a hand-made lowercase key,
+    which SQLite's case-blind LIKE would otherwise match."""
+    n = await next_sensor_index(db_session, MOPEKA)
+    vin = test_vehicle["vin"]
+    old_vin = "SENSORMOVEDFROM01"
+    moved_from = Vehicle(
+        vin=old_vin,
+        user_id=test_user["id"],
+        nickname="Old trailer",
+        vehicle_type="Car",
+        year=2010,
+        make="Test",
+        model="Trailer",
+    )
+    db_session.add(moved_from)
+    await db_session.commit()
+    await _add(client, auth_headers, vin=vin, topics=_topics("gone", "LEVEL_PCT", "TEMP_C"))
+    await _add(
+        client, auth_headers, label="Rear tank", vin=vin, topics=_topics("kept", "LEVEL_PCT")
+    )
+    unmapped = f"PROPANE_T{n}_DEPTH_MM"
+    shared = "TEST_SENSOR_SHARED_CABIN_TEMP"
+    db_session.add(
+        LiveLinkTopicMap(
+            device_id=f"mopeka-t{n}", topic="test/gone/cabin", role="telemetry", param_key=shared
+        )
+    )
+    gone = [f"PROPANE_T{n}_LEVEL_PCT", f"PROPANE_T{n}_TEMP_C", unmapped]
+    lookalikes = [f"PROPANE_T{n}0_LEVEL_PCT", f"propane_t{n}_level_pct"]
+    kept = [f"PROPANE_T{n + 1}_LEVEL_PCT", *lookalikes, shared]
+    at = utc_now()
+    for key in [unmapped, shared, *lookalikes]:
+        db_session.add(LiveLinkParameter(param_key=key))
+    for key in gone + kept:
+        # Apart in time: history is unique per (device, key, timestamp).
+        for on, when in ((vin, at), (old_vin, at - timedelta(days=1))):
+            db_session.add(VehicleTelemetryLatest(vin=on, param_key=key, value=1.0, timestamp=when))
+            db_session.add(
+                VehicleTelemetry(
+                    vin=on, device_id=f"mopeka-t{n}", param_key=key, value=1.0, timestamp=when
+                )
+            )
+            db_session.add(TelemetryDailySummary(vin=on, param_key=key, date=when, sample_count=1))
+    await db_session.commit()
+
+    try:
+        resp = await client.delete(f"/api/livelink/devices/mopeka-t{n}", headers=auth_headers)
+
+        assert resp.status_code == 204
+        db_session.expire_all()
+        left = {}
+        for model in (
+            VehicleTelemetryLatest,
+            VehicleTelemetry,
+            TelemetryDailySummary,
+            LiveLinkParameter,
+        ):
+            keys = await db_session.execute(
+                select(model.param_key).where(model.param_key.in_(gone + kept))
+            )
+            left[model.__name__] = sorted(set(keys.scalars()))
+        assert left == dict.fromkeys(left, sorted(kept))
+    finally:
+        for model in (VehicleTelemetryLatest, VehicleTelemetry, TelemetryDailySummary):
+            await db_session.execute(delete(model).where(model.param_key.in_(gone + kept)))
+        # `_clean` takes the rest, but its prefix match is case-blind on SQLite
+        # only, so the lowercase key goes here for PostgreSQL.
+        await db_session.execute(
+            delete(LiveLinkParameter).where(LiveLinkParameter.param_key.in_([shared, *lookalikes]))
+        )
+        await db_session.execute(delete(Vehicle).where(Vehicle.vin == old_vin))
+        await db_session.commit()
+
+
+@pytest.mark.asyncio
+async def test_deleting_a_handmade_device_keeps_its_readings(
+    client, auth_headers, db_session, test_vehicle, no_reload
+):
+    """Only a preset sensor's keys are its own. A device made by hand, even one
+    named like a sensor, maps keys another device may share."""
+    n = await next_sensor_index(db_session, MOPEKA)
+    vin = test_vehicle["vin"]
+    key = f"PROPANE_T{n}_LEVEL_PCT"
+    db_session.add(LiveLinkDevice(device_id=f"mopeka-t{n}", kind="generic_mqtt", vin=vin))
+    db_session.add(LiveLinkParameter(param_key=key))
+    db_session.add(VehicleTelemetryLatest(vin=vin, param_key=key, value=1.0, timestamp=utc_now()))
+    await db_session.commit()
+
+    try:
+        resp = await client.delete(f"/api/livelink/devices/mopeka-t{n}", headers=auth_headers)
+
+        assert resp.status_code == 204
+        db_session.expire_all()
+        latest = await db_session.execute(
+            select(VehicleTelemetryLatest.param_key).where(VehicleTelemetryLatest.param_key == key)
+        )
+        assert list(latest.scalars()) == [key]
+        assert await _parameter(db_session, key) is not None
+    finally:
+        await db_session.execute(
+            delete(VehicleTelemetryLatest).where(VehicleTelemetryLatest.param_key == key)
+        )
+        await db_session.commit()
 
 
 @pytest.mark.asyncio

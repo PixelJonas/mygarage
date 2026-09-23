@@ -356,7 +356,7 @@
     "noSensors": "No sensors yet.",
     "renameSensor": "Rename {{name}}",
     "deleteSensor": "Delete {{name}}",
-    "confirmDeleteSensor": "Delete {{name}}? Its readings stay in the vehicle's history.",
+    "confirmDeleteSensor": "Delete {{name}} and all of its readings? This cannot be undone.",
     "sensorNoData": "No recent readings",
     "lastReading": "Last reading {{age}}",
     "readingOld": "(old)",

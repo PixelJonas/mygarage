@@ -20,12 +20,17 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.livelink_device import LiveLinkDevice
 from app.models.livelink_parameter import LiveLinkParameter
 from app.models.livelink_topic_map import LiveLinkTopicMap
+from app.models.vehicle_telemetry import (
+    TelemetryDailySummary,
+    VehicleTelemetry,
+    VehicleTelemetryLatest,
+)
 from app.schemas.telemetry import LiveSensor, LiveSensorReading
 from app.services.livelink_integrations import device_is_online
 from app.services.livelink_sources.presets import PRESETS, Preset, PresetReading
@@ -44,12 +49,16 @@ def reading_display_name(label: str, reading: PresetReading) -> str:
 async def next_sensor_index(db: AsyncSession, preset: Preset) -> int:
     """One more than the highest sensor index ever used. Never reuses one.
 
-    Held means a parameter row or a device id carries the index. Parameters are
-    the durable record: every mapped key has one (the mapping routes register
-    it, migration 113 backfilled older maps) and nothing deletes them, so they
-    outlive the device. Reuse would merge an unrelated new sensor into a
-    deleted one's history on the same vehicle (charts are queried by VIN and
-    key).
+    Held means a parameter row or a device id carries the index. Parameters
+    are the durable record: every mapped key has one (the mapping routes
+    register it, migration 113 backfilled older maps) and they outlive a
+    removed mapping. So a new sensor never lands in the gap an older, deleted
+    one left.
+
+    Deleting the NEWEST sensor does free its index, and that is safe:
+    `delete_sensor_readings` takes its parameters and every reading with it,
+    so there is no history left for the next sensor to merge into (charts are
+    queried by VIN and key).
     """
     held: set[int] = set()
 
@@ -74,6 +83,53 @@ async def next_sensor_index(db: AsyncSession, preset: Preset) -> int:
             held.add(index)
 
     return max(held, default=0) + 1
+
+
+async def delete_sensor_readings(db: AsyncSession, device: LiveLinkDevice) -> None:
+    """Delete what a preset sensor recorded: its parameters, and every reading
+    under them on every vehicle it has reported to.
+
+    A sensor's keys are its own (`reject_foreign_preset_key`), and once its
+    device is gone nothing can show them in context. Left behind they were
+    loose tiles on the Live tab and a second "Front tank level" in Charts until
+    the staleness rule in `get_latest_values` dropped them, and unreachable
+    after that.
+
+    Every key of the sensor's index, mapped or not: a reading whose mapping was
+    removed earlier is still the sensor's. A key mapped by hand on it (say
+    `CABIN_TEMP`) may be shared with another device and stays. A device no
+    preset made keeps everything: its keys are not its own.
+
+    Does not commit.
+    """
+    preset = PRESETS.get(device.preset_key or "")
+    index = preset.index_of_device(device.device_id) if preset else None
+    if preset is None or index is None:
+        return
+
+    # Parameters, because every stored reading's key has one (ingest
+    # auto-registers it) and they outlive a removed mapping. The prefix only
+    # narrows the fetch: SQLite's LIKE ignores case, so the exact index check
+    # (a case-sensitive match that also keeps t1 off t10's keys) decides.
+    candidates = await db.execute(
+        select(LiveLinkParameter.param_key).where(
+            LiveLinkParameter.param_key.startswith(
+                f"{preset.key_prefix}_T{index}_", autoescape=True
+            )
+        )
+    )
+    # Exact keys, so each delete below is an indexed IN on a table that holds
+    # every vehicle's history, not a LIKE scan of it.
+    keys = [key for key in candidates.scalars() if preset.index_of_key(key) == index]
+    if not keys:
+        return
+
+    await db.execute(
+        delete(VehicleTelemetryLatest).where(VehicleTelemetryLatest.param_key.in_(keys))
+    )
+    await db.execute(delete(VehicleTelemetry).where(VehicleTelemetry.param_key.in_(keys)))
+    await db.execute(delete(TelemetryDailySummary).where(TelemetryDailySummary.param_key.in_(keys)))
+    await db.execute(delete(LiveLinkParameter).where(LiveLinkParameter.param_key.in_(keys)))
 
 
 def reject_foreign_preset_key(param_key: str | None, device_id: str) -> None:

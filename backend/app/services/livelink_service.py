@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.livelink_device import LiveLinkDevice
 from app.models.livelink_topic_map import LiveLinkTopicMap
 from app.models.vehicle_telemetry import VehicleTelemetry
+from app.services.livelink_sources.presets.sensors import delete_sensor_readings
 from app.services.settings_service import SettingsService
 from app.utils.datetime_utils import utc_now
 from app.utils.logging_utils import sanitize_for_log
@@ -593,12 +594,17 @@ class LiveLinkService:
     async def delete_device(self, device_id: str) -> bool:
         """Delete a device record.
 
-        Historical telemetry, sessions, and DTCs are retained (keyed on vehicle_id).
+        Historical telemetry, sessions, and DTCs are retained (keyed on vehicle_id),
+        except a preset sensor's: its keys are its own, so its readings go with it
+        (`delete_sensor_readings`).
         Returns True if device was deleted, False if not found.
         """
         device = await self.get_device_by_id(device_id)
         if not device:
             return False
+
+        # Before the topic maps go: they name the sensor's keys.
+        await delete_sensor_readings(self.db, device)
 
         # Topic maps are CONFIGURATION, not history. Telemetry, sessions and
         # DTCs are deliberately retained above; a mapping row for a deleted
