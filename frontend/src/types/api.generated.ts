@@ -9238,6 +9238,18 @@ export interface components {
         DeviceReading: {
             /** Display Name */
             display_name?: string | null;
+            /**
+             * Format
+             * @description How to show the value: through the unit adapter, as Yes/No, as a whole number, or as 'n of max_value'. A preset sensor's readings say; anything else is a plain value.
+             * @default value
+             * @enum {string}
+             */
+            format: "value" | "boolean" | "count" | "of_max";
+            /**
+             * Max Value
+             * @description The top of the scale for an 'of_max' reading
+             */
+            max_value?: number | null;
             /** Param Key */
             param_key: string;
             /**
@@ -11986,6 +11998,60 @@ export interface components {
             session_timeout_minutes?: number | null;
             /** Telemetry Retention Days */
             telemetry_retention_days?: number | null;
+        };
+        /**
+         * LiveSensor
+         * @description One preset sensor on this vehicle (a propane tank), drawn as its own card.
+         *
+         *     Its readings' values are in `latest_values`, looked up by `param_key`.
+         */
+        LiveSensor: {
+            /** Device Id */
+            device_id: string;
+            /**
+             * Fill Key
+             * @description The reading drawn as the tank's fill (its level), when mapped
+             */
+            fill_key?: string | null;
+            /**
+             * Label
+             * @description The sensor's name, which its readings' display names start with
+             */
+            label: string;
+            /** Last Seen */
+            last_seen?: string | null;
+            /**
+             * Online
+             * @description Reporting now, by the integrations card's rule
+             */
+            online: boolean;
+            /** Preset Key */
+            preset_key: string;
+            /**
+             * Readings
+             * @description Every reading the sensor maps, in the preset's order, the fill included
+             */
+            readings?: components["schemas"]["LiveSensorReading"][];
+        };
+        /**
+         * LiveSensorReading
+         * @description One of a preset sensor's readings, and how to show it.
+         */
+        LiveSensorReading: {
+            /**
+             * Format
+             * @description Through the unit adapter, as Yes/No, as a whole number, or as 'n of max_value'
+             * @default value
+             * @enum {string}
+             */
+            format: "value" | "boolean" | "count" | "of_max";
+            /**
+             * Max Value
+             * @description The top of the scale for an 'of_max' reading
+             */
+            max_value?: number | null;
+            /** Param Key */
+            param_key: string;
         };
         /**
          * LocationPointOut
@@ -17934,6 +18000,11 @@ export interface components {
              * @description WiFi signal (dBm)
              */
             rssi?: number | null;
+            /**
+             * Sensors
+             * @description Preset sensors on this vehicle, in the order they were added. Their readings are in latest_values too; the Live tab draws them on the sensor's card instead of as separate gauges.
+             */
+            sensors?: components["schemas"]["LiveSensor"][];
             /**
              * Session Duration Seconds
              * @description Session duration so far

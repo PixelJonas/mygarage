@@ -24,6 +24,8 @@ import { useTimeFormat } from '@/hooks/useTimeFormat'
 import { convertTelemetryValue, getParamDisplayName } from '@/utils/telemetryUnits'
 import type { UnitFormat } from '@/utils/unitFormat'
 import { formatTime } from '@/utils/parseAPITimestamp'
+import { tankContent } from '@/utils/sensorReadings'
+import TankCard from '../livelink/TankCard'
 import { Card, Mono, EmptyState } from '../ui'
 
 interface LiveLinkLiveTabProps {
@@ -147,10 +149,19 @@ export default function LiveLinkLiveTab({ vin }: LiveLinkLiveTabProps) {
   const statusText = getStatusText(status.online, status.ecu_status)
 
   // Hidden readings are still in latest_values: the vehicle widget reads keys
-  // from it by name. Only the gauge grid honours the switch (set per reading in
-  // Settings, Integrations, LiveLink).
-  const gauges = status.latest_values?.filter((v) => v.show_on_dashboard !== false) ?? []
-  const allHidden = gauges.length === 0 && (status.latest_values?.length ?? 0) > 0
+  // from it by name. Only the gauges and tank cards honour the switch (set per
+  // reading in Settings, Integrations, LiveLink).
+  const latest = status.latest_values ?? []
+  const values = new Map(latest.map((v) => [v.param_key, v]))
+  // A preset sensor's readings go on its own card, not in the gauge grid.
+  const sensors = status.sensors ?? []
+  const onCards = new Set(sensors.flatMap((s) => (s.readings ?? []).map((r) => r.param_key)))
+  const tanks = sensors.filter((s) => {
+    const content = tankContent(s, values)
+    return content.drawsTank || content.rows.length > 0
+  })
+  const gauges = latest.filter((v) => !onCards.has(v.param_key) && v.show_on_dashboard !== false)
+  const allHidden = gauges.length === 0 && tanks.length === 0 && latest.length > 0
 
   return (
     <div className="space-y-6">
@@ -197,6 +208,15 @@ export default function LiveLinkLiveTab({ vin }: LiveLinkLiveTabProps) {
         </div>
       </Card>
 
+      {/* One card per tank, two across on a wide screen. */}
+      {tanks.length > 0 ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {tanks.map((sensor) => (
+            <TankCard key={sensor.device_id} sensor={sensor} values={values} unitFormat={unitFormat} />
+          ))}
+        </div>
+      ) : null}
+
       {/* Live Gauges Grid */}
       {gauges.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -204,7 +224,7 @@ export default function LiveLinkLiveTab({ vin }: LiveLinkLiveTabProps) {
             <GaugeCard key={value.param_key} value={value} unitFormat={unitFormat} />
           ))}
         </div>
-      ) : allHidden ? (
+      ) : tanks.length > 0 ? null : allHidden ? (
         <EmptyState icon={Car} title={t('livelink.allReadingsHidden')} />
       ) : (
         <EmptyState icon={Car} title={t('livelink.noTelemetry')} description={t('livelink.telemetryWillAppear')} />

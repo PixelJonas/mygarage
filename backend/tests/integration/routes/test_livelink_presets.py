@@ -126,6 +126,23 @@ def test_the_description_assumes_no_count_layout_or_bottle():
         assert word not in MOPEKA.description
 
 
+def test_each_reading_says_how_it_is_shown():
+    """The tank card and the settings drawer read these: "sensor heard" is Yes
+    or No, not 1.0, and quality is a grade out of 3."""
+    shown = {r.suffix: (r.format, r.max_value) for r in MOPEKA.readings}
+
+    assert shown["AVAILABLE"] == ("boolean", None)
+    assert shown["REJECTED"] == ("count", None)
+    assert shown["QUALITY"] == ("of_max", 3)
+    assert shown["TEMP_C"] == ("value", None)
+    assert shown["DEPTH_MM"] == ("value", None)
+
+
+def test_the_tank_is_filled_by_the_level():
+    assert MOPEKA.fill_suffix == "LEVEL_PCT"
+    assert MOPEKA.reading(MOPEKA.fill_suffix) is not None
+
+
 def test_every_default_topic_is_one_exact_segment():
     """It is appended to the level topic's folder, so it cannot carry a slash
     or a wildcard."""

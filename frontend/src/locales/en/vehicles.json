@@ -827,7 +827,10 @@
     "statusVehicleParked": "Vehicle Parked",
     "statusConnected": "Connected",
     "ensureSourceLinked": "Make sure a LiveLink source is linked to this vehicle",
-    "allReadingsHidden": "Every reading from this vehicle is hidden from the dashboard. Turn them back on under Settings, Integrations, LiveLink."
+    "allReadingsHidden": "Every reading from this vehicle is hidden from the dashboard. Turn them back on under Settings, Integrations, LiveLink.",
+    "tankLevel": "Level {{level}}%",
+    "tankLevelUnknown": "Level not reported yet",
+    "lastReading": "Last reading {{age}}"
   },
   "noteList": {
     "addFirstNote": "Add First Note",

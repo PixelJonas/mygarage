@@ -1,6 +1,7 @@
 """Pydantic schemas for vehicle telemetry operations."""
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -29,6 +30,41 @@ class TelemetryLatestValue(BaseModel):
             "still returned: the vehicle widget looks keys up by name and must "
             "not lose one because its gauge is hidden."
         ),
+    )
+
+
+class LiveSensorReading(BaseModel):
+    """One of a preset sensor's readings, and how to show it."""
+
+    param_key: str
+    format: Literal["value", "boolean", "count", "of_max"] = Field(
+        "value",
+        description=(
+            "Through the unit adapter, as Yes/No, as a whole number, or as 'n of max_value'"
+        ),
+    )
+    max_value: int | None = Field(None, description="The top of the scale for an 'of_max' reading")
+
+
+class LiveSensor(BaseModel):
+    """One preset sensor on this vehicle (a propane tank), drawn as its own card.
+
+    Its readings' values are in `latest_values`, looked up by `param_key`.
+    """
+
+    device_id: str
+    label: str = Field(
+        description="The sensor's name, which its readings' display names start with"
+    )
+    preset_key: str
+    online: bool = Field(description="Reporting now, by the integrations card's rule")
+    last_seen: datetime | None = None
+    fill_key: str | None = Field(
+        None, description="The reading drawn as the tank's fill (its level), when mapped"
+    )
+    readings: list[LiveSensorReading] = Field(
+        default_factory=list,
+        description="Every reading the sensor maps, in the preset's order, the fill included",
     )
 
 
@@ -69,6 +105,14 @@ class VehicleLiveLinkStatus(BaseModel):
     # Latest parameter values
     latest_values: list[TelemetryLatestValue] = Field(
         default_factory=list, description="Current telemetry readings"
+    )
+    sensors: list[LiveSensor] = Field(
+        default_factory=list,
+        description=(
+            "Preset sensors on this vehicle, in the order they were added. "
+            "Their readings are in latest_values too; the Live tab draws them "
+            "on the sensor's card instead of as separate gauges."
+        ),
     )
 
 

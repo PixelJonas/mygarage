@@ -3894,6 +3894,30 @@
             ],
             "title": "Display Name"
           },
+          "format": {
+            "default": "value",
+            "description": "How to show the value: through the unit adapter, as Yes/No, as a whole number, or as 'n of max_value'. A preset sensor's readings say; anything else is a plain value.",
+            "enum": [
+              "value",
+              "boolean",
+              "count",
+              "of_max"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "max_value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The top of the scale for an 'of_max' reading",
+            "title": "Max Value"
+          },
           "param_key": {
             "title": "Param Key",
             "type": "string"
@@ -10477,6 +10501,107 @@
           }
         },
         "title": "LiveLinkSettingsUpdate",
+        "type": "object"
+      },
+      "LiveSensor": {
+        "description": "One preset sensor on this vehicle (a propane tank), drawn as its own card.\n\nIts readings' values are in `latest_values`, looked up by `param_key`.",
+        "properties": {
+          "device_id": {
+            "title": "Device Id",
+            "type": "string"
+          },
+          "fill_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The reading drawn as the tank's fill (its level), when mapped",
+            "title": "Fill Key"
+          },
+          "label": {
+            "description": "The sensor's name, which its readings' display names start with",
+            "title": "Label",
+            "type": "string"
+          },
+          "last_seen": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen"
+          },
+          "online": {
+            "description": "Reporting now, by the integrations card's rule",
+            "title": "Online",
+            "type": "boolean"
+          },
+          "preset_key": {
+            "title": "Preset Key",
+            "type": "string"
+          },
+          "readings": {
+            "description": "Every reading the sensor maps, in the preset's order, the fill included",
+            "items": {
+              "$ref": "#/components/schemas/LiveSensorReading"
+            },
+            "title": "Readings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "device_id",
+          "label",
+          "preset_key",
+          "online"
+        ],
+        "title": "LiveSensor",
+        "type": "object"
+      },
+      "LiveSensorReading": {
+        "description": "One of a preset sensor's readings, and how to show it.",
+        "properties": {
+          "format": {
+            "default": "value",
+            "description": "Through the unit adapter, as Yes/No, as a whole number, or as 'n of max_value'",
+            "enum": [
+              "value",
+              "boolean",
+              "count",
+              "of_max"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "max_value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The top of the scale for an 'of_max' reading",
+            "title": "Max Value"
+          },
+          "param_key": {
+            "title": "Param Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "param_key"
+        ],
+        "title": "LiveSensorReading",
         "type": "object"
       },
       "LocationPointOut": {
@@ -25428,6 +25553,14 @@
             ],
             "description": "WiFi signal (dBm)",
             "title": "Rssi"
+          },
+          "sensors": {
+            "description": "Preset sensors on this vehicle, in the order they were added. Their readings are in latest_values too; the Live tab draws them on the sensor's card instead of as separate gauges.",
+            "items": {
+              "$ref": "#/components/schemas/LiveSensor"
+            },
+            "title": "Sensors",
+            "type": "array"
           },
           "session_duration_seconds": {
             "anyOf": [

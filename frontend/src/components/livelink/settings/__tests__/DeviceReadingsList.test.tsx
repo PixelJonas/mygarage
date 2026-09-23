@@ -38,6 +38,7 @@ const reading = (overrides: Partial<DeviceReading>): DeviceReading => ({
   value: 71,
   timestamp: '2026-09-22T12:00:00Z',
   show_on_dashboard: true,
+  format: 'value',
   ...overrides,
 })
 
@@ -175,7 +176,8 @@ describe('DeviceReadingsList compact', () => {
     )
 
     expect(screen.getAllByText('integrations.readingOld')).toHaveLength(1)
-    expect(screen.getByText('integrations.readingOld').parentElement).toHaveTextContent('250')
+    // 250 mm reads 9.8 in for this imperial account (250 / 25.4 = 9.84).
+    expect(screen.getByText('integrations.readingOld').parentElement).toHaveTextContent('9.8')
   })
 
   it('gives each value its exact time on hover', () => {
@@ -184,6 +186,25 @@ describe('DeviceReadingsList compact', () => {
     )
 
     expect(screen.getByText(/^71/).closest('[title]')?.getAttribute('title')).toMatch(/2026/)
+  })
+
+  it('shows a reading the way it says: Yes for heard, a grade for quality', () => {
+    // The same helper the Live tab's tank card uses, so the two agree.
+    render(
+      <DeviceReadingsList
+        compact
+        sensorLabel="Front tank"
+        readings={[
+          tank('AVAILABLE', 'sensor heard', { unit: null, value: 1, format: 'boolean' }),
+          tank('QUALITY', 'reading quality', { unit: null, value: 3, format: 'of_max', max_value: 3 }),
+        ]}
+        onChanged={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('common:yes')).toBeInTheDocument()
+    expect(screen.getByText('common:ofMax')).toBeInTheDocument()
+    expect(screen.queryByText('1.0')).not.toBeInTheDocument()
   })
 
   it('says nothing about age when the sensor has never reported', () => {

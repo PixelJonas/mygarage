@@ -31,6 +31,12 @@ const METRIC = makeUnitFormat(presetUnitsFor('metric', 'us'))
 /** Stand-in for the component's `t`, resolving only the key under test. */
 
 describe('classifyTelemetryParam', () => {
+  it('treats a declared mm as a small length, whatever the key says', () => {
+    expect(classifyTelemetryParam('PROPANE_T1_DEPTH_MM', 'mm')).toStrictEqual({ kind: 'millimetres' })
+    // "temp" in the key must not win over the declaration.
+    expect(classifyTelemetryParam('TEMP_PROBE_DEPTH', 'mm')).toStrictEqual({ kind: 'millimetres' })
+  })
+
   it('routes a hex-prefixed odometer to distance, because SAE J1979 guarantees km', () => {
     expect(classifyTelemetryParam('A6-Odometer', null)).toStrictEqual({
       kind: 'quantity',
@@ -127,6 +133,27 @@ describe('classifyTelemetryParam', () => {
 })
 
 describe('convertTelemetryValue', () => {
+  it('reads a millimetre depth in inches when length is in feet (285 / 25.4 = 11.22 at 1 dp)', () => {
+    // A propane sensor's depth. The unit system has no small-length quantity,
+    // so it follows the account's LENGTH choice, with UnitConverter's inch.
+    expect(convertTelemetryValue(285, 'PROPANE_T1_DEPTH_MM', 'mm', IMPERIAL)).toStrictEqual({
+      text: '11.2',
+      unit: 'in',
+    })
+  })
+
+  it('keeps millimetres when length is in metres', () => {
+    expect(convertTelemetryValue(285, 'PROPANE_T1_DEPTH_MM', 'mm', METRIC)).toStrictEqual({
+      text: '285',
+      unit: 'mm',
+    })
+  })
+
+  it('follows the length choice, not the distance one, for a custom account', () => {
+    const metricButFeet = makeUnitFormat({ ...presetUnitsFor('metric', 'us'), length: 'ft' })
+    expect(convertTelemetryValue(254, 'DEPTH', 'MM', metricButFeet)).toStrictEqual({ text: '10.0', unit: 'in' })
+  })
+
   it('converts speed through the adapter (100 / 1.609344 = 62.137... at 0 dp)', () => {
     expect(convertTelemetryValue(100, '0D-VehicleSpeed', 'km/h', IMPERIAL)).toStrictEqual({
       text: '62',

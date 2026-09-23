@@ -11,7 +11,8 @@ import type { DeviceReading } from '@/types/livelink'
 import { getDateFnsLocale } from '@/utils/dateUtils'
 import { getActionErrorMessage } from '@/utils/httpErrorHandler'
 import { formatDateTime, parseAPITimestamp } from '@/utils/parseAPITimestamp'
-import { convertTelemetryValue, getParamDisplayName } from '@/utils/telemetryUnits'
+import { formatSensorReading, sensorReadingName } from '@/utils/sensorReadings'
+import { getParamDisplayName } from '@/utils/telemetryUnits'
 
 /**
  * One MQTT device's readings: a name, a value, how old it is, and a switch
@@ -83,10 +84,12 @@ export default function DeviceReadingsList({ readings, onChanged, compact, senso
   const rows: Row[] = readings.map((reading) => ({
     reading,
     name: getParamDisplayName(reading.param_key, reading.display_name ?? null),
+    // A preset sensor's reading says how it reads (Yes/No, "3 of 3"), the same
+    // helper as the Live tab's tank card; anything else is a plain value.
     shown:
       reading.value == null
         ? null
-        : convertTelemetryValue(reading.value, reading.param_key, reading.unit ?? null, unitFormat),
+        : formatSensorReading(reading.value, reading.param_key, reading.unit ?? null, reading, unitFormat, t),
     at: reading.timestamp ? parseAPITimestamp(reading.timestamp) : null,
     checked: pending[reading.param_key] ?? reading.show_on_dashboard,
   }))
@@ -149,14 +152,6 @@ function Value({ shown, title, stale }: { shown: Row['shown']; title?: string; s
   )
 }
 
-/** "Front tank level" under "Front tank" is "Level". A name someone changed by
- *  hand, which no longer starts with the sensor's name, is shown whole. */
-function shortName(name: string, sensorLabel: string | undefined): string {
-  const prefix = sensorLabel ? `${sensorLabel} ` : ''
-  const rest = prefix && name.startsWith(prefix) ? name.slice(prefix.length) : name
-  return rest.charAt(0).toUpperCase() + rest.slice(1)
-}
-
 /** Its own component so only the compact list reads the time-format
  *  preference, which lives in the auth context. */
 function CompactRows({
@@ -181,7 +176,7 @@ function CompactRows({
       <ul className="grid gap-x-6 sm:grid-cols-2">
         {rows.map(({ reading, name, shown, at, checked }) => (
           <li key={reading.param_key} className="flex items-center gap-2 border-b border-border py-1.5">
-            <span className="min-w-0 flex-1 truncate text-sm text-text">{shortName(name, sensorLabel)}</span>
+            <span className="min-w-0 flex-1 truncate text-sm text-text">{sensorReadingName(name, sensorLabel)}</span>
             <Value
               shown={shown}
               title={at ? formatDateTime(at, timeFormat) : undefined}

@@ -699,5 +699,6 @@
   },
   "mustNotBeNegative": "Cannot be negative",
   "mustBeANumber": "Enter a number",
-  "tooManyDecimals": "At most {{count}} decimal places"
+  "tooManyDecimals": "At most {{count}} decimal places",
+  "ofMax": "{{value}} of {{max}}"
 }

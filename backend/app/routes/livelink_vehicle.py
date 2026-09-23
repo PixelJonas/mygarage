@@ -55,6 +55,7 @@ from app.services.auth import get_vehicle_for_owner_or_403, get_vehicle_or_403, 
 from app.services.dtc_service import DTCService
 from app.services.livelink_integrations import device_is_online
 from app.services.livelink_service import LiveLinkService
+from app.services.livelink_sources.presets.sensors import live_sensors
 from app.services.livelink_sources.registry import default_registry
 from app.services.location_service import LocationService
 from app.services.session_service import SessionService
@@ -169,13 +170,11 @@ async def get_vehicle_livelink_status(
     # The integrations card's rule, not `device_status == 'online'`: a sensor
     # with no status topic never leaves 'unknown', and read raw it showed the
     # RV offline while its readings arrived every few seconds.
-    online = (
-        device_is_online(
-            device, await livelink_service.get_device_offline_timeout_minutes(), utc_now()
-        )
-        if device
-        else False
-    )
+    # No device, nothing to be online and no setting worth reading.
+    timeout = await livelink_service.get_device_offline_timeout_minutes() if devices else 0
+    now = utc_now()
+    online = device_is_online(device, timeout, now) if device else False
+    sensors = await live_sensors(db, devices, timeout, now)
 
     # Get latest telemetry values
     latest_values = await telemetry_service.get_latest_values(vin)
@@ -242,6 +241,7 @@ async def get_vehicle_livelink_status(
         session_started_at=session_started_at,
         session_duration_seconds=session_duration_seconds,
         latest_values=latest_with_thresholds,
+        sensors=sensors,
     )
 
 

@@ -51,9 +51,8 @@ async def _clean(db_session):
 async def _device(db_session, vin=None, **over):
     from app.models.livelink_device import LiveLinkDevice
 
-    device = LiveLinkDevice(
-        device_id=f"gw{next(_SEQ):08d}", kind="generic_mqtt", enabled=True, vin=vin, **over
-    )
+    over.setdefault("device_id", f"gw{next(_SEQ):08d}")
+    device = LiveLinkDevice(kind="generic_mqtt", enabled=True, vin=vin, **over)
     db_session.add(device)
     await db_session.commit()
     return device
@@ -370,3 +369,23 @@ async def test_online_is_recent_reporting_for_a_device_with_no_status_topic(
     body = (await client.get(_url(device.device_id), headers=auth_headers)).json()
 
     assert body["online"] is online
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_each_reading_says_how_it_is_shown(client, auth_headers, db_session, test_vehicle):
+    """A preset sensor's "sensor heard" is Yes or No, in the drawer as on the
+    Live tab; a handmade key is a plain value."""
+    n = 7900 + next(_SEQ)
+    device = await _device(
+        db_session, vin=test_vehicle["vin"], device_id=f"mopeka-t{n}", preset_key="mopeka"
+    )
+    heard, quality = f"PROPANE_T{n}_AVAILABLE", f"PROPANE_T{n}_QUALITY"
+    plain = f"{_PREFIX}PLAIN_{n}"
+    for key in (heard, quality, plain):
+        await _map(db_session, device.device_id, key)
+
+    body = (await client.get(_url(device.device_id), headers=auth_headers)).json()
+
+    shown = {r["param_key"]: (r["format"], r["max_value"]) for r in body["readings"]}
+    assert shown == {heard: ("boolean", None), quality: ("of_max", 3), plain: ("value", None)}

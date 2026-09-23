@@ -41,6 +41,8 @@ export type DeviceFirmwareStatus = components['schemas']['DeviceFirmwareStatus']
 // -- Live Status Types --
 export type TelemetryLatestValue = components['schemas']['TelemetryLatestValue']
 export type VehicleLiveLinkStatus = components['schemas']['VehicleLiveLinkStatus']
+/** One preset sensor (a propane tank) on the vehicle, drawn as its own Live tab card. */
+export type LiveSensor = components['schemas']['LiveSensor']
 
 // -- Historical Telemetry Types --
 export type TelemetryDataPoint = components['schemas']['TelemetryDataPoint']

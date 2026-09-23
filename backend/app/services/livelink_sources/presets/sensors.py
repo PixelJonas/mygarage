@@ -17,6 +17,8 @@ Two facts shape everything here:
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,7 +26,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.livelink_device import LiveLinkDevice
 from app.models.livelink_parameter import LiveLinkParameter
 from app.models.livelink_topic_map import LiveLinkTopicMap
-from app.services.livelink_sources.presets import PRESETS, Preset, PresetReading
+from app.schemas.telemetry import LiveSensor, LiveSensorReading
+from app.services.livelink_integrations import device_is_online
+from app.services.livelink_sources.presets import PRESETS, Preset, PresetReading, ReadingFormat
 from app.services.telemetry_service import TelemetryService
 
 #: `livelink_parameters.display_name` is VARCHAR(100). A long sensor name plus
@@ -188,3 +192,84 @@ async def rename_sensor_parameters(
         reading = by_suffix.get(parts[1]) if parts else None
         if reading and param.display_name == reading_display_name(old_label, reading):
             param.display_name = reading_display_name(device.label, reading)
+
+
+def reading_shown_as(param_key: str, preset: Preset | None) -> tuple[ReadingFormat, int | None]:
+    """How to show one mapped key: its preset reading's format, else a plain value."""
+    if preset is not None:
+        parts = preset.split_key(param_key)
+        reading = preset.reading(parts[1]) if parts else None
+        if reading is not None:
+            return reading.format, reading.max_value
+    return "value", None
+
+
+async def live_sensors(
+    db: AsyncSession,
+    devices: list[LiveLinkDevice],
+    offline_timeout_minutes: int,
+    now: datetime,
+) -> list[LiveSensor]:
+    """The Live tab's cards: one per preset sensor among `devices`.
+
+    In the order the sensors were added (`mopeka-t1` before `t2`, `t10`
+    after), and each sensor's readings in its preset's order, level first.
+    Which keys are a sensor's comes from its own topic maps, so a key mapped by
+    hand on the sensor is on its card too, after the preset's readings.
+    """
+    sensors = [d for d in devices if d.preset_key in PRESETS]
+    if not sensors:
+        return []
+
+    rows = await db.execute(
+        select(LiveLinkTopicMap.device_id, LiveLinkTopicMap.param_key)
+        .where(
+            LiveLinkTopicMap.device_id.in_([d.device_id for d in sensors]),
+            LiveLinkTopicMap.role == "telemetry",
+            LiveLinkTopicMap.param_key.is_not(None),
+        )
+        .order_by(LiveLinkTopicMap.id)
+    )
+    keys_by_device: dict[str, list[str]] = {}
+    for device_id, key in rows.all():
+        keys = keys_by_device.setdefault(device_id, [])
+        if key not in keys:
+            keys.append(key)
+
+    def added(device: LiveLinkDevice) -> tuple[str, bool, int, str]:
+        index = PRESETS[device.preset_key or ""].index_of_device(device.device_id)
+        return (device.preset_key or "", index is None, index or 0, device.device_id)
+
+    cards: list[LiveSensor] = []
+    for device in sorted(sensors, key=added):
+        preset = PRESETS[device.preset_key or ""]
+        rank = {reading.suffix: n for n, reading in enumerate(preset.readings)}
+
+        def suffix(key: str, preset: Preset = preset) -> str | None:
+            parts = preset.split_key(key)
+            return parts[1] if parts else None
+
+        # Stable: keys the preset does not know keep their mapping order.
+        keys = sorted(
+            keys_by_device.get(device.device_id, []),
+            key=lambda key, rank=rank: rank.get(suffix(key) or "", len(rank)),
+        )
+        cards.append(
+            LiveSensor(
+                device_id=device.device_id,
+                label=device.label or device.device_id,
+                preset_key=preset.name,
+                online=device_is_online(device, offline_timeout_minutes, now),
+                last_seen=device.last_seen,
+                fill_key=next((k for k in keys if suffix(k) == preset.fill_suffix), None),
+                readings=[
+                    LiveSensorReading(
+                        param_key=key,
+                        format=reading_shown_as(key, preset)[0],
+                        max_value=reading_shown_as(key, preset)[1],
+                    )
+                    for key in keys
+                ],
+            )
+        )
+    return cards

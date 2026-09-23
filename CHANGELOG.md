@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MQTT topic discovery for finding what a device publishes
 - Create a LiveLink device from Settings
 - Mopeka propane sensors: add each tank as its own device from its level topic, with the other readings' topics suggested from the broker
+- Propane tanks on the Live tab: one card per tank, drawn at its level, with its other readings beside it
 
 ### Fixed
 - Removed `TelemetryService.store_value`, which was unreachable and raised `TypeError`

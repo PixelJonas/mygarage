@@ -402,6 +402,15 @@ class DeviceReading(BaseModel):
         ),
     )
     show_on_dashboard: bool = True
+    format: Literal["value", "boolean", "count", "of_max"] = Field(
+        "value",
+        description=(
+            "How to show the value: through the unit adapter, as Yes/No, as a "
+            "whole number, or as 'n of max_value'. A preset sensor's readings "
+            "say; anything else is a plain value."
+        ),
+    )
+    max_value: int | None = Field(None, description="The top of the scale for an 'of_max' reading")
 
 
 class DeviceReadingsResponse(BaseModel):

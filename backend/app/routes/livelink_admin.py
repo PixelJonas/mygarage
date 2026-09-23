@@ -74,6 +74,7 @@ from app.services.livelink_service import LiveLinkService
 from app.services.livelink_sources.presets import PRESETS
 from app.services.livelink_sources.presets.sensors import (
     create_sensor,
+    reading_shown_as,
     reject_foreign_preset_key,
     rename_sensor_parameters,
 )
@@ -1330,10 +1331,12 @@ async def get_device_readings(
         for param_key, value, timestamp in rows.all():
             values[param_key] = (value, timestamp)
 
+    preset = PRESETS.get(device.preset_key or "")
     readings: list[DeviceReading] = []
     for key in param_keys:
         parameter = parameters.get(key)
         value, timestamp = values.get(key, (None, None))
+        shown_as, max_value = reading_shown_as(key, preset)
         readings.append(
             DeviceReading(
                 param_key=key,
@@ -1342,6 +1345,8 @@ async def get_device_readings(
                 value=value,
                 timestamp=timestamp,
                 show_on_dashboard=bool(parameter.show_on_dashboard) if parameter else True,
+                format=shown_as,
+                max_value=max_value,
             )
         )
 

@@ -23,36 +23,48 @@ from):
 
 from __future__ import annotations
 
+from app.services.livelink_sources.presets.model import PresetReading
+
 #: Seconds between persisted samples. REQUIRED, not tuning: retained messages
 #: replay on every resubscribe and the storage path stamps server time, so
 #: without this each reconnect writes a fresh row.
 STORAGE_INTERVAL_SECONDS = 300
 
-#: (suffix, name, unit, param_class, default topic, keywords, required), in the
-#: order a sensor's readings are shown. Keywords are lowercase substrings that
-#: identify a reading's topic segment in any layout.
-READINGS: tuple[tuple[str, str, str | None, str, str, tuple[str, ...], bool], ...] = (
-    ("LEVEL_PCT", "level", "%", "propane", "level_percent", ("level",), True),
-    ("TEMP_C", "temperature", "C", "temperature", "temperature_c", ("temp",), False),
-    ("SENSOR_BATT_PCT", "battery", "%", "battery", "battery_percent", ("batt",), False),
-    (
+#: In the order a sensor's readings are shown. Keywords are lowercase
+#: substrings that identify a reading's topic segment in any layout.
+READINGS: tuple[PresetReading, ...] = (
+    PresetReading("LEVEL_PCT", "level", "%", "propane", "level_percent", ("level",), True),
+    PresetReading("TEMP_C", "temperature", "C", "temperature", "temperature_c", ("temp",)),
+    PresetReading("SENSOR_BATT_PCT", "battery", "%", "battery", "battery_percent", ("batt",)),
+    # ESPHome publishes the sensor's own quality grade: 0 none, 1 low, 2 medium,
+    # 3 high. The gateway's `minimum_signal_quality` gates level and depth on it.
+    PresetReading(
         "QUALITY",
         "reading quality",
         None,
         "diagnostic",
         "reading_quality",
         ("quality", "signal"),
-        False,
+        format="of_max",
+        max_value=3,
     ),
-    ("DEPTH_MM", "depth", "mm", "propane", "depth_mm", ("depth", "distance"), False),
-    (
+    PresetReading("DEPTH_MM", "depth", "mm", "propane", "depth_mm", ("depth", "distance")),
+    PresetReading(
         "REJECTED",
         "rejected readings",
         None,
         "diagnostic",
         "rejected_readings",
         ("reject", "ignored"),
-        False,
+        format="count",
     ),
-    ("AVAILABLE", "sensor heard", None, "diagnostic", "availability", ("avail", "heard"), False),
+    PresetReading(
+        "AVAILABLE",
+        "sensor heard",
+        None,
+        "diagnostic",
+        "availability",
+        ("avail", "heard"),
+        format="boolean",
+    ),
 )
