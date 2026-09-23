@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Generic MQTT sources, mappable from Settings with no code
 - MQTT topic discovery for finding what a device publishes
 - Create a LiveLink device from Settings
-- Mopeka propane preset (2 tanks, 17 topics)
+- Mopeka propane sensors: add each tank as its own device from its level topic, with the other readings' topics suggested from the broker
 
 ### Fixed
 - Removed `TelemetryService.store_value`, which was unreachable and raised `TypeError`
@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - A disabled LiveLink device no longer has its status refreshed by status or battery messages
+- **Enable LiveLink** now gates MQTT, Torque and SD-card backfill too: off, nothing is stored and no new device is discovered
+- Installs already receiving MQTT or Torque data have LiveLink switched on at upgrade (migration 116)
 
 ## [3.6.0] - 2026-09-21
 

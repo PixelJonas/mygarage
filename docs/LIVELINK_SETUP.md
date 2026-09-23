@@ -26,7 +26,11 @@ payload delivered via both paths is stored once.
 ## MQTT ingestion (alternative)
 
 If you run an MQTT broker, MyGarage can subscribe instead of receiving
-webhooks. See Settings → Integrations → LiveLink → MQTT.
+webhooks. See Settings → Integrations → LiveLink → Mosquitto.
+
+**Enable LiveLink** (the card's gear) gates every source: with it off, nothing
+from WiCAN, Torque, MQTT or an SD-card backfill is stored, and no new WiCAN
+dongle is discovered.
 
 ## Generic MQTT sources
 
@@ -34,7 +38,8 @@ WiCAN and Torque parse their own wire formats in code. Any other MQTT device is
 described by rows in `livelink_topic_maps` instead, so adding one is a Settings
 task rather than a pull request.
 
-Settings → Integrations → MQTT sources.
+Settings → Integrations → LiveLink → **Add source** → Blank device. Its topics
+are then mapped from its tab's settings.
 
 ### 1. Create the device
 
@@ -91,21 +96,51 @@ per parameter per day instead of 8,640.
 
 ### Presets
 
-A preset creates the device and all of its mappings in one action, and sets the
-storage interval on every parameter.
+A preset adds one sensor at a time. Each sensor is its own device, and a
+preset's sensors share one tab, the way WiCAN's dongles do.
 
-`mopeka_two_tank` covers two Mopeka Pro Check sensors on 30 lb bottles published
-by an ESPHome gateway: 17 topics, no code. Reading its values:
+Add a sensor from **Add source**, or from the preset's tab once it has one: a
+name, a vehicle, and the exact topic its level arrives on. MyGarage then
+listens to the broker for a few seconds and suggests the other readings'
+topics:
 
-- Signal quality gates only `level_percent` and `depth_mm`. Temperature and
-  battery publish regardless, so `availability` means "radio heard from", not
-  "measurement valid".
-- `PROPANE_Tn_REJECTED > 0` is the real "this retained level is stale" flag.
-- `availability` is not cleared when the gateway dies. Read it together with the
-  gateway's own status topic.
-- A 30 lb bottle calibrates empty at 38 mm and full at 381 mm, and a full bottle
-  reads 395 to 400 mm. It is therefore **saturated at 100%** and the first few
-  percent of consumption is invisible.
+- The segment of the level topic that names the level is the one that varies,
+  and every other segment must match. `rv/propane/tank1/level_percent` looks in
+  `rv/propane/tank1/`; `garage/mopeka_front/sensor/propane_level/state` looks at
+  `garage/mopeka_front/sensor/<anything>/state`.
+- Topics it hears there are matched to readings by keyword (`temp`, `batt`,
+  `depth` and so on). A reading nothing matches is left empty and not mapped.
+- If nothing in that shape is heard at all (broker unreachable, nothing
+  retained), each reading gets a guess from the reference names below.
+
+Every suggestion is editable, and only the level is required. Each sensor gets
+its own parameter keys (`PROPANE_T3_LEVEL_PCT`, never reused after a sensor is
+deleted), its readings are named after it ("Front tank level") and follow a
+rename, and the storage interval is set on every reading.
+
+The reference names come from one ESPHome gateway. They are an example, not a
+requirement:
+
+```
+mygarage/rv/propane/tank1/level_percent
+mygarage/rv/propane/tank1/temperature_c
+mygarage/rv/propane/tank1/battery_percent
+mygarage/rv/propane/tank1/reading_quality
+mygarage/rv/propane/tank1/depth_mm
+mygarage/rv/propane/tank1/rejected_readings
+mygarage/rv/propane/tank1/availability
+```
+
+Reading Mopeka values:
+
+- Signal quality gates only the level and depth. Temperature and battery
+  publish regardless, so "sensor heard" means the radio was heard, not that the
+  measurement is valid.
+- Rejected readings above 0 is the real "this retained level is stale" flag.
+- "Sensor heard" is not cleared when the gateway itself dies.
+- A bottle can read deeper than its calibrated full depth (a 30 lb bottle
+  calibrated full at 381 mm reads 395 to 400 mm), so the level is **saturated
+  at 100%** and the first few percent of consumption are invisible.
 
 ### What a generic source deliberately cannot do
 
