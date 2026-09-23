@@ -154,10 +154,10 @@ describe('LiveLinkIntegrationsCard', () => {
     getIntegrations.mockResolvedValue({
       tabs: [
         tab({
-          id: 'device:rvgw',
+          id: 'preset:mopeka',
           label: 'Mopeka',
           kind: 'generic_mqtt',
-          description: 'Two Mopeka sensors.',
+          description: 'Mopeka Pro Check propane tank sensors.',
         }),
         tab({ id: 'torque', label: 'Torque', kind: 'torque' }),
       ],
@@ -165,9 +165,21 @@ describe('LiveLinkIntegrationsCard', () => {
 
     render(<LiveLinkIntegrationsCard onOpenSettings={() => {}} />)
 
-    expect(await screen.findByText('Two Mopeka sensors.')).toBeInTheDocument()
+    expect(await screen.findByText('Mopeka Pro Check propane tank sensors.')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('tab', { name: 'Torque' }))
     expect(screen.getByText('integrations.sourceTorqueDescription')).toBeInTheDocument()
+  })
+
+  it('leaves no blank line for a handmade device, which has no description', async () => {
+    getIntegrations.mockResolvedValue({
+      tabs: [tab({ id: 'device:shed', label: 'Shed sensors', kind: 'generic_mqtt', description: null })],
+    })
+
+    const { container } = render(<LiveLinkIntegrationsCard onOpenSettings={() => {}} />)
+
+    await screen.findByText('integrations.statusReceiving')
+    const empty = Array.from(container.querySelectorAll('p')).filter((p) => p.textContent === '')
+    expect(empty).toHaveLength(0)
   })
 
   it('switching tabs changes the settings target', async () => {

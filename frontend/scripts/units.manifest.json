@@ -1068,8 +1068,8 @@
     {
       "path": "src/components/livelink/LiveLinkIntegrationsCard.tsx",
       "disposition": "no unit behaviour",
-      "digest": "49366ddb8eaea553cfba63680265247710aead252db36463e6bb2e3e3ff2d687",
-      "reason": "no unit behaviour: read in full (2026-09-22). Renders the integrations tab strip: tab labels (proper nouns from the server), a status dot tone, a translated status phrase, a source description (translated, or the preset's literal server text), and two DIMENSIONLESS device counts (linked, online) through integrationsTab.devicesLinked / devicesOnlineSuffix. No telemetry value, no unit label, no formatter, no quantity. Deliberately so: per-device readings (value + unit) are Plan 2's sidecar, whose row must be `audited`. 2026-09-22 (sidecars Task 5): DOT_TONE and STATUS_KEY moved to ./integrationStatus and imported back. No behaviour change."
+      "digest": "e54ff62dd8047e972907e95a8b575efca44d3c6ba8e5e42185a1596e60e2bf5d",
+      "reason": "no unit behaviour: read in full (2026-09-22). Renders the integrations tab strip: tab labels (proper nouns from the server), a status dot tone, a translated status phrase, a source description (translated, or the preset's literal server text), and two DIMENSIONLESS device counts (linked, online) through integrationsTab.devicesLinked / devicesOnlineSuffix. No telemetry value, no unit label, no formatter, no quantity. Deliberately so: per-device readings (value + unit) are Plan 2's sidecar, whose row must be `audited`. 2026-09-22 (sidecars Task 5): DOT_TONE and STATUS_KEY moved to ./integrationStatus and imported back. No behaviour change. 2026-09-22 (Plan 3 dev review): no empty description line for a tab without one (a handmade MQTT device). No unit behaviour."
     },
     {
       "path": "src/components/livelink/NoMovementSignalNotice.tsx",

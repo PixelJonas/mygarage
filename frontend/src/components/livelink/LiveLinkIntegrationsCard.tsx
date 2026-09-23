@@ -76,6 +76,7 @@ export default function LiveLinkIntegrationsCard({
 
   const active = tabs.find((tab) => tab.id === activeId) ?? null
 
+  // Empty for a handmade MQTT device, which has no description to show.
   const describe = (tab: IntegrationTab): string => {
     const entry = SOURCE_DESCRIPTIONS[tab.id]
     if (entry) return t(entry.descriptionKey)
@@ -109,7 +110,7 @@ export default function LiveLinkIntegrationsCard({
 
       {active ? (
         <div className="space-y-2">
-          <p className="text-sm text-text">{describe(active)}</p>
+          {describe(active) ? <p className="text-sm text-text">{describe(active)}</p> : null}
           <p className="text-sm text-text-mute">
             {t(STATUS_KEY[active.reason] ?? 'integrations.statusNotConfigured')}
           </p>
