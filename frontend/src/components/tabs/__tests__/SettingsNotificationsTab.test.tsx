@@ -98,3 +98,32 @@ describe('SettingsNotificationsTab — DEF-low settings (Task 17)', () => {
     expect(body.settings.notify_def_low_threshold_percent).toBe('40')
   })
 })
+
+describe('SettingsNotificationsTab — Telegram fuel commands', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockedApi.get.mockResolvedValue({
+      data: {
+        settings: [
+          { key: 'telegram_enabled', value: 'true' },
+          { key: 'telegram_inbound_enabled', value: 'true' },
+        ],
+      },
+    })
+    mockedApi.post.mockResolvedValue({ data: {} })
+  })
+
+  it('loads the fuel commands switch and saves it with the rest of Telegram', async () => {
+    renderTab()
+    fireEvent.click(await screen.findByRole('button', { name: /Telegram/ }))
+
+    const toggle = screen.getByRole('checkbox', { name: 'telegram.fuel.enable' })
+    expect(toggle).toBeChecked()
+    fireEvent.click(toggle)
+
+    await waitFor(() => expect(mockedApi.post).toHaveBeenCalled(), { timeout: 3000 })
+    const [url, body] = mockedApi.post.mock.calls.at(-1) as [string, { settings: Record<string, string> }]
+    expect(url).toBe('/settings/batch')
+    expect(body.settings.telegram_inbound_enabled).toBe('false')
+  })
+})

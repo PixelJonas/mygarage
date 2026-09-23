@@ -151,7 +151,6 @@ describe('SettingsIntegrationsTab', () => {
     // specific name says which.
     for (const key of [
       'integrations.webhooks',
-      'integrations.telegramInbound',
       'integrations.llmSection',
       'integrations.nhtsa',
       'integrations.carComplaints',
@@ -182,6 +181,18 @@ describe('SettingsIntegrationsTab', () => {
     expect(screen.queryByText('integrations.shopFinderDesc')).not.toBeInTheDocument()
     expect(screen.queryByText('TomTom Places API')).not.toBeInTheDocument()
     expect(mockedApi.get).not.toHaveBeenCalledWith('/settings/poi-providers')
+  })
+
+  it('leaves Telegram fuel commands to Settings > Notifications > Telegram', async () => {
+    // Two tabs saving one key would each write back whatever they loaded.
+    renderTab()
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'integrations.enableCarComplaints' }))
+
+    await waitFor(() => expect(mockedApi.post).toHaveBeenCalled(), { timeout: 3000 })
+    const [url, body] = mockedApi.post.mock.calls.at(-1) as [string, { settings: Record<string, string> }]
+    expect(url).toBe('/settings/batch')
+    expect(body.settings).toHaveProperty('webhook_ingest_token')
+    expect(body.settings).not.toHaveProperty('telegram_inbound_enabled')
   })
 
   it('describes LiveLink by its sources, not by one vendor', async () => {

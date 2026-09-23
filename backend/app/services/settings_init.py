@@ -361,8 +361,8 @@ DEFAULT_SETTINGS = {
     },
     "telegram_inbound_enabled": {
         "value": "false",
-        "category": "integrations",
-        "description": "Accept structured fuel commands via Telegram bot webhook",
+        "category": "notifications",
+        "description": "Accept fuel commands sent to the Telegram bot (webhook)",
         "encrypted": False,
     },
     "webhook_ingest_token": {

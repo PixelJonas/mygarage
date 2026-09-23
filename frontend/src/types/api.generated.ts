@@ -4163,8 +4163,16 @@ export interface paths {
          * Webhook Telegram
          * @description Telegram bot webhook — structured text fuel commands only (no OCR).
          *
-         *     Enable with ``telegram_inbound_enabled=true``. Auth: same webhook ingest
-         *     token via the ``X-Webhook-Token`` header.
+         *     Auth: the webhook ingest token. Telegram cannot send a custom header, but
+         *     it returns the ``secret_token`` given to setWebhook in
+         *     ``X-Telegram-Bot-Api-Secret-Token``, so that header is read first;
+         *     ``X-Webhook-Token`` works too.
+         *
+         *     Past auth, every answer is a 200: Telegram redelivers an update it gets a
+         *     4xx for, so a typo, a stranger or a switched-off bot would each become a
+         *     loop. Commands are taken only while Telegram and its fuel commands are
+         *     both switched on (Settings > Notifications > Telegram), and only from the
+         *     chat set there.
          */
         post: operations["webhook_telegram_api_v1_webhooks_telegram_post"];
         delete?: never;

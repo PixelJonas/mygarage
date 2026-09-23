@@ -40,7 +40,7 @@ const NOTIFICATION_SETTINGS_KEYS = [
   'slack_enabled', 'slack_webhook_url',
   'discord_enabled', 'discord_webhook_url',
   'matrix_enabled', 'matrix_homeserver', 'matrix_access_token', 'matrix_room_id',
-  'telegram_enabled', 'telegram_bot_token', 'telegram_chat_id',
+  'telegram_enabled', 'telegram_bot_token', 'telegram_chat_id', 'telegram_inbound_enabled',
   'email_enabled', 'email_smtp_host', 'email_smtp_port', 'email_smtp_user',
   'email_smtp_password', 'email_smtp_tls', 'email_from', 'email_to',
   // Event toggles
@@ -75,6 +75,7 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   telegram_enabled: 'false',
   telegram_bot_token: '',
   telegram_chat_id: '',
+  telegram_inbound_enabled: 'false',
   email_enabled: 'false',
   email_smtp_host: '',
   email_smtp_port: '587',

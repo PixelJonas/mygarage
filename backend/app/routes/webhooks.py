@@ -1,8 +1,9 @@
 """Inbound webhook endpoints for fuel, odometer, reminders, and Telegram.
 
 Authenticated with the shared ``webhook_ingest_token`` setting via the
-``X-Webhook-Token`` header. Used by the Home Assistant integration, n8n, and
-the structured Telegram bot.
+``X-Webhook-Token`` header (Telegram sends it in a header of its own, see
+``webhook_telegram``). Used by the Home Assistant integration, n8n, and the
+structured Telegram bot.
 
 The token is deliberately NOT accepted as a query parameter: it would be
 written verbatim into granian, Traefik, and Cloudflare access logs, none of
@@ -372,27 +373,35 @@ async def webhook_telegram(
 ) -> dict[str, Any]:
     """Telegram bot webhook — structured text fuel commands only (no OCR).
 
-    Enable with ``telegram_inbound_enabled=true``. Auth: same webhook ingest
-    token via the ``X-Webhook-Token`` header.
+    Auth: the webhook ingest token. Telegram cannot send a custom header, but
+    it returns the ``secret_token`` given to setWebhook in
+    ``X-Telegram-Bot-Api-Secret-Token``, so that header is read first;
+    ``X-Webhook-Token`` works too.
+
+    Past auth, every answer is a 200: Telegram redelivers an update it gets a
+    4xx for, so a typo, a stranger or a switched-off bot would each become a
+    loop. Commands are taken only while Telegram and its fuel commands are
+    both switched on (Settings > Notifications > Telegram), and only from the
+    chat set there.
     """
     # Authenticate BEFORE reporting whether Telegram ingest is enabled, so an
     # unauthenticated caller cannot probe the instance's configuration.
-    await require_webhook_token(db, request.headers.get("X-Webhook-Token"))
+    await require_webhook_token(
+        db,
+        request.headers.get("X-Telegram-Bot-Api-Secret-Token")
+        or request.headers.get("X-Webhook-Token"),
+    )
 
-    inbound = await SettingsService.get(db, "telegram_inbound_enabled")
-    if not inbound or (inbound.value or "").lower() != "true":
-        raise HTTPException(status_code=403, detail="Telegram inbound is disabled")
+    if not (
+        await SettingsService.get_bool(db, "telegram_enabled")
+        and await SettingsService.get_bool(db, "telegram_inbound_enabled")
+    ):
+        return {"ok": True, "ignored": True}
 
     message = update.message or {}
     text = (message.get("text") or "").strip()
     chat = message.get("chat") or {}
     chat_id = chat.get("id")
-
-    # Restrict to the configured notification chat when set.
-    chat_setting = await SettingsService.get(db, "telegram_chat_id")
-    configured_chat = (chat_setting.value or "").strip() if chat_setting else ""
-    if configured_chat and str(chat_id) != configured_chat:
-        raise HTTPException(status_code=403, detail="Chat not authorized")
 
     def _reply(message_text: str) -> dict[str, Any]:
         """Telegram acts on a response body only when it names a method.
@@ -401,8 +410,19 @@ async def webhook_telegram(
         """
         return {"method": "sendMessage", "chat_id": chat_id, "text": message_text}
 
+    # An update with no text (an edit, a join) has no chat to answer.
     if not text:
         return {"ok": True, "ignored": True}
+
+    # Anyone can message a bot. With no chat set, no chat ID matches; the reply
+    # names the ID, which is the value that goes in the setting.
+    chat_setting = await SettingsService.get(db, "telegram_chat_id")
+    configured_chat = (chat_setting.value or "").strip() if chat_setting else ""
+    if str(chat_id) != configured_chat:
+        return _reply(
+            f"This chat can't log fuel. To allow it, set Chat ID to {chat_id} "
+            "under Settings > Notifications > Telegram in MyGarage."
+        )
 
     if text.lower() in ("help", "/help", "start", "/start"):
         return _reply(
@@ -410,9 +430,7 @@ async def webhook_telegram(
             "fuel <vin|nickname> <odometer>[km|mi] <volume>[L|gal|kWh] [price] [cost]"
         )
 
-    # Answer bad input with 200 plus an explanation. A 4xx reads as a delivery
-    # failure to Telegram, which redelivers the same update with backoff, so one
-    # typo became a repeating loop. ValidationError is caught alongside
+    # Bad input gets a reply, not a 4xx. ValidationError is caught alongside
     # HTTPException because the payload bounds are enforced by pydantic, not by
     # the router, and a bare ValidationError here surfaces as a 500.
     try:

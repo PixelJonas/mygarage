@@ -24,6 +24,13 @@ class SettingsService:
         return result.scalar_one_or_none()
 
     @staticmethod
+    async def get_bool(db: AsyncSession, key: str) -> bool:
+        """Whether a switch setting is on: "true", "1" or "yes", as the
+        notification dispatcher reads one. A missing or empty row is off."""
+        setting = await SettingsService.get(db, key)
+        return bool(setting) and (setting.value or "").lower() in ("true", "1", "yes")
+
+    @staticmethod
     async def set(
         db: AsyncSession,
         key: str,

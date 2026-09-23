@@ -40301,7 +40301,7 @@
     },
     "/api/v1/webhooks/telegram": {
       "post": {
-        "description": "Telegram bot webhook \u2014 structured text fuel commands only (no OCR).\n\nEnable with ``telegram_inbound_enabled=true``. Auth: same webhook ingest\ntoken via the ``X-Webhook-Token`` header.",
+        "description": "Telegram bot webhook \u2014 structured text fuel commands only (no OCR).\n\nAuth: the webhook ingest token. Telegram cannot send a custom header, but\nit returns the ``secret_token`` given to setWebhook in\n``X-Telegram-Bot-Api-Secret-Token``, so that header is read first;\n``X-Webhook-Token`` works too.\n\nPast auth, every answer is a 200: Telegram redelivers an update it gets a\n4xx for, so a typo, a stranger or a switched-off bot would each become a\nloop. Commands are taken only while Telegram and its fuel commands are\nboth switched on (Settings > Notifications > Telegram), and only from the\nchat set there.",
         "operationId": "webhook_telegram_api_v1_webhooks_telegram_post",
         "requestBody": {
           "content": {

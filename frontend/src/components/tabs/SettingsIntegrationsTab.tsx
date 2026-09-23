@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { CheckCircle, AlertCircle, Plug, Shield, Radio, HelpCircle, Webhook, Sparkles, AtSign, Settings } from 'lucide-react'
+import { CheckCircle, AlertCircle, Plug, Shield, Radio, HelpCircle, Webhook, Sparkles, Settings } from 'lucide-react'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useAuth } from '@/contexts/AuthContext'
 import api from '@/services/api'
@@ -109,7 +109,6 @@ export default function SettingsIntegrationsTab() {
     tomtom_api_key: '',
     tomtom_enabled: 'false',
     webhook_ingest_token: '',
-    telegram_inbound_enabled: 'false',
     llm_receipt_parse_enabled: 'false',
     llm_garage_assistant_enabled: 'false',
     llm_base_url: 'http://127.0.0.1:11434/v1',
@@ -137,7 +136,6 @@ export default function SettingsIntegrationsTab() {
         tomtom_api_key: settingsMap['tomtom_api_key'] || '',
         tomtom_enabled: settingsMap['tomtom_enabled'] || 'false',
         webhook_ingest_token: settingsMap['webhook_ingest_token'] || '',
-        telegram_inbound_enabled: settingsMap['telegram_inbound_enabled'] || 'false',
         llm_receipt_parse_enabled: settingsMap['llm_receipt_parse_enabled'] || 'false',
         llm_garage_assistant_enabled: settingsMap['llm_garage_assistant_enabled'] || 'false',
         llm_base_url: settingsMap['llm_base_url'] || 'http://127.0.0.1:11434/v1',
@@ -169,7 +167,6 @@ export default function SettingsIntegrationsTab() {
         tomtom_api_key: formData.tomtom_api_key,
         tomtom_enabled: formData.tomtom_enabled,
         webhook_ingest_token: formData.webhook_ingest_token,
-        telegram_inbound_enabled: formData.telegram_inbound_enabled,
         llm_receipt_parse_enabled: formData.llm_receipt_parse_enabled,
         llm_garage_assistant_enabled: formData.llm_garage_assistant_enabled,
         llm_base_url: formData.llm_base_url,
@@ -331,8 +328,8 @@ export default function SettingsIntegrationsTab() {
           </div>
         </IntegrationCard>
 
-      {/* The remaining four (five with LiveLink) flow as a masonry rather than
-          sitting in a fixed 2-col grid. The grid paired a ~530px NHTSA card
+      {/* The remaining cards flow as a masonry rather than sitting in a fixed
+          2-col grid. The grid paired a ~530px NHTSA card
           against ~280px of stacked cards and left the rest of that row empty;
           columns let the short ones close the gap themselves. Source order is
           preserved, so the one-column mobile reading order still groups. */}
@@ -454,33 +451,6 @@ export default function SettingsIntegrationsTab() {
                 POST /api/v1/webhooks/fuel|odometer|reminders/complete
               </p>
               <p className="text-xs text-garage-text-muted mt-1">{t('integrations.webhookHeaderHint')}</p>
-            </div>
-          </div>
-        </IntegrationCard>
-
-        <IntegrationCard
-          icon={AtSign}
-          title={t('integrations.telegramInbound')}
-          description={t('integrations.telegramInboundDesc')}
-        >
-          <div className="space-y-4">
-            <div>
-              <Toggle
-                label={t('integrations.enableTelegramInbound')}
-                checked={formData.telegram_inbound_enabled === 'true'}
-                onChange={(next) =>
-                  setFormData({ ...formData, telegram_inbound_enabled: next ? 'true' : 'false' })
-                }
-              />
-              <p className="mt-1 ml-14 text-sm text-garage-text-muted">
-                {t('integrations.enableTelegramInboundDesc')}
-              </p>
-            </div>
-            <div className="p-3 bg-garage-bg/50 border border-garage-border rounded-lg">
-              <p className="text-xs text-garage-text-muted">{t('integrations.telegramCommandHint')}</p>
-              <p className="text-xs text-garage-text-muted font-mono mt-1">
-                fuel &lt;vin|nickname&gt; &lt;odo&gt;[km|mi] &lt;vol&gt;[L|gal|kWh] [price] [cost]
-              </p>
             </div>
           </div>
         </IntegrationCard>

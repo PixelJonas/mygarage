@@ -273,12 +273,7 @@
     "webhookToken": "Webhook Ingest Token",
     "webhookTokenPlaceholder": "Generate a long random token",
     "webhookTokenDesc": "Required on every inbound webhook request. Leave blank to disable ingest.",
-    "webhookHeaderHint": "Send header X-Webhook-Token (or ?token=) matching the value above.",
-    "telegramInbound": "Telegram Fuel Bot",
-    "telegramInboundDesc": "Accept structured fuel commands from Telegram (uses the same bot token under Notifications).",
-    "enableTelegramInbound": "Enable Telegram inbound commands",
-    "enableTelegramInboundDesc": "Requires a webhook ingest token and outbound Telegram bot token + chat ID.",
-    "telegramCommandHint": "Point Telegram's webhook at POST /api/v1/webhooks/telegram, then send:",
+    "webhookHeaderHint": "Send header X-Webhook-Token matching the value above.",
     "llmReceipt": "LLM Receipt Parse",
     "llmReceiptDesc": "Opt-in local or OpenAI-compatible draft parsing for fuel receipts. Never saves until you confirm.",
     "llmSection": "LLM Features",
@@ -502,6 +497,13 @@
       "step5": "Get your chat ID from",
       "groupsNote": "For groups/channels, add your bot to the group and use the group chat ID (starts with -).",
       "docsLink": "Telegram Bot Documentation"
+    },
+    "fuel": {
+      "title": "Fuel Commands",
+      "description": "Log a fill-up by messaging this bot. Only the chat ID above can use it.",
+      "enable": "Accept fuel commands",
+      "registerHint": "Register the bot's webhook with Telegram once. It needs a public HTTPS address, and your webhook token (Integrations > Inbound Webhooks) as its secret: letters, digits, _ and - only.",
+      "commandHint": "Then send:"
     }
   },
   "email": {
