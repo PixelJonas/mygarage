@@ -87,6 +87,11 @@ class WebhookFuelPayload(BaseModel):
 
 
 async def resolve_vehicle(db: AsyncSession, vin_or_nick: str) -> Vehicle:
+    """The vehicle a VIN or a nickname names (nickname match ignores case).
+
+    Raises ``HTTPException`` 404 when nothing matches and 409 when a nickname
+    matches more than one vehicle.
+    """
     key = vin_or_nick.strip()
     result = await db.execute(select(Vehicle).where(Vehicle.vin == key.upper()))
     vehicle = result.scalar_one_or_none()
@@ -107,6 +112,11 @@ async def resolve_vehicle(db: AsyncSession, vin_or_nick: str) -> Vehicle:
 
 
 async def create_fuel_record(db: AsyncSession, payload: WebhookFuelPayload) -> dict[str, Any]:
+    """Log a fill-up and its side effects in ONE commit; returns its id, VIN and date.
+
+    Anything the session already holds (the Telegram poller stages its offset
+    there) is committed with it. No date means today in the household zone.
+    """
     vehicle = await resolve_vehicle(db, payload.vin)
     fill_date = payload.date or household_today()
     price_basis = payload.price_basis
