@@ -13,10 +13,9 @@ which this application controls.
 from __future__ import annotations
 
 import logging
-import re
 import secrets
 from datetime import date as date_type
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -32,8 +31,8 @@ from app.models.odometer import OdometerRecord
 from app.models.reminder import Reminder
 from app.services.fuel_ingest import WebhookFuelPayload, create_fuel_record, resolve_vehicle
 from app.services.settings_service import SettingsService
+from app.services.telegram_fuel_commands import parse_fuel_command
 from app.utils.household_time import household_today
-from app.utils.units import UnitConverter
 
 logger = logging.getLogger(__name__)
 
@@ -42,19 +41,6 @@ router = APIRouter(prefix="/api/v1/webhooks", tags=["webhooks"])
 # Shared-secret auth with no account lockout, so cap guess rate per source IP.
 # Local Limiter instance matching the established pattern in routes/auth.py.
 limiter = Limiter(key_func=get_remote_address)
-
-# fuel <vin|nickname> <odometer> <volume> [price_per_unit] [cost]
-# volume may end with L, gal, or kWh; odometer may end with km/mi
-_FUEL_CMD = re.compile(
-    r"""^fuel\s+
-        (?P<vehicle>\S+)\s+
-        (?P<odo>[\d.]+)(?P<odo_unit>km|mi)?\s+
-        (?P<vol>[\d.]+)(?P<vol_unit>L|l|gal|kWh|kwh|KWH)?
-        (?:\s+(?P<price>[\d.]+))?
-        (?:\s+(?P<cost>[\d.]+))?
-        \s*$""",
-    re.IGNORECASE | re.VERBOSE,
-)
 
 
 async def require_webhook_token(db: AsyncSession, provided_token: str | None) -> str:
@@ -174,69 +160,6 @@ class TelegramUpdate(BaseModel):
     message: dict[str, Any] | None = None
 
 
-def _parse_fuel_command(text: str) -> tuple[str, WebhookFuelPayload]:
-    """Parse a structured fuel command into (vehicle_key, payload).
-
-    The vehicle key is returned separately because it may be a nickname, which
-    is String(100), while the payload's vin field is capped at 17. Building the
-    payload straight from the raw key raised a bare pydantic ValidationError
-    inside the handler, which FastAPI renders as a 500. Resolving the key to a
-    real VIN is the caller's job.
-    """
-    match = _FUEL_CMD.match(text.strip())
-    if not match:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Unrecognized command. Use: "
-                "fuel <vin|nickname> <odometer>[km|mi] <volume>[L|gal|kWh] [price] [cost]"
-            ),
-        )
-    try:
-        odo = Decimal(match.group("odo"))
-        vol = Decimal(match.group("vol"))
-    except (InvalidOperation, TypeError) as err:
-        raise HTTPException(status_code=400, detail="Invalid numeric values") from err
-
-    odo_unit = (match.group("odo_unit") or "km").lower()
-    vol_unit = (match.group("vol_unit") or "L").lower()
-    odometer_km = odo * UnitConverter.MILES_TO_KM if odo_unit == "mi" else odo
-
-    liters = None
-    kwh = None
-    price_basis = None
-    if vol_unit in ("kwh",):
-        kwh = vol
-        price_basis = "per_kwh"
-    elif vol_unit == "gal":
-        liters = vol * UnitConverter.US_GALLONS_TO_LITERS
-        price_basis = "per_volume"
-    else:
-        liters = vol
-        price_basis = "per_volume"
-
-    price = None
-    cost = None
-    if match.group("price"):
-        price = Decimal(match.group("price"))
-        if vol_unit == "gal" and price_basis == "per_volume":
-            # Convert $/gal → $/L
-            price = price / UnitConverter.US_GALLONS_TO_LITERS
-    if match.group("cost"):
-        cost = Decimal(match.group("cost"))
-
-    return match.group("vehicle"), WebhookFuelPayload(
-        vin="0" * 17,  # placeholder; the caller overwrites with the resolved VIN
-        odometer_km=odometer_km,
-        liters=liters,
-        kwh=kwh,
-        price_per_unit=price,
-        price_basis=price_basis,
-        cost=cost,
-        notes="via telegram",
-    )
-
-
 @router.post("/telegram")
 @limiter.limit(settings.rate_limit_webhooks)
 async def webhook_telegram(
@@ -307,7 +230,7 @@ async def webhook_telegram(
     # HTTPException because the payload bounds are enforced by pydantic, not by
     # the router, and a bare ValidationError here surfaces as a 500.
     try:
-        vehicle_key, payload = _parse_fuel_command(text)
+        vehicle_key, payload = parse_fuel_command(text)
         vehicle = await resolve_vehicle(db, vehicle_key)
         payload.vin = vehicle.vin
         result = await create_fuel_record(db, payload)

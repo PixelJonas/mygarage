@@ -7,7 +7,6 @@ import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from app.routes.webhooks import _parse_fuel_command
 from app.schemas.fuel import FuelRecordCreate
 from app.services.import_adapters.fuel_csv import (
     detect_format,
@@ -15,6 +14,7 @@ from app.services.import_adapters.fuel_csv import (
     parse_fuelio,
     parse_tesla,
 )
+from app.services.telegram_fuel_commands import parse_fuel_command
 from app.services.tire_results import WearStatus
 from app.services.tire_service import project_wear
 
@@ -540,7 +540,7 @@ def test_wear_blockers_are_not_masked_by_lifetime_blockers():
 
 
 def test_parse_fuel_command_metric():
-    vehicle_key, payload = _parse_fuel_command("fuel 1HGCM82633A004352 45000 40.5 1.55 62.78")
+    vehicle_key, payload = parse_fuel_command("fuel 1HGCM82633A004352 45000 40.5 1.55 62.78")
     assert vehicle_key == "1HGCM82633A004352"
     assert payload.odometer_km == Decimal("45000")
     assert payload.liters == Decimal("40.5")
@@ -551,7 +551,7 @@ def test_parse_fuel_command_metric():
 
 
 def test_parse_fuel_command_imperial_and_kwh():
-    vehicle_key, payload = _parse_fuel_command("fuel Model3 15000mi 42.5kWh 0.20 8.50")
+    vehicle_key, payload = parse_fuel_command("fuel Model3 15000mi 42.5kWh 0.20 8.50")
     assert vehicle_key == "Model3"
     assert payload.odometer_km == Decimal("15000") * Decimal("1.609344")
     assert payload.kwh == Decimal("42.5")
@@ -562,15 +562,23 @@ def test_parse_fuel_command_imperial_and_kwh():
 
 
 def test_parse_fuel_command_gal_converts_price_to_per_liter():
-    _key, payload = _parse_fuel_command("fuel Civic 10000mi 12gal 3.50")
+    _key, payload = parse_fuel_command("fuel Civic 10000mi 12gal 3.50")
     assert payload.liters == Decimal("12") * Decimal("3.785411784")
     assert payload.price_per_unit == Decimal("3.50") / Decimal("3.785411784")
     assert payload.price_basis == "per_volume"
 
 
+@pytest.mark.parametrize("prefix", ["/fuel", "/fuel@MyGarageBot", "FUEL"])
+def test_parse_fuel_command_accepts_the_group_forms(prefix):
+    """In a group with privacy mode on, a bot only receives messages starting with /."""
+    vehicle_key, payload = parse_fuel_command(f"{prefix} Civic 45000 40")
+    assert vehicle_key == "Civic"
+    assert payload.liters == Decimal("40")
+
+
 def test_parse_fuel_command_rejects_garbage():
     with pytest.raises(HTTPException) as exc:
-        _parse_fuel_command("charge now please")
+        parse_fuel_command("charge now please")
     assert exc.value.status_code == 400
 
 
@@ -628,7 +636,7 @@ class TestChargeFieldValidation:
         assert FuelRecordUpdate(charge_location="home").charge_location == "home"
 
     def test_webhook_payload_rejects_bad_charge_level(self):
-        from app.routes.webhooks import WebhookFuelPayload
+        from app.services.fuel_ingest import WebhookFuelPayload
 
         with pytest.raises(ValidationError):
             WebhookFuelPayload(vin="1HGCM82633A004352", charge_level="L4")
@@ -644,14 +652,14 @@ class TestChargeFieldValidation:
         ],
     )
     def test_webhook_payload_rejects_out_of_range(self, field, value):
-        from app.routes.webhooks import WebhookFuelPayload
+        from app.services.fuel_ingest import WebhookFuelPayload
 
         with pytest.raises(ValidationError):
             WebhookFuelPayload(vin="1HGCM82633A004352", **{field: value})
 
     def test_webhook_payload_allows_charge_session_without_odometer_or_amount(self):
         """The webhook contract is deliberately looser than FuelRecordCreate."""
-        from app.routes.webhooks import WebhookFuelPayload
+        from app.services.fuel_ingest import WebhookFuelPayload
 
         payload = WebhookFuelPayload(vin="1HGCM82633A004352", kwh=45)
         assert payload.odometer_km is None
@@ -664,7 +672,7 @@ def test_parse_fuel_command_accepts_long_nickname():
     ValidationError inside the handler, surfacing as a 500 rather than a 400,
     and Telegram then retried the same update forever.
     """
-    vehicle_key, payload = _parse_fuel_command("fuel MyOtherDailyDriver 45000 40")
+    vehicle_key, payload = parse_fuel_command("fuel MyOtherDailyDriver 45000 40")
     assert vehicle_key == "MyOtherDailyDriver"
     assert payload.odometer_km == Decimal("45000")
 
