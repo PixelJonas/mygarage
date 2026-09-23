@@ -3019,6 +3019,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/notifications/telegram/fuel-commands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Telegram Fuel Status
+         * @description Whether Telegram fuel commands are being fetched, and the last error if not.
+         */
+        get: operations["get_telegram_fuel_status_api_notifications_telegram_fuel_commands_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/notifications/test/discord": {
         parameters: {
             query?: never;
@@ -4144,37 +4164,6 @@ export interface paths {
         put?: never;
         /** Webhook Complete Reminder */
         post: operations["webhook_complete_reminder_api_v1_webhooks_reminders_complete_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/webhooks/telegram": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Webhook Telegram
-         * @description Telegram bot webhook — structured text fuel commands only (no OCR).
-         *
-         *     Auth: the webhook ingest token. Telegram cannot send a custom header, but
-         *     it returns the ``secret_token`` given to setWebhook in
-         *     ``X-Telegram-Bot-Api-Secret-Token``, so that header is read first;
-         *     ``X-Webhook-Token`` works too.
-         *
-         *     Past auth, every answer is a 200: Telegram redelivers an update it gets a
-         *     4xx for, so a typo, a stranger or a switched-off bot would each become a
-         *     loop. Commands are taken only while Telegram and its fuel commands are
-         *     both switched on (Settings > Notifications > Telegram), and only from the
-         *     chat set there.
-         */
-        post: operations["webhook_telegram_api_v1_webhooks_telegram_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -15595,16 +15584,24 @@ export interface components {
             tax_type?: ("Registration" | "Inspection" | "Property Tax" | "Tolls") | null;
         };
         /**
-         * TelegramUpdate
-         * @description Minimal Telegram Bot API Update subset.
+         * TelegramFuelStatus
+         * @description The Telegram fuel-command poller's state, for Settings > Notifications > Telegram.
          */
-        TelegramUpdate: {
-            /** Message */
-            message?: {
-                [key: string]: unknown;
-            } | null;
-            /** Update Id */
-            update_id?: number | null;
+        TelegramFuelStatus: {
+            /** Description */
+            description?: string | null;
+            /** Error Code */
+            error_code?: ("bot_token_rejected" | "conflict" | "rate_limited" | "unreachable" | "database_error" | "unexpected") | null;
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "off" | "starting" | "listening" | "error";
         };
         /**
          * TelemetryDataPoint
@@ -24256,6 +24253,26 @@ export interface operations {
             };
         };
     };
+    get_telegram_fuel_status_api_notifications_telegram_fuel_commands_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramFuelStatus"];
+                };
+            };
+        };
+    };
     test_discord_connection_api_notifications_test_discord_post: {
         parameters: {
             query?: never;
@@ -25980,41 +25997,6 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["WebhookCompleteReminderPayload"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    webhook_telegram_api_v1_webhooks_telegram_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TelegramUpdate"];
             };
         };
         responses: {

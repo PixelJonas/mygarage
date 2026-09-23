@@ -562,3 +562,23 @@ async def test_a_failed_discord_test_logs_no_webhook_url(
     assert response.json()["success"] is False
     assert "SECRET-hook" not in caplog.text
     assert "SECRET-hook" not in response.text
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_fuel_command_status_for_an_admin(client: AsyncClient, auth_headers):
+    response = await client.get("/api/notifications/telegram/fuel-commands", headers=auth_headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {"state", "error_code", "description", "since"}
+    assert body["state"] in {"off", "starting", "listening", "error"}
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_fuel_command_status_is_admin_only(client: AsyncClient, non_admin_headers):
+    response = await client.get(
+        "/api/notifications/telegram/fuel-commands", headers=non_admin_headers
+    )
+    assert response.status_code == 403

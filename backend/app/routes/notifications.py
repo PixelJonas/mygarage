@@ -1,7 +1,7 @@
 """Notification API endpoints for testing notification services and in-app inbox."""
 
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any, Literal
 
 import httpx
@@ -18,6 +18,7 @@ from app.services.hours_service import latest_engine_hours_and_date
 from app.services.odometer_service import latest_odometer_km_and_date
 from app.services.reminder_service import is_reminder_overdue, is_reminder_snoozed
 from app.services.settings_service import SettingsService
+from app.services.telegram_poller import PollerErrorCode, PollerState, telegram_poller
 from app.utils.household_time import household_today
 from app.utils.http_errors import describe_http_error
 
@@ -30,6 +31,23 @@ async def _get_setting(db: AsyncSession, key: str, default: str = "") -> str:
     """Get a setting value."""
     setting = await SettingsService.get(db, key)
     return setting.value if setting and setting.value else default
+
+
+class TelegramFuelStatus(BaseModel):
+    """The Telegram fuel-command poller's state, for Settings > Notifications > Telegram."""
+
+    state: PollerState
+    error_code: PollerErrorCode | None = None
+    description: str | None = None
+    since: datetime
+
+
+@router.get("/telegram/fuel-commands", response_model=TelegramFuelStatus)
+async def get_telegram_fuel_status(
+    current_user: User = Depends(get_current_admin_user),
+) -> TelegramFuelStatus:
+    """Whether Telegram fuel commands are being fetched, and the last error if not."""
+    return TelegramFuelStatus(**telegram_poller.status)
 
 
 @router.post("/test/ntfy")

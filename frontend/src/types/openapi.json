@@ -19837,34 +19837,60 @@
         "title": "TaxRecordUpdate",
         "type": "object"
       },
-      "TelegramUpdate": {
-        "description": "Minimal Telegram Bot API Update subset.",
+      "TelegramFuelStatus": {
+        "description": "The Telegram fuel-command poller's state, for Settings > Notifications > Telegram.",
         "properties": {
-          "message": {
+          "description": {
             "anyOf": [
               {
-                "additionalProperties": true,
-                "type": "object"
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Message"
+            "title": "Description"
           },
-          "update_id": {
+          "error_code": {
             "anyOf": [
               {
-                "type": "integer"
+                "enum": [
+                  "bot_token_rejected",
+                  "conflict",
+                  "rate_limited",
+                  "unreachable",
+                  "database_error",
+                  "unexpected"
+                ],
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Update Id"
+            "title": "Error Code"
+          },
+          "since": {
+            "format": "date-time",
+            "title": "Since",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "off",
+              "starting",
+              "listening",
+              "error"
+            ],
+            "title": "State",
+            "type": "string"
           }
         },
-        "title": "TelegramUpdate",
+        "required": [
+          "state",
+          "since"
+        ],
+        "title": "TelegramFuelStatus",
         "type": "object"
       },
       "TelemetryDataPoint": {
@@ -37670,6 +37696,33 @@
         ]
       }
     },
+    "/api/notifications/telegram/fuel-commands": {
+      "get": {
+        "description": "Whether Telegram fuel commands are being fetched, and the last error if not.",
+        "operationId": "get_telegram_fuel_status_api_notifications_telegram_fuel_commands_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramFuelStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Telegram Fuel Status",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
     "/api/notifications/test/discord": {
       "post": {
         "description": "Test Discord webhook connection.",
@@ -40294,50 +40347,6 @@
           }
         },
         "summary": "Webhook Complete Reminder",
-        "tags": [
-          "webhooks"
-        ]
-      }
-    },
-    "/api/v1/webhooks/telegram": {
-      "post": {
-        "description": "Telegram bot webhook \u2014 structured text fuel commands only (no OCR).\n\nAuth: the webhook ingest token. Telegram cannot send a custom header, but\nit returns the ``secret_token`` given to setWebhook in\n``X-Telegram-Bot-Api-Secret-Token``, so that header is read first;\n``X-Webhook-Token`` works too.\n\nPast auth, every answer is a 200: Telegram redelivers an update it gets a\n4xx for, so a typo, a stranger or a switched-off bot would each become a\nloop. Commands are taken only while Telegram and its fuel commands are\nboth switched on (Settings > Notifications > Telegram), and only from the\nchat set there.",
-        "operationId": "webhook_telegram_api_v1_webhooks_telegram_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TelegramUpdate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Webhook Telegram Api V1 Webhooks Telegram Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Webhook Telegram",
         "tags": [
           "webhooks"
         ]

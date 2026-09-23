@@ -1,9 +1,9 @@
-"""Inbound webhook endpoints for fuel, odometer, reminders, and Telegram.
+"""Inbound webhook endpoints for fuel, odometer and reminders.
 
 Authenticated with the shared ``webhook_ingest_token`` setting via the
-``X-Webhook-Token`` header (Telegram sends it in a header of its own, see
-``webhook_telegram``). Used by the Home Assistant integration, n8n, and the
-structured Telegram bot.
+``X-Webhook-Token`` header. Used by the Home Assistant integration and n8n.
+Telegram fuel commands are fetched by ``services/telegram_poller.py``, not
+posted here.
 
 The token is deliberately NOT accepted as a query parameter: it would be
 written verbatim into granian, Traefik, and Cloudflare access logs, none of
@@ -19,7 +19,7 @@ from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy import select
@@ -31,7 +31,6 @@ from app.models.odometer import OdometerRecord
 from app.models.reminder import Reminder
 from app.services.fuel_ingest import WebhookFuelPayload, create_fuel_record, resolve_vehicle
 from app.services.settings_service import SettingsService
-from app.services.telegram_fuel_commands import parse_fuel_command
 from app.utils.household_time import household_today
 
 logger = logging.getLogger(__name__)
@@ -151,93 +150,3 @@ async def webhook_complete_reminder(
     reminder.status = "done"
     await db.commit()
     return {"id": reminder.id, "status": reminder.status}
-
-
-class TelegramUpdate(BaseModel):
-    """Minimal Telegram Bot API Update subset."""
-
-    update_id: int | None = None
-    message: dict[str, Any] | None = None
-
-
-@router.post("/telegram")
-@limiter.limit(settings.rate_limit_webhooks)
-async def webhook_telegram(
-    request: Request,
-    update: TelegramUpdate,
-    db: AsyncSession = Depends(get_db),
-) -> dict[str, Any]:
-    """Telegram bot webhook — structured text fuel commands only (no OCR).
-
-    Auth: the webhook ingest token. Telegram cannot send a custom header, but
-    it returns the ``secret_token`` given to setWebhook in
-    ``X-Telegram-Bot-Api-Secret-Token``, so that header is read first;
-    ``X-Webhook-Token`` works too.
-
-    Past auth, every answer is a 200: Telegram redelivers an update it gets a
-    4xx for, so a typo, a stranger or a switched-off bot would each become a
-    loop. Commands are taken only while Telegram and its fuel commands are
-    both switched on (Settings > Notifications > Telegram), and only from the
-    chat set there.
-    """
-    # Authenticate BEFORE reporting whether Telegram ingest is enabled, so an
-    # unauthenticated caller cannot probe the instance's configuration.
-    await require_webhook_token(
-        db,
-        request.headers.get("X-Telegram-Bot-Api-Secret-Token")
-        or request.headers.get("X-Webhook-Token"),
-    )
-
-    if not (
-        await SettingsService.get_bool(db, "telegram_enabled")
-        and await SettingsService.get_bool(db, "telegram_inbound_enabled")
-    ):
-        return {"ok": True, "ignored": True}
-
-    message = update.message or {}
-    text = (message.get("text") or "").strip()
-    chat = message.get("chat") or {}
-    chat_id = chat.get("id")
-
-    def _reply(message_text: str) -> dict[str, Any]:
-        """Telegram acts on a response body only when it names a method.
-
-        An unknown key like "reply" is discarded, so the user saw nothing.
-        """
-        return {"method": "sendMessage", "chat_id": chat_id, "text": message_text}
-
-    # An update with no text (an edit, a join) has no chat to answer.
-    if not text:
-        return {"ok": True, "ignored": True}
-
-    # Anyone can message a bot. With no chat set, no chat ID matches; the reply
-    # names the ID, which is the value that goes in the setting.
-    chat_setting = await SettingsService.get(db, "telegram_chat_id")
-    configured_chat = (chat_setting.value or "").strip() if chat_setting else ""
-    if str(chat_id) != configured_chat:
-        return _reply(
-            f"This chat can't log fuel. To allow it, set Chat ID to {chat_id} "
-            "under Settings > Notifications > Telegram in MyGarage."
-        )
-
-    if text.lower() in ("help", "/help", "start", "/start"):
-        return _reply(
-            "MyGarage fuel bot\n"
-            "fuel <vin|nickname> <odometer>[km|mi] <volume>[L|gal|kWh] [price] [cost]"
-        )
-
-    # Bad input gets a reply, not a 4xx. ValidationError is caught alongside
-    # HTTPException because the payload bounds are enforced by pydantic, not by
-    # the router, and a bare ValidationError here surfaces as a 500.
-    try:
-        vehicle_key, payload = parse_fuel_command(text)
-        vehicle = await resolve_vehicle(db, vehicle_key)
-        payload.vin = vehicle.vin
-        result = await create_fuel_record(db, payload)
-    except HTTPException as exc:
-        return _reply(f"Could not log that: {exc.detail}")
-    except ValidationError as exc:
-        logger.info("Telegram command rejected by validation (%d errors)", exc.error_count())
-        return _reply("Could not log that: one of those values is out of range.")
-
-    return _reply(f"Logged fill-up for {result['vin']} on {result['date']}.")

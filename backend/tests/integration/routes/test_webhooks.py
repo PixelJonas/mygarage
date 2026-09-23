@@ -1,4 +1,4 @@
-"""Integration tests for inbound webhook fuel / odometer / Telegram ingest."""
+"""Integration tests for inbound webhook fuel / odometer ingest."""
 
 from datetime import date
 from io import BytesIO
@@ -6,7 +6,7 @@ from io import BytesIO
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from app.models.fuel import FuelRecord
 from app.models.settings import Setting
@@ -28,20 +28,6 @@ async def _set_setting(db_session, key: str, value: str) -> None:
     await db_session.commit()
 
 
-async def _enable_fuel_commands(db_session, chat: str = "42") -> None:
-    """Everything Telegram fuel commands need: a token, both switches, a chat."""
-    await _set_setting(db_session, "webhook_ingest_token", "secret-webhook")
-    await _set_setting(db_session, "telegram_enabled", "true")
-    await _set_setting(db_session, "telegram_inbound_enabled", "true")
-    await _set_setting(db_session, "telegram_chat_id", chat)
-
-
-async def _fuel_count(db_session, vin: str) -> int:
-    return await db_session.scalar(
-        select(func.count()).select_from(FuelRecord).where(FuelRecord.vin == vin)
-    )
-
-
 @pytest_asyncio.fixture(autouse=True)
 async def _reset_webhook_settings(db_session):
     """Clear the global webhook settings this module writes.
@@ -56,12 +42,7 @@ async def _reset_webhook_settings(db_session):
 
     async def _clear():
         limiter.reset()
-        for key in (
-            "webhook_ingest_token",
-            "telegram_enabled",
-            "telegram_inbound_enabled",
-            "telegram_chat_id",
-        ):
+        for key in ("webhook_ingest_token",):
             result = await db_session.execute(select(Setting).where(Setting.key == key))
             setting = result.scalar_one_or_none()
             if setting is not None:
@@ -271,57 +252,6 @@ class TestWebhookIngest:
         )
         assert response.status_code == 200, response.text
 
-    async def test_telegram_reply_uses_send_message_method(self, client: AsyncClient, db_session):
-        """Telegram only acts on a body containing a 'method' key."""
-        await _enable_fuel_commands(db_session)
-        response = await client.post(
-            "/api/v1/webhooks/telegram",
-            json={"update_id": 1, "message": {"text": "help", "chat": {"id": 42}}},
-            headers={"X-Webhook-Token": "secret-webhook"},
-        )
-        assert response.status_code == 200
-        body = response.json()
-        assert body["method"] == "sendMessage"
-        assert body["chat_id"] == 42
-        assert "MyGarage" in body["text"]
-
-    async def test_telegram_bad_syntax_returns_200(self, client: AsyncClient, db_session):
-        """A 4xx makes Telegram redeliver the same update with backoff forever."""
-        await _enable_fuel_commands(db_session)
-        response = await client.post(
-            "/api/v1/webhooks/telegram",
-            json={"update_id": 2, "message": {"text": "fuel wat", "chat": {"id": 42}}},
-            headers={"X-Webhook-Token": "secret-webhook"},
-        )
-        assert response.status_code == 200
-        body = response.json()
-        assert body["method"] == "sendMessage"
-        assert "Could not log that" in body["text"]
-
-    async def test_telegram_out_of_range_value_returns_200(
-        self, client: AsyncClient, test_vehicle, db_session
-    ):
-        """Pydantic ValidationError is not HTTPException; it must also be caught."""
-        await _enable_fuel_commands(db_session)
-        vin = test_vehicle["vin"]
-        before = await _fuel_count(db_session, vin)
-        response = await client.post(
-            "/api/v1/webhooks/telegram",
-            json={
-                "update_id": 3,
-                "message": {"text": f"fuel {vin} 999999999999 40", "chat": {"id": 42}},
-            },
-            headers={"X-Webhook-Token": "secret-webhook"},
-        )
-        assert response.status_code == 200
-        body = response.json()
-        assert body["method"] == "sendMessage"
-        assert "Could not log that" in body["text"]
-
-        assert await _fuel_count(db_session, vin) == before, (
-            "a rejected command must not create a fuel record"
-        )
-
     async def test_query_param_token_is_rejected(
         self, client: AsyncClient, test_vehicle, db_session
     ):
@@ -361,142 +291,15 @@ class TestWebhookIngest:
                 break
         assert saw_429, "webhook routes accepted 70 token guesses without rate limiting"
 
-    async def test_telegram_fuel_command_by_nickname(
-        self, client: AsyncClient, test_vehicle, db_session
-    ):
-        await _enable_fuel_commands(db_session, chat="999")
-
-        vehicle = await db_session.get(Vehicle, test_vehicle["vin"])
-        vehicle.nickname = "Model3Demo"
-        await db_session.commit()
-
+    async def test_the_telegram_webhook_is_gone(self, client: AsyncClient, db_session):
+        """Fuel commands are fetched by polling now; there is nothing to post to."""
+        await _set_setting(db_session, "webhook_ingest_token", "secret-webhook")
         response = await client.post(
             "/api/v1/webhooks/telegram",
-            json={
-                "update_id": 2,
-                "message": {
-                    "text": "fuel Model3Demo 10000mi 12gal 3.50 42.00",
-                    "chat": {"id": 999},
-                },
-            },
+            json={"update_id": 1, "message": {"text": "help", "chat": {"id": 1}}},
             headers={"X-Webhook-Token": "secret-webhook"},
         )
-        assert response.status_code == 200
-        body = response.json()
-        assert body["method"] == "sendMessage"
-        assert "Logged fill-up" in body["text"]
-        assert test_vehicle["vin"] in body["text"]
-
-        result = await db_session.execute(
-            select(FuelRecord).where(
-                FuelRecord.vin == test_vehicle["vin"],
-                FuelRecord.notes == "via telegram",
-            )
-        )
-        record = result.scalar_one()
-        assert record.liters is not None
-        assert float(record.liters) == pytest.approx(45.425, abs=0.01)
-
-    async def test_telegram_help(self, client: AsyncClient, db_session):
-        await _enable_fuel_commands(db_session, chat="1")
-        response = await client.post(
-            "/api/v1/webhooks/telegram",
-            json={"update_id": 3, "message": {"text": "/help", "chat": {"id": 1}}},
-            headers={"X-Webhook-Token": "secret-webhook"},
-        )
-        assert response.status_code == 200
-        body = response.json()
-        assert body["method"] == "sendMessage"
-        assert "fuel <vin|nickname>" in body["text"]
-
-    async def test_telegram_signs_with_its_own_header(self, client: AsyncClient, db_session):
-        """Telegram cannot send X-Webhook-Token.
-
-        It returns setWebhook's secret_token in a header of its own, and that
-        is the only way a real Telegram update can authenticate.
-        """
-        await _enable_fuel_commands(db_session, chat="1")
-        response = await client.post(
-            "/api/v1/webhooks/telegram",
-            json={"update_id": 4, "message": {"text": "help", "chat": {"id": 1}}},
-            headers={"X-Telegram-Bot-Api-Secret-Token": "secret-webhook"},
-        )
-        assert response.status_code == 200, response.text
-        assert "fuel <vin|nickname>" in response.json()["text"]
-
-    async def test_telegram_header_with_the_wrong_secret_is_refused(
-        self, client: AsyncClient, db_session
-    ):
-        await _enable_fuel_commands(db_session, chat="1")
-        response = await client.post(
-            "/api/v1/webhooks/telegram",
-            json={"update_id": 5, "message": {"text": "help", "chat": {"id": 1}}},
-            headers={"X-Telegram-Bot-Api-Secret-Token": "wrong-token"},
-        )
-        assert response.status_code == 401
-
-    @pytest.mark.parametrize("switch", ["telegram_enabled", "telegram_inbound_enabled"])
-    async def test_either_switch_off_logs_nothing(
-        self, client: AsyncClient, test_vehicle, db_session, switch
-    ):
-        """Fuel commands sit under the Telegram switch, so either one stops them.
-
-        Ignored with a 200: after a switch-off the webhook stays registered, and
-        a 4xx would have Telegram redeliver every message.
-        """
-        await _enable_fuel_commands(db_session)
-        await _set_setting(db_session, switch, "false")
-        vin = test_vehicle["vin"]
-        before = await _fuel_count(db_session, vin)
-        response = await client.post(
-            "/api/v1/webhooks/telegram",
-            json={
-                "update_id": 6,
-                "message": {"text": f"fuel {vin} 10000 40", "chat": {"id": 42}},
-            },
-            headers={"X-Telegram-Bot-Api-Secret-Token": "secret-webhook"},
-        )
-        assert response.status_code == 200
-        assert response.json() == {"ok": True, "ignored": True}
-        assert await _fuel_count(db_session, vin) == before
-
-    @pytest.mark.parametrize("configured_chat", ["999", ""], ids=["other-chat", "no-chat-set"])
-    async def test_a_chat_not_configured_logs_nothing(
-        self, client: AsyncClient, test_vehicle, db_session, configured_chat
-    ):
-        """Anyone can message a bot; only the configured chat may log fuel.
-
-        The reply names the chat's ID, which is what goes in the setting.
-        """
-        await _enable_fuel_commands(db_session, chat=configured_chat)
-        vin = test_vehicle["vin"]
-        before = await _fuel_count(db_session, vin)
-        response = await client.post(
-            "/api/v1/webhooks/telegram",
-            json={
-                "update_id": 7,
-                "message": {"text": f"fuel {vin} 10000 40", "chat": {"id": 123}},
-            },
-            headers={"X-Telegram-Bot-Api-Secret-Token": "secret-webhook"},
-        )
-        assert response.status_code == 200
-        body = response.json()
-        assert body["method"] == "sendMessage"
-        assert body["chat_id"] == 123
-        assert "can't log fuel" in body["text"]
-        assert "123" in body["text"]
-        assert await _fuel_count(db_session, vin) == before
-
-    async def test_an_update_without_text_is_ignored(self, client: AsyncClient, db_session):
-        """An edit or a join carries no message; there is no chat to answer."""
-        await _enable_fuel_commands(db_session)
-        response = await client.post(
-            "/api/v1/webhooks/telegram",
-            json={"update_id": 8},
-            headers={"X-Telegram-Bot-Api-Secret-Token": "secret-webhook"},
-        )
-        assert response.status_code == 200
-        assert response.json() == {"ok": True, "ignored": True}
+        assert response.status_code == 404
 
     async def test_ambiguous_nickname_returns_409(
         self, client: AsyncClient, test_vehicle, db_session
