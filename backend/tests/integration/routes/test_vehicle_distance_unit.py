@@ -13,6 +13,7 @@ from httpx import AsyncClient
 from sqlalchemy import delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.reminder import Reminder
 from app.models.user import User
 from app.models.vehicle import Vehicle
 from app.services.auth import create_access_token
@@ -190,3 +191,70 @@ class TestSurfaces:
         finally:
             await _drop(db_session, vin)
             await _drop_user(db_session, user_id)
+
+
+class TestMixedPages:
+    async def test_every_carrier_serves_the_unit(
+        self, client: AsyncClient, auth_headers: dict[str, str], db_session: AsyncSession
+    ) -> None:
+        from datetime import date, timedelta
+
+        vin = _vin()
+        try:
+            await _create(client, auth_headers, vin, distance_unit="mi")
+            dash = (await client.get("/api/dashboard", headers=auth_headers)).json()
+            card = next(v for v in dash["vehicles"] if v["vin"] == vin)
+            assert card["distance_unit"] == "mi"
+
+            qe = (await client.get("/api/quick-entry/vehicles", headers=auth_headers)).json()
+            assert next(v for v in qe["vehicles"] if v["vin"] == vin)["distance_unit"] == "mi"
+
+            due = (date.today() + timedelta(days=10)).isoformat()
+            made = await client.post(
+                f"/api/vehicles/{vin}/reminders",
+                headers=auth_headers,
+                json={
+                    "title": "DU rotation",
+                    "reminder_type": "both",
+                    "due_date": due,
+                    "due_mileage_km": "20000",
+                },
+            )
+            assert made.status_code == 201, made.text
+            calendar = (await client.get("/api/calendar", headers=auth_headers)).json()
+            event = next(
+                e for e in calendar["events"] if e["id"] == f"reminder-{made.json()['id']}"
+            )
+            assert event["vehicle_distance_unit"] == "mi"
+        finally:
+            await db_session.rollback()
+            await db_session.execute(delete(Reminder).where(Reminder.vin == vin))
+            await db_session.commit()
+            await _drop(db_session, vin)
+
+    async def test_one_bad_row_does_not_take_down_the_pages(
+        self, client: AsyncClient, auth_headers: dict[str, str], db_session: AsyncSession
+    ) -> None:
+        vin = _vin()
+        try:
+            await _create(client, auth_headers, vin)
+            # "MI" fits VARCHAR(2): PostgreSQL refuses "miles" before the
+            # response path is exercised.
+            await db_session.execute(
+                update(Vehicle).where(Vehicle.vin == vin).values(distance_unit="MI")
+            )
+            await db_session.commit()
+            db_session.expunge_all()
+            for path in (
+                "/api/dashboard",
+                "/api/quick-entry/vehicles",
+                "/api/calendar",
+                f"/api/vehicles/{vin}",
+                "/api/vehicles",
+            ):
+                response = await client.get(path, headers=auth_headers)
+                assert response.status_code == 200, (path, response.text)
+            dash = (await client.get("/api/dashboard", headers=auth_headers)).json()
+            assert next(v for v in dash["vehicles"] if v["vin"] == vin)["distance_unit"] is None
+        finally:
+            await _drop(db_session, vin)
