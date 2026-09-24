@@ -20,7 +20,7 @@ import { canonicalToDisplay, displayToCanonical, supplyUnitLabel } from '@/utils
 import { formatDateForDisplay, formatDateForInput } from '@/utils/dateUtils'
 import { FormError } from '@/components/FormError'
 import FormModalWrapper from '@/components/FormModalWrapper'
-import CurrencyInputPrefix from '@/components/common/CurrencyInputPrefix'
+import CurrencyInput from '@/components/common/CurrencyInput'
 import { NumberInput, Select, registerDecimal } from '@/components/ui'
 import type { Supply } from '@/types/supplies'
 import type { AddressBookEntry } from '@/types/addressBook'
@@ -553,18 +553,14 @@ function PurchaseForm({
           <label htmlFor="purchase-cost" className="block text-xs font-medium text-garage-text mb-1">
             {t('totalCost')}
           </label>
-          <div className="relative">
-            <CurrencyInputPrefix />
-            <NumberInput
-              id="purchase-cost"
-              {...registerDecimal(register, 'total_cost', {
-                validate: (val) => validateNonNegativeCost(val, t('validation.amount.negative')),
-              })}
-              invalid={!!errors.total_cost}
-              className="pl-7"
-              disabled={isSubmitting}
-            />
-          </div>
+          <CurrencyInput
+            id="purchase-cost"
+            {...registerDecimal(register, 'total_cost', {
+              validate: (val) => validateNonNegativeCost(val, t('validation.amount.negative')),
+            })}
+            invalid={!!errors.total_cost}
+            disabled={isSubmitting}
+          />
           <FormError error={errors.total_cost} />
         </div>
         <div>

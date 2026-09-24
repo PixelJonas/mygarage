@@ -4,8 +4,8 @@ import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Save } from 'lucide-react'
 import FormModalWrapper from './FormModalWrapper'
-import { Button, Drawer, Field, Input, NumberInput, Select, Textarea, registerDecimal } from './ui'
-import CurrencyInputPrefix from './common/CurrencyInputPrefix'
+import { Button, Drawer, Field, Input, Select, Textarea, registerDecimal } from './ui'
+import CurrencyInput from './common/CurrencyInput'
 import type { SpotRental, SpotRentalCreate, SpotRentalUpdate } from '../types/spotRental'
 import type { AddressBookEntry } from '../types/addressBook'
 import { makeSpotRentalSchema, type SpotRentalFormData } from '../schemas/spotRental'
@@ -317,81 +317,61 @@ export default function SpotRentalForm({ vin, rental, onClose, onSuccess }: Spot
               )}
               error={rateType === 'nightly' ? errors.nightly_rate : rateType === 'weekly' ? errors.weekly_rate : errors.monthly_rate}
             >
-              <div className="relative">
-                <CurrencyInputPrefix />
-                <NumberInput
-                  id="rate_amount"
-                  {...registerDecimal(register, rateType === 'nightly' ? 'nightly_rate' : rateType === 'weekly' ? 'weekly_rate' : 'monthly_rate')}
-                  placeholder={rateType === 'nightly' ? '45.00' : rateType === 'weekly' ? '280.00' : '950.00'}
-                  invalid={
-                    !!(
-                      (rateType === 'nightly' && errors.nightly_rate) ||
-                      (rateType === 'weekly' && errors.weekly_rate) ||
-                      (rateType === 'monthly' && errors.monthly_rate)
-                    )
-                  }
-                  disabled={isSubmitting}
-                  className="pl-7"
-                />
-              </div>
+              <CurrencyInput
+                id="rate_amount"
+                {...registerDecimal(register, rateType === 'nightly' ? 'nightly_rate' : rateType === 'weekly' ? 'weekly_rate' : 'monthly_rate')}
+                placeholder={rateType === 'nightly' ? '45.00' : rateType === 'weekly' ? '280.00' : '950.00'}
+                invalid={
+                  !!(
+                    (rateType === 'nightly' && errors.nightly_rate) ||
+                    (rateType === 'weekly' && errors.weekly_rate) ||
+                    (rateType === 'monthly' && errors.monthly_rate)
+                  )
+                }
+                disabled={isSubmitting}
+              />
             </Field>
           </div>
 
           <div className="grid grid-cols-3 gap-4">
             <Field id="electric" label={t('spotRental.electric')} error={errors.electric}>
-              <div className="relative">
-                <CurrencyInputPrefix />
-                <NumberInput
-                  id="electric"
-                  {...registerDecimal(register, 'electric')}
-                  placeholder="50.00"
-                  invalid={!!errors.electric}
-                  disabled={isSubmitting}
-                  className="pl-7"
-                />
-              </div>
+              <CurrencyInput
+                id="electric"
+                {...registerDecimal(register, 'electric')}
+                placeholder="50.00"
+                invalid={!!errors.electric}
+                disabled={isSubmitting}
+              />
             </Field>
 
             <Field id="water" label={t('spotRental.water')} error={errors.water}>
-              <div className="relative">
-                <CurrencyInputPrefix />
-                <NumberInput
-                  id="water"
-                  {...registerDecimal(register, 'water')}
-                  placeholder="30.00"
-                  invalid={!!errors.water}
-                  disabled={isSubmitting}
-                  className="pl-7"
-                />
-              </div>
+              <CurrencyInput
+                id="water"
+                {...registerDecimal(register, 'water')}
+                placeholder="30.00"
+                invalid={!!errors.water}
+                disabled={isSubmitting}
+              />
             </Field>
 
             <Field id="waste" label={t('spotRental.waste')} error={errors.waste}>
-              <div className="relative">
-                <CurrencyInputPrefix />
-                <NumberInput
-                  id="waste"
-                  {...registerDecimal(register, 'waste')}
-                  placeholder="20.00"
-                  invalid={!!errors.waste}
-                  disabled={isSubmitting}
-                  className="pl-7"
-                />
-              </div>
+              <CurrencyInput
+                id="waste"
+                {...registerDecimal(register, 'waste')}
+                placeholder="20.00"
+                invalid={!!errors.waste}
+                disabled={isSubmitting}
+              />
             </Field>
           </div>
 
           <Field id="total_cost" label={t('common:totalCost')} hint={t('spotRental.autoCalculatedHint')} error={errors.total_cost}>
-            <div className="relative">
-              <CurrencyInputPrefix />
-              <NumberInput
-                id="total_cost"
-                {...registerDecimal(register, 'total_cost')}
-                placeholder={t('spotRentalForm.autoCalculatedPlaceholder')}
-                className="pl-7"
-                readOnly
-              />
-            </div>
+            <CurrencyInput
+              id="total_cost"
+              {...registerDecimal(register, 'total_cost')}
+              placeholder={t('spotRentalForm.autoCalculatedPlaceholder')}
+              readOnly
+            />
           </Field>
 
           <Field id="amenities" label={t('spotRental.amenities')} error={errors.amenities}>

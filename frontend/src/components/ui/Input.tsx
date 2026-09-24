@@ -1,6 +1,7 @@
 import type { InputHTMLAttributes, ReactNode } from 'react'
 import type { Size } from './types'
 import { useFieldDescribedBy } from './fieldContext'
+import { affixStyle, useAffixWidth } from './useAffixWidth'
 
 /**
  * `size` and `prefix` must be omitted from the DOM attribute set before they
@@ -15,8 +16,10 @@ interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size' 
    *  and date input; ~60-80 call sites want this. */
   mono?: boolean
   invalid?: boolean
-  /** Leading adornment, e.g. a currency symbol. */
+  /** Leading adornment, e.g. a currency symbol. The input pads past it at
+   *  whatever width it is drawn, so "PLN" fits as well as "$". */
   prefix?: ReactNode
+  /** Trailing adornment, e.g. a unit. Padded for the same way. */
   suffix?: ReactNode
 }
 
@@ -41,10 +44,13 @@ export default function Input({
   prefix,
   suffix,
   className = '',
+  style,
   'aria-describedby': ariaDescribedBy,
   ...rest
 }: InputProps) {
   const describedBy = useFieldDescribedBy(ariaDescribedBy)
+  const [prefixRef, prefixWidth] = useAffixWidth(prefix)
+  const [suffixRef, suffixWidth] = useAffixWidth(suffix)
   const control = (
     <input
       aria-invalid={invalid || undefined}
@@ -54,12 +60,13 @@ export default function Input({
         HEIGHT[size],
         invalid ? 'border-danger' : 'border-border',
         mono ? 'font-mono tabular-nums' : '',
-        prefix ? 'pl-7' : '',
-        suffix ? 'pr-7' : '',
+        prefix ? 'pl-affix' : '',
+        suffix ? 'pr-affix' : '',
         className,
       ]
         .filter(Boolean)
         .join(' ')}
+      style={{ ...affixStyle(prefix ? prefixWidth : null, suffix ? suffixWidth : null), ...style }}
       {...rest}
     />
   )
@@ -69,13 +76,13 @@ export default function Input({
   return (
     <div className="relative">
       {prefix ? (
-        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-text-mute">
+        <span ref={prefixRef} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-text-mute">
           {prefix}
         </span>
       ) : null}
       {control}
       {suffix ? (
-        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-text-mute">
+        <span ref={suffixRef} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-text-mute">
           {suffix}
         </span>
       ) : null}

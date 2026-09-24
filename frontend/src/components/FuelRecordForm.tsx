@@ -41,7 +41,7 @@ import {
 } from '../utils/unitFormat'
 import { useOnUserEdit } from '../hooks/useOnUserEdit'
 import { getUsageTracking } from '../utils/usageTracking'
-import CurrencyInputPrefix from './common/CurrencyInputPrefix'
+import CurrencyInput from './common/CurrencyInput'
 import { Button, Field, Input, NumberInput, Select, Textarea, Checkbox, registerDecimal } from './ui'
 import { formatDateForInput } from '../utils/dateUtils'
 import TimeInput24, { normalizeTime, formatTimeForInput } from './common/TimeInput24'
@@ -1154,17 +1154,13 @@ export default function FuelRecordForm({ vin, record, onClose, onSuccess }: Fuel
               </Field>
             )}
             <Field id="price_per_unit" label={priceLabel} error={errors.price_per_unit}>
-              <div className="relative">
-                <CurrencyInputPrefix />
-                <NumberInput
-                  id="price_per_unit"
-                  {...registerDecimal(register, 'price_per_unit')}
-                  placeholder={isElectric ? '0.130' : VOLUME_EXAMPLES[units.volume].price}
-                  invalid={!!errors.price_per_unit}
-                  disabled={isSubmitting}
-                  className="pl-7"
-                />
-              </div>
+              <CurrencyInput
+                id="price_per_unit"
+                {...registerDecimal(register, 'price_per_unit')}
+                placeholder={isElectric ? '0.130' : VOLUME_EXAMPLES[units.volume].price}
+                invalid={!!errors.price_per_unit}
+                disabled={isSubmitting}
+              />
             </Field>
           </div>
 
@@ -1231,16 +1227,10 @@ export default function FuelRecordForm({ vin, record, onClose, onSuccess }: Fuel
 
           <div className="grid grid-cols-2 gap-4">
             <Field id="rebate" label={t('fuel.rebate')} error={errors.rebate} hint={t('fuel.rebateHint')}>
-              <div className="relative">
-                <CurrencyInputPrefix />
-                <NumberInput id="rebate" {...registerDecimal(register, 'rebate')} placeholder="0.00" invalid={!!errors.rebate} disabled={isSubmitting} className="pl-7" />
-              </div>
+              <CurrencyInput id="rebate" {...registerDecimal(register, 'rebate')} placeholder="0.00" invalid={!!errors.rebate} disabled={isSubmitting} />
             </Field>
             <Field id="cost" label={t('common:totalCost')} error={errors.cost} hint={t('fuel.autoCalculatedHint')}>
-              <div className="relative">
-                <CurrencyInputPrefix />
-                <NumberInput id="cost" {...registerDecimal(register, 'cost')} placeholder="42.99" invalid={!!errors.cost} disabled={isSubmitting} className="pl-7" />
-              </div>
+              <CurrencyInput id="cost" {...registerDecimal(register, 'cost')} placeholder="42.99" invalid={!!errors.cost} disabled={isSubmitting} />
             </Field>
           </div>
 

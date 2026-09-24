@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect, type SyntheticEvent } from 'react
 import { useTranslation } from 'react-i18next'
 import { Save, Plus, AlertTriangle, Paperclip } from 'lucide-react'
 import FormModalWrapper from './FormModalWrapper'
-import CurrencyInputPrefix from './common/CurrencyInputPrefix'
+import { useCurrencyPrefix } from '../hooks/useCurrencyPrefix'
 import { toast } from 'sonner'
 import type { ServiceVisit, ServiceVisitCreate, ServiceVisitFormData, ServiceVisitFormLineItem, ServiceLineItemCreate, ServiceLineItemUpdate, ServiceCategory, SupplyUsedEntry } from '../types/serviceVisit'
 import { reminderDraftToCreate } from '../types/reminder'
@@ -102,6 +102,7 @@ export default function ServiceVisitForm({
   const { system } = useUnitPreference()
   const u = useUnitFormat()
   const { currencyCode, locale } = useCurrencyPreference()
+  const currencyPrefix = useCurrencyPrefix()
   const createMutation = useCreateServiceVisit(vin)
   const updateMutation = useUpdateServiceVisit(vin)
   const isMotorized = !vehicleType || !NON_MOTORIZED.includes(vehicleType)
@@ -812,46 +813,40 @@ export default function ServiceVisitForm({
             <h3 className="text-sm font-semibold text-text-mute uppercase tracking-wide">{t('service.taxAndFees')}</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Field id="tax-amount" label={t('service.tax')} error={fieldErrors.tax_amount}>
-                <div className="relative">
-                  <CurrencyInputPrefix />
-                  <input
-                    type="number"
-                    id="tax-amount"
-                    value={formData.tax_amount ?? ''}
-                    onChange={(e) => handleFieldChange('tax_amount', e.target.value ? parseFloat(e.target.value) : undefined)}
-                    placeholder="0.00"
-                    disabled={submitting}
-                    className="ui-focus-input ui-motion w-full rounded-control border border-border bg-surface-2 pl-7 pr-3 py-2 text-sm text-text font-mono tabular-nums"
-                  />
-                </div>
+                <Input
+                  type="number"
+                  id="tax-amount"
+                  value={formData.tax_amount ?? ''}
+                  onChange={(e) => handleFieldChange('tax_amount', e.target.value ? parseFloat(e.target.value) : undefined)}
+                  placeholder="0.00"
+                  disabled={submitting}
+                  mono
+                  prefix={currencyPrefix}
+                />
               </Field>
               <Field id="shop-supplies" label={t('service.shopSupplies')} error={fieldErrors.shop_supplies}>
-                <div className="relative">
-                  <CurrencyInputPrefix />
-                  <input
-                    type="number"
-                    id="shop-supplies"
-                    value={formData.shop_supplies ?? ''}
-                    onChange={(e) => handleFieldChange('shop_supplies', e.target.value ? parseFloat(e.target.value) : undefined)}
-                    placeholder="0.00"
-                    disabled={submitting}
-                    className="ui-focus-input ui-motion w-full rounded-control border border-border bg-surface-2 pl-7 pr-3 py-2 text-sm text-text font-mono tabular-nums"
-                  />
-                </div>
+                <Input
+                  type="number"
+                  id="shop-supplies"
+                  value={formData.shop_supplies ?? ''}
+                  onChange={(e) => handleFieldChange('shop_supplies', e.target.value ? parseFloat(e.target.value) : undefined)}
+                  placeholder="0.00"
+                  disabled={submitting}
+                  mono
+                  prefix={currencyPrefix}
+                />
               </Field>
               <Field id="misc-fees" label={t('service.miscFees')} error={fieldErrors.misc_fees}>
-                <div className="relative">
-                  <CurrencyInputPrefix />
-                  <input
-                    type="number"
-                    id="misc-fees"
-                    value={formData.misc_fees ?? ''}
-                    onChange={(e) => handleFieldChange('misc_fees', e.target.value ? parseFloat(e.target.value) : undefined)}
-                    placeholder="0.00"
-                    disabled={submitting}
-                    className="ui-focus-input ui-motion w-full rounded-control border border-border bg-surface-2 pl-7 pr-3 py-2 text-sm text-text font-mono tabular-nums"
-                  />
-                </div>
+                <Input
+                  type="number"
+                  id="misc-fees"
+                  value={formData.misc_fees ?? ''}
+                  onChange={(e) => handleFieldChange('misc_fees', e.target.value ? parseFloat(e.target.value) : undefined)}
+                  placeholder="0.00"
+                  disabled={submitting}
+                  mono
+                  prefix={currencyPrefix}
+                />
               </Field>
             </div>
           </div>

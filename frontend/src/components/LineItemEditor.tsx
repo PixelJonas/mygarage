@@ -9,8 +9,9 @@ import CurrencyInputPrefix from './common/CurrencyInputPrefix'
 import SupplyUsedPicker from './SupplyUsedPicker'
 import MaintenanceTypeSelect from './MaintenanceTypeSelect'
 import RecurrenceFields from './RecurrenceFields'
-import { Select } from './ui'
+import { Select, affixStyle, useAffixWidth } from './ui'
 import { useCurrencyPreference } from '../hooks/useCurrencyPreference'
+import { useCurrencySymbol } from '../hooks/useCurrencySymbol'
 
 // Service suggestions per category. Module scope can't reach `t`, so these are
 // translation-key suffixes under `lineItemEditor.misc.suggestions.*`, resolved
@@ -60,6 +61,8 @@ export default function LineItemEditor({
 }: LineItemEditorProps) {
   const { t } = useTranslation('vehicles')
   const { formatCurrency } = useCurrencyPreference()
+  // The cost field pads past the currency symbol at its drawn width.
+  const [symbolRef, symbolWidth] = useAffixWidth(useCurrencySymbol())
   const [expanded, setExpanded] = useState(true)
   const [showSuggestions, setShowSuggestions] = useState(false)
   // ★ The reminder draft's `interval_km` is canonical kilometres, converted
@@ -213,14 +216,15 @@ export default function LineItemEditor({
             <div>
               <label className="block text-sm font-medium text-garage-text mb-1">{t('lineItemEditor.cost')}</label>
               <div className="relative">
-                <CurrencyInputPrefix />
+                <CurrencyInputPrefix ref={symbolRef} />
                 <input
                   type="number"
                   value={item.cost ?? ''}
                   onChange={(e) => onChange(index, 'cost', e.target.value ? parseFloat(e.target.value) : undefined)}
                   placeholder="0.00"
                   disabled={disabled}
-                  className="w-full pl-7 pr-3 py-2 border border-garage-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary bg-garage-bg text-garage-text"
+                  className="w-full pl-affix pr-3 py-2 border border-garage-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary bg-garage-bg text-garage-text"
+                  style={affixStyle(symbolWidth)}
                 />
               </div>
             </div>
