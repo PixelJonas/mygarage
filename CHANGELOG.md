@@ -15,8 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Mopeka propane sensors: add each tank as its own device from its level topic, with the other readings' topics suggested from the broker; deleting one deletes its readings
 - Propane tanks on the Live tab: one card per tank, drawn at its level in your accent colour, with its other readings beside it
 - Alert lines per tank in Settings (level low and critical, battery low): they colour the tank, label it Low or Critical, and notify once per crossing, re-armed by a refill
+- Each vehicle can set the unit its odometer reads (km or mi); its distances and speeds are shown and entered in it, while fuel economy and cost per distance keep your account setting. Account default keeps today's behaviour (#172)
 
 ### Fixed
+- Odometer milestones step every 10,000 of the vehicle's own unit; a vehicle shown in miles was congratulated on "62,137 mi"
 - A request with NaN or infinity in a number field gets a 422, not a 500
 - Quick Entry offers what the vehicle page does: a fifth wheel or travel trailer gets Propane instead of Fuel Up and no Mileage, a diesel gets DEF, and the Add Fuel shortcut opens the vehicle's own fill-up
 - DEF can be logged on a vehicle whose second fuel is diesel; its DEF tab was read-only
@@ -29,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Secrets (the Telegram bot token, Discord and Slack webhook URLs, TomTom and Google Places API keys) are no longer written to the logs
 
 ### Changed
+- Telegram `/fuel` reads an odometer with no km/mi suffix in that vehicle's unit (it was kilometres), and its reply says how it read the numbers
 - A disabled LiveLink device no longer has its status refreshed by status or battery messages
 - **Enable LiveLink** now gates MQTT, Torque and SD-card backfill too: off, nothing is stored and no new device is discovered
 - Installs already receiving MQTT or Torque data have LiveLink switched on at upgrade (migration 116)
