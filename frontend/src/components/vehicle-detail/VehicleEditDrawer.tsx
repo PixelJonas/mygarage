@@ -12,7 +12,7 @@ import type { Vehicle, VehicleUpdate } from '../../types/vehicle'
 import type { UnitSet } from '../../types/units'
 import { makeVehicleEditSchema, type VehicleEditFormData, vehicleTypeOptions, NON_MOTORIZED_TYPES } from '../../schemas/vehicle'
 import { FUEL_TYPE_VALUES, FUEL_TYPE_LABELS, isDieselFuelType } from '../../constants/fuel'
-import { useUnitPreference } from '../../hooks/useUnitPreference'
+import { useAccountUnitPreference, useUnitPreference } from '../../hooks/useUnitPreference'
 import { useUnitFormat } from '../../hooks/useUnitFormat'
 import { UnitFormatter } from '../../utils/units'
 import { toLitersWirePrecision } from '../../utils/decimalSafe'
@@ -113,6 +113,10 @@ export default function VehicleEditDrawer({
   const [seedSource, setSeedSource] = useState<Vehicle | null>(null)
   const { units } = useUnitPreference()
   const u = useUnitFormat()
+  // The odometer-unit select names the ACCOUNT's unit on "Account default":
+  // this drawer sits inside VehicleDetail's scope, which already reads the
+  // vehicle's (#172).
+  const { units: accountUnits } = useAccountUnitPreference()
 
   /**
    * The DEF tank capacity's canonical origin, re-seeded on every open.
@@ -201,6 +205,8 @@ export default function VehicleEditDrawer({
       vehicle_type: source.vehicle_type,
       usage_unit: source.usage_unit ?? 'distance',
       secondary_usage_enabled: detailStats?.secondary_usage_enabled ?? false,
+      // '' is the "Account default" option (#172).
+      distance_unit: source.distance_unit ?? '',
       // R2-H1: `vehicle.current_hours` (the raw column) is retired as a read
       // source — it is no longer written on save, so it goes stale the moment
       // a fuel or service record carries a newer reading. Seed from the derived
@@ -422,6 +428,27 @@ export default function VehicleEditDrawer({
                 }
               />
             </div>
+
+            {usageTracking.tracksDistance && (
+              <Field
+                id="distance_unit"
+                label={t('edit.distanceUnit')}
+                hint={t('edit.distanceUnitHelp')}
+                error={errors.distance_unit}
+              >
+                <Select
+                  id="distance_unit"
+                  {...register('distance_unit')}
+                  invalid={!!errors.distance_unit}
+                  disabled={isSubmitting}
+                  options={[
+                    { value: '', label: t('edit.distanceUnitAccountDefault', { unit: accountUnits.distance }) },
+                    { value: 'km', label: t('edit.distanceUnitKm') },
+                    { value: 'mi', label: t('edit.distanceUnitMi') },
+                  ]}
+                />
+              </Field>
+            )}
 
             {usageTracking.tracksHours && (
               <Field id="current_hours" label={t('edit.currentHours')} error={errors.current_hours}>

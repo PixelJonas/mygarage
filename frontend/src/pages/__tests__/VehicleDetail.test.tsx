@@ -103,16 +103,19 @@ vi.mock('../../services/api', () => ({
 vi.mock('../../hooks/useOnlineStatus', () => ({
   useOnlineStatus: vi.fn(() => true),
 }))
-vi.mock('../../hooks/useUnitPreference', () => ({
-  useUnitPreference: () => ({
+vi.mock('../../hooks/useUnitPreference', () => {
+  const pref = () => ({
     system: 'imperial',
     showBoth: false,
     gallonStandard: 'us',
     // The RESOLVED set, not just the collapsed system: the hero reads its
     // odometer through `useUnitFormat()`, which closes over `units`.
     units: IMPERIAL_UNITS,
-  }),
-}))
+  })
+  // The edit drawer (rendered closed, hooks still running) reads the ACCOUNT
+  // hook for its odometer-unit select (#172).
+  return { useUnitPreference: pref, useAccountUnitPreference: pref }
+})
 vi.mock('../../contexts/AuthContext', () => ({
   useAuth: vi.fn(() => ({
     user: { id: 1, username: 'testuser', email: 'test@test.com', is_admin: false },

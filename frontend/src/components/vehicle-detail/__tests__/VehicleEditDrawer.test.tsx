@@ -24,15 +24,15 @@ const unitPrefMock = vi.hoisted(() => ({
 }))
 vi.mock('../../../hooks/useUnitPreference', async () => {
   const { IMPERIAL_UNITS, METRIC_UNITS } = await import('@/__tests__/factories')
-  return {
-    useUnitPreference: () => ({
-      system: unitPrefMock.system,
-      showBoth: unitPrefMock.showBoth,
-      units:
-        unitPrefMock.units ??
-        (unitPrefMock.system === 'imperial' ? IMPERIAL_UNITS : METRIC_UNITS),
-    }),
-  }
+  const pref = () => ({
+    system: unitPrefMock.system,
+    showBoth: unitPrefMock.showBoth,
+    units:
+      unitPrefMock.units ??
+      (unitPrefMock.system === 'imperial' ? IMPERIAL_UNITS : METRIC_UNITS),
+  })
+  // The odometer-unit select names the ACCOUNT's unit (#172).
+  return { useUnitPreference: pref, useAccountUnitPreference: pref }
 })
 
 import { IMPERIAL_UNITS, UK_IMPERIAL_UNITS } from '../../../__tests__/factories'
@@ -580,6 +580,9 @@ describe('VehicleEditDrawer — conversion behaviour', () => {
     expect(Object.keys(payload).sort()).toEqual([
       'current_hours',
       'def_tank_capacity_liters',
+      // #172: seeded from the fresh GET like every other field here, so an
+      // untouched save sends the stored unit back unchanged.
+      'distance_unit',
       'fuel_type',
       'nickname',
       'secondary_usage_enabled',
