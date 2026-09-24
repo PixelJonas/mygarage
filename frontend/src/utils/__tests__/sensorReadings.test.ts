@@ -64,8 +64,10 @@ describe('formatSensorReading', () => {
 
 describe('tankLevelTone', () => {
   it.each([
-    [null, 'success'],
-    [undefined, 'success'],
+    // The accent, not a status colour: a tank with no line crossed is just
+    // full-ish, and a green "OK" would say more than that.
+    [null, 'accent'],
+    [undefined, 'accent'],
     ['low', 'warning'],
     ['critical', 'danger'],
     ['high', 'warning'],

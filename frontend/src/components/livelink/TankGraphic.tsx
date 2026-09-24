@@ -17,6 +17,8 @@ interface Props {
   level: number | null
   /** The fill's colour, from the tank's own alert lines. */
   tone: TankTone
+  /** A word under the level ("Low") once a line is crossed. */
+  status?: string | null
   /** What a screen reader hears, e.g. "Level 72%". */
   label: string
   className?: string
@@ -26,12 +28,13 @@ interface Props {
 const BODY = { x: 10, y: 34, width: 80, height: 116, radius: 30 }
 
 const FILL_CLASS: Record<TankTone, string> = {
-  success: 'fill-success',
+  // `--color-primary` is `var(--accent)`, so this follows the accent setting.
+  accent: 'fill-primary',
   warning: 'fill-warning',
   danger: 'fill-danger',
 }
 
-export default function TankGraphic({ level, tone, label, className }: Props): ReactElement {
+export default function TankGraphic({ level, tone, status, label, className }: Props): ReactElement {
   const clipId = `tank-${useId().replace(/:/g, '')}`
   const clamped = level == null ? null : Math.min(100, Math.max(0, level))
   const fillHeight = clamped == null ? 0 : (BODY.height * clamped) / 100
@@ -95,6 +98,19 @@ export default function TankGraphic({ level, tone, label, className }: Props): R
       >
         {clamped == null ? '--' : `${formatAtPrecision(clamped, 0)}%`}
       </text>
+      {status ? (
+        <text
+          x="50"
+          y={BODY.y + BODY.height / 2 + 22}
+          textAnchor="middle"
+          className="fill-text font-semibold uppercase"
+          fontSize="11"
+          letterSpacing="1"
+          aria-hidden="true"
+        >
+          {status}
+        </text>
+      ) : null}
     </svg>
   )
 }

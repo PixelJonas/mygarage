@@ -830,6 +830,12 @@
     "allReadingsHidden": "Every reading from this vehicle is hidden from the dashboard. Turn them back on under Settings, Integrations, LiveLink.",
     "tankLevel": "Level {{level}}%",
     "tankLevelUnknown": "Level not reported yet",
+    "tankLevelLow": "Level {{level}}%, low",
+    "tankLevelCritical": "Level {{level}}%, critical",
+    "tankLevelHigh": "Level {{level}}%, high",
+    "tankLow": "Low",
+    "tankCritical": "Critical",
+    "tankHigh": "High",
     "lastReading": "Last reading {{age}}"
   },
   "noteList": {

@@ -13,8 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MQTT topic discovery for finding what a device publishes
 - Create a LiveLink device from Settings
 - Mopeka propane sensors: add each tank as its own device from its level topic, with the other readings' topics suggested from the broker; deleting one deletes its readings
-- Propane tanks on the Live tab: one card per tank, drawn at its level, with its other readings beside it
-- Alert lines per tank in Settings (level low and critical, battery low): they colour the tank and notify once per crossing, re-armed by a refill
+- Propane tanks on the Live tab: one card per tank, drawn at its level in your accent colour, with its other readings beside it
+- Alert lines per tank in Settings (level low and critical, battery low): they colour the tank, label it Low or Critical, and notify once per crossing, re-armed by a refill
 
 ### Fixed
 - A request with NaN or infinity in a number field gets a 422, not a 500
