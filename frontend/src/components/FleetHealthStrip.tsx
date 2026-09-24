@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { AlertTriangle, Calendar } from 'lucide-react'
 import type { FleetHealth } from '../types/dashboard'
 import { useCurrencyPreference } from '../hooks/useCurrencyPreference'
-import { useUnitFormat } from '../hooks/useUnitFormat'
+import { useUnitFormatFor } from '../hooks/useUnitFormat'
 import { formatDateForDisplay } from '../utils/dateUtils'
 import { Mono } from './ui'
 
@@ -22,7 +22,8 @@ interface FleetHealthStripProps {
 export default function FleetHealthStrip({ fleet }: FleetHealthStripProps) {
   const { t } = useTranslation('vehicles')
   const { formatCurrency } = useCurrencyPreference()
-  const u = useUnitFormat()
+  // The due vehicle's own odometer unit, over the account's (#172).
+  const u = useUnitFormatFor()(fleet.next_due?.distance_unit)
 
   const nextDueWhen = fleet.next_due?.due_date
     ? formatDateForDisplay(fleet.next_due.due_date, {
