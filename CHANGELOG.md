@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Quick Entry offers what the vehicle page does: a fifth wheel or travel trailer gets Propane instead of Fuel Up and no Mileage, a diesel gets DEF, and the Add Fuel shortcut opens the vehicle's own fill-up
 - DEF can be logged on a vehicle whose second fuel is diesel; its DEF tab was read-only
 - The propane form no longer shows "NaN" under the tank row before a tank size is chosen
+- Money fields make room for the whole currency symbol: "PLN", "CHF" or "R$" no longer covers the amount
 - The notification switches in LiveLink settings now gate their notifications; **Parameter threshold breaches** did nothing (migration 118 keeps any alert switched off the old way off)
 - Removed `TelemetryService.store_value`, which was unreachable and raised `TypeError`
 - Widened `livelink_devices.kind` so PostgreSQL accepts `generic_mqtt`

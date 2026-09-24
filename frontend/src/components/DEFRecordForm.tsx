@@ -21,7 +21,7 @@ import { useUnitFormat } from '../hooks/useUnitFormat'
 import { canonicalFromUnitField, seedUnitField, type UnitFieldOrigin } from '../utils/unitFormat'
 import { useOnUserEdit } from '../hooks/useOnUserEdit'
 import { formatDateForInput } from '../utils/dateUtils'
-import CurrencyInputPrefix from './common/CurrencyInputPrefix'
+import CurrencyInput from './common/CurrencyInput'
 import { Button, Field, Input, NumberInput, Textarea, registerDecimal } from './ui'
 import { applyServerErrors } from '../hooks/useApiFormErrors'
 import { getActionErrorMessage } from '../utils/httpErrorHandler'
@@ -317,16 +317,10 @@ export default function DEFRecordForm({
               <NumberInput id="liters" {...registerDecimal(register, 'liters')} placeholder="5.500" invalid={!!errors.liters} disabled={isSubmitting} />
             </Field>
             <Field id="price_per_unit" label={`${t('fuel.pricePer')}/${UnitFormatter.getVolumeUnit(units)}`} error={errors.price_per_unit}>
-              <div className="relative">
-                <CurrencyInputPrefix />
-                <NumberInput id="price_per_unit" {...registerDecimal(register, 'price_per_unit')} placeholder="4.500" invalid={!!errors.price_per_unit} disabled={isSubmitting} className="pl-7" />
-              </div>
+              <CurrencyInput id="price_per_unit" {...registerDecimal(register, 'price_per_unit')} placeholder="4.500" invalid={!!errors.price_per_unit} disabled={isSubmitting} />
             </Field>
             <Field id="cost" label={t('common:totalCost')} error={errors.cost} hint={t('common:autoCalculated')}>
-              <div className="relative">
-                <CurrencyInputPrefix />
-                <NumberInput id="cost" {...registerDecimal(register, 'cost')} placeholder="24.75" invalid={!!errors.cost} disabled={isSubmitting} className="pl-7" />
-              </div>
+              <CurrencyInput id="cost" {...registerDecimal(register, 'cost')} placeholder="24.75" invalid={!!errors.cost} disabled={isSubmitting} />
             </Field>
           </div>
 

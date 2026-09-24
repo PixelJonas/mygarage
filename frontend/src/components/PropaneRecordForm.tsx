@@ -21,7 +21,7 @@ import {
 } from '../utils/decimalSafe'
 import { useOnUserEdit } from '../hooks/useOnUserEdit'
 import { formatDateForInput } from '../utils/dateUtils'
-import CurrencyInputPrefix from './common/CurrencyInputPrefix'
+import CurrencyInput from './common/CurrencyInput'
 import { Button, Field, Input, NumberInput, Select, Textarea, registerDecimal } from './ui'
 import { applyServerErrors } from '../hooks/useApiFormErrors'
 import { getActionErrorMessage } from '../utils/httpErrorHandler'
@@ -400,16 +400,10 @@ export default function PropaneRecordForm({
 
           <div className="grid grid-cols-2 gap-4">
             <Field id="price_per_unit" label={`${t('fuel.pricePer')} ${UnitFormatter.getVolumeUnit(units)}`} error={errors.price_per_unit}>
-              <div className="relative">
-                <CurrencyInputPrefix />
-                <NumberInput id="price_per_unit" {...registerDecimal(register, 'price_per_unit')} placeholder={VOLUME_EXAMPLES[units.volume].price} invalid={!!errors.price_per_unit} disabled={isSubmitting} className="pl-7" />
-              </div>
+              <CurrencyInput id="price_per_unit" {...registerDecimal(register, 'price_per_unit')} placeholder={VOLUME_EXAMPLES[units.volume].price} invalid={!!errors.price_per_unit} disabled={isSubmitting} />
             </Field>
             <Field id="cost" label={t('common:totalCost')} error={errors.cost} hint={t('fuel.autoCalculatedHint')}>
-              <div className="relative">
-                <CurrencyInputPrefix />
-                <NumberInput id="cost" {...registerDecimal(register, 'cost')} placeholder="30.44" invalid={!!errors.cost} disabled={isSubmitting} className="pl-7" />
-              </div>
+              <CurrencyInput id="cost" {...registerDecimal(register, 'cost')} placeholder="30.44" invalid={!!errors.cost} disabled={isSubmitting} />
             </Field>
           </div>
 

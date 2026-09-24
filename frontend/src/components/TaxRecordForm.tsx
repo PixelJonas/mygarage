@@ -4,8 +4,8 @@ import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Save } from 'lucide-react'
 import FormModalWrapper from './FormModalWrapper'
-import CurrencyInputPrefix from './common/CurrencyInputPrefix'
-import { Button, Field, Input, NumberInput, Select, Textarea, registerDecimal } from './ui'
+import CurrencyInput from './common/CurrencyInput'
+import { Button, Field, Input, Select, Textarea, registerDecimal } from './ui'
 import type { TaxRecord, TaxRecordCreate, TaxRecordUpdate } from '../types/tax'
 import { makeTaxRecordSchema, type TaxRecordFormData, TAX_TYPES } from '../schemas/tax'
 import { useCreateTaxRecord, useUpdateTaxRecord } from '../hooks/queries/useTaxRecords'
@@ -132,17 +132,13 @@ export default function TaxRecordForm({ vin, record, onClose, onSuccess }: TaxRe
 
           <div className="grid grid-cols-2 gap-4">
             <Field id="amount" label={t('common:amount')} required error={errors.amount}>
-              <div className="relative">
-                <CurrencyInputPrefix />
-                <NumberInput
-                  id="amount"
-                  {...registerDecimal(register, 'amount')}
-                  placeholder="85.50"
-                  invalid={!!errors.amount}
-                  disabled={isSubmitting}
-                  className="pl-7"
-                />
-              </div>
+              <CurrencyInput
+                id="amount"
+                {...registerDecimal(register, 'amount')}
+                placeholder="85.50"
+                invalid={!!errors.amount}
+                disabled={isSubmitting}
+              />
             </Field>
 
             <Field id="renewal_date" label={t('tax.renewalDate')} error={errors.renewal_date} hint={t('tax.renewalDateHint')}>
