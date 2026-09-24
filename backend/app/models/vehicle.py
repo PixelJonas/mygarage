@@ -60,6 +60,10 @@ class Vehicle(Base):
     # isn't ``usage_unit``). Default off → existing vehicles stay single-track.
     # See migration 083.
     secondary_usage_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # The unit this vehicle's odometer reads: 'km', 'mi', or NULL for "Account
+    # default" (the viewer's own units). Display and entry only; storage stays
+    # km. Distance and speed follow it, nothing else does (#172, migration 119).
+    distance_unit: Mapped[str | None] = mapped_column(String(2), nullable=True)
     year: Mapped[int | None] = mapped_column(Integer)
     make: Mapped[str | None] = mapped_column(String(50))
     model: Mapped[str | None] = mapped_column(String(50))
