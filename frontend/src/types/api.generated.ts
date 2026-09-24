@@ -13499,6 +13499,10 @@ export interface components {
          * @description Lightweight vehicle summary for the Quick Entry selector.
          */
         QuickEntryVehicle: {
+            /** Fuel Type */
+            fuel_type?: string | null;
+            /** Fuel Type Secondary */
+            fuel_type_secondary?: string | null;
             /** Make */
             make: string | null;
             /** Model */

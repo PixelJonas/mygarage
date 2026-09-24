@@ -14177,6 +14177,28 @@
       "QuickEntryVehicle": {
         "description": "Lightweight vehicle summary for the Quick Entry selector.",
         "properties": {
+          "fuel_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fuel Type"
+          },
+          "fuel_type_secondary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fuel Type Secondary"
+          },
           "make": {
             "anyOf": [
               {

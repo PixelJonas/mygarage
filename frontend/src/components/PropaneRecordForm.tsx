@@ -377,13 +377,15 @@ export default function PropaneRecordForm({
               </Field>
             </div>
 
-            {tankSizeDisplay && tankQuantity && (() => {
+            {(() => {
+              // Parsed, not truthiness: the tank select is read as a number, so
+              // an empty one is NaN, and `NaN && …` renders the text "NaN".
+              const size = readNumber(tankSizeDisplay)
+              const quantity = readNumber(tankQuantity)
+              if (size === undefined || quantity === undefined || size <= 0 || quantity <= 0) return null
               // Same maths the auto-calc writes into the volume field, so the
               // hint can never quote a different number than the field gets.
-              const display = displayVolumeForTank(
-                readNumber(tankSizeDisplay) ?? 0,
-                readNumber(tankQuantity) ?? 0,
-              )
+              const display = displayVolumeForTank(size, quantity)
               return (
                 <p className="text-xs text-text-mute mt-2">
                   {t('propaneRecordForm.autoCalculatedVolume', { value: display?.toFixed(2) ?? '', unit: UnitFormatter.getVolumeUnit(units) })}

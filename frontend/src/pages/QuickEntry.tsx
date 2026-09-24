@@ -2,9 +2,12 @@ import { useState, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../contexts/AuthContext'
-import { Car, Fuel, Wrench, Gauge, ChevronRight, LayoutDashboard, Timer } from 'lucide-react'
+import { Car, Fuel, Flame, Droplets, Wrench, Gauge, ChevronRight, LayoutDashboard, Timer } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import FuelRecordForm from '../components/FuelRecordForm'
+import PropaneRecordForm from '../components/PropaneRecordForm'
+import DEFRecordForm from '../components/DEFRecordForm'
 import ServiceVisitForm from '../components/ServiceVisitForm'
 import OdometerRecordForm from '../components/OdometerRecordForm'
 import HoursRecordForm from '../components/HoursRecordForm'
@@ -13,9 +16,18 @@ import { useQuickEntryVehicles } from '../hooks/queries/useQuickEntryVehicles'
 import { vehicleLabel } from '../utils/vehicleLabel'
 import { withBase } from '../utils/basePath'
 import type { VehicleType } from '../types/vehicle'
-import { getUsageTracking } from '../utils/usageTracking'
+import { fillUpKind, vehicleLogKinds } from '../utils/vehicleLogKinds'
 
-type EntryType = 'fuel' | 'service' | 'odometer' | 'hours' | null
+type EntryType = 'fuel' | 'def' | 'propane' | 'service' | 'odometer' | 'hours' | null
+
+interface Action {
+  type: Exclude<EntryType, null>
+  offered: boolean
+  icon: LucideIcon
+  tint: string
+  title: string
+  description: string
+}
 
 export default function QuickEntry() {
   const { t } = useTranslation('vehicles')
@@ -62,14 +74,39 @@ export default function QuickEntry() {
   }, [vehicles])
 
   const selectedVehicle = vehicles.find(v => v.vin === selectedVin)
-  const { tracksDistance, tracksHours } = getUsageTracking({
-    usage_unit: selectedVehicle?.usage_unit || 'distance',
-    secondary_usage_enabled: !!selectedVehicle?.secondary_usage_enabled,
-  })
+  // The vehicle page's rule, so a fifth wheel offers propane here as it does
+  // there, and no fuel or mileage.
+  const kinds = vehicleLogKinds(selectedVehicle)
+
+  // What actually opens. A deep link names an entry before the vehicles load
+  // and whatever the vehicle is, so it is resolved here: "add fuel" is the
+  // vehicle's own fill-up (propane on a fifth wheel), and an entry the vehicle
+  // does not log opens nothing.
+  const openEntry: EntryType =
+    !selectedVehicle || entryType === null
+      ? null
+      : entryType === 'fuel'
+        ? fillUpKind(kinds)
+        : entryType === 'service' || kinds[entryType]
+          ? entryType
+          : null
+
+  // In the vehicle page's order: fill-ups (fuel, DEF, propane), then service,
+  // then usage.
+  const actions: Action[] = [
+    { type: 'fuel', offered: kinds.fuel, icon: Fuel, tint: 'text-blue-500 bg-blue-500/10', title: t('quickEntry.fuelUp'), description: t('quickEntry.fuelUpDesc') },
+    { type: 'def', offered: kinds.def, icon: Droplets, tint: 'text-sky-500 bg-sky-500/10', title: t('quickEntry.def'), description: t('quickEntry.defDesc') },
+    { type: 'propane', offered: kinds.propane, icon: Flame, tint: 'text-amber-500 bg-amber-500/10', title: t('quickEntry.propane'), description: t('quickEntry.propaneDesc') },
+    { type: 'service', offered: true, icon: Wrench, tint: 'text-orange-500 bg-orange-500/10', title: t('quickEntry.serviceVisit'), description: t('quickEntry.serviceVisitDesc') },
+    { type: 'odometer', offered: kinds.odometer, icon: Gauge, tint: 'text-green-500 bg-green-500/10', title: t('quickEntry.mileage'), description: t('quickEntry.mileageDesc') },
+    { type: 'hours', offered: kinds.hours, icon: Timer, tint: 'text-teal-500 bg-teal-500/10', title: t('quickEntry.engineHours'), description: t('quickEntry.engineHoursDesc') },
+  ]
 
   const handleSuccess = (type: EntryType) => {
     const labels: Record<string, string> = {
       fuel: t('quickEntry.fuelRecord'),
+      def: t('quickEntry.defRecord'),
+      propane: t('quickEntry.propaneRecord'),
       service: t('quickEntry.serviceVisit'),
       odometer: t('quickEntry.mileage'),
       hours: t('quickEntry.engineHours'),
@@ -162,73 +199,24 @@ export default function QuickEntry() {
               <div>
                 <p className="text-sm font-medium text-garage-text mb-3">{t('quickEntry.whatLogging')}</p>
                 <div className="grid grid-cols-1 gap-3">
-                  <button
-                    onClick={() => setEntryType('fuel')}
-                    className="flex items-center justify-between w-full px-4 py-4 bg-garage-surface border border-garage-border rounded-lg text-left hover:border-primary transition-colors active:scale-95"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-blue-500/10 rounded-lg">
-                        <Fuel className="w-5 h-5 text-blue-500" />
+                  {actions.filter((action) => action.offered).map(({ type, icon: Icon, tint, title, description }) => (
+                    <button
+                      key={type}
+                      onClick={() => setEntryType(type)}
+                      className="flex items-center justify-between w-full px-4 py-4 bg-garage-surface border border-garage-border rounded-lg text-left hover:border-primary transition-colors active:scale-95"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`p-2 rounded-lg ${tint}`}>
+                          <Icon className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <div className="font-medium text-garage-text">{title}</div>
+                          <div className="text-xs text-garage-text-muted">{description}</div>
+                        </div>
                       </div>
-                      <div>
-                        <div className="font-medium text-garage-text">{t('quickEntry.fuelUp')}</div>
-                        <div className="text-xs text-garage-text-muted">{t('quickEntry.fuelUpDesc')}</div>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-5 h-5 text-garage-text-muted" />
-                  </button>
-
-                  <button
-                    onClick={() => setEntryType('service')}
-                    className="flex items-center justify-between w-full px-4 py-4 bg-garage-surface border border-garage-border rounded-lg text-left hover:border-primary transition-colors active:scale-95"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-orange-500/10 rounded-lg">
-                        <Wrench className="w-5 h-5 text-orange-500" />
-                      </div>
-                      <div>
-                        <div className="font-medium text-garage-text">{t('quickEntry.serviceVisit')}</div>
-                        <div className="text-xs text-garage-text-muted">{t('quickEntry.serviceVisitDesc')}</div>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-5 h-5 text-garage-text-muted" />
-                  </button>
-
-                  {tracksDistance && (
-                  <button
-                    onClick={() => setEntryType('odometer')}
-                    className="flex items-center justify-between w-full px-4 py-4 bg-garage-surface border border-garage-border rounded-lg text-left hover:border-primary transition-colors active:scale-95"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-green-500/10 rounded-lg">
-                        <Gauge className="w-5 h-5 text-green-500" />
-                      </div>
-                      <div>
-                        <div className="font-medium text-garage-text">{t('quickEntry.mileage')}</div>
-                        <div className="text-xs text-garage-text-muted">{t('quickEntry.mileageDesc')}</div>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-5 h-5 text-garage-text-muted" />
-                  </button>
-                  )}
-
-                  {tracksHours && (
-                  <button
-                    onClick={() => setEntryType('hours')}
-                    className="flex items-center justify-between w-full px-4 py-4 bg-garage-surface border border-garage-border rounded-lg text-left hover:border-primary transition-colors active:scale-95"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-teal-500/10 rounded-lg">
-                        <Timer className="w-5 h-5 text-teal-500" />
-                      </div>
-                      <div>
-                        <div className="font-medium text-garage-text">{t('quickEntry.engineHours')}</div>
-                        <div className="text-xs text-garage-text-muted">{t('quickEntry.engineHoursDesc')}</div>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-5 h-5 text-garage-text-muted" />
-                  </button>
-                  )}
+                      <ChevronRight className="w-5 h-5 text-garage-text-muted" />
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
@@ -237,7 +225,7 @@ export default function QuickEntry() {
       </main>
 
       {/* Modal forms — opened by action buttons */}
-      {entryType === 'fuel' && selectedVin && (
+      {openEntry === 'fuel' && (
         <FuelRecordForm
           vin={selectedVin}
           onClose={() => setEntryType(null)}
@@ -245,7 +233,23 @@ export default function QuickEntry() {
         />
       )}
 
-      {entryType === 'service' && selectedVin && (
+      {openEntry === 'def' && (
+        <DEFRecordForm
+          vin={selectedVin}
+          onClose={() => setEntryType(null)}
+          onSuccess={() => handleSuccess('def')}
+        />
+      )}
+
+      {openEntry === 'propane' && (
+        <PropaneRecordForm
+          vin={selectedVin}
+          onClose={() => setEntryType(null)}
+          onSuccess={() => handleSuccess('propane')}
+        />
+      )}
+
+      {openEntry === 'service' && (
         <ServiceVisitForm
           vin={selectedVin}
           vehicleType={selectedVehicle?.vehicle_type as VehicleType | undefined}
@@ -254,7 +258,7 @@ export default function QuickEntry() {
         />
       )}
 
-      {entryType === 'odometer' && selectedVin && (
+      {openEntry === 'odometer' && (
         <OdometerRecordForm
           vin={selectedVin}
           onClose={() => setEntryType(null)}
@@ -262,7 +266,7 @@ export default function QuickEntry() {
         />
       )}
 
-      {entryType === 'hours' && selectedVin && (
+      {openEntry === 'hours' && (
         <HoursRecordForm
           vin={selectedVin}
           onClose={() => setEntryType(null)}
