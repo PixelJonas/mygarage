@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import api from '../services/api'
 import { getActionErrorMessage } from '../utils/httpErrorHandler'
-import { Car, Wrench, Fuel, Shield, FileText, HelpCircle, Droplets } from 'lucide-react'
+import { Car, Wrench, Fuel, Shield, FileText, HelpCircle, Droplets, Landmark } from 'lucide-react'
 import {
   ResponsiveContainer,
   PieChart as RechartsPieChart,
@@ -26,8 +26,13 @@ import { useCurrencyPreference } from '../hooks/useCurrencyPreference'
 import { useTimeFormat } from '../hooks/useTimeFormat'
 import { formatDateTime } from '../utils/parseAPITimestamp'
 
-// Colors for pie chart categories (9 categories: Maintenance, Upgrades, Inspection, Collision, Detailing, Fuel, DEF, Insurance, Taxes)
-const COLORS = ['#3B82F6', '#8B5CF6', '#F59E0B', '#EF4444', '#10B981', '#06B6D4', '#14B8A6', '#EC4899', '#6B7280']
+// Colors for pie chart categories (10 categories: Maintenance, Upgrades, Inspection, Collision, Detailing, Fuel, DEF, Insurance, Taxes, Financing)
+const COLORS = ['#3B82F6', '#8B5CF6', '#F59E0B', '#EF4444', '#10B981', '#06B6D4', '#14B8A6', '#EC4899', '#6B7280', '#84CC16']
+
+// Every cost series in a month, financing included, so bars, averages and the
+// exported Total all agree with the backend's per-month total.
+const monthlyTrendTotal = (trend: GarageAnalytics['monthly_trends'][number]) =>
+  parseFloat(trend.service) + parseFloat(trend.fuel) + parseFloat(trend.def_cost) + parseFloat(trend.financing)
 
 export default function GarageAnalytics() {
   const { t } = useTranslation('analytics')
@@ -63,6 +68,7 @@ export default function GarageAnalytics() {
     rows.push(`DEF,${analytics.total_costs.total_def}`)
     rows.push(`Insurance,${analytics.total_costs.total_insurance}`)
     rows.push(`Taxes,${analytics.total_costs.total_taxes}`)
+    rows.push(`Financing,${analytics.total_costs.total_financing}`)
     rows.push('')
 
     // Cost by Category
@@ -75,10 +81,10 @@ export default function GarageAnalytics() {
 
     // Cost by Vehicle
     rows.push('Cost by Vehicle')
-    rows.push('Vehicle,Purchase Price,Maintenance,Upgrades,Inspection,Collision,Detailing,Fuel,DEF,Running Costs')
+    rows.push('Vehicle,Purchase Price,Maintenance,Upgrades,Inspection,Collision,Detailing,Fuel,DEF,Financing,Running Costs')
     analytics.cost_by_vehicle.forEach((vehicle) => {
       rows.push(
-        `"${vehicle.name}",${vehicle.purchase_price},${vehicle.total_maintenance},${vehicle.total_upgrades},${vehicle.total_inspection},${vehicle.total_collision},${vehicle.total_detailing},${vehicle.total_fuel},${vehicle.total_def},${vehicle.total_cost}`
+        `"${vehicle.name}",${vehicle.purchase_price},${vehicle.total_maintenance},${vehicle.total_upgrades},${vehicle.total_inspection},${vehicle.total_collision},${vehicle.total_detailing},${vehicle.total_fuel},${vehicle.total_def},${vehicle.total_financing},${vehicle.total_cost}`
       )
     })
     rows.push('')
@@ -86,10 +92,10 @@ export default function GarageAnalytics() {
     // Monthly Trends
     if (analytics.monthly_trends.length > 0) {
       rows.push('Monthly Spending Trends')
-      rows.push('Month,Service,Fuel,DEF,Total')
+      rows.push('Month,Service,Fuel,DEF,Financing,Total')
       analytics.monthly_trends.forEach((trend) => {
-        const total = (parseFloat(trend.service) + parseFloat(trend.fuel) + parseFloat(trend.def_cost)).toFixed(2)
-        rows.push(`${trend.month},${trend.service},${trend.fuel},${trend.def_cost},${total}`)
+        const total = monthlyTrendTotal(trend).toFixed(2)
+        rows.push(`${trend.month},${trend.service},${trend.fuel},${trend.def_cost},${trend.financing},${total}`)
       })
     }
 
@@ -242,9 +248,7 @@ export default function GarageAnalytics() {
 
   // Monthly trend: trailing averages over the available window so both lines
   // span the full chart width (no leading nulls that make them start late).
-  const monthlyTotals = monthly_trends.map(
-    (trend) => parseFloat(trend.service) + parseFloat(trend.fuel) + parseFloat(trend.def_cost)
-  )
+  const monthlyTotals = monthly_trends.map(monthlyTrendTotal)
   const rollingAvg3 = trailingAverage(monthlyTotals, 3)
   const rollingAvg6 = trailingAverage(monthlyTotals, 6)
 
@@ -259,6 +263,7 @@ export default function GarageAnalytics() {
     Service: parseFloat(trend.service),
     Fuel: parseFloat(trend.fuel),
     DEF: parseFloat(trend.def_cost),
+    Financing: parseFloat(trend.financing),
     avg3: rollingAvg3[idx],
     avg6: rollingAvg6[idx],
   }))
@@ -325,6 +330,18 @@ export default function GarageAnalytics() {
             </div>
             <p className="text-2xl font-bold text-garage-text">
               {formatCurrency(total_costs.total_def, { currencyCode, locale })}
+            </p>
+          </div>
+        )}
+
+        {parseFloat(total_costs.total_financing) > 0 && (
+          <div className="bg-garage-surface border border-garage-border rounded-lg p-6">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium text-garage-text-muted">{t('garage.cards.financing')}</h3>
+              <Landmark className="w-5 h-5 text-lime-500" />
+            </div>
+            <p className="text-2xl font-bold text-garage-text">
+              {formatCurrency(total_costs.total_financing, { currencyCode, locale })}
             </p>
           </div>
         )}
@@ -499,6 +516,9 @@ export default function GarageAnalytics() {
                         {t('garage.table.def')}
                       </th>
                       <th className="text-right py-2 px-3 text-sm font-medium text-garage-text-muted">
+                        {t('garage.table.financing')}
+                      </th>
+                      <th className="text-right py-2 px-3 text-sm font-medium text-garage-text-muted">
                         {t('garage.table.total')}
                       </th>
                     </tr>
@@ -527,6 +547,9 @@ export default function GarageAnalytics() {
                         </td>
                         <td className="py-2 px-3 text-sm text-garage-text text-right">
                           {formatCurrency(vehicle.total_def, { currencyCode, locale })}
+                        </td>
+                        <td className="py-2 px-3 text-sm text-garage-text text-right">
+                          {formatCurrency(vehicle.total_financing, { currencyCode, locale })}
                         </td>
                         <td className="py-2 px-3 text-sm text-garage-text text-right font-semibold">
                           {formatCurrency(vehicle.total_cost, { currencyCode, locale })}
@@ -589,6 +612,7 @@ export default function GarageAnalytics() {
               <Bar dataKey="Service" name={t('garage.cards.maintenance')} fill="#3B82F6" stackId="a" maxBarSize={40} />
               <Bar dataKey="Fuel" name={t('garage.cards.fuel')} fill="#10B981" stackId="a" maxBarSize={40} />
               <Bar dataKey="DEF" name={t('garage.cards.def')} fill="#14B8A6" stackId="a" maxBarSize={40} />
+              <Bar dataKey="Financing" name={t('garage.cards.financing')} fill="#84CC16" stackId="a" maxBarSize={40} />
 
               {/* Rolling average trend lines. trailingAverage() emits a value for
                   every month (no leading nulls), so the lines span the full width. */}
