@@ -36,7 +36,6 @@ import { getActionErrorMessage } from '../utils/httpErrorHandler'
 import { withBase } from '../utils/basePath'
 import type { Vehicle, VehicleDetailStats } from '../types/vehicle'
 import type { LastLocation } from '../types/trips'
-import { isDieselFuelType } from '../constants/fuel'
 import ServiceTab from '../components/tabs/ServiceTab'
 import FuelTab from '../components/tabs/FuelTab'
 import OdometerTab from '../components/tabs/OdometerTab'
@@ -80,8 +79,7 @@ import VehicleEditDrawer from '../components/vehicle-detail/VehicleEditDrawer'
 import TorqueSourceModal from '../components/modals/TorqueSourceModal'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { useAuth } from '../contexts/AuthContext'
-import { getUsageTracking } from '../utils/usageTracking'
-import { NON_MOTORIZED_TYPES, NO_FUEL_TYPES } from '../schemas/vehicle'
+import { fillUpKind, vehicleLogKinds } from '../utils/vehicleLogKinds'
 
 /** Per-record-type tallies returned by the JSON import endpoint. */
 type ImportSectionResult = {
@@ -421,7 +419,7 @@ export default function VehicleDetail() {
         // Fuel group is fuel/def/propane; pick the first sub-tab visible for this
         // vehicle (propane-only trailers aren't motorized, so 'fuel' would be hidden).
         // Order matches the Add Fuel hero button (config order Fuel -> DEF -> Propane).
-        setActiveSubTab(showFuelLog ? 'fuel' : hasDEF ? 'def' : hasPropane ? 'propane' : 'fuel')
+        setActiveSubTab(fillUpKind({ ...logKinds, def: logKinds.defHistory }) ?? 'fuel')
         break
       case 'tracking':
         setActiveSubTab('notes')
@@ -482,26 +480,12 @@ export default function VehicleDetail() {
     }
   }
 
-  // Check if vehicle is motorized (excludes non-motorized trailers, fifth wheels, and travel trailers)
-  // RVs ARE motorized and keep fuel/odometer tabs
-  const isMotorized = Boolean(
-    vehicle?.vehicle_type &&
-      !(NON_MOTORIZED_TYPES as readonly string[]).includes(vehicle.vehicle_type),
-  )
-  const showFuelLog = Boolean(
-    isMotorized &&
-      vehicle?.vehicle_type &&
-      !(NO_FUEL_TYPES as readonly string[]).includes(vehicle.vehicle_type),
-  )
-
-  // Task 16a — which usage dimension(s) this vehicle tracks, gating the
-  // Odometer vs. Hours maintenance sub-tab below. A pure-hours vehicle sees
-  // Hours (not Odometer), a pure-distance vehicle sees Odometer (not Hours),
-  // dual-tracking sees both.
-  const { tracksDistance, tracksHours } = getUsageTracking({
-    usage_unit: vehicle?.usage_unit,
-    secondary_usage_enabled: vehicle?.secondary_usage_enabled,
-  })
+  // Which records this vehicle logs: the fuel group's sub-tabs, Odometer vs.
+  // Hours, tires. Quick Entry reads the same rule, so the two cannot drift.
+  // RVs ARE motorized and keep fuel/odometer tabs; trailers are not.
+  const logKinds = vehicleLogKinds(vehicle)
+  const isMotorized = logKinds.motorized
+  const showFuelLog = logKinds.fuel
 
   // Equipment-presence flags (B7) — the actions toolbar hides an Equipment
   // button when its <details> target (below, in VehicleOverviewTab) is absent.
@@ -521,17 +505,12 @@ export default function VehicleDetail() {
     Object.keys(optionalEquipment).length > 0,
   )
 
-  // Check if vehicle is a fifth wheel, travel trailer, or RV (for propane tracking)
-  const hasPropane = vehicle?.vehicle_type &&
-    ['RV', 'FifthWheel', 'TravelTrailer'].includes(vehicle.vehicle_type)
-
-  const isDiesel = isDieselFuelType(vehicle?.fuel_type)
-
-  // Check if vehicle has DEF tracking (diesel vehicles or manually enabled).
-  // Kept as an OR so legacy non-diesel DEF history remains visible — the DEF
-  // tab itself renders read-only when the vehicle isn't diesel.
-  const hasDEF = isDiesel ||
-    (vehicle?.def_tank_capacity_liters != null && Number(vehicle.def_tank_capacity_liters) > 0)
+  const hasPropane = logKinds.propane
+  // Either fuel slot, as the API gates DEF writes; the DEF tab renders
+  // read-only otherwise.
+  const isDiesel = logKinds.def
+  // Diesel, or a DEF tank set: legacy non-diesel DEF history stays visible.
+  const hasDEF = logKinds.defHistory
 
   // Check if vehicle is RV, Fifth Wheel, or Travel Trailer (for spot rentals)
   const isRVOrFifthWheel = vehicle?.vehicle_type &&
@@ -593,8 +572,8 @@ export default function VehicleDetail() {
     ],
     maintenance: [
       { id: 'service' as const, label: t('vehicleStats.service'), icon: Wrench },
-      { id: 'odometer' as const, label: t('detail.misc.odometer'), icon: Gauge, visible: isMotorized && tracksDistance },
-      { id: 'hours' as const, label: t('common:engineHours'), icon: Clock, visible: tracksHours },
+      { id: 'odometer' as const, label: t('detail.misc.odometer'), icon: Gauge, visible: logKinds.odometer },
+      { id: 'hours' as const, label: t('common:engineHours'), icon: Clock, visible: logKinds.hours },
       { id: 'tires' as const, label: t('detail.misc.tires'), icon: CircleDot, visible: isMotorized },
       { id: 'recalls' as const, label: t('detail.misc.recalls'), icon: AlertTriangle },
     ],
@@ -687,7 +666,7 @@ export default function VehicleDetail() {
           hasStandardEquipment={hasStandardEquipment}
           hasOptionalEquipment={hasOptionalEquipment}
           onLogService={() => goToSection('maintenance', 'service')}
-          onAddFuel={() => goToSection('fuel', showFuelLog ? 'fuel' : hasDEF ? 'def' : hasPropane ? 'propane' : 'fuel')}
+          onAddFuel={() => goToSection('fuel', fillUpKind({ ...logKinds, def: logKinds.defHistory }) ?? 'fuel')}
           onReminder={() => goToSection('tracking', 'reminders')}
           onEditEquipment={handleEquipmentClick}
           onEdit={() => setEditDrawerOpen(true)}

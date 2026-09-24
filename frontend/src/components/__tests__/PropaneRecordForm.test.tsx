@@ -45,6 +45,22 @@ beforeEach(() => {
 })
 
 describe('PropaneRecordForm — structure', () => {
+  it('shows no stray "NaN" before a tank size is chosen', () => {
+    // The tank select is read as a number, so empty is NaN, and a bare
+    // `NaN && …` in JSX renders the text "NaN" under the tank row.
+    render(<PropaneRecordForm {...DEFAULT_PROPS} />)
+    const select = document.getElementById('tank_size_kg') as HTMLSelectElement
+    fireEvent.change(select, { target: { value: '' } })
+    fireEvent.change(document.getElementById('tank_quantity')!, { target: { value: '2' } })
+
+    expect(propaneForm().textContent).not.toMatch(/NaN/)
+    // No volume hint either: there is no size to work one out from.
+    expect(screen.queryByText('propaneRecordForm.autoCalculatedVolume')).toBeNull()
+
+    fireEvent.change(select, { target: { value: select.options[1].value } })
+    expect(screen.getByText('propaneRecordForm.autoCalculatedVolume')).toBeInTheDocument()
+  })
+
   it('renders every field control by id (fails if the restyle drops a field)', () => {
     render(<PropaneRecordForm {...DEFAULT_PROPS} />)
     for (const id of ['date', 'tank_size_kg', 'tank_quantity', 'propane_liters', 'price_per_unit', 'cost', 'vendor', 'notes']) {

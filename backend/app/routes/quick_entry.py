@@ -28,6 +28,10 @@ class QuickEntryVehicle(BaseModel):
     make: str | None
     model: str | None
     vehicle_type: str
+    # Both fuel slots: DEF is offered only where the API accepts it, a diesel
+    # in either slot (`app.utils.def_sync`).
+    fuel_type: str | None = None
+    fuel_type_secondary: str | None = None
     usage_unit: str = "distance"
     secondary_usage_enabled: bool = False
     thumbnail_url: str | None
@@ -108,6 +112,8 @@ async def list_quick_entry_vehicles(
                 make=vehicle.make,
                 model=vehicle.model,
                 vehicle_type=vehicle.vehicle_type,
+                fuel_type=vehicle.fuel_type,
+                fuel_type_secondary=vehicle.fuel_type_secondary,
                 usage_unit=vehicle.usage_unit or "distance",
                 secondary_usage_enabled=bool(vehicle.secondary_usage_enabled),
                 thumbnail_url=thumbnail_url,

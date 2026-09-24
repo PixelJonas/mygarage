@@ -187,6 +187,22 @@ class TestQuickEntryVehicles:
         vins = [v["vin"] for v in response.json()["vehicles"]]
         assert test_vehicle["vin"] in vins
 
+    async def test_carries_what_decides_the_actions(
+        self, client: AsyncClient, auth_headers, test_vehicle
+    ):
+        """Quick Entry offers DEF only where the API accepts it (a diesel
+        in either fuel slot), so it needs both slots, beside the type and the
+        usage dimension that decide the rest."""
+        response = await client.get("/api/quick-entry/vehicles", headers=auth_headers)
+
+        assert response.status_code == 200
+        row = next(v for v in response.json()["vehicles"] if v["vin"] == test_vehicle["vin"])
+        assert (row["vehicle_type"], row["fuel_type"], row["fuel_type_secondary"]) == (
+            "Car",
+            "diesel",
+            None,
+        )
+
     async def test_auth_disabled_returns_all_vehicles(self, client: AsyncClient, test_vehicle):
         """auth_mode='none' → require_auth returns None → all non-archived
         vehicles, without dereferencing current_user (regression: the endpoint
