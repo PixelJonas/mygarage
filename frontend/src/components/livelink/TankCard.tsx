@@ -25,8 +25,37 @@ import TankGraphic from './TankGraphic'
  *
  * The show-on-dashboard switches from Settings still apply. A hidden reading
  * leaves the list; a hidden level takes the tank graphic with it. The colours
- * follow the tank's own alert lines, also set in Settings.
+ * follow the tank's own alert lines, also set in Settings, and past no line
+ * the tank is the user's accent.
+ *
+ * A crossed line is also said in words, on the tank and to a screen reader.
+ * The amber and red accents fill a normal tank in nearly the alert's own
+ * colour, so colour alone cannot carry it.
  */
+
+type Translate = (key: string, options?: Record<string, unknown>) => string
+
+/**
+ * The word on the tank once a line is crossed, and what a screen reader hears.
+ * Literal keys, one call each, so the i18n gate can see every one.
+ */
+function describeLevel(
+  fill: TelemetryLatestValue | undefined,
+  t: Translate,
+): { status: string | null; label: string } {
+  if (!fill) return { status: null, label: t('livelink.tankLevelUnknown') }
+  const level = Math.round(fill.value)
+  switch (fill.alert_band) {
+    case 'critical':
+      return { status: t('livelink.tankCritical'), label: t('livelink.tankLevelCritical', { level }) }
+    case 'low':
+      return { status: t('livelink.tankLow'), label: t('livelink.tankLevelLow', { level }) }
+    case 'high':
+      return { status: t('livelink.tankHigh'), label: t('livelink.tankLevelHigh', { level }) }
+    default:
+      return { status: null, label: t('livelink.tankLevel', { level }) }
+  }
+}
 
 interface Props {
   sensor: LiveSensor
@@ -40,6 +69,7 @@ export default function TankCard({ sensor, values, unitFormat }: Props): ReactEl
   const headingId = useId()
   const fill = sensor.fill_key ? values.get(sensor.fill_key) : undefined
   const { drawsTank, rows } = tankContent(sensor, values)
+  const { status, label } = describeLevel(fill, t)
 
   const times = (sensor.readings ?? []).flatMap((reading) => {
     const at = values.get(reading.param_key)?.timestamp
@@ -71,9 +101,8 @@ export default function TankCard({ sensor, values, unitFormat }: Props): ReactEl
           <TankGraphic
             level={fill?.value ?? null}
             tone={tankLevelTone(fill?.alert_band)}
-            label={
-              fill ? t('livelink.tankLevel', { level: Math.round(fill.value) }) : t('livelink.tankLevelUnknown')
-            }
+            status={status}
+            label={label}
             className="h-40 w-24 shrink-0"
           />
         ) : null}

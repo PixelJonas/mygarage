@@ -94,13 +94,33 @@ describe('TankCard', () => {
   })
 
   it.each([
-    [null, 'fill-success'],
+    [null, 'fill-primary'],
     ['low', 'fill-warning'],
     ['critical', 'fill-danger'],
   ] as const)('colours the tank by the line it is past (%s)', (band, fill) => {
     const { container } = renderCard([value('LEVEL_PCT', 'level', 30, { unit: '%', alert_band: band })])
 
     expect(container.querySelector('rect[clip-path]')).toHaveClass(fill)
+  })
+
+  it.each([
+    ['low', 'livelink.tankLow', 'livelink.tankLevelLow'],
+    ['critical', 'livelink.tankCritical', 'livelink.tankLevelCritical'],
+    ['high', 'livelink.tankHigh', 'livelink.tankLevelHigh'],
+  ] as const)('says a %s tank in words, not only in colour', (band, word, label) => {
+    // An amber or red accent fills a normal tank in nearly the alert's own
+    // colour, so the colour alone cannot carry the alert.
+    renderCard([value('LEVEL_PCT', 'level', 30, { unit: '%', alert_band: band })])
+
+    expect(screen.getByText(word)).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: label })).toBeInTheDocument()
+  })
+
+  it('writes no word on a tank past no line', () => {
+    renderCard()
+
+    expect(screen.queryByText(/^livelink\.tank(Low|Critical|High)$/)).not.toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'livelink.tankLevel' })).toBeInTheDocument()
   })
 
   it('reads a low battery amber and a reading past critical red', () => {

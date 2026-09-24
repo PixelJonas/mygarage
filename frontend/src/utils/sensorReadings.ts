@@ -23,7 +23,7 @@ type Translate = (key: string, options?: Record<string, unknown>) => string
 /** Which alert line a reading is past, as the server works it out. */
 type AlertBand = TelemetryLatestValue['alert_band']
 
-export type TankTone = Extract<Tone, 'success' | 'warning' | 'danger'>
+export type TankTone = Extract<Tone, 'accent' | 'warning' | 'danger'>
 
 /** Red below critical, amber past any other line (a low battery wants
  *  replacing, it is not an emergency). */
@@ -74,9 +74,13 @@ export function formatSensorReading(
   return convertTelemetryValue(value, paramKey, unit, unitFormat)
 }
 
-/** The tank's fill colour, from its own alert lines (set per tank in Settings). */
+/**
+ * The tank's fill colour, from its own alert lines (set per tank in Settings).
+ * Past no line it is the user's accent: the tank is just full to its level,
+ * which a green "OK" would overstate.
+ */
 export function tankLevelTone(band: AlertBand): TankTone {
-  return band ? BAND_TONE[band] : 'success'
+  return band ? BAND_TONE[band] : 'accent'
 }
 
 /** A reading's colour beside the tank. */
