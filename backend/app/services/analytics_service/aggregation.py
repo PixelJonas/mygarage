@@ -25,10 +25,12 @@ def calculate_monthly_aggregation(df: pd.DataFrame) -> pd.DataFrame:
                 "fuel_cost",
                 "def_cost",
                 "spot_rental_cost",
+                "financing_cost",
                 "service_count",
                 "fuel_count",
                 "def_count",
                 "spot_rental_count",
+                "financing_count",
                 "total_cost",
             ]
         )
@@ -37,11 +39,12 @@ def calculate_monthly_aggregation(df: pd.DataFrame) -> pd.DataFrame:
     df["year"] = df["date"].dt.year
     df["month"] = df["date"].dt.month
 
-    # Separate service, fuel, DEF, and spot rental
+    # Separate service, fuel, DEF, spot rental, and financing
     service_df = df[df["type"] == "service"].copy()
     fuel_df = df[df["type"] == "fuel"].copy()
     def_df = df[df["type"] == "def"].copy()
     spot_rental_df = df[df["type"] == "spot_rental"].copy()
+    financing_df = df[df["type"] == "financing"].copy()
 
     # Aggregate service by month
     service_monthly = (
@@ -73,10 +76,22 @@ def calculate_monthly_aggregation(df: pd.DataFrame) -> pd.DataFrame:
         "spot_rental_count",
     ]
 
-    # Merge service, fuel, DEF, and spot rental
+    # Aggregate financing by month
+    if not financing_df.empty:
+        financing_monthly = (
+            financing_df.groupby(["year", "month"]).agg({"cost": ["sum", "count"]}).reset_index()
+        )
+        financing_monthly.columns = ["year", "month", "financing_cost", "financing_count"]
+    else:
+        financing_monthly = pd.DataFrame(
+            columns=["year", "month", "financing_cost", "financing_count"]
+        )
+
+    # Merge service, fuel, DEF, spot rental, and financing
     monthly = pd.merge(service_monthly, fuel_monthly, on=["year", "month"], how="outer")
     monthly = pd.merge(monthly, def_monthly, on=["year", "month"], how="outer")
-    monthly = pd.merge(monthly, spot_rental_monthly, on=["year", "month"], how="outer").fillna(0)
+    monthly = pd.merge(monthly, spot_rental_monthly, on=["year", "month"], how="outer")
+    monthly = pd.merge(monthly, financing_monthly, on=["year", "month"], how="outer").fillna(0)
 
     # Calculate totals
     monthly["total_cost"] = (
@@ -92,6 +107,7 @@ def calculate_monthly_aggregation(df: pd.DataFrame) -> pd.DataFrame:
     monthly["fuel_count"] = monthly["fuel_count"].astype(int)
     monthly["def_count"] = monthly["def_count"].astype(int)
     monthly["spot_rental_count"] = monthly["spot_rental_count"].astype(int)
+    monthly["financing_count"] = monthly["financing_count"].astype(int)
 
     return monthly.sort_values(["year", "month"])
 

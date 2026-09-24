@@ -19,11 +19,13 @@ class MonthlyCostSummary(BaseModel):
     total_fuel_cost: Decimal = Field(default=Decimal("0.00"))
     total_def_cost: Decimal = Field(default=Decimal("0.00"))
     total_spot_rental_cost: Decimal = Field(default=Decimal("0.00"))
+    total_financing_cost: Decimal = Field(default=Decimal("0.00"))
     total_cost: Decimal = Field(default=Decimal("0.00"))
     service_count: int = 0
     fuel_count: int = 0
     def_count: int = 0
     spot_rental_count: int = 0
+    financing_count: int = 0
 
     model_config = {"from_attributes": True}
 
@@ -187,6 +189,7 @@ class CostAnalysis(BaseModel):
     total_service_cost: Decimal = Field(default=Decimal("0.00"))
     total_fuel_cost: Decimal = Field(default=Decimal("0.00"))
     total_def_cost: Decimal = Field(default=Decimal("0.00"))
+    total_financing_cost: Decimal = Field(default=Decimal("0.00"))
     total_cost: Decimal = Field(default=Decimal("0.00"))
     average_monthly_cost: Decimal = Field(default=Decimal("0.00"))
     service_count: int = 0
@@ -301,6 +304,7 @@ class GarageCostTotals(BaseModel):
     total_def: Decimal = Field(default=Decimal("0.00"))
     total_insurance: Decimal = Field(default=Decimal("0.00"))
     total_taxes: Decimal = Field(default=Decimal("0.00"))
+    total_financing: Decimal = Field(default=Decimal("0.00"))
 
     model_config = {"from_attributes": True}
 
@@ -333,6 +337,9 @@ class GarageVehicleCost(BaseModel):
     # This vehicle's share of the household's insurance, accrued to date. Shown
     # beside the running costs, not folded into them.
     total_insurance: Decimal = Field(default=Decimal("0.00"))
+    # This vehicle's financing payments and fees. Shown beside the running
+    # costs, not folded into them.
+    total_financing: Decimal = Field(default=Decimal("0.00"))
     # Running costs = all service categories + fuel + DEF (excludes purchase price)
     total_cost: Decimal = Field(default=Decimal("0.00"))
 
@@ -347,6 +354,7 @@ class GarageMonthlyTrend(BaseModel):
     fuel: Decimal = Field(default=Decimal("0.00"))
     def_cost: Decimal = Field(default=Decimal("0.00"))
     insurance: Decimal = Field(default=Decimal("0.00"))
+    financing: Decimal = Field(default=Decimal("0.00"))
     total: Decimal = Field(default=Decimal("0.00"))
 
     model_config = {"from_attributes": True}

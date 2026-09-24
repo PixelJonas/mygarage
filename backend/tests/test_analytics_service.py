@@ -1042,6 +1042,20 @@ def _make_def_record(**kwargs):
     return SimpleNamespace(**defaults)
 
 
+def _make_financing_record(**kwargs):
+    """Create a mock FinancingRecord-like object."""
+    defaults = {
+        "id": 1,
+        "vin": "1HGBH41JXMN109186",
+        "date": date(2024, 1, 1),
+        "amount": Decimal("450.00"),
+        "category": "lease_payment",
+        "notes": None,
+    }
+    defaults.update(kwargs)
+    return SimpleNamespace(**defaults)
+
+
 @pytest.mark.unit
 @pytest.mark.analytics
 class TestVisitsToDataframe:
@@ -1144,3 +1158,76 @@ class TestVisitsToDataframe:
         df = analytics_service.visits_to_dataframe([visit], [])
 
         assert df.iloc[0]["vendor"] == "Unknown"
+
+
+@pytest.mark.unit
+@pytest.mark.analytics
+class TestFinancingInDataframeAndMonthlyAggregation:
+    """Financing records in the cost dataframe and monthly aggregation."""
+
+    def test_financing_records_produce_financing_rows(self):
+        records = [
+            _make_financing_record(id=1, date=date(2024, 1, 5), amount=Decimal("450.00")),
+            _make_financing_record(
+                id=2,
+                date=date(2024, 1, 1),
+                amount=Decimal("1200.00"),
+                category="upfront_fee",
+            ),
+        ]
+
+        df = analytics_service.visits_to_dataframe([], [], financing_records=records)
+
+        assert len(df) == 2
+        assert all(df["type"] == "financing")
+        assert df["cost"].sum() == 1650.0
+        assert list(df["service_type"]) == ["upfront_fee", "lease_payment"]
+
+    def test_financing_omitted_by_default(self):
+        visit = _make_service_visit(line_items=[_make_line_item(cost=Decimal("50.00"))])
+
+        df = analytics_service.visits_to_dataframe([visit], [])
+
+        assert list(df["type"]) == ["service"]
+
+    def test_monthly_aggregation_excludes_financing_from_total_cost(self):
+        records = [
+            _make_financing_record(id=1, date=date(2024, 1, 5), amount=Decimal("450.00")),
+            _make_financing_record(id=2, date=date(2024, 3, 5), amount=Decimal("450.00")),
+        ]
+        fuel = [_make_fuel_record(date=date(2024, 1, 10), cost=Decimal("50.00"))]
+        df = analytics_service.visits_to_dataframe([], fuel, financing_records=records)
+
+        monthly = analytics_service.calculate_monthly_aggregation(df)
+
+        assert list(monthly["month"].astype(int)) == [1, 3]
+        jan = monthly[monthly["month"] == 1].iloc[0]
+        mar = monthly[monthly["month"] == 3].iloc[0]
+        assert jan["financing_cost"] == 450.0
+        assert jan["financing_count"] == 1
+        assert jan["fuel_cost"] == 50.0
+        assert jan["total_cost"] == 50.0
+        assert mar["financing_cost"] == 450.0
+        assert mar["total_cost"] == 0.0
+
+    def test_monthly_aggregation_financing_columns_when_empty(self):
+        monthly = analytics_service.calculate_monthly_aggregation(
+            analytics_service.visits_to_dataframe([], [])
+        )
+
+        assert "financing_cost" in monthly.columns
+        assert "financing_count" in monthly.columns
+
+    def test_rolling_average_and_trend_exclude_financing(self):
+        records = [
+            _make_financing_record(id=i, date=date(2024, i, 1), amount=Decimal(str(100 * i)))
+            for i in range(1, 4)
+        ]
+        df = analytics_service.visits_to_dataframe([], [], financing_records=records)
+        monthly = analytics_service.calculate_monthly_aggregation(df)
+
+        rolling = analytics_service.calculate_rolling_averages(monthly)
+
+        assert rolling["rolling_3m"] == Decimal("0.00")
+        assert analytics_service.calculate_trend_direction(monthly["total_cost"]) == "stable"
+        assert list(monthly["financing_cost"]) == [100.0, 200.0, 300.0]

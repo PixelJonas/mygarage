@@ -105,6 +105,7 @@ function baseAnalytics(overrides: Partial<VehicleAnalytics> = {}): VehicleAnalyt
       total_service_cost: '0.00',
       total_fuel_cost: '0.00',
       total_def_cost: '0.00',
+      total_financing_cost: '0.00',
       monthly_breakdown: [],
       service_type_breakdown: [],
       anomalies: [],
