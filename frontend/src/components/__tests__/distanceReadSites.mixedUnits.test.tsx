@@ -50,14 +50,13 @@ import type { DEFRecord } from '../../types/def'
 const unitPrefMock = vi.hoisted(() => ({ units: null as unknown as UnitSet }))
 vi.mock('../../hooks/useUnitPreference', async () => {
   const { binarySystemFor } = await import('@/types/units')
-  return {
-    useUnitPreference: () => ({
-      system: binarySystemFor(unitPrefMock.units.volume),
-      showBoth: false,
-      gallonStandard: unitPrefMock.units.secondary_gallon,
-      units: unitPrefMock.units,
-    }),
-  }
+  const pref = () => ({
+    system: binarySystemFor(unitPrefMock.units.volume),
+    showBoth: false,
+    gallonStandard: unitPrefMock.units.secondary_gallon,
+    units: unitPrefMock.units,
+  })
+  return { useUnitPreference: pref, useAccountUnitPreference: pref }
 })
 
 // Interpolation-retaining `t`: the global setup.ts mock discards options, so a

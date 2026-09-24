@@ -103,8 +103,11 @@ import { binarySystemFor, type UnitSet } from '@/types/units'
 import type { DEFAnalysis } from '../../types/analytics'
 
 const unitPreferenceMock = vi.fn()
+const accountPreferenceMock = vi.fn()
 vi.mock('../../hooks/useUnitPreference', () => ({
   useUnitPreference: () => unitPreferenceMock(),
+  // Rates read the ACCOUNT's units (#172); set it apart to prove the split.
+  useAccountUnitPreference: () => accountPreferenceMock() ?? unitPreferenceMock(),
 }))
 vi.mock('../../hooks/useCurrencyPreference', () => ({
   useCurrencyPreference: () => ({ currencyCode: 'USD', locale: 'en-US' }),
@@ -213,6 +216,7 @@ function renderAnalytics(): ReturnType<typeof render> {
 beforeEach(() => {
   vi.clearAllMocks()
   unitPreferenceMock.mockReturnValue({ system: 'metric', showBoth: false, units: METRIC_UNITS })
+  accountPreferenceMock.mockReturnValue(undefined)
   mockAnalyticsResponse(baseAnalytics())
 })
 
@@ -241,6 +245,23 @@ describe('Analytics — the cost-per-distance card follows units.distance', () =
     expect(screen.queryByText('$2.00')).not.toBeInTheDocument()
     // And the collapse really does disagree, so the case is not a coincidence.
     expect(binarySystemFor(LITRES_MILES.volume)).toBe('metric')
+  })
+
+  it('★ a mi VEHICLE on a km ACCOUNT keeps the rate on the account (#172)', async () => {
+    // The page is scoped to the vehicle's miles, but a rate with distance
+    // underneath reads the account: $2.00 per 100 km, label and value.
+    unitPreferenceMock.mockReturnValue({
+      system: binarySystemFor(LITRES_MILES.volume),
+      showBoth: false,
+      units: LITRES_MILES,
+    })
+    accountPreferenceMock.mockReturnValue({ system: 'metric', showBoth: false, units: METRIC_UNITS })
+    renderAnalytics()
+
+    expect(await screen.findByText('vehicle.costPerDistance (100 km)')).toBeInTheDocument()
+    expect(screen.getByText('$2.00')).toBeInTheDocument()
+    expect(screen.queryByText('vehicle.costPerDistance (1,000 mi)')).not.toBeInTheDocument()
+    expect(screen.queryByText('$32.19')).not.toBeInTheDocument()
   })
 
   it('★ the MIRROR, gallons with kilometres, reads its cost per 100 KILOMETRES', async () => {

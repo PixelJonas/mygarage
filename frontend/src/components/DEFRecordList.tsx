@@ -7,7 +7,7 @@ import { formatCurrency } from '../utils/formatUtils'
 import { useCurrencyPreference } from '../hooks/useCurrencyPreference'
 import type { DEFRecord } from '../types/def'
 import DEFRecordForm from './DEFRecordForm'
-import { useUnitPreference } from '../hooks/useUnitPreference'
+import { useAccountUnitPreference, useUnitPreference } from '../hooks/useUnitPreference'
 import { useUnitFormat } from '../hooks/useUnitFormat'
 import { formatVolumePerDistance, volumePerDistanceLabel } from '../utils/unitFormat'
 import { UnitFormatter } from '../utils/units'
@@ -30,6 +30,10 @@ export default function DEFRecordList({ vin, readOnly = false }: DEFRecordListPr
   const [editingRecord, setEditingRecord] = useState<DEFRecord | undefined>()
   const { t } = useTranslation('vehicles')
   const { showBoth, units } = useUnitPreference()
+  // Rates with a distance underneath stay in the ACCOUNT's units (#172 D3),
+  // like fuel economy: the vehicle's odometer unit covers its distances and
+  // speeds, not its cost or DEF per distance. Label and number share this set.
+  const { units: accountUnits } = useAccountUnitPreference()
   const u = useUnitFormat()
   const { currencyCode, locale } = useCurrencyPreference()
 
@@ -191,8 +195,8 @@ export default function DEFRecordList({ vin, readOnly = false }: DEFRecordListPr
                 <Droplets aria-hidden="true" className="w-3 h-3" />
                 <span>{t('defList.consumption')}</span>
               </div>
-              <Mono size="2xl" weight="bold">{formatVolumePerDistance(units, parseNum(analytics.liters_per_1000_km) ?? 0)}</Mono>
-              <p className="text-xs text-text-mute">{volumePerDistanceLabel(units)}</p>
+              <Mono size="2xl" weight="bold">{formatVolumePerDistance(accountUnits, parseNum(analytics.liters_per_1000_km) ?? 0)}</Mono>
+              <p className="text-xs text-text-mute">{volumePerDistanceLabel(accountUnits)}</p>
             </Card>
           )}
 
