@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Alert lines per tank in Settings (level low and critical, battery low): they colour the tank, label it Low or Critical, and notify once per crossing, re-armed by a refill
 - Each vehicle can set the unit its odometer reads (km or mi); its distances and speeds are shown and entered in it, while fuel economy and cost per distance keep your account setting. Account default keeps today's behaviour (#172)
 - Dashboard order in Quick Settings: the dashboard opens in your chosen order on any browser; the sort menu still overrides it for the tab
+- Financing tracking for lease and loan payments and upfront fees, with a Financing tab and cost analytics
 
 ### Fixed
 - Fuel economy "excluding towing" no longer includes it: a towing tank was merged into the next tank, so its fuel stayed in the average
