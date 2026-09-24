@@ -1192,6 +1192,26 @@
     "type": "Type",
     "loadAction": "load tax records"
   },
+  "financingList": {
+    "actions": "Actions",
+    "addFirstRecord": "Add Your First Record",
+    "addRecord": "Add Record",
+    "amount": "Amount",
+    "category": "Category",
+    "confirmDelete": "Are you sure you want to delete this financing record?",
+    "date": "Date",
+    "deleteAction": "delete the financing record",
+    "lender": "Lender",
+    "loading": "Loading financing records...",
+    "noRecords": "No financing records yet",
+    "noRecordsDesc": "Track lease payments, loan payments, and upfront financing fees",
+    "notes": "Notes",
+    "recordCount": "{{count}} record(s)",
+    "tableCaption": "Financing record history",
+    "title": "Financing",
+    "total": "Total",
+    "loadAction": "load financing records"
+  },
   "tollList": {
     "addFirstTransaction": "Add Your First Transaction",
     "allTags": "All Tags",
