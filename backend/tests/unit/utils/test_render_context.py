@@ -28,8 +28,10 @@ from app.utils.default_unit_prefs import DEFAULT_UNIT_PREFS_KEY
 from app.utils.render_context import (
     RenderContext,
     render_context_default,
+    render_context_for_request,
     render_context_for_user,
     render_context_for_vehicle,
+    render_context_for_vehicle_row,
 )
 
 
@@ -214,6 +216,99 @@ class TestRenderContextForVehicle:
             assert ctx.units == METRIC_PRESET
             assert ctx.show_both is False
         finally:
+            await _restore_default_unit_prefs(db_session, default_original)
+
+
+class TestVehicleOverride:
+    """#172: a vehicle's odometer unit lays distance and speed over whichever
+    set a path resolved. The unsaved `User`/`Vehicle` objects are never added
+    to the session: these paths read attributes only."""
+
+    async def test_request_applies_the_vehicle_over_the_caller(self, db_session) -> None:
+        caller = User(
+            username="rc_caller",
+            email="c@example.test",
+            unit_preference="metric",
+            show_both_units=False,
+        )
+        vehicle = Vehicle(
+            vin="RCVEH000000000001", nickname="x", vehicle_type="Car", distance_unit="mi"
+        )
+        ctx = await render_context_for_request(caller, db_session, vehicle=vehicle)
+        assert (ctx.units.distance, ctx.units.speed, ctx.units.volume) == ("mi", "mph", "L")
+
+    async def test_request_without_a_vehicle_is_unchanged(self, db_session) -> None:
+        caller = User(
+            username="rc_caller",
+            email="c@example.test",
+            unit_preference="metric",
+            show_both_units=False,
+        )
+        ctx = await render_context_for_request(caller, db_session)
+        assert ctx.units == METRIC_PRESET
+
+    async def test_an_account_default_vehicle_changes_nothing(self, db_session) -> None:
+        caller = User(
+            username="rc_caller",
+            email="c@example.test",
+            unit_preference="metric",
+            show_both_units=False,
+        )
+        vehicle = Vehicle(
+            vin="RCVEH000000000002", nickname="x", vehicle_type="Car", distance_unit=None
+        )
+        ctx = await render_context_for_request(caller, db_session, vehicle=vehicle)
+        assert ctx.units == METRIC_PRESET
+
+    async def test_auth_mode_none_applies_the_vehicle_over_the_instance_default(
+        self, db_session
+    ) -> None:
+        original = await _seed_default_unit_prefs(db_session, METRIC_PRESET)
+        try:
+            vehicle = Vehicle(
+                vin="RCVEH000000000003", nickname="x", vehicle_type="Car", distance_unit="mi"
+            )
+            ctx = await render_context_for_request(None, db_session, vehicle=vehicle)
+            assert (ctx.units.distance, ctx.units.volume) == ("mi", "L")
+        finally:
+            await _restore_default_unit_prefs(db_session, original)
+
+    async def test_the_row_variant_never_touches_a_relationship(self, db_session) -> None:
+        """The milestone loop holds (vehicle, owner) from one joined SELECT.
+        A variant that read `vehicle.user` would lazy-load in an AsyncSession."""
+        owner = User(
+            username="rc_owner",
+            email="o@example.test",
+            unit_preference="imperial",
+            show_both_units=False,
+        )
+        vehicle = Vehicle(
+            vin="RCVEH000000000004", nickname="x", vehicle_type="Car", distance_unit="km"
+        )
+        ctx = await render_context_for_vehicle_row(db_session, vehicle, owner)
+        assert (ctx.units.distance, ctx.units.speed, ctx.units.volume) == ("km", "kmh", "gal_us")
+
+    async def test_scheduled_path_applies_the_vehicle(self, db_session) -> None:
+        default_original = await _seed_default_unit_prefs(db_session, METRIC_PRESET)
+        vin = _unique_vin()
+        db_session.add(
+            Vehicle(
+                vin=vin,
+                nickname="RC ownerless mi",
+                vehicle_type="Car",
+                user_id=None,
+                distance_unit="mi",
+            )
+        )
+        await db_session.commit()
+        try:
+            ctx = await render_context_for_vehicle(db_session, vin)
+            assert (ctx.units.distance, ctx.units.volume) == ("mi", "L")
+        finally:
+            saved = await db_session.get(Vehicle, vin)
+            if saved is not None:
+                await db_session.delete(saved)
+            await db_session.commit()
             await _restore_default_unit_prefs(db_session, default_original)
 
 
