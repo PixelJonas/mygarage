@@ -514,7 +514,7 @@
   {
    "path": "src/components/GarageAnalyticsHelpDrawer.tsx",
    "disposition": "no unit behaviour",
-   "digest": "f263f2d4a2504d7b0b14fb44b08f9b7576f71fcf1e609ff33af45b8f5c361011",
+   "digest": "de4a8e1e14eac34082999c71714d5687092263465efab3f36996b48858ba84ac",
    "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched NONE of them."
   },
   {
@@ -2029,7 +2029,7 @@
   {
    "path": "src/locales/en/analytics.json",
    "disposition": "audited",
-   "digest": "5f7cde7d1b30ee3e699e2740e9b46824d19b02688348d61ab3ffdf0a92dd75fa",
+   "digest": "6d959955d74c61ce7506d3e6559bf66a5ca7bf168a5ab76fdca882342dff4488",
    "reason": "reviewed at this snapshot. Task 6 replaced the raw `units.volume === 'L'` prose selection with the same `{{unit}}` interpolation the volume COLUMN already used, so the two cannot disagree: totalLiters / totalGallons are gone and totalVolume takes getVolumeUnit(units). Task 6b then fixed the imperial-only help copy: the four fuel-economy keys interpolate {{unit}} and were renamed off \"Mpg\", and the cost-per-mile pair was renamed to costPerDistance* and reworded to name the quantity. Task 7 added the cost-per-distance card's label as `{{unit}}` interpolation (`fuelList.costPerDistance` / `vehicle.costPerDistance`): it used to be two hardcoded English strings inside `UnitFormatter.getCostPerDistanceLabel`, which bypassed i18n entirely, so every reader of every language was shown 'Cost/1k Miles' or 'Cost/100 km'. The unit half is composed from the resolved distance adapter, so the bundle names no unit of its own. Fix round 1 added `avgCostPerVolume` (and, where the list shows a total, `volumeTotal`) for the same reason and in the same shape: they replace two hardcoded English strings inside UnitFormatter that rendered in six summary cards. Both interpolate the unit or the already-composed value, so the bundle still names no unit of its own. The tire keys added for spec B name no unit. `trendTitle` is 'Tread over time' with the unit carried by the chart axis; the four prompts and `noOdometerRecord` talk about odometers and distance as quantities rather than in any unit; `readinessSummary` interpolates a count. One exception was caught and fixed in this pass: `vehicleHelp.tires.body` said 'the kilometres driven on the other one'.",
    "tests": [
     "__tests__/volumeTotalLabelLocales.test.ts",
@@ -2130,7 +2130,7 @@
   {
    "path": "src/pages/Analytics.tsx",
    "disposition": "audited",
-   "digest": "5baf883377021455c3ba6e21f018c9d5daf5d60ff5ecb4003484d51b5ec1f80f",
+   "digest": "0ef1d557873adadf384891057766bf104e1ad5bb44b1d733abfa7a262a616c72",
    "reason": "gate-detectable unit decisions, recorded not asserted clean (plan 3b task 1 ordering). Task 6 migrated the DISTANCE sites onto the resolved `units.distance` token; task 6b migrated the consumption and fuel-rate surface, INCLUDING the two chart-data transforms that made the same decision with a raw `UnitConverter` call under a bare `system === 'metric'` (a label moved without its series would have plotted litres under an MPG axis). Task 7 migrated the cost-per-distance pair off the collapsed binary system: the value and the label now both read `units.distance`, and the label goes through `t()` instead of returning hardcoded English. All three of its sites move together: the summary card's heading, the card's figure, and the CSV export row, which carried the same hardcoded English label into a downloaded file. Task 6 replaced the raw `units.volume === 'L'` prose selection with the same `{{unit}}` interpolation the volume COLUMN already used, so the two cannot disagree: totalLiters / totalGallons are gone and totalVolume takes getVolumeUnit(units). The evidence for this file is the gate, whose count for it is now zero, plus validate-i18n-usage.ts, which fails if the new key is absent from English; the RENDERED proof of the label-and-value pairing is in FuelRecordList.test.tsx, which drives the identical helper pair through the identical mixed sets. Fix round 1 closed the other half of that i18n bug, which was one card to the LEFT: `UnitFormatter.getCostPerVolumeLabel` returned the English words 'Avg Cost/' glued to the unit symbol and `formatVolumeTotal` appended the English word 'total', neither through `t()`, so a German reader read `Kosten/100 km` beside `Avg Cost/gal` and `45,5 L gesamt`. Both statics are DELETED: their prose halves are `avgCostPerVolume` / `volumeTotal` keys in all seven bundles and their symbol halves are `getVolumeUnit` and `formatVolumeShort`. Its one site is the DEF-analysis card, which no test rendered at all (`def_analysis` is null in both existing fixtures); Analytics.costPerDistance.test.tsx now renders it in both vocabularies. The tire section added for spec B is one import and a two-line render delegating to TireAnalyticsSection, which has its own row. No unit is resolved, formatted or named in this file by that change.",
    "tests": [
     "pages/__tests__/Analytics.anomalies.test.tsx",
@@ -2156,7 +2156,7 @@
   {
    "path": "src/pages/GarageAnalytics.tsx",
    "disposition": "no unit behaviour",
-   "digest": "e133d549d63b2e8058f72b6e9a6a031b8369caa52b157c55816e94223d428a2a",
+   "digest": "5d2f565ea0bde45dfb148251f7d31af4c3f6a82f93329485d6920560e31434f5",
    "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched 1 of them; every hit was read in context and none is a unit decision or a unit-bearing quantity."
   },
   {
@@ -2473,7 +2473,7 @@
   {
    "path": "src/types/api.generated.ts",
    "disposition": "no unit behaviour",
-   "digest": "f66053590416904e2eb029b21ac26a1eb0101fe576392dfa94285b38254f05bd",
+   "digest": "e627177f6c8b131a8316cc42da27a69ebdad5c906757a00423ae639d72d3af7d",
    "reason": "no unit behaviour: a GENERATED type module. It declares the `UnitSet` vocabulary itself (`distance: \"km\" | \"mi\"` and nine more), so it is dense with unit vocabulary in a unit context, but it declares types rather than deciding or rendering anything. Its digest is load-bearing rather than incidental: this is the file the token-branch leg derives its vocabularies from, so a new unit token arriving from the backend is a review event, and an unrelated schema change costs one cheap re-acknowledgement. Re-acknowledged for the LiveLink odometer-units fix: the regenerated schema adds LiveLinkDeviceResponse.odometer_unit (`string | null`) and LiveLinkDeviceUpdate.odometer_unit (`\"km\" | \"mi\" | \"auto\" | null`). Reviewed as NOT a new UnitSet token: 'km'/'mi' here name what a piece of hardware reports rather than what a user wants displayed, and 'auto' is a clear-the-override sentinel, not a unit. The UnitSet vocabulary is untouched. Re-reviewed after the tire-set endpoints regenerated it. The new schemas (TireSetResponse / Create / Update / MountRequest and the `set_id` on TireUpdate) add one canonical `odometer_km` field and no new unit TOKEN, so the vocabulary this row is load-bearing for is unchanged. Re-reviewed after the tire analytics endpoint regenerated it. TireAnalyticsSummary and TireReadiness add counts and a reuse of TireResponse; no new unit TOKEN enters the vocabulary this row is load-bearing for. Re-reviewed after the financing-records endpoints and CostAnalysis/GarageCostTotals rollup fields regenerated it. New schemas (FinancingRecordCreate/Response/Update/ListResponse) add a `category` enum (`\"lease_payment\" | \"loan_payment\" | \"upfront_fee\"`) naming a cost kind, not a unit; `amount`/`tax_amount` are plain currency values with no imperial/metric distinction. The new `total_financing_cost` (CostAnalysis) and `total_financing` (GarageCostTotals) fields are currency totals of the same shape as the existing `total_fuel_cost`/`total_detailing` fields already covered by this row. No new unit TOKEN enters the vocabulary this row is load-bearing for."
   },
   {

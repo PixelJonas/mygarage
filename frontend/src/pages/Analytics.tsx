@@ -268,6 +268,7 @@ export default function Analytics() {
     rows.push(['Months Tracked', cost_analysis.months_tracked.toString()])
     rows.push(['Service Count', cost_analysis.service_count.toString()])
     rows.push(['Fuel Count', cost_analysis.fuel_count.toString()])
+    rows.push(['Total Financing', formatCurrency(cost_analysis.total_financing_cost, { currencyCode, locale })])
     if (cost_analysis.cost_per_km) {
       rows.push([
         t('vehicle.costPerDistance', { unit: costPerDistanceUnitLabel(units) }),
@@ -288,7 +289,7 @@ export default function Analytics() {
 
     // Monthly Breakdown
     rows.push(['Monthly Breakdown'])
-    rows.push(['Month', 'Year', 'Service Cost', 'Fuel Cost', 'DEF Cost', 'Total Cost', 'Service Count', 'Fuel Count', 'DEF Count'])
+    rows.push(['Month', 'Year', 'Service Cost', 'Fuel Cost', 'DEF Cost', 'Financing Cost', 'Total Cost', 'Service Count', 'Fuel Count', 'DEF Count', 'Financing Count'])
     cost_analysis.monthly_breakdown.forEach(month => {
       rows.push([
         month.month_name,
@@ -296,10 +297,12 @@ export default function Analytics() {
         month.total_service_cost,
         month.total_fuel_cost,
         month.total_def_cost,
+        month.total_financing_cost,
         month.total_cost,
         month.service_count.toString(),
         month.fuel_count.toString(),
         month.def_count.toString(),
+        month.financing_count.toString(),
       ])
     })
     rows.push([]) // Empty row
@@ -450,6 +453,9 @@ export default function Analytics() {
   }
 
   const { cost_analysis, cost_projection, fuel_economy, fuel_alerts, service_history, predictions, hours_economy, hours_accumulated } = analytics
+
+  // Financing is its own stacked-bar category; hide the series when there is none.
+  const hasFinancing = parseFloat(cost_analysis.total_financing_cost) > 0
 
   // Type-cast unstructured analysis fields (generated schema types them as { [key: string]: unknown })
   const propane = analytics.propane_analysis as PropaneAnalysis | null | undefined
@@ -1119,6 +1125,7 @@ export default function Analytics() {
                   Service: parseFloat(month.total_service_cost),
                   Fuel: parseFloat(month.total_fuel_cost),
                   ...(parseFloat(month.total_def_cost) > 0 ? { DEF: parseFloat(month.total_def_cost) } : {}),
+                  ...(hasFinancing ? { Financing: parseFloat(month.total_financing_cost) } : {}),
                   ...(hasPropane ? { 'Spot Rental': parseFloat(month.total_spot_rental_cost) } : {})
                 }))}
                 margin={{ top: 5, right: 20, left: 10, bottom: 5 }}
@@ -1171,6 +1178,7 @@ export default function Analytics() {
                 <Bar dataKey="Service" fill="#3B82F6" stackId="a" name={t('vehicle.categoryService')} />
                 <Bar dataKey="Fuel" fill="#10B981" stackId="a" name={t('vehicle.categoryFuel')} />
                 {defAnalysis && <Bar dataKey="DEF" fill="#14B8A6" stackId="a" name={t('vehicle.categoryDef')} />}
+                {hasFinancing && <Bar dataKey="Financing" fill="#84CC16" stackId="a" name={t('vehicle.categoryFinancing')} />}
                 {hasPropane && <Bar dataKey="Spot Rental" fill="#F59E0B" stackId="a" name={t('vehicle.categorySpotRental')} />}
               </RechartsBarChart>
             </ResponsiveContainer>
@@ -1190,6 +1198,7 @@ export default function Analytics() {
                       fuel: formatCurrency(month.total_fuel_cost, { currencyCode, locale }),
                     })}
                     {parseFloat(month.total_def_cost) > 0 && t('vehicle.monthDefSuffix', { value: formatCurrency(month.total_def_cost, { currencyCode, locale }) })}
+                    {parseFloat(month.total_financing_cost) > 0 && t('vehicle.monthFinancingSuffix', { value: formatCurrency(month.total_financing_cost, { currencyCode, locale }) })}
                     {parseFloat(month.total_spot_rental_cost) > 0 && t('vehicle.monthSpotRentalSuffix', { value: formatCurrency(month.total_spot_rental_cost, { currencyCode, locale }) })}
                   </p>
                 </div>

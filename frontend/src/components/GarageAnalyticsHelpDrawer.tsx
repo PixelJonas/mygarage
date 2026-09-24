@@ -46,6 +46,7 @@ export default function GarageAnalyticsHelpDrawer({ open, onClose }: GarageAnaly
             <p><strong className="text-text">{t('garageHelp.costSummary.maintenanceLabel')}</strong> {t('garageHelp.costSummary.maintenanceDesc')}</p>
             <p><strong className="text-text">{t('garageHelp.costSummary.fuelLabel')}</strong> {t('garageHelp.costSummary.fuelDesc')}</p>
             <p><strong className="text-text">{t('garageHelp.costSummary.defLabel')}</strong> {t('garageHelp.costSummary.defDesc')}</p>
+            <p><strong className="text-text">{t('garageHelp.costSummary.financingLabel')}</strong> {t('garageHelp.costSummary.financingDesc')}</p>
             <p><strong className="text-text">{t('garageHelp.costSummary.insuranceLabel')}</strong> {t('garageHelp.costSummary.insuranceDesc')}</p>
             <p><strong className="text-text">{t('garageHelp.costSummary.taxesLabel')}</strong> {t('garageHelp.costSummary.taxesDesc')}</p>
           </div>

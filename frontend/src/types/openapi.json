@@ -7461,6 +7461,12 @@
             "title": "Def Cost",
             "type": "string"
           },
+          "financing": {
+            "default": "0.00",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Financing",
+            "type": "string"
+          },
           "fuel": {
             "default": "0.00",
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
@@ -7529,6 +7535,12 @@
             "default": "0.00",
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Total Detailing",
+            "type": "string"
+          },
+          "total_financing": {
+            "default": "0.00",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Total Financing",
             "type": "string"
           },
           "total_fuel": {
@@ -9931,6 +9943,11 @@
             "title": "Def Count",
             "type": "integer"
           },
+          "financing_count": {
+            "default": 0,
+            "title": "Financing Count",
+            "type": "integer"
+          },
           "fuel_count": {
             "default": 0,
             "title": "Fuel Count",
@@ -9964,6 +9981,12 @@
             "default": "0.00",
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Total Def Cost",
+            "type": "string"
+          },
+          "total_financing_cost": {
+            "default": "0.00",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Total Financing Cost",
             "type": "string"
           },
           "total_fuel_cost": {

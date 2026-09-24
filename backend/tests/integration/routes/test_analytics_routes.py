@@ -6,7 +6,42 @@ seasonal analytics, and period comparison endpoints.
 """
 
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models import Vehicle
+
+
+@pytest_asyncio.fixture
+async def financing_vehicle(db_session: AsyncSession, test_user: dict[str, object]) -> dict:
+    """A vehicle no other test writes to, so monthly/rolling assertions are exact."""
+    vin = "1FTFW1ET5EKE00001"
+    vehicle = await db_session.get(Vehicle, vin)
+    if vehicle is None:
+        vehicle = Vehicle(
+            vin=vin,
+            user_id=test_user["id"],
+            nickname="Financing Rollup Vehicle",
+            vehicle_type="Car",
+            year=2020,
+            make="Ford",
+            model="F-150",
+            fuel_type="gas",
+        )
+        db_session.add(vehicle)
+        await db_session.commit()
+    return {"vin": vin, "name": "2020 Ford F-150"}
+
+
+async def _add_financing(client, headers, vin, on, amount, category="lease_payment"):
+    resp = await client.post(
+        f"/api/vehicles/{vin}/financing-records",
+        json={"vin": vin, "date": on, "amount": amount, "category": category},
+        headers=headers,
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()
 
 
 @pytest.mark.integration
@@ -89,6 +124,75 @@ class TestVehicleAnalyticsRoutes:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+class TestVehicleFinancingRollup:
+    """Ticket #9: financing counts in every per-vehicle cost surface."""
+
+    async def test_monthly_breakdown_includes_financing(
+        self, client: AsyncClient, auth_headers, financing_vehicle
+    ):
+        vin = financing_vehicle["vin"]
+        await _add_financing(client, auth_headers, vin, "2031-03-02", 1000.00, "upfront_fee")
+        await _add_financing(client, auth_headers, vin, "2031-03-15", 450.00, "lease_payment")
+
+        resp = await client.get(f"/api/analytics/vehicles/{vin}", headers=auth_headers)
+        assert resp.status_code == 200
+        ca = resp.json()["cost_analysis"]
+
+        march = [m for m in ca["monthly_breakdown"] if (m["year"], m["month"]) == (2031, 3)]
+        assert len(march) == 1
+        # All financing categories (incl. upfront_fee) count, bucketed by record date
+        assert float(march[0]["total_financing_cost"]) == 1450.00
+        assert march[0]["financing_count"] == 2
+        assert float(march[0]["total_cost"]) == 1450.00
+        # Per-month figures agree with the headline total
+        assert float(ca["total_cost"]) == pytest.approx(
+            sum(float(m["total_cost"]) for m in ca["monthly_breakdown"])
+        )
+
+    async def test_average_rolling_and_trend_reflect_financing(
+        self, client: AsyncClient, auth_headers, financing_vehicle
+    ):
+        vin = financing_vehicle["vin"]
+        for on, amount in (("2032-01-10", 100.00), ("2032-02-10", 200.00), ("2032-03-10", 300.00)):
+            await _add_financing(client, auth_headers, vin, on, amount)
+
+        resp = await client.get(f"/api/analytics/vehicles/{vin}", headers=auth_headers)
+        ca = resp.json()["cost_analysis"]
+
+        assert float(ca["average_monthly_cost"]) == pytest.approx(
+            float(ca["total_cost"]) / ca["months_tracked"]
+        )
+        # Last three months are the 100/200/300 payments -> mean 200
+        assert float(ca["rolling_avg_3m"]) == pytest.approx(200.00)
+        assert ca["trend_direction"] in {"increasing", "decreasing", "stable"}
+        assert ca["monthly_breakdown"][-1]["year"] == 2032
+
+    async def test_cost_per_km_includes_financing(
+        self, client: AsyncClient, auth_headers, financing_vehicle
+    ):
+        vin = financing_vehicle["vin"]
+        for on, km in (("2033-01-01", 1000.0), ("2033-02-01", 2000.0)):
+            r = await client.post(
+                f"/api/vehicles/{vin}/odometer",
+                json={"vin": vin, "date": on, "odometer_km": km},
+                headers=auth_headers,
+            )
+            assert r.status_code == 201, r.text
+        await _add_financing(client, auth_headers, vin, "2033-01-15", 500.00)
+
+        resp = await client.get(f"/api/analytics/vehicles/{vin}", headers=auth_headers)
+        ca = resp.json()["cost_analysis"]
+
+        assert ca["cost_per_km"] is not None
+        # cost_per_km is derived from total_cost, which includes all financing
+        km_driven = float(ca["total_cost"]) / float(ca["cost_per_km"])
+        assert km_driven >= 1000.0
+        assert float(ca["total_financing_cost"]) >= 500.00
+        assert float(ca["cost_per_km"]) * km_driven == pytest.approx(float(ca["total_cost"]))
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
 class TestGarageAnalyticsRoutes:
     """Test garage-level analytics endpoints."""
 
@@ -119,7 +223,7 @@ class TestGarageAnalyticsRoutes:
     ):
         """Financing records must roll up into GarageCostTotals.total_financing
         and appear as a "Financing" entry in cost_breakdown_by_category,
-        without touching per-vehicle totals or monthly trends (ticket #7)."""
+        (per-vehicle and monthly-trend rollups are covered by ticket #9 tests)."""
         vin = test_vehicle["vin"]
 
         create_resp = await client.post(
@@ -146,9 +250,76 @@ class TestGarageAnalyticsRoutes:
         assert len(financing_entries) == 1
         assert float(financing_entries[0]["amount"]) >= 600.00
 
-        # Ticket #7: no per-vehicle financing column/total.
-        for vehicle_cost in data["cost_by_vehicle"]:
-            assert "total_financing" not in vehicle_cost
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+class TestGarageFinancingRollup:
+    """Ticket #9: financing counts in garage per-vehicle rows and monthly trends."""
+
+    @staticmethod
+    def _vehicle_row(data, vin):
+        return next(v for v in data["cost_by_vehicle"] if v["vin"] == vin)
+
+    async def test_cost_by_vehicle_includes_financing(
+        self, client: AsyncClient, auth_headers, financing_vehicle
+    ):
+        vin = financing_vehicle["vin"]
+        before = self._vehicle_row(
+            (await client.get("/api/analytics/garage", headers=auth_headers)).json(), vin
+        )
+
+        await _add_financing(client, auth_headers, vin, "2034-01-05", 455.00, "lease_payment")
+        await _add_financing(client, auth_headers, vin, "2034-01-01", 90.00, "upfront_fee")
+
+        after = self._vehicle_row(
+            (await client.get("/api/analytics/garage", headers=auth_headers)).json(), vin
+        )
+        assert float(after["total_financing"]) == pytest.approx(
+            float(before["total_financing"]) + 545.00
+        )
+        # Row total includes every financing category and matches the sum of its parts
+        assert float(after["total_cost"]) == pytest.approx(float(before["total_cost"]) + 545.00)
+        parts = sum(
+            float(after[k])
+            for k in (
+                "total_maintenance",
+                "total_upgrades",
+                "total_inspection",
+                "total_collision",
+                "total_detailing",
+                "total_fuel",
+                "total_def",
+                "total_financing",
+            )
+        )
+        assert float(after["total_cost"]) == pytest.approx(parts)
+
+    async def test_monthly_trends_include_financing(
+        self, client: AsyncClient, auth_headers, financing_vehicle
+    ):
+        vin = financing_vehicle["vin"]
+        await _add_financing(client, auth_headers, vin, "2040-06-01", 400.00, "loan_payment")
+        await _add_financing(client, auth_headers, vin, "2040-06-20", 100.00, "upfront_fee")
+
+        data = (await client.get("/api/analytics/garage", headers=auth_headers)).json()
+
+        june = [t for t in data["monthly_trends"] if t["month"] == "Jun 2040"]
+        assert len(june) == 1
+        assert float(june[0]["financing"]) == 500.00
+        assert float(june[0]["total"]) == 500.00
+
+    async def test_garage_rows_and_trends_agree_with_totals(
+        self, client: AsyncClient, auth_headers, financing_vehicle
+    ):
+        """The headline total_financing equals the sum of per-vehicle financing."""
+        vin = financing_vehicle["vin"]
+        await _add_financing(client, auth_headers, vin, "2035-02-01", 250.00)
+
+        data = (await client.get("/api/analytics/garage", headers=auth_headers)).json()
+
+        assert float(data["total_costs"]["total_financing"]) == pytest.approx(
+            sum(float(v["total_financing"]) for v in data["cost_by_vehicle"])
+        )
 
 
 @pytest.mark.integration

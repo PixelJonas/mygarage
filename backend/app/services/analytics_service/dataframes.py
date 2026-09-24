@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from app.models import DEFRecord, FuelRecord, ServiceVisit, SpotRentalBilling
+from app.models import DEFRecord, FinancingRecord, FuelRecord, ServiceVisit, SpotRentalBilling
 
 
 def visits_to_dataframe(
@@ -10,6 +10,7 @@ def visits_to_dataframe(
     fuel_records: list[FuelRecord],
     def_records: list[DEFRecord] | None = None,
     spot_rental_billings: list[SpotRentalBilling] | None = None,
+    financing_records: list[FinancingRecord] | None = None,
 ) -> pd.DataFrame:
     """
     Convert ServiceVisit records to a unified pandas DataFrame.
@@ -22,6 +23,8 @@ def visits_to_dataframe(
         fuel_records: List of FuelRecord objects
         def_records: Optional list of DEFRecord objects
         spot_rental_billings: Optional list of SpotRentalBilling objects
+        financing_records: Optional list of FinancingRecord objects. Every category
+            (lease/loan payment, upfront fee) is a cost row, dated by the record's date.
 
     Returns:
         DataFrame with columns: date, cost, type, vendor, odometer_km, service_type, etc.
@@ -101,8 +104,25 @@ def visits_to_dataframe(
                     }
                 )
 
+    # Convert financing records (all categories count toward cost)
+    financing_data = []
+    if financing_records:
+        for record in financing_records:
+            if record.date and record.amount:
+                financing_data.append(
+                    {
+                        "date": pd.Timestamp(record.date),
+                        "cost": float(record.amount),
+                        "type": "financing",
+                        "vendor": "Financing",
+                        "odometer_km": None,
+                        "service_type": record.category,
+                        "description": record.notes,
+                    }
+                )
+
     # Combine and create DataFrame
-    all_data = service_data + fuel_data + def_data + spot_rental_data
+    all_data = service_data + fuel_data + def_data + spot_rental_data + financing_data
 
     if not all_data:
         return pd.DataFrame(
