@@ -340,6 +340,9 @@ async def update_current_user(
     if user_update.theme is not None:
         current_user.theme = user_update.theme
 
+    if user_update.dashboard_sort is not None:
+        current_user.dashboard_sort = user_update.dashboard_sort
+
     # Fuel-tracking form defaults (issue #69). These two fields are explicitly
     # nullable — users need to be able to clear a previously-set default — so
     # we honor explicit `null` payloads via model_fields_set rather than the

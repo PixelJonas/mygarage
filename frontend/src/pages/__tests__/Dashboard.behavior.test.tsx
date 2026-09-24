@@ -23,6 +23,7 @@ vi.mock('../../contexts/AuthContext', () => ({
 }))
 
 import Dashboard from '../Dashboard'
+import { sortPickKey } from '../../utils/dashboardSort'
 
 function vehicle(v: {
   vin: string
@@ -134,7 +135,7 @@ describe('Dashboard sectioned layout', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'dashboard.sortVehicles' }))
-    fireEvent.click(screen.getByRole('menuitemradio', { name: 'dashboard.newestFirst' }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'vehicles:dashboard.newestFirst' }))
 
     await waitFor(() =>
       expect(order()).toEqual(['2022 BMW X', '2020 Chevy X', '2019 Aston X']),
@@ -158,7 +159,7 @@ describe('Dashboard sectioned layout', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'dashboard.sortVehicles' }))
-    fireEvent.click(screen.getByRole('menuitemradio', { name: 'dashboard.newestFirst' }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'vehicles:dashboard.newestFirst' }))
     await waitFor(() =>
       expect(order()).toEqual(['2022 BMW X', '2020 Chevy X', '2019 Aston X']),
     )
@@ -180,7 +181,7 @@ describe('Dashboard sectioned layout', () => {
     // no menu item matches. Fed in REVERSE of name order, because an unmatched
     // sort option falls through `sortVehicles` and leaves the input order: that
     // is what distinguishes "fell back to name" from "did not sort at all".
-    sessionStorage.setItem('mygarage:dashboard:sortBy', 'by-vibes')
+    sessionStorage.setItem(sortPickKey(null), JSON.stringify({ sort: 'by-vibes', over: 'name' }))
     mockDashboard([
       vehicle({ vin: 'B', year: 2022, make: 'BMW', model: 'X' }),
       vehicle({ vin: 'A', year: 2019, make: 'Aston', model: 'X' }),

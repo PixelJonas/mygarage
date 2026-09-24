@@ -105,6 +105,39 @@ class TestUpdateCurrentUserPreferences:
         assert response.status_code == 200
         assert response.json()["theme"] is None
 
+    async def test_update_dashboard_sort(
+        self, client: AsyncClient, auth_headers, test_user, db_session
+    ):
+        """The order the dashboard opens in is saved to the account."""
+        response = await client.put(
+            "/api/auth/me",
+            json={"dashboard_sort": "maintenance"},
+            headers=auth_headers,
+        )
+        assert response.status_code == 200
+        assert response.json()["dashboard_sort"] == "maintenance"
+
+        user = await db_session.get(User, test_user["id"])
+        await db_session.refresh(user)
+        assert user.dashboard_sort == "maintenance"
+
+    async def test_update_dashboard_sort_rejects_unsupported(
+        self, client: AsyncClient, auth_headers
+    ):
+        """An order the dashboard menu does not offer is rejected (422)."""
+        response = await client.put(
+            "/api/auth/me",
+            json={"dashboard_sort": "mileage"},
+            headers=auth_headers,
+        )
+        assert response.status_code == 422
+
+    async def test_dashboard_sort_is_name_by_default(self, client: AsyncClient, auth_headers):
+        """A user who never picked one opens on Name, as the dashboard always has."""
+        response = await client.get("/api/auth/me", headers=auth_headers)
+        assert response.status_code == 200
+        assert response.json()["dashboard_sort"] == "name"
+
     async def test_update_show_both_units(
         self, client: AsyncClient, auth_headers, test_user, db_session
     ):

@@ -23574,6 +23574,11 @@
             "title": "Currency Code",
             "type": "string"
           },
+          "dashboard_sort": {
+            "default": "name",
+            "title": "Dashboard Sort",
+            "type": "string"
+          },
           "default_payment_method": {
             "anyOf": [
               {
@@ -23938,6 +23943,18 @@
               }
             ],
             "title": "Currency Code"
+          },
+          "dashboard_sort": {
+            "anyOf": [
+              {
+                "maxLength": 16,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dashboard Sort"
           },
           "default_payment_method": {
             "anyOf": [
