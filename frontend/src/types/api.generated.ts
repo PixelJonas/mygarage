@@ -11073,6 +11073,11 @@ export interface components {
              */
             def_cost: string;
             /**
+             * Financing
+             * @default 0.00
+             */
+            financing: string;
+            /**
              * Fuel
              * @default 0.00
              */
@@ -11129,6 +11134,11 @@ export interface components {
              * @default 0.00
              */
             total_detailing: string;
+            /**
+             * Total Financing
+             * @default 0.00
+             */
+            total_financing: string;
             /**
              * Total Fuel
              * @default 0.00
@@ -12663,6 +12673,11 @@ export interface components {
              */
             def_count: number;
             /**
+             * Financing Count
+             * @default 0
+             */
+            financing_count: number;
+            /**
              * Fuel Count
              * @default 0
              */
@@ -12691,6 +12706,11 @@ export interface components {
              * @default 0.00
              */
             total_def_cost: string;
+            /**
+             * Total Financing Cost
+             * @default 0.00
+             */
+            total_financing_cost: string;
             /**
              * Total Fuel Cost
              * @default 0.00
