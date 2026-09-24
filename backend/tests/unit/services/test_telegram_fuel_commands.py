@@ -6,6 +6,7 @@ goes in the setting.
 """
 
 from datetime import date, datetime
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -144,7 +145,8 @@ async def test_a_command_logs_a_fill_up(db_session, test_vehicle):
     )
 
     assert result.logged is True
-    assert result.reply.startswith(f"Logged fill-up for {vin}")
+    # The reply names each number in the unit it was READ in (#172).
+    assert "10,000 mi" in result.reply and "12 gal" in result.reply
     record = await db_session.scalar(
         select(FuelRecord).where(FuelRecord.vin == vin, FuelRecord.notes == "via telegram")
     )
@@ -188,3 +190,105 @@ async def test_a_message_with_an_unreadable_date_is_dated_today(db_session, test
         select(FuelRecord).where(FuelRecord.vin == vin, FuelRecord.notes == "via telegram")
     )
     assert record.date == household_today()
+
+
+@pytest.mark.asyncio
+async def test_a_bare_reading_uses_the_vehicles_unit_and_the_reply_says_so(
+    db_session, test_vehicle
+):
+    from app.models.vehicle import Vehicle
+
+    vin = test_vehicle["vin"]
+    vehicle = await db_session.get(Vehicle, vin)
+    original = vehicle.distance_unit
+    vehicle.distance_unit = "mi"
+    await db_session.commit()
+    try:
+        result = await handle_message(db_session, _message(f"/fuel {vin} 10000 40"), "42")
+        assert result.logged is True
+        assert "10,000 mi" in result.reply and "40 L" in result.reply
+        record = await db_session.scalar(
+            select(FuelRecord).where(FuelRecord.vin == vin, FuelRecord.notes == "via telegram")
+        )
+        assert record.odometer_km == Decimal("16093.44")
+    finally:
+        vehicle = await db_session.get(Vehicle, vin)
+        vehicle.distance_unit = original
+        await db_session.commit()
+
+
+@pytest.mark.asyncio
+async def test_a_bare_reading_on_an_account_default_vehicle_uses_the_owner(
+    db_session, test_vehicle
+):
+    """`test_vehicle` is owned by `testuser`, whose units other modules can
+    leave changed, so they are pinned here and restored."""
+    from app.constants.units import UNIT_COLUMN_NAMES
+    from app.models.user import User
+
+    vin = test_vehicle["vin"]
+    owner = await db_session.get(User, test_vehicle["user_id"])
+    saved = {col: getattr(owner, col) for col in ("unit_preference", *UNIT_COLUMN_NAMES)}
+    owner.unit_preference = "imperial"
+    for col in UNIT_COLUMN_NAMES:
+        setattr(owner, col, None)
+    await db_session.commit()
+    try:
+        result = await handle_message(db_session, _message(f"/fuel {vin} 10000 40"), "42")
+        assert result.logged is True
+        assert "10,000 mi" in result.reply
+        record = await db_session.scalar(
+            select(FuelRecord).where(FuelRecord.vin == vin, FuelRecord.notes == "via telegram")
+        )
+        assert record.odometer_km == Decimal("16093.44")
+    finally:
+        owner = await db_session.get(User, test_vehicle["user_id"])
+        for col, value in saved.items():
+            setattr(owner, col, value)
+        await db_session.commit()
+
+
+@pytest.mark.asyncio
+async def test_a_bare_reading_on_an_ownerless_vehicle_uses_the_instance_default(db_session):
+    import json
+    import uuid
+
+    from app.constants.units import METRIC_PRESET
+    from app.models.settings import Setting
+    from app.models.vehicle import Vehicle
+    from app.utils.default_unit_prefs import DEFAULT_UNIT_PREFS_KEY
+
+    vin = ("TGNOOWN" + uuid.uuid4().hex.upper())[:17]
+    row = await db_session.get(Setting, DEFAULT_UNIT_PREFS_KEY)
+    original = row.value if row is not None else None
+    if row is None:
+        db_session.add(
+            Setting(
+                key=DEFAULT_UNIT_PREFS_KEY,
+                value=json.dumps(METRIC_PRESET.model_dump()),
+                category="general",
+            )
+        )
+    else:
+        row.value = json.dumps(METRIC_PRESET.model_dump())
+    db_session.add(
+        Vehicle(vin=vin, user_id=None, nickname=f"Ownerless {vin[-4:]}", vehicle_type="Car")
+    )
+    await db_session.commit()
+    try:
+        result = await handle_message(db_session, _message(f"/fuel {vin} 10000 40"), "42")
+        assert result.logged is True
+        assert "10,000 km" in result.reply
+        record = await db_session.scalar(select(FuelRecord).where(FuelRecord.vin == vin))
+        assert record.odometer_km == Decimal("10000")
+    finally:
+        await db_session.rollback()
+        await db_session.execute(delete(FuelRecord).where(FuelRecord.vin == vin))
+        await db_session.execute(delete(Vehicle).where(Vehicle.vin == vin))
+        row = await db_session.get(Setting, DEFAULT_UNIT_PREFS_KEY)
+        if original is None:
+            if row is not None:
+                await db_session.delete(row)
+        elif row is not None:
+            row.value = original
+        await db_session.commit()
