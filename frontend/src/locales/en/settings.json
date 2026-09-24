@@ -125,6 +125,11 @@
     "confirmMessage": "This changes how all costs are displayed. It does not convert existing values between currencies.",
     "confirmAction": "Change Currency"
   },
+  "dashboardSort": {
+    "label": "Dashboard Order",
+    "saved": "Dashboard order saved",
+    "error": "Failed to save dashboard order"
+  },
   "mobile": {
     "title": "Mobile Experience",
     "description": "Customize how the app behaves on mobile devices.",

@@ -1,19 +1,13 @@
 /**
  * Hook to access the user's time-format preference (12-hour vs 24-hour clock).
  *
- * Mirrors useUnitPreference, but ALSO subscribes to the `storage` event, which
- * `useSavePersonalPreference` fires after a browser-only save, so consumers
- * re-render live for unauthenticated users.
- *
- * Authenticated users get reactivity from AuthContext instead: the save calls
- * refreshUser() after PUT /auth/me, updating user.time_format.
- *
- * Falls back to localStorage for unauthenticated users, or '12h' as the final
- * default (matches the app's US-leaning defaults, e.g. imperial units).
+ * Read through `usePersonalPreference`: the account's value when signed in,
+ * else this browser's copy (kept live by the `storage` event a browser-only
+ * save fires), else '12h' (matches the app's US-leaning defaults, e.g.
+ * imperial units).
  */
 
-import { useState, useEffect } from 'react'
-import { useAuth } from '../contexts/AuthContext'
+import { usePersonalPreference } from './usePersonalPreference'
 
 export type TimeFormat = '12h' | '24h'
 
@@ -31,11 +25,6 @@ export function asTimeFormat(value: string | null | undefined): TimeFormat {
   return value === '24h' ? '24h' : '12h'
 }
 
-/** Read the persisted preference from localStorage, defaulting to 12h. */
-function readStored(): TimeFormat {
-  return asTimeFormat(localStorage.getItem('time_format'))
-}
-
 /**
  * Get the user's time-format preference from AuthContext or localStorage.
  *
@@ -46,17 +35,5 @@ function readStored(): TimeFormat {
  * const label = formatTime(session.started_at, timeFormat)
  */
 export function useTimeFormat(): { timeFormat: TimeFormat } {
-  const { user, isAuthenticated } = useAuth()
-  const [stored, setStored] = useState<TimeFormat>(readStored)
-
-  useEffect(() => {
-    const onStorage = (): void => setStored(readStored())
-    window.addEventListener('storage', onStorage)
-    return () => window.removeEventListener('storage', onStorage)
-  }, [])
-
-  if (isAuthenticated && user) {
-    return { timeFormat: asTimeFormat(user.time_format) }
-  }
-  return { timeFormat: stored }
+  return { timeFormat: usePersonalPreference('time_format', 'time_format', asTimeFormat) }
 }

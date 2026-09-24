@@ -17178,6 +17178,11 @@ export interface components {
              * @default USD
              */
             currency_code: string;
+            /**
+             * Dashboard Sort
+             * @default name
+             */
+            dashboard_sort: string;
             /** Default Payment Method */
             default_payment_method?: string | null;
             /** Default Trip Type */
@@ -17300,6 +17305,8 @@ export interface components {
             accent_color?: string | null;
             /** Currency Code */
             currency_code?: string | null;
+            /** Dashboard Sort */
+            dashboard_sort?: string | null;
             /** Default Payment Method */
             default_payment_method?: string | null;
             /** Default Trip Type */

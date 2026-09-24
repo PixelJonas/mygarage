@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Propane tanks on the Live tab: one card per tank, drawn at its level in your accent colour, with its other readings beside it
 - Alert lines per tank in Settings (level low and critical, battery low): they colour the tank, label it Low or Critical, and notify once per crossing, re-armed by a refill
 - Each vehicle can set the unit its odometer reads (km or mi); its distances and speeds are shown and entered in it, while fuel economy and cost per distance keep your account setting. Account default keeps today's behaviour (#172)
+- Dashboard order in Quick Settings: the dashboard opens in your chosen order on any browser; the sort menu still overrides it for the tab
 
 ### Fixed
 - Odometer milestones step every 10,000 of the vehicle's own unit; a vehicle shown in miles was congratulated on "62,137 mi"
@@ -28,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `TelemetryService.store_value`, which was unreachable and raised `TypeError`
 - Widened `livelink_devices.kind` so PostgreSQL accepts `generic_mqtt`
 - The Inbound Webhooks hint no longer offers `?token=`, which is refused
+- With sign-in off, a time format, language or currency saved from Quick Settings no longer vanishes in a development build
 - Secrets (the Telegram bot token, Discord and Slack webhook URLs, TomTom and Google Places API keys) are no longer written to the logs
 
 ### Changed

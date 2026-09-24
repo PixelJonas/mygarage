@@ -92,6 +92,7 @@ export function makeUser(overrides: Partial<User> = {}): User {
     language: 'en',
     currency_code: 'USD',
     time_format: '12h',
+    dashboard_sort: 'name',
     mobile_quick_entry_enabled: true,
     show_both_units: false,
     show_on_family_dashboard: false,

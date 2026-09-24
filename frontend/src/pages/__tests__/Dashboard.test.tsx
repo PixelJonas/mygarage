@@ -28,6 +28,9 @@ vi.mock('../../services/externalVehicleService', () => ({
 }))
 
 vi.mock('../../components/VehicleWizard', () => ({ default: () => null }))
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => ({ user: null, isAuthenticated: false }),
+}))
 
 describe('Dashboard Page', () => {
   it('renders dashboard header', () => {
