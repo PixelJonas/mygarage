@@ -50,7 +50,7 @@ import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
-import { useUnitPreference } from '@/hooks/useUnitPreference'
+import { useAccountUnitPreference } from '@/hooks/useUnitPreference'
 import api from '@/services/api'
 import {
   basePresetFor,
@@ -121,7 +121,9 @@ export default function UnitPreferencesCard(): React.ReactElement {
   const { t } = useTranslation('settings')
   const { isAuthenticated, user: currentUser, refreshUser } = useAuth()
   const queryClient = useQueryClient()
-  const { units: resolvedUnits, showBoth } = useUnitPreference()
+  // The ACCOUNT's set, never a vehicle scope's (#172): this card edits the
+  // account, and must not show or save a vehicle's odometer unit as it.
+  const { units: resolvedUnits, showBoth } = useAccountUnitPreference()
   const storedPrefs = useSyncExternalStore(
     subscribeToUnitPrefs,
     getUnitPrefs,
