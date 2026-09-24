@@ -56,10 +56,17 @@
  * the modifier while falling through to rung 3 for the set.
  */
 
-import { useSyncExternalStore } from 'react';
+import { useMemo, useSyncExternalStore } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useVehicleDistanceUnit } from '../contexts/VehicleUnitScope';
 import type { components } from '../types/api.generated';
-import { basePresetFor, binarySystemFor, presetUnitsFor, type UnitSet } from '../types/units';
+import {
+  basePresetFor,
+  binarySystemFor,
+  presetUnitsFor,
+  unitsForVehicle,
+  type UnitSet,
+} from '../types/units';
 import { type GallonStandard, type UnitSystem } from '../utils/units';
 import {
   getUnitPrefs,
@@ -68,7 +75,7 @@ import {
 } from '../utils/unitPrefsStore';
 import { gallonStandardFor } from '../utils/publicUnitDefaults';
 
-interface UnitPreference {
+export interface UnitPreference {
   system: UnitSystem;
   showBoth: boolean;
   gallonStandard: GallonStandard;
@@ -128,20 +135,17 @@ function systemFor(user: UnitPreferenceFields): UnitSystem {
 }
 
 /**
- * Get the unit preference for the current client, by the four-rung precedence
- * this file's header describes.
+ * The ACCOUNT's own unit preference, by the four-rung precedence this file's
+ * header describes, ignoring any vehicle scope (#172).
+ *
+ * Use it only where the account is the subject: its settings editor, and the
+ * distance-DENOMINATED rates (cost and volume per distance), which stay with
+ * the account like fuel economy. Everything else wants `useUnitPreference`.
  *
  * @returns The binary system, the show-both flag, the gallon standard, and the
  *   fully resolved per-quantity set, all decided on the same rung.
- *
- * @example
- * const { units, showBoth } = useUnitPreference();
- * const displayValue = UnitFormatter.formatVolume(liters, units, showBoth);
- *
- * Prefer `useUnitFormat()` in a component: it closes over `units` and answers
- * per quantity, where `system` can only answer for the whole client.
  */
-export function useUnitPreference(): UnitPreference {
+export function useAccountUnitPreference(): UnitPreference {
   const { user, isAuthenticated, defaultUnitPrefs } = useAuth();
   // Subscribed rather than read during render, which is what makes the Settings
   // card's own controls repaint the screen behind them: the store parses once at
@@ -268,4 +272,37 @@ export function useUnitPreference(): UnitPreference {
     gallonStandard: fallbackGallon,
     units: fallbackUnits,
   };
+}
+
+/**
+ * Get the unit preference for the current client, inside whatever vehicle the
+ * component sits in (#172).
+ *
+ * The account's set from `useAccountUnitPreference` (the four rungs above),
+ * with the enclosing `VehicleUnitScope`'s odometer unit laid on distance and
+ * speed. Outside any scope, or for a vehicle on Account default, it is the
+ * account's set, same object. `system` and `gallonStandard` are untouched:
+ * both derive from volume, which a vehicle does not change.
+ *
+ * @returns The binary system, the show-both flag, the gallon standard, and the
+ *   fully resolved per-quantity set.
+ *
+ * @example
+ * const { units, showBoth } = useUnitPreference();
+ * const displayValue = UnitFormatter.formatVolume(liters, units, showBoth);
+ *
+ * Prefer `useUnitFormat()` in a component: it closes over `units` and answers
+ * per quantity, where `system` can only answer for the whole client.
+ */
+export function useUnitPreference(): UnitPreference {
+  const account = useAccountUnitPreference();
+  const distanceUnit = useVehicleDistanceUnit();
+  // Memoised so a scoped set keeps its identity across renders: consumers
+  // (`useUnitFormat` above all) memoise on `units`. The returned object itself
+  // is fresh each render, exactly as the account hook's four rungs already are.
+  const units = useMemo(
+    () => unitsForVehicle(account.units, distanceUnit),
+    [account.units, distanceUnit]
+  );
+  return units === account.units ? account : { ...account, units };
 }

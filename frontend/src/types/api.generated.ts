@@ -8540,6 +8540,11 @@ export interface components {
              */
             vehicle_color?: string | null;
             /**
+             * Vehicle Distance Unit
+             * @description The vehicle's own odometer unit; null follows the viewer (#172)
+             */
+            vehicle_distance_unit?: ("km" | "mi") | null;
+            /**
              * Vehicle Nickname
              * @description Vehicle nickname
              */
@@ -9982,6 +9987,8 @@ export interface components {
          * @description Soonest pending reminder across the visible fleet.
          */
         FleetNextDue: {
+            /** Distance Unit */
+            distance_unit?: ("km" | "mi") | null;
             /** Due Date */
             due_date?: string | null;
             /** Due Mileage Km */
@@ -13499,6 +13506,8 @@ export interface components {
          * @description Lightweight vehicle summary for the Quick Entry selector.
          */
         QuickEntryVehicle: {
+            /** Distance Unit */
+            distance_unit?: ("km" | "mi") | null;
             /** Fuel Type */
             fuel_type?: string | null;
             /** Fuel Type Secondary */
@@ -17630,6 +17639,11 @@ export interface components {
              */
             displacement_l?: string | null;
             /**
+             * Distance Unit
+             * @description The unit this vehicle's odometer reads (km or mi); null follows the viewer's account. Distances and speeds for this vehicle show and are entered in it (#172).
+             */
+            distance_unit?: ("km" | "mi") | null;
+            /**
              * Doors
              * @description Number of doors
              */
@@ -18138,6 +18152,8 @@ export interface components {
              * @description Engine displacement in liters
              */
             displacement_l?: string | null;
+            /** Distance Unit */
+            distance_unit?: ("km" | "mi") | null;
             /**
              * Doors
              * @description Number of doors
@@ -18430,6 +18446,8 @@ export interface components {
             average_l_per_hr?: string | null;
             /** Current Hours */
             current_hours?: string | null;
+            /** Distance Unit */
+            distance_unit?: ("km" | "mi") | null;
             /**
              * Is Shared With Me
              * @default false
@@ -18612,6 +18630,11 @@ export interface components {
              * @description Engine displacement in liters
              */
             displacement_l?: string | null;
+            /**
+             * Distance Unit
+             * @description The unit this vehicle's odometer reads (km or mi); null follows the viewer's account. Distances and speeds for this vehicle show and are entered in it (#172).
+             */
+            distance_unit?: ("km" | "mi") | null;
             /**
              * Doors
              * @description Number of doors

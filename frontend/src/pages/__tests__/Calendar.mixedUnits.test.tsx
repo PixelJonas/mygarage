@@ -69,14 +69,14 @@ vi.mock('../../hooks/useDateLocale', () => ({ useDateLocale: () => 'en-US' }))
 const unitPrefMock = vi.hoisted(() => ({ units: null as unknown as UnitSet }))
 vi.mock('../../hooks/useUnitPreference', async () => {
   const { binarySystemFor } = await import('@/types/units')
-  return {
-    useUnitPreference: () => ({
-      system: binarySystemFor(unitPrefMock.units.volume),
-      showBoth: false,
-      gallonStandard: unitPrefMock.units.secondary_gallon,
-      units: unitPrefMock.units,
-    }),
-  }
+  const pref = () => ({
+    system: binarySystemFor(unitPrefMock.units.volume),
+    showBoth: false,
+    gallonStandard: unitPrefMock.units.secondary_gallon,
+    units: unitPrefMock.units,
+  })
+  // Rows format through `useUnitFormatFor`, which reads the ACCOUNT hook (#172).
+  return { useUnitPreference: pref, useAccountUnitPreference: pref }
 })
 
 // The two badges interpolate their distance into a key, and the global
@@ -164,6 +164,29 @@ describe('Calendar distance badges follow units.distance, not the collapsed syst
     await waitFor(() => expect(screen.getByText('80,467 km')).toBeInTheDocument())
     expect(screen.getByText('calendar.misc.distanceLeft 16,093 km')).toBeInTheDocument()
     expect(screen.queryByText('50,000 mi')).not.toBeInTheDocument()
+  })
+
+  it("each event reads in its own vehicle's unit on one km account (#172)", async () => {
+    unitPrefMock.units = METRIC_UNITS
+    apiGet.mockImplementation((url: string) => {
+      if (url === '/vehicles') return Promise.resolve({ data: [] })
+      return Promise.resolve({
+        data: {
+          events: [
+            { ...EVENT, vehicle_distance_unit: 'mi', notes: null },
+            { ...EVENT, id: 'reminder-2', vehicle_vin: 'V2', vehicle_distance_unit: null, notes: null },
+          ],
+          summary: { total: 2, overdue: 0, upcoming_7_days: 0, upcoming_30_days: 2 },
+        },
+      })
+    })
+    render(<CalendarPage />)
+
+    // The same 80467 km: miles for the mi vehicle, km for the one on Account default.
+    await waitFor(() => expect(screen.getByText('50,000 mi')).toBeInTheDocument())
+    expect(screen.getByText('80,467 km')).toBeInTheDocument()
+    expect(screen.getByText('calendar.misc.distanceLeft 10,000 mi')).toBeInTheDocument()
+    expect(screen.getByText('calendar.misc.distanceLeft 16,093 km')).toBeInTheDocument()
   })
 
   it('the notes drawer reads the due mileage in the same unit as the badge behind it', async () => {

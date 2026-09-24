@@ -45,7 +45,7 @@ from app.constants.units import UnitSet
 from app.models.user import User
 from app.models.vehicle import Vehicle
 from app.utils.default_unit_prefs import load_default_unit_prefs
-from app.utils.unit_resolution import UnitPreferenceSource, resolve_units
+from app.utils.unit_resolution import UnitPreferenceSource, apply_vehicle_units, resolve_units
 
 
 @dataclass(frozen=True)
@@ -69,6 +69,30 @@ class UserRenderContextSource(UnitPreferenceSource, Protocol):
 
     @property
     def show_both_units(self) -> bool: ...
+
+
+class VehicleUnitSource(Protocol):
+    """What the vehicle half of a render needs: its VIN and odometer unit.
+
+    A Protocol for the same reason as `UserRenderContextSource`: the ORM
+    `Vehicle` satisfies it structurally, and so does anything else carrying
+    the two attributes.
+    """
+
+    @property
+    def vin(self) -> str: ...
+    @property
+    def distance_unit(self) -> str | None: ...
+
+
+def with_vehicle(ctx: RenderContext, vehicle: VehicleUnitSource) -> RenderContext:
+    """`ctx` with the vehicle's odometer unit, and the speed that goes with it,
+    laid on top (#172). Everything else, show-both included, is unchanged, and
+    an Account-default vehicle returns `ctx` itself."""
+    units = apply_vehicle_units(ctx.units, vehicle.distance_unit, vin=vehicle.vin)
+    if units is ctx.units:
+        return ctx
+    return RenderContext(units=units, show_both=ctx.show_both)
 
 
 def render_context_for_user(user: UserRenderContextSource) -> RenderContext:
@@ -98,7 +122,9 @@ async def render_context_default(db: AsyncSession) -> RenderContext:
 
 
 async def render_context_for_request(
-    user: UserRenderContextSource | None, db: AsyncSession
+    user: UserRenderContextSource | None,
+    db: AsyncSession,
+    vehicle: VehicleUnitSource | None = None,
 ) -> RenderContext:
     """The render context for an HTTP request made by `user`.
 
@@ -113,10 +139,29 @@ async def render_context_for_request(
     whose preferences differ from the owner's, and a shared viewer reading a
     report should see their own units. A scheduled job has no caller and
     uses `render_context_for_vehicle` instead.
+
+    With `vehicle`, the result also carries that vehicle's odometer unit
+    (#172). That is a fact about the vehicle, not the owner's preference, so it
+    applies to every caller alike and "the caller's units" above still holds
+    for everything else.
     """
-    if user is None:
-        return await render_context_default(db)
-    return render_context_for_user(user)
+    base = await render_context_default(db) if user is None else render_context_for_user(user)
+    return base if vehicle is None else with_vehicle(base, vehicle)
+
+
+async def render_context_for_vehicle_row(
+    db: AsyncSession,
+    vehicle: VehicleUnitSource,
+    owner: UserRenderContextSource | None,
+) -> RenderContext:
+    """`render_context_for_vehicle` for a caller that already holds the row.
+
+    Takes the owner explicitly and never reads a relationship: `Vehicle.user`
+    is lazy, and touching it inside an AsyncSession raises MissingGreenlet,
+    which a scheduled loop's per-vehicle `except` would swallow silently.
+    """
+    base = await render_context_default(db) if owner is None else render_context_for_user(owner)
+    return with_vehicle(base, vehicle)
 
 
 async def render_context_for_vehicle(db: AsyncSession, vin: str) -> RenderContext:
@@ -128,6 +173,8 @@ async def render_context_for_vehicle(db: AsyncSession, vin: str) -> RenderContex
     reachable in production (an ownerless vehicle from a since-disabled
     `auth_mode=none` window; a stale or mistyped VIN passed in from a job
     queue), so this falls back rather than raising either way.
+
+    Either way the vehicle's own odometer unit is laid on top (#172).
     """
     row = (
         await db.execute(
@@ -138,7 +185,5 @@ async def render_context_for_vehicle(db: AsyncSession, vin: str) -> RenderContex
     ).first()
     if row is None:
         return await render_context_default(db)
-    _vehicle, owner = row
-    if owner is None:
-        return await render_context_default(db)
-    return render_context_for_user(owner)
+    vehicle, owner = row
+    return await render_context_for_vehicle_row(db, vehicle, owner)

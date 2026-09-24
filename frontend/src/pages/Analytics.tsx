@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { useParams, Link } from 'react-router-dom'
 import api from '../services/api'
 import { getActionErrorMessage } from '../utils/httpErrorHandler'
-import { useUnitPreference } from '../hooks/useUnitPreference'
+import { useAccountUnitPreference, useUnitPreference } from '../hooks/useUnitPreference'
 import { useUnitFormat } from '../hooks/useUnitFormat'
 import {
   costPerDistanceUnitLabel,
@@ -107,6 +107,10 @@ export default function Analytics() {
   // decided a DISTANCE on a binary collapsed from VOLUME; both now read
   // `units.distance` through `utils/unitFormat.ts`.
   const { showBoth, units } = useUnitPreference()
+  // Rates with a distance underneath stay in the ACCOUNT's units (#172 D3),
+  // like fuel economy: the vehicle's odometer unit covers its distances and
+  // speeds, not its cost or DEF per distance. Label and number share this set.
+  const { units: accountUnits } = useAccountUnitPreference()
   const u = useUnitFormat()
   const { currencyCode, locale } = useCurrencyPreference()
   const currencySymbol = useCurrencySymbol()
@@ -271,8 +275,8 @@ export default function Analytics() {
     rows.push(['Fuel Count', cost_analysis.fuel_count.toString()])
     if (cost_analysis.cost_per_km) {
       rows.push([
-        t('vehicle.costPerDistance', { unit: costPerDistanceUnitLabel(units) }),
-        formatCostPerDistance(units, parseFloat(String(cost_analysis.cost_per_km)), currencyCode, locale),
+        t('vehicle.costPerDistance', { unit: costPerDistanceUnitLabel(accountUnits) }),
+        formatCostPerDistance(accountUnits, parseFloat(String(cost_analysis.cost_per_km)), currencyCode, locale),
       ])
     }
     rows.push([]) // Empty row
@@ -719,11 +723,11 @@ export default function Analytics() {
         {isMotorized && (
           <div className="bg-garage-surface border border-garage-border rounded-lg p-6">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium text-garage-text-muted">{t('vehicle.costPerDistance', { unit: costPerDistanceUnitLabel(units) })}</h3>
+              <h3 className="text-sm font-medium text-garage-text-muted">{t('vehicle.costPerDistance', { unit: costPerDistanceUnitLabel(accountUnits) })}</h3>
               <LineChart className="w-5 h-5 text-garage-text-muted" />
             </div>
             <p className="text-2xl font-bold text-garage-text">
-              {cost_analysis.cost_per_km ? formatCostPerDistance(units, parseFloat(String(cost_analysis.cost_per_km)), currencyCode, locale) : t('vehicle.notAvailable')}
+              {cost_analysis.cost_per_km ? formatCostPerDistance(accountUnits, parseFloat(String(cost_analysis.cost_per_km)), currencyCode, locale) : t('vehicle.notAvailable')}
             </p>
             {analytics.total_km_driven && (
               <p className="text-xs text-garage-text-muted mt-1">
@@ -1678,7 +1682,7 @@ export default function Analytics() {
               <p className="text-sm text-garage-text-muted mb-1">{t('vehicle.consumptionRate')}</p>
               <p className="text-2xl font-bold text-primary">
                 {defAnalysis.liters_per_1000_km
-                  ? `${formatVolumePerDistance(units, parseFloat(defAnalysis.liters_per_1000_km))} ${volumePerDistanceLabel(units)}`
+                  ? `${formatVolumePerDistance(accountUnits, parseFloat(defAnalysis.liters_per_1000_km))} ${volumePerDistanceLabel(accountUnits)}`
                   : '-'}
               </p>
             </div>

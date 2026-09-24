@@ -25,6 +25,7 @@ from app.models import (
     OdometerRecord,
     Recall,
     ServiceVisit,
+    User,
     Vehicle,
     WarrantyRecord,
 )
@@ -44,7 +45,8 @@ from app.utils.household_time import (
     household_zone,
     load_household_zone,
 )
-from app.utils.render_context import render_context_for_vehicle
+from app.utils.render_context import render_context_for_vehicle, render_context_for_vehicle_row
+from app.utils.unit_adapters import adapter_for
 
 logger = logging.getLogger(__name__)
 
@@ -214,10 +216,13 @@ async def check_odometer_milestones() -> None:
     """Check for odometer milestones and send notifications.
 
     Runs daily at 10 AM UTC. Checks each vehicle's latest odometer_km against
-    milestone boundaries (every 10,000 km). Uses last_milestone_notified_km
-    on the vehicle to prevent duplicate notifications.
+    milestone boundaries: every 10,000 of the distance unit the vehicle renders
+    in (its own odometer unit, else its owner's, else the instance default;
+    #172). Uses last_milestone_notified_km on the vehicle to prevent duplicate
+    notifications; the comparison stays in canonical km, so a unit change never
+    fires a mark twice or goes backwards.
     """
-    MILESTONE_INTERVAL_KM = 10_000  # noqa: N806 — constant value, intentionally uppercased
+    MILESTONE_STEP = Decimal(10_000)  # noqa: N806 -- 10,000 of the vehicle's own unit
 
     async with AsyncSessionLocal() as db:
         await load_household_zone(db)
@@ -231,10 +236,19 @@ async def check_odometer_milestones() -> None:
             if milestones_enabled.lower() != "true":
                 return
 
-            vehicles_result = await db.execute(select(Vehicle).where(Vehicle.archived_at.is_(None)))
-            vehicles = vehicles_result.scalars().all()
+            # The owner comes WITH the vehicle: `Vehicle.user` is lazy, and
+            # reading it inside this AsyncSession would raise MissingGreenlet,
+            # which the per-vehicle `except` below would swallow for every
+            # vehicle, silently.
+            rows = (
+                await db.execute(
+                    select(Vehicle, User)
+                    .outerjoin(User, Vehicle.user_id == User.id)
+                    .where(Vehicle.archived_at.is_(None))
+                )
+            ).all()
 
-            for vehicle in vehicles:
+            for vehicle, owner in rows:
                 try:
                     # Get latest odometer_km
                     odo_result = await db.execute(
@@ -251,34 +265,43 @@ async def check_odometer_milestones() -> None:
                     if not current_odometer_km:
                         continue
 
-                    # Calculate the highest milestone crossed (integer-floor on km)
-                    current_milestone = (
-                        int(current_odometer_km) // MILESTONE_INTERVAL_KM
-                    ) * MILESTONE_INTERVAL_KM
-                    if current_milestone == 0:
+                    # A scheduled job has no caller, so it renders in the
+                    # VEHICLE OWNER's units -- the opposite of a request, which
+                    # renders in the caller's -- with the vehicle's own
+                    # odometer unit on top. An ownerless vehicle falls back to
+                    # the instance default. The step is 10,000 of that unit:
+                    # km steps congratulated a miles vehicle on "62,137 mi".
+                    ctx = await render_context_for_vehicle_row(db, vehicle, owner)
+                    adapter = adapter_for(ctx.units, "distance")
+                    # Both adapter directions return `Decimal | None`.
+                    shown = adapter.to_display(Decimal(current_odometer_km))
+                    if shown is None:
                         continue
+                    milestone_shown = (shown // MILESTONE_STEP) * MILESTONE_STEP
+                    if milestone_shown <= 0:
+                        continue
+                    canonical = adapter.to_canonical(milestone_shown)
+                    if canonical is None:
+                        continue
+                    milestone_km = canonical.quantize(Decimal("0.01"))
+                    # A Decimal compare: `int()` would truncate 96,560.64 to
+                    # 96,560 and announce the same mark every day.
+                    last_notified = Decimal(vehicle.last_milestone_notified_km or 0)
 
-                    last_notified = int(vehicle.last_milestone_notified_km or 0)
-
-                    if current_milestone > last_notified:
+                    if milestone_km > last_notified:
                         vehicle_name = (
                             vehicle.nickname or f"{vehicle.year} {vehicle.make} {vehicle.model}"
                         )
-                        # A scheduled job has no caller, so it renders in the
-                        # VEHICLE OWNER's units -- the opposite of a request,
-                        # which renders in the caller's. An ownerless vehicle
-                        # falls back to the instance default.
-                        ctx = await render_context_for_vehicle(db, vehicle.vin)
                         await dispatcher.notify_odometer_milestone(
                             vehicle_name=vehicle_name,
-                            canonical_km=Decimal(current_milestone),
+                            canonical_km=milestone_km,
                             ctx=ctx,
                         )
-                        vehicle.last_milestone_notified_km = current_milestone
+                        vehicle.last_milestone_notified_km = milestone_km
                         logger.info(
                             "Milestone notification: %s reached %s km",
                             vehicle_name,
-                            f"{current_milestone:,}",
+                            f"{milestone_km:,}",
                         )
 
                 except Exception as e:

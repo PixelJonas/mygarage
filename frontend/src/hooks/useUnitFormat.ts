@@ -28,9 +28,11 @@
  */
 
 import { useMemo } from 'react'
-import { useUnitPreference } from './useUnitPreference'
+import { useAccountUnitPreference, useUnitPreference } from './useUnitPreference'
 import { makeUnitFormat, type UnitFormat, type QuantityFormat } from '../utils/unitFormat'
 import { oilCapacityFormat } from '../utils/oilCapacityUnit'
+import { unitsForVehicle } from '../types/units'
+import type { VehicleDistanceUnit } from '../contexts/VehicleUnitScope'
 
 /**
  * Get the unit formatters for the current client.
@@ -64,4 +66,27 @@ export function useUnitFormat(): UnitFormat {
 export function useOilCapacityFormat(): QuantityFormat {
   const { units } = useUnitPreference()
   return useMemo(() => oilCapacityFormat(units), [units])
+}
+
+/**
+ * Formatters for one row per vehicle on a page that mixes vehicles (#172): the
+ * calendar, the fleet strip. Built on the ACCOUNT's set, so a row's own
+ * vehicle unit is laid on the account and never on an enclosing scope.
+ * Memoised per token, so a row's formatter keeps its identity.
+ *
+ * @returns A function from a vehicle's odometer unit to its formatters.
+ */
+export function useUnitFormatFor(): (distanceUnit: VehicleDistanceUnit) => UnitFormat {
+  const { units, showBoth } = useAccountUnitPreference()
+  return useMemo(() => {
+    const byUnit = new Map<string, UnitFormat>()
+    return (distanceUnit: VehicleDistanceUnit): UnitFormat => {
+      const key = distanceUnit ?? ''
+      const cached = byUnit.get(key)
+      if (cached) return cached
+      const made = makeUnitFormat(unitsForVehicle(units, distanceUnit), showBoth)
+      byUnit.set(key, made)
+      return made
+    }
+  }, [units, showBoth])
 }

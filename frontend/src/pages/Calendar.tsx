@@ -13,7 +13,7 @@ import { useNavigate } from 'react-router-dom'
 import type { CalendarEvent, CalendarResponse } from '../types/calendar'
 import type { Vehicle } from '../types/vehicle'
 import api from '../services/api'
-import { useUnitFormat } from '../hooks/useUnitFormat'
+import { useUnitFormatFor } from '../hooks/useUnitFormat'
 import { useTimeFormat } from '../hooks/useTimeFormat'
 import { useDateLocale } from '../hooks/useDateLocale'
 import { formatDateForDisplay } from '../utils/dateUtils'
@@ -77,7 +77,9 @@ export default function CalendarPage() {
 function CalendarInner({ householdTimeZone }: { householdTimeZone: string | null }) {
   const { t } = useTranslation('vehicles')
   const navigate = useNavigate()
-  const u = useUnitFormat()
+  // One formatter per event: each reads its own vehicle's odometer unit over
+  // the account's (#172), since one calendar mixes vehicles.
+  const formatFor = useUnitFormatFor()
   const { timeFormat } = useTimeFormat()
   const dateLocale = useDateLocale()
   const [events, setEvents] = useState<CalendarEvent[]>([])
@@ -715,7 +717,7 @@ function CalendarInner({ householdTimeZone }: { householdTimeZone: string | null
                           {event.due_mileage_km && (
                             <span className="flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-blue-500/20 text-blue-500">
                               <Gauge className="w-3 h-3" />
-                              {u.distance.formatPrimary(parseFloat(event.due_mileage_km))}
+                              {formatFor(event.vehicle_distance_unit).distance.formatPrimary(parseFloat(event.due_mileage_km))}
                             </span>
                           )}
                           <span className={`text-xs font-medium uppercase ${
@@ -750,12 +752,13 @@ function CalendarInner({ householdTimeZone }: { householdTimeZone: string | null
                               if (event.km_until_due == null) return null
                               const km = parseFloat(event.km_until_due)
                               if (isNaN(km)) return null
-                              // 500 of the reader's own distance units is the
-                              // warning threshold, so the comparison happens in
-                              // the DISPLAY unit and the badge is composed by
-                              // the adapter rather than here.
+                              // 500 of the distance units this event's vehicle
+                              // renders in is the warning threshold, so the
+                              // comparison happens in the DISPLAY unit and the
+                              // badge is composed by the adapter rather than here.
                               const warnThresholdInDisplay = 500
-                              const displayValue = u.distance.toDisplay(km) ?? 0
+                              const distance = formatFor(event.vehicle_distance_unit).distance
+                              const displayValue = distance.toDisplay(km) ?? 0
                               return (
                                 <span className={`text-xs px-1.5 py-0.5 rounded ${
                                   displayValue <= 0 ? 'bg-danger/20 text-danger' :
@@ -763,8 +766,8 @@ function CalendarInner({ householdTimeZone }: { householdTimeZone: string | null
                                   'bg-garage-bg text-garage-text-muted'
                                 }`}>
                                   {displayValue <= 0
-                                    ? t('calendar.misc.distanceOver', { distance: u.distance.formatPrimary(Math.abs(km)) })
-                                    : t('calendar.misc.distanceLeft', { distance: u.distance.formatPrimary(km) })}
+                                    ? t('calendar.misc.distanceOver', { distance: distance.formatPrimary(Math.abs(km)) })
+                                    : t('calendar.misc.distanceLeft', { distance: distance.formatPrimary(km) })}
                                 </span>
                               )
                             })()}
@@ -891,7 +894,9 @@ function CalendarInner({ householdTimeZone }: { householdTimeZone: string | null
                     {selectedEventForNotes.due_mileage_km && (
                       <p className="text-sm text-garage-text-muted mt-2">
                         {t('calendar.misc.dueAt', {
-                          distance: u.distance.formatPrimary(parseFloat(selectedEventForNotes.due_mileage_km)),
+                          distance: formatFor(selectedEventForNotes.vehicle_distance_unit).distance.formatPrimary(
+                            parseFloat(selectedEventForNotes.due_mileage_km)
+                          ),
                         })}
                       </p>
                     )}

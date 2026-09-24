@@ -199,6 +199,7 @@ async def calculate_vehicle_stats(
         vehicle_type=vehicle.vehicle_type,
         main_photo_url=main_photo_url,
         usage_unit=vehicle.usage_unit,
+        distance_unit=vehicle.distance_unit,
         current_hours=vehicle.current_hours,
         latest_hours=latest_hours,
         average_l_per_hr=average_l_per_hr,
@@ -253,6 +254,9 @@ async def _fleet_next_due(
        ``due_mileage_km ASC``); final tie-break ``id ASC``.
     """
     today = household_today()
+    # The due vehicle's own odometer unit (#172), from the stats already in
+    # hand rather than a new query, exactly as `odo_by_vin` is built below.
+    unit_by_vin = {s.vin: s.distance_unit for s in vehicle_stats}
     dated = (
         await db.execute(
             select(
@@ -279,6 +283,7 @@ async def _fleet_next_due(
             label=dated[1],
             due_date=dated[2],
             due_mileage_km=dated[3],  # passed through so the strip can show both
+            distance_unit=unit_by_vin.get(dated[0]),
         )
 
     mileage_rows = (
@@ -321,6 +326,7 @@ async def _fleet_next_due(
         label=best[2],
         due_date=None,
         due_mileage_km=best[3],
+        distance_unit=unit_by_vin.get(best[1]),
     )
 
 

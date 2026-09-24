@@ -7,6 +7,8 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator
 
 from app.constants.fuel import FUEL_TYPE_VALUES, normalize_fuel_type
+from app.constants.units import DistanceUnit
+from app.utils.unit_resolution import LenientDistanceUnit
 
 
 def _normalize_fuel_type_input(v: Any) -> Any:
@@ -74,6 +76,14 @@ class VehicleBase(BaseModel):
     secondary_usage_enabled: bool = Field(
         False,
         description="Also track the non-primary usage dimension (distance+hours dual tracking)",
+    )
+    distance_unit: DistanceUnit | None = Field(
+        None,
+        description=(
+            "The unit this vehicle's odometer reads (km or mi); null follows the "
+            "viewer's account. Distances and speeds for this vehicle show and are "
+            "entered in it (#172)."
+        ),
     )
     year: int | None = Field(None, description="Model year", ge=1900, le=2100)
     make: str | None = Field(None, description="Manufacturer brand", max_length=50)
@@ -264,6 +274,9 @@ class VehicleResponse(VehicleBase):
     """Schema for vehicle response."""
 
     vin: str
+    # Served, never refused: the column has no CHECK, and a strict Literal here
+    # would turn one hand-edited row into a 500 for every response carrying it.
+    distance_unit: LenientDistanceUnit = None
     main_photo: str | None = None
     created_at: datetime
     updated_at: datetime | None = None

@@ -80,6 +80,9 @@ import TorqueSourceModal from '../components/modals/TorqueSourceModal'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { useAuth } from '../contexts/AuthContext'
 import { fillUpKind, vehicleLogKinds } from '../utils/vehicleLogKinds'
+import { VehicleUnitScope } from '../contexts/VehicleUnitScope'
+import { forgetCachedVehicle, readCachedVehicle, rememberVehicle } from '../utils/vehicleCache'
+import { useSyncQuickEntryVehicle } from '../hooks/queries/useQuickEntryVehicles'
 
 /** Per-record-type tallies returned by the JSON import endpoint. */
 type ImportSectionResult = {
@@ -136,7 +139,6 @@ export default function VehicleDetail() {
 
   const loadVehicle = useCallback(async () => {
     if (!vin) return
-    const cacheKey = `vehicle-cache-${vin}`
     setLoading(true)
     setError(null)
     setFromCache(false)
@@ -144,20 +146,18 @@ export default function VehicleDetail() {
     try {
       const data = await vehicleService.get(vin)
       setVehicle(data)
-      localStorage.setItem(cacheKey, JSON.stringify({ timestamp: Date.now(), data }))
+      rememberVehicle(vin, data)
     } catch (error) {
       if (!navigator.onLine) {
-        const cached = localStorage.getItem(cacheKey)
+        const cached = readCachedVehicle(vin)
         if (cached) {
-          try {
-            const parsed = JSON.parse(cached)
-            setVehicle(parsed.data)
-            setFromCache(true)
-            return
-          } catch {
-            localStorage.removeItem(cacheKey)
-          }
+          setVehicle(cached)
+          setFromCache(true)
+          return
         }
+        // Absent or unreadable: an unreadable copy would fail the same way
+        // next time, so it goes.
+        forgetCachedVehicle(vin)
       }
       setError(getActionErrorMessage(error, tRef.current('detail.misc.loadAction')))
     } finally {
@@ -174,6 +174,21 @@ export default function VehicleDetail() {
   useEffect(() => {
     loadVehicle()
   }, [loadVehicle])
+
+  const syncQuickEntryVehicle = useSyncQuickEntryVehicle()
+  /**
+   * Every sidecar save lands here, not in `setVehicle` (#172). Each one gets
+   * the server's fresh row, which can carry an odometer unit changed on
+   * another device, so the offline copy and the Quick Entry list follow it.
+   */
+  const handleVehicleUpdated = useCallback(
+    (updated: Vehicle) => {
+      setVehicle(updated)
+      if (vin) rememberVehicle(vin, updated)
+      syncQuickEntryVehicle(updated)
+    },
+    [vin, syncQuickEntryVehicle]
+  )
 
   // What this vehicle's LiveLink sources can actually do. Gates both the
   // primary tab and its sub-tabs: a propane gateway declares telemetry alone,
@@ -638,7 +653,7 @@ export default function VehicleDetail() {
     ? withBase(`/api/vehicles/${vehicle.vin}/photos/${vehicle.main_photo.split('/').pop()}`)
     : null
 
-  return (
+  const page = (
     <div className="min-h-screen bg-bg pb-8">
       <div className="mx-auto max-w-[1120px] px-[clamp(16px,3vw,30px)] pt-6">
         {/* Back link (prototype dc.html:243) */}
@@ -711,7 +726,7 @@ export default function VehicleDetail() {
             lastLocation={lastLocation}
             onEditPricing={() => setPricingDrawerOpen(true)}
             onEditCard={openFieldsCard}
-            onVehicleUpdated={setVehicle}
+            onVehicleUpdated={handleVehicleUpdated}
           />
         )}
 
@@ -793,7 +808,7 @@ export default function VehicleDetail() {
           vehicle={vehicle}
           vin={vin}
           onClose={() => setEquipmentDrawer(null)}
-          onUpdated={setVehicle}
+          onUpdated={handleVehicleUpdated}
         />
       )}
 
@@ -804,7 +819,7 @@ export default function VehicleDetail() {
           vehicle={vehicle}
           vin={vin}
           onClose={() => setPricingDrawerOpen(false)}
-          onUpdated={setVehicle}
+          onUpdated={handleVehicleUpdated}
         />
       )}
 
@@ -818,7 +833,7 @@ export default function VehicleDetail() {
           vehicle={vehicle}
           vin={vin}
           onClose={() => setFieldsOpen(false)}
-          onUpdated={setVehicle}
+          onUpdated={handleVehicleUpdated}
         />
       )}
 
@@ -830,7 +845,7 @@ export default function VehicleDetail() {
           vin={vin}
           vehicle={vehicle}
           onClose={() => setEditDrawerOpen(false)}
-          onUpdated={setVehicle}
+          onUpdated={handleVehicleUpdated}
           onDownloadWindowSticker={handleDownloadWindowSticker}
           onUploadWindowSticker={() => setOpenModal('windowSticker')}
           onManageTorqueSources={() => setOpenModal('torqueSource')}
@@ -875,5 +890,19 @@ export default function VehicleDetail() {
         />
       )}
     </div>
+  )
+
+  // Every tab, drawer and record form reads the vehicle's odometer unit
+  // through this scope (#172). Keyed on the unit: a sidecar save can land
+  // AFTER its drawer was dismissed (the drawers do not block closing
+  // mid-save), and if it changes the unit while a record form is open, that
+  // form would read typed miles as kilometres. A unit change remounts
+  // everything below instead, closing any open form: a lost draft in a rare
+  // race, never a silently wrong reading. A save that keeps the unit remounts
+  // nothing.
+  return (
+    <VehicleUnitScope key={vehicle.distance_unit ?? 'account'} distanceUnit={vehicle.distance_unit}>
+      {page}
+    </VehicleUnitScope>
   )
 }

@@ -2303,6 +2303,22 @@
             "description": "Custom vehicle color for calendar (Phase 3)",
             "title": "Vehicle Color"
           },
+          "vehicle_distance_unit": {
+            "anyOf": [
+              {
+                "enum": [
+                  "km",
+                  "mi"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The vehicle's own odometer unit; null follows the viewer (#172)",
+            "title": "Vehicle Distance Unit"
+          },
           "vehicle_nickname": {
             "anyOf": [
               {
@@ -5769,6 +5785,21 @@
       "FleetNextDue": {
         "description": "Soonest pending reminder across the visible fleet.",
         "properties": {
+          "distance_unit": {
+            "anyOf": [
+              {
+                "enum": [
+                  "km",
+                  "mi"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance Unit"
+          },
           "due_date": {
             "anyOf": [
               {
@@ -14177,6 +14208,21 @@
       "QuickEntryVehicle": {
         "description": "Lightweight vehicle summary for the Quick Entry selector.",
         "properties": {
+          "distance_unit": {
+            "anyOf": [
+              {
+                "enum": [
+                  "km",
+                  "mi"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance Unit"
+          },
           "fuel_type": {
             "anyOf": [
               {
@@ -24744,6 +24790,22 @@
             "description": "Engine displacement in liters",
             "title": "Displacement L"
           },
+          "distance_unit": {
+            "anyOf": [
+              {
+                "enum": [
+                  "km",
+                  "mi"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The unit this vehicle's odometer reads (km or mi); null follows the viewer's account. Distances and speeds for this vehicle show and are entered in it (#172).",
+            "title": "Distance Unit"
+          },
           "doors": {
             "anyOf": [
               {
@@ -25936,6 +25998,21 @@
             "description": "Engine displacement in liters",
             "title": "Displacement L"
           },
+          "distance_unit": {
+            "anyOf": [
+              {
+                "enum": [
+                  "km",
+                  "mi"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance Unit"
+          },
           "doors": {
             "anyOf": [
               {
@@ -26805,6 +26882,21 @@
             ],
             "title": "Current Hours"
           },
+          "distance_unit": {
+            "anyOf": [
+              {
+                "enum": [
+                  "km",
+                  "mi"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance Unit"
+          },
           "is_shared_with_me": {
             "default": false,
             "title": "Is Shared With Me",
@@ -27335,6 +27427,22 @@
             ],
             "description": "Engine displacement in liters",
             "title": "Displacement L"
+          },
+          "distance_unit": {
+            "anyOf": [
+              {
+                "enum": [
+                  "km",
+                  "mi"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The unit this vehicle's odometer reads (km or mi); null follows the viewer's account. Distances and speeds for this vehicle show and are entered in it (#172).",
+            "title": "Distance Unit"
           },
           "doors": {
             "anyOf": [

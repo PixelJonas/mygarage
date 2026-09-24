@@ -342,7 +342,7 @@ def validate_period_history(
             add(
                 q,
                 OVERLAPPING_ODOMETER,
-                f"{_label(q, capital=True)} claims kilometres {_label(covered[1])} already "
+                f"{_label(q, capital=True)} claims distance {_label(covered[1])} already "
                 f"covers: it starts at {format_distance(start)}, before that "
                 f"period ended at {format_distance(covered[0])}.",
                 counterpart=covered[1],

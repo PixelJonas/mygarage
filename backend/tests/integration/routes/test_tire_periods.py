@@ -1431,6 +1431,41 @@ class TestMessagesInTheUsersUnits:
             # this leaks into every later test that expects the default.
             await self._set_unit_preference(client, auth_headers, "imperial")
 
+    async def test_a_refusal_speaks_the_vehicles_unit_over_the_users(
+        self, client: AsyncClient, auth_headers, vehicle
+    ):
+        """#172: a vehicle set to miles speaks miles to a user on km."""
+        await self._set_unit_preference(client, auth_headers, "metric")
+        try:
+            put = await client.put(
+                f"/api/vehicles/{vehicle}", headers=auth_headers, json={"distance_unit": "mi"}
+            )
+            assert put.status_code == 200, put.text
+            base = f"/api/vehicles/{vehicle}/tires"
+            made = await client.post(
+                f"{base}/create-and-mount",
+                headers=auth_headers,
+                json={
+                    "vin": vehicle,
+                    "position": "FL",
+                    "mounted_on": "2026-01-01",
+                    "mounted_odometer_km": "5000",
+                },
+            )
+            tire_id = made.json()["id"]
+            refused = await client.post(
+                f"{base}/{tire_id}/dismount",
+                headers=auth_headers,
+                json={"dismounted_on": "2026-02-01", "dismounted_odometer_km": "1000"},
+            )
+            assert refused.status_code == 409, refused.text
+            detail = refused.json()["detail"]
+            assert " mi" in detail
+            assert " km" not in detail
+        finally:
+            # Same restore as the km test above: this file's convention.
+            await self._set_unit_preference(client, auth_headers, "imperial")
+
     async def test_the_formatter_follows_the_instance_default_without_a_user(
         self, db_session: AsyncSession
     ):
@@ -1451,7 +1486,9 @@ class TestMessagesInTheUsersUnits:
             )
         await db_session.commit()
         try:
-            formatter = await TireService(db_session).request_distance_formatter(None)
+            formatter = await TireService(db_session).request_distance_formatter(
+                None, "NOSUCHVIN00000000"
+            )
             assert " mi" in formatter(Decimal("1000"))
         finally:
             row = await db_session.get(Setting, DEFAULT_UNIT_PREFS_KEY)

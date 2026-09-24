@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Plus, Car as CarIcon, RefreshCw, ChevronDown, AlertCircle, Users, Archive, CheckSquare } from 'lucide-react'
 import VehicleStatisticsCard from '../components/VehicleStatisticsCard'
+import { VehicleUnitScope } from '../contexts/VehicleUnitScope'
 import ExternalVehicleCard from '../components/ExternalVehicleCard'
 import ExternalVehicleModal from '../components/modals/ExternalVehicleModal'
 import BulkArchiveModal from '../components/modals/BulkArchiveModal'
@@ -287,13 +288,15 @@ export default function Dashboard() {
               {ownedVehicles.length > 0 ? (
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-[22px]">
                   {ownedVehicles.map((vehicleStats) => (
-                    <VehicleStatisticsCard
-                      key={vehicleStats.vin}
-                      stats={vehicleStats}
-                      selectMode={selectMode}
-                      selected={selectedVins.has(vehicleStats.vin)}
-                      onToggleSelect={toggleVin}
-                    />
+                    // Each card reads its own vehicle's odometer unit (#172).
+                    <VehicleUnitScope key={vehicleStats.vin} distanceUnit={vehicleStats.distance_unit}>
+                      <VehicleStatisticsCard
+                        stats={vehicleStats}
+                        selectMode={selectMode}
+                        selected={selectedVins.has(vehicleStats.vin)}
+                        onToggleSelect={toggleVin}
+                      />
+                    </VehicleUnitScope>
                   ))}
                 </div>
               ) : (
@@ -319,7 +322,9 @@ export default function Dashboard() {
                 </h2>
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-[22px]">
                   {sharedVehicles.map((vehicleStats) => (
-                    <VehicleStatisticsCard key={vehicleStats.vin} stats={vehicleStats} />
+                    <VehicleUnitScope key={vehicleStats.vin} distanceUnit={vehicleStats.distance_unit}>
+                      <VehicleStatisticsCard stats={vehicleStats} />
+                    </VehicleUnitScope>
                   ))}
                 </div>
               </section>

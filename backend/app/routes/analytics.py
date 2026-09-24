@@ -76,7 +76,7 @@ from app.utils.household_time import household_today
 from app.utils.insurance_cost import accrued_cost, monthly_costs
 from app.utils.insurance_shares import effective_shares
 from app.utils.logging_utils import sanitize_for_log
-from app.utils.render_context import render_context_for_request
+from app.utils.render_context import render_context_for_request, with_vehicle
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
@@ -1684,7 +1684,10 @@ async def export_analytics_pdf(
     # Convert analytics to dict for PDF generator
     analytics_data = analytics.model_dump()
 
-    # Generate PDF
+    # Generate PDF. Distances follow the vehicle's odometer unit; the
+    # cost-per-distance cell keeps the account's units (#172 D3), so the PDF
+    # gets both.
+    account_ctx = await render_context_for_request(current_user, db)
     pdf_buffer = generate_vehicle_analytics_pdf(
         analytics_data=analytics_data,
         vendor_data=vendor_data,
@@ -1692,7 +1695,8 @@ async def export_analytics_pdf(
         currency_code=safe_code,
         locale=safe_locale,
         reminders_data=reminders_data,
-        render_context=await render_context_for_request(current_user, db),
+        render_context=with_vehicle(account_ctx, vehicle),
+        rate_context=account_ctx,
     )
 
     # Return PDF as streaming response

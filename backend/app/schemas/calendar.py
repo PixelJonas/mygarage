@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.utils.unit_resolution import LenientDistanceUnit
+
 
 class CalendarEvent(BaseModel):
     """Schema for a calendar event."""
@@ -43,6 +45,9 @@ class CalendarEvent(BaseModel):
     status: str | None = Field(None, description="Maintenance status (overdue, due_soon, etc.)")
     days_until_due: int | None = Field(None, description="Days until due date")
     km_until_due: Decimal | None = Field(None, description="Kilometers until due odometer reading")
+    vehicle_distance_unit: LenientDistanceUnit = Field(
+        None, description="The vehicle's own odometer unit; null follows the viewer (#172)"
+    )
     hours_until_due: Decimal | None = Field(
         None, description="Engine-hours until due hours reading (Phase 6b)"
     )

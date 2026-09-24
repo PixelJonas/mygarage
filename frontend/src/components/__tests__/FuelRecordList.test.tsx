@@ -23,16 +23,24 @@ const unitPrefMock = vi.hoisted(() => ({
   // Set to pin an exact resolved set (a `gal_uk` user, say); left null the set
   // follows `system`, the way the real hook derives both on one rung.
   units: null as null | import('@/types/units').UnitSet,
+  // The ACCOUNT's set when it differs from the scoped one: a vehicle with its
+  // own odometer unit (#172). Left null, the account is the scoped set.
+  accountUnits: null as null | import('@/types/units').UnitSet,
 }))
 vi.mock('../../hooks/useUnitPreference', async () => {
   const { IMPERIAL_UNITS, METRIC_UNITS } = await import('@/__tests__/factories')
+  const scoped = () =>
+    unitPrefMock.units ?? (unitPrefMock.system === 'imperial' ? IMPERIAL_UNITS : METRIC_UNITS)
   return {
     useUnitPreference: () => ({
       system: unitPrefMock.system,
       showBoth: unitPrefMock.showBoth,
-      units:
-        unitPrefMock.units ??
-        (unitPrefMock.system === 'imperial' ? IMPERIAL_UNITS : METRIC_UNITS),
+      units: scoped(),
+    }),
+    useAccountUnitPreference: () => ({
+      system: unitPrefMock.system,
+      showBoth: unitPrefMock.showBoth,
+      units: unitPrefMock.accountUnits ?? scoped(),
     }),
   }
 })
@@ -99,6 +107,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   unitPrefMock.system = 'metric'
   unitPrefMock.units = null
+  unitPrefMock.accountUnits = null
   UnitConverter.setGallonStandard('us')
   vi.spyOn(window, 'confirm').mockReturnValue(true)
   useFuelRecordsMock.mockReturnValue({
@@ -386,6 +395,19 @@ describe('FuelRecordList — the cost-per-distance card, label and value togethe
       isLoading: false,
       error: null,
     })
+  })
+
+  it('★ a mi VEHICLE on a km ACCOUNT keeps the rate on the account, label and value (#172)', async () => {
+    // $20.00 over 1000 km is $0.02/km: $2.00 per 100 km on the account's
+    // units. The vehicle's miles would have said $32.19 per 1,000 mi.
+    unitPrefMock.units = { ...METRIC_UNITS, distance: 'mi', speed: 'mph' }
+    unitPrefMock.accountUnits = METRIC_UNITS
+
+    render(<FuelRecordList {...DEFAULT_PROPS} />)
+    expect(await screen.findByText('fuelList.costPerDistance (100 km)')).toBeInTheDocument()
+    expect(screen.getByText('$2.00')).toBeInTheDocument()
+    expect(screen.queryByText('fuelList.costPerDistance (1,000 mi)')).not.toBeInTheDocument()
+    expect(screen.queryByText('$32.19')).not.toBeInTheDocument()
   })
 
   it('★ a LITRES-and-MILES account reads its cost per 1,000 MILES', async () => {

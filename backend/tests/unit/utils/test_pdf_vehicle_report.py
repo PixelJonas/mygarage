@@ -7,6 +7,7 @@ import fitz  # PyMuPDF
 from app.constants.units import IMPERIAL_PRESET, METRIC_PRESET
 from app.utils.pdf_vehicle_report import generate_vehicle_analytics_pdf
 from app.utils.render_context import RenderContext
+from app.utils.unit_resolution import apply_vehicle_units
 
 PDF_MAGIC = b"%PDF"
 
@@ -544,6 +545,36 @@ class TestRenderContextDrivesUnits:
                     0.42 * 1.609344 * 1000 = 675.9245 -> "$675.92/1,000 mi"
         reminder    50,000 / 1.609344 = 31,068.5596 -> "31,069 mi"
     """
+
+    def test_a_mi_vehicle_on_a_km_account_keeps_the_rate_on_the_account(self) -> None:
+        """#172: distances follow the vehicle (mi), while the cost-per-distance
+        rate and fuel economy keep the account's units (km, L/100km)."""
+        data = _make_unit_bearing_data()
+        vehicle_ctx = RenderContext(units=apply_vehicle_units(METRIC_PRESET, "mi"), show_both=False)
+
+        text = _normalized_text(
+            generate_vehicle_analytics_pdf(
+                data, render_context=vehicle_ctx, rate_context=METRIC_CTX
+            ).read()
+        )
+
+        assert "7,456 mi" in text
+        assert "Avg 621 mi/mo" in text
+        assert "9.40 L/100km" in text
+        assert "$42.00/100 km" in text
+        assert "1,000 mi" not in text.replace("Avg 621 mi/mo", "")
+
+    def test_without_a_rate_context_the_rate_follows_the_render_context(self) -> None:
+        """The parameter is what decides it: omitted, the cell reads the
+        vehicle's unit like every other distance."""
+        data = _make_unit_bearing_data()
+        vehicle_ctx = RenderContext(units=apply_vehicle_units(METRIC_PRESET, "mi"), show_both=False)
+
+        text = _normalized_text(
+            generate_vehicle_analytics_pdf(data, render_context=vehicle_ctx).read()
+        )
+
+        assert "$675.92/1,000 mi" in text
 
     def test_metric_context_renders_metric_figures(self) -> None:
         data = _make_unit_bearing_data()

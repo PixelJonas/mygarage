@@ -195,6 +195,7 @@ async def get_calendar_events(
                     days_until_due=days_until_due,
                     km_until_due=km_until_due,
                     hours_until_due=hours_until_due,
+                    vehicle_distance_unit=vehicle.distance_unit if vehicle else None,
                 )
             )
 

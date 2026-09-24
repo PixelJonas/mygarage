@@ -43,6 +43,9 @@ vi.mock('../../components/modals/VehicleSharingModal', () => ({ default: () => n
 vi.mock('../../components/TransferHistorySection', () => ({ default: () => <div>TransferHistory</div> }))
 // Overview mounts Ask My Garage (react-query); keep page tests free of QueryClient.
 vi.mock('../../components/vehicle-detail/GarageAssistantPanel', () => ({ default: () => null }))
+// The save handler patches the Quick Entry list through react-query (#172);
+// these page tests render without a QueryClient, so it is stubbed.
+vi.mock('../../hooks/queries/useQuickEntryVehicles', () => ({ useSyncQuickEntryVehicle: () => () => {} }))
 
 // Intentionally no mock for '../../components/SubTabNav' — see file header.
 
