@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type ReactElement, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../contexts/AuthContext'
@@ -17,6 +17,7 @@ import { vehicleLabel } from '../utils/vehicleLabel'
 import { withBase } from '../utils/basePath'
 import type { VehicleType } from '../types/vehicle'
 import { fillUpKind, vehicleLogKinds } from '../utils/vehicleLogKinds'
+import { VehicleUnitScope, type VehicleDistanceUnit } from '../contexts/VehicleUnitScope'
 
 type EntryType = 'fuel' | 'def' | 'propane' | 'service' | 'odometer' | 'hours' | null
 
@@ -27,6 +28,26 @@ interface Action {
   tint: string
   title: string
   description: string
+}
+
+/**
+ * Holds a vehicle's odometer unit for the life of one open form (#172).
+ *
+ * The vehicle list refetches in the background (30 s stale, on focus), so a
+ * unit changed on another device can arrive while a form holds typed text.
+ * Captured synchronously on mount (a lazy state initialiser, never an effect,
+ * which would render the first frame in the account's unit) and keyed on the
+ * entry and vehicle, so the next form opens with the new one.
+ */
+function EntryUnitSession({
+  distanceUnit,
+  children,
+}: {
+  distanceUnit: VehicleDistanceUnit
+  children: ReactNode
+}): ReactElement {
+  const [captured] = useState(() => distanceUnit)
+  return <VehicleUnitScope distanceUnit={captured}>{children}</VehicleUnitScope>
 }
 
 export default function QuickEntry() {
@@ -224,54 +245,59 @@ export default function QuickEntry() {
         )}
       </main>
 
-      {/* Modal forms — opened by action buttons */}
-      {openEntry === 'fuel' && (
-        <FuelRecordForm
-          vin={selectedVin}
-          onClose={() => setEntryType(null)}
-          onSuccess={() => handleSuccess('fuel')}
-        />
-      )}
+      {/* Modal forms — opened by action buttons. Each holds the vehicle's
+          odometer unit it opened with until it closes (#172). */}
+      {openEntry !== null && selectedVehicle && (
+        <EntryUnitSession key={`${openEntry}:${selectedVin}`} distanceUnit={selectedVehicle.distance_unit}>
+          {openEntry === 'fuel' && (
+            <FuelRecordForm
+              vin={selectedVin}
+              onClose={() => setEntryType(null)}
+              onSuccess={() => handleSuccess('fuel')}
+            />
+          )}
 
-      {openEntry === 'def' && (
-        <DEFRecordForm
-          vin={selectedVin}
-          onClose={() => setEntryType(null)}
-          onSuccess={() => handleSuccess('def')}
-        />
-      )}
+          {openEntry === 'def' && (
+            <DEFRecordForm
+              vin={selectedVin}
+              onClose={() => setEntryType(null)}
+              onSuccess={() => handleSuccess('def')}
+            />
+          )}
 
-      {openEntry === 'propane' && (
-        <PropaneRecordForm
-          vin={selectedVin}
-          onClose={() => setEntryType(null)}
-          onSuccess={() => handleSuccess('propane')}
-        />
-      )}
+          {openEntry === 'propane' && (
+            <PropaneRecordForm
+              vin={selectedVin}
+              onClose={() => setEntryType(null)}
+              onSuccess={() => handleSuccess('propane')}
+            />
+          )}
 
-      {openEntry === 'service' && (
-        <ServiceVisitForm
-          vin={selectedVin}
-          vehicleType={selectedVehicle?.vehicle_type as VehicleType | undefined}
-          onClose={() => setEntryType(null)}
-          onSuccess={() => handleSuccess('service')}
-        />
-      )}
+          {openEntry === 'service' && (
+            <ServiceVisitForm
+              vin={selectedVin}
+              vehicleType={selectedVehicle?.vehicle_type as VehicleType | undefined}
+              onClose={() => setEntryType(null)}
+              onSuccess={() => handleSuccess('service')}
+            />
+          )}
 
-      {openEntry === 'odometer' && (
-        <OdometerRecordForm
-          vin={selectedVin}
-          onClose={() => setEntryType(null)}
-          onSuccess={() => handleSuccess('odometer')}
-        />
-      )}
+          {openEntry === 'odometer' && (
+            <OdometerRecordForm
+              vin={selectedVin}
+              onClose={() => setEntryType(null)}
+              onSuccess={() => handleSuccess('odometer')}
+            />
+          )}
 
-      {openEntry === 'hours' && (
-        <HoursRecordForm
-          vin={selectedVin}
-          onClose={() => setEntryType(null)}
-          onSuccess={() => handleSuccess('hours')}
-        />
+          {openEntry === 'hours' && (
+            <HoursRecordForm
+              vin={selectedVin}
+              onClose={() => setEntryType(null)}
+              onSuccess={() => handleSuccess('hours')}
+            />
+          )}
+        </EntryUnitSession>
       )}
     </div>
   )
