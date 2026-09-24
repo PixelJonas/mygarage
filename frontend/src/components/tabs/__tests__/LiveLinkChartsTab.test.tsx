@@ -36,12 +36,12 @@ vi.mock('react-i18next', () => {
 // The wrappers then spread the matching `Parameters<…>` TUPLE (a plain `unknown[]` spread into a typed
 // fn is also TS2556). getTelemetryExportUrl is SYNC → string (set via mockReturnValue in beforeEach).
 type LLService = (typeof import('@/services/livelinkService'))['livelinkService']
-const getParameters = vi.fn<LLService['getParameters']>()
+const getVehicleParameters = vi.fn<LLService['getVehicleParameters']>()
 const getTelemetry = vi.fn<LLService['getTelemetry']>()
 const getTelemetryExportUrl = vi.fn<LLService['getTelemetryExportUrl']>()
 vi.mock('@/services/livelinkService', () => ({
   livelinkService: {
-    getParameters: () => getParameters(),
+    getVehicleParameters: (vin: string) => getVehicleParameters(vin),
     getTelemetry: (...a: Parameters<LLService['getTelemetry']>) => getTelemetry(...a),
     getTelemetryExportUrl: (...a: Parameters<LLService['getTelemetryExportUrl']>) => getTelemetryExportUrl(...a),
   },
@@ -50,7 +50,8 @@ vi.mock('@/hooks/useTimeFormat', () => ({ useTimeFormat: () => ({ timeFormat: '1
 vi.mock('@/utils/parseAPITimestamp', () => ({
   parseAPITimestampMs: () => 1,
   formatTime: () => '12:00',
-  formatDateTime: () => '12:00:00',
+  // Echoes its input so the tooltip-label test can prove WHICH value reached it.
+  formatDateTime: (value: unknown) => `fmt:${String(value)}`,
 }))
 vi.mock('@/constants/i18n', () => ({ getActiveLocale: () => 'en-US' }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
@@ -58,7 +59,10 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 // pass-through/no-op stubs. Do NOT rely on a styled-div ResponsiveContainer mock: recharts 3.9 sizes via
 // ResponsiveContainerContext, so that mock gives LineChart no dimensions. Here we never touch SVG internals,
 // so the boundary stub is dimension-free and the captured `data` proves the telemetry→series projection.
-const captured = vi.hoisted(() => ({ lineChartData: undefined as unknown }))
+const captured = vi.hoisted(() => ({
+  lineChartData: undefined as unknown,
+  tooltipLabelFormatter: undefined as ((label: ReactNode) => ReactNode) | undefined,
+}))
 vi.mock('recharts', () => {
   const Pass = ({ children }: { children?: ReactNode }) => <>{children}</>
   return {
@@ -71,7 +75,10 @@ vi.mock('recharts', () => {
     XAxis: () => null,
     YAxis: () => null,
     CartesianGrid: () => null,
-    Tooltip: () => null,
+    Tooltip: ({ labelFormatter }: { labelFormatter?: (label: ReactNode) => ReactNode }) => {
+      captured.tooltipLabelFormatter = labelFormatter
+      return null
+    },
     Legend: () => null,
   }
 })
@@ -95,7 +102,7 @@ const mkParam = (id: number, param_key: string, display_name: string, unit: stri
     id, param_key, display_name, unit,
     archive_only: false, category: null, created_at: 'x', display_order: id,
     icon: null, show_on_dashboard: true, storage_interval_seconds: 1,
-    updated_at: null, warning_max: null, warning_min: null,
+    updated_at: null, warning_max: null, warning_min: null, critical_min: null,
   }) satisfies LiveLinkParameter
 const PARAMS = {
   parameters: [
@@ -121,7 +128,8 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] }) // freeze Date ONLY — setTimeout stays real so waitFor works
   vi.setSystemTime(new Date(FROZEN))
   captured.lineChartData = undefined
-  getParameters.mockResolvedValue(PARAMS)
+  captured.tooltipLabelFormatter = undefined
+  getVehicleParameters.mockResolvedValue(PARAMS)
   getTelemetry.mockResolvedValue(TELEMETRY)
   getTelemetryExportUrl.mockReturnValue('https://export.example/csv')
 })
@@ -132,7 +140,7 @@ afterEach(() => {
 
 describe('LiveLinkChartsTab — controls + data boundary (SDQ-C, §5c, M4)', () => {
   it('shows the no-params empty state when there are no chartable parameters', async () => {
-    getParameters.mockResolvedValue({ parameters: [], total: 0 })
+    getVehicleParameters.mockResolvedValue({ parameters: [], total: 0 })
     render(<LiveLinkChartsTab vin="V1" />)
     expect(await screen.findByText('livelink.charts.noParams')).toBeInTheDocument()
   })
@@ -141,7 +149,9 @@ describe('LiveLinkChartsTab — controls + data boundary (SDQ-C, §5c, M4)', () 
     render(<LiveLinkChartsTab vin="V1" />)
     await waitFor(() => expect(getTelemetry).toHaveBeenCalledTimes(1))
     const { start, end } = rangeFor('24h')
-    expect(getParameters.mock.calls).toStrictEqual([[]]) // M1: getParameters() called once, no args
+    // M1: scoped to THIS vehicle. The fleet-wide catalog would offer an RV
+    // engine PIDs it can never chart, which is the defect this pins.
+    expect(getVehicleParameters.mock.calls).toStrictEqual([['V1']])
     expect(getTelemetry.mock.calls).toStrictEqual([['V1', start, end, ['p1', 'p2', 'p3'], undefined]])
   })
 
@@ -149,6 +159,18 @@ describe('LiveLinkChartsTab — controls + data boundary (SDQ-C, §5c, M4)', () 
     render(<LiveLinkChartsTab vin="V1" />)
     // parseAPITimestampMs is mocked → 1; the single p1 point (value 5) projects to one row.
     await waitFor(() => expect(captured.lineChartData).toStrictEqual([{ timestamp: 1, p1: 5 }]))
+  })
+
+  it('formats a numeric or string tooltip label as a date-time and passes any other label through (recharts types it ReactNode)', async () => {
+    render(<LiveLinkChartsTab vin="V1" />)
+    await waitFor(() => expect(captured.tooltipLabelFormatter).toBeTypeOf('function'))
+    const format = captured.tooltipLabelFormatter
+    // The XAxis dataKey is the epoch-ms timestamp, so this is the label recharts actually passes.
+    expect(format?.(1753531200000)).toBe('fmt:1753531200000')
+    expect(format?.('2026-07-26T12:00:00Z')).toBe('fmt:2026-07-26T12:00:00Z')
+    // A non-primitive label cannot be a timestamp; it must come back untouched, not stringified.
+    const node = <span>custom</span>
+    expect(format?.(node)).toBe(node)
   })
 
   it('changing the time range refetches with the new window AND its downsample interval (M1: 30d → intervalSeconds 3600)', async () => {

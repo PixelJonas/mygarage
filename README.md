@@ -11,6 +11,7 @@ Self-hosted vehicle maintenance tracking with VIN decoding, service records, fue
 [![Python 3.14](https://img.shields.io/badge/Python-3.14-3776AB?logo=python&logoColor=white)](https://www.python.org)
 [![React 19](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev)
 [![Bun](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/homelabforge/mygarage/main/.bun-version&search=^([\d.]%2B)&label=Bun&color=000000&logo=bun&logoColor=white&prefix=v)](https://bun.sh)
+[![Node](https://img.shields.io/badge/dynamic/regex?url=https://raw.githubusercontent.com/homelabforge/mygarage/main/.nvmrc&search=^([\d.]%2B)&label=Node&color=5FA04E&logo=nodedotjs&logoColor=white&prefix=v)](https://nodejs.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Discord](https://img.shields.io/badge/Discord-Community-5865F2?logo=discord&logoColor=white)](https://discord.gg/6XttnVgG)
 
@@ -25,7 +26,7 @@ Self-hosted vehicle maintenance tracking with VIN decoding, service records, fue
 - **VIN Decoding** - Automatic vehicle details via NHTSA API
 - **Service Visits** - Track maintenance with line items, tax/fees, and attachments
 - **Maintenance Specs** - Oil viscosity, capacity and filter, fuel filter, lug-nut torque, and coolant/brake/transmission fluid per vehicle
-- **Reminders** - Date, mileage, or engine-hours maintenance reminders with due alerts
+- **Reminders** - Recurring maintenance rules anchored on your service history, with date, mileage, or engine-hours thresholds and due alerts
 - **Tire Tracking** - Tread, DOT and pressure readings per position, with mount periods, rotation, seasonal sets, storage, and wear projection
 - **LiveLink Telemetry** - Real-time OBD2 data, movement-detected drive sessions, GPS trips, and DTCs via a WiCAN device (HTTPS POST or MQTT) or the Torque Pro app. See [LiveLink (WiCAN) Setup](docs/LIVELINK_SETUP.md).
 - **POI Finder** - Discover nearby auto shops, EV charging, and fuel stations with interactive map

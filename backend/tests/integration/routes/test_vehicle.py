@@ -22,8 +22,16 @@ class TestVehicleRoutes:
     """Test vehicle API endpoints."""
 
     async def test_list_vehicles(self, client: AsyncClient, auth_headers, test_vehicle):
-        """Test listing user's vehicles."""
-        response = await client.get("/api/vehicles", headers=auth_headers)
+        """Test listing user's vehicles.
+
+        ★ `limit=500`, the route's maximum, is load-bearing. The default page is
+        100, the list is ordered newest-first, and this session-scoped database
+        accumulates vehicles from every test file that runs before this one. On
+        the default page the assertion below stops being about scoping and starts
+        being about how many vehicles happen to exist, which is what broke it: it
+        passed on SQLite and failed under PostgreSQL purely on ordering.
+        """
+        response = await client.get("/api/vehicles?limit=500", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()

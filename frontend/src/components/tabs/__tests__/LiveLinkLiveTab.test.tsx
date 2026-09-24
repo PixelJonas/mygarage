@@ -65,13 +65,17 @@ const okStatus = (overrides: Partial<VehicleLiveLinkStatus> = {}) =>
   ({
     vin: 'V1',
     device_id: 'DEV1',
+    // A WiCAN-shaped source. DRIVE_SESSION is what gives this fixture a
+    // running/parked axis; a source without it has only reachability.
+    capabilities: ['telemetry', 'drive_session', 'location', 'dtc', 'odometer'],
     device_status: 'online',
+    online: true,
     ecu_status: 'online',
     rssi: -55,
     current_session_id: 1,
     session_duration_seconds: 120,
     latest_values: [
-      { param_key: 'rpm', value: 3200, unit: 'rpm', display_name: 'Engine RPM', in_warning: false, timestamp: 'x' },
+      { param_key: 'rpm', value: 3200, unit: 'rpm', display_name: 'Engine RPM', in_warning: false, show_on_dashboard: true, timestamp: 'x' },
     ],
     ...overrides,
   }) satisfies VehicleLiveLinkStatus
@@ -136,22 +140,61 @@ describe('LiveLinkLiveTab — status mapping + gauge warning (SDQ-C)', () => {
 
     getVehicleStatus.mockResolvedValue(okStatus({ device_status: 'online', ecu_status: 'offline' }))
     const parked = render(<LiveLinkLiveTab vin="V1" />)
-    expect(await screen.findByText('livelink.vehicleParked')).toBeInTheDocument()
+    expect(await screen.findByText('livelink.statusVehicleParked')).toBeInTheDocument()
     expect(parked.container.querySelector('.rounded-full')).toHaveClass('bg-info')
     parked.unmount()
 
-    getVehicleStatus.mockResolvedValue(okStatus({ device_status: 'offline', ecu_status: 'offline' }))
+    getVehicleStatus.mockResolvedValue(okStatus({ device_status: 'offline', online: false, ecu_status: 'offline' }))
     const offline = render(<LiveLinkLiveTab vin="V1" />)
-    expect(await screen.findByText('livelink.wicanOffline')).toBeInTheDocument()
+    expect(await screen.findByText('livelink.statusDeviceOffline')).toBeInTheDocument()
     expect(offline.container.querySelector('.rounded-full')).toHaveClass('bg-danger')
+  })
+
+  it('reports reachability, not parked/running, for a source without DRIVE_SESSION (fails if ecu_status is read for a source that never sets it)', async () => {
+    // A propane gateway leaves ecu_status at its 'unknown' default forever.
+    // The old mapping fell through to the parked branch, so a tank sensor
+    // rendered "Vehicle Parked — WiCAN Connected" on a trailer with no engine.
+    getVehicleStatus.mockResolvedValue(
+      okStatus({ capabilities: ['telemetry'], device_status: 'online', ecu_status: 'unknown' }),
+    )
+    const connected = render(<LiveLinkLiveTab vin="V1" />)
+    expect(await screen.findByText('livelink.statusConnected')).toBeInTheDocument()
+    expect(screen.queryByText('livelink.statusVehicleParked')).not.toBeInTheDocument()
+    expect(connected.container.querySelector('.rounded-full')).toHaveClass('bg-success')
+    connected.unmount()
+
+    // Offline still reads as offline: reachability is the one axis it has.
+    getVehicleStatus.mockResolvedValue(
+      okStatus({ capabilities: ['telemetry'], device_status: 'offline', online: false, ecu_status: 'unknown' }),
+    )
+    const offline = render(<LiveLinkLiveTab vin="V1" />)
+    expect(await screen.findByText('livelink.statusDeviceOffline')).toBeInTheDocument()
+    expect(offline.container.querySelector('.rounded-full')).toHaveClass('bg-danger')
+  })
+
+  it("reads the server's online flag, not device_status, which a sensor with no status topic never sets", async () => {
+    // A Mopeka sensor: device_status 'unknown' for ever, readings arriving.
+    // Reading device_status showed the RV offline while Settings said online.
+    getVehicleStatus.mockResolvedValue(
+      okStatus({ capabilities: ['telemetry'], device_status: 'unknown', online: true, ecu_status: 'unknown' }),
+    )
+    const reporting = render(<LiveLinkLiveTab vin="V1" />)
+    expect(await screen.findByText('livelink.statusConnected')).toBeInTheDocument()
+    expect(reporting.container.querySelector('.rounded-full')).toHaveClass('bg-success')
+    reporting.unmount()
+
+    // And the other way: a stored 'online' the server no longer believes.
+    getVehicleStatus.mockResolvedValue(okStatus({ device_status: 'online', online: false }))
+    render(<LiveLinkLiveTab vin="V1" />)
+    expect(await screen.findByText('livelink.statusDeviceOffline')).toBeInTheDocument()
   })
 
   it('renders the AlertTriangle marker only for an in_warning gauge (fails if the warning marker is dropped or shown unconditionally)', async () => {
     getVehicleStatus.mockResolvedValue(
       okStatus({
         latest_values: [
-          { param_key: 'rpm', value: 3200, unit: 'rpm', display_name: 'Engine RPM', in_warning: false, timestamp: 'x' },
-          { param_key: 'coolant', value: 130, unit: 'C', display_name: 'Coolant Temp', in_warning: true, timestamp: 'x' },
+          { param_key: 'rpm', value: 3200, unit: 'rpm', display_name: 'Engine RPM', in_warning: false, show_on_dashboard: true, timestamp: 'x' },
+          { param_key: 'coolant', value: 130, unit: 'C', display_name: 'Coolant Temp', in_warning: true, show_on_dashboard: true, timestamp: 'x' },
         ],
       }),
     )
@@ -167,6 +210,6 @@ describe('LiveLinkLiveTab — status mapping + gauge warning (SDQ-C)', () => {
     getVehicleStatus.mockRejectedValue(new Error('boom'))
     render(<LiveLinkLiveTab vin="V1" />)
     expect(await screen.findByText('livelink.fetchStatusError')).toBeInTheDocument()
-    expect(screen.getByText('livelink.ensureDeviceLinked')).toBeInTheDocument()
+    expect(screen.getByText('livelink.ensureSourceLinked')).toBeInTheDocument()
   })
 })

@@ -4,7 +4,7 @@ import { render, screen, fireEvent } from '../../../__tests__/test-utils'
 import SearchField from '../SearchField'
 
 // lucide's <Search> supplies its own aria-hidden="true" default
-// (`!children && !hasA11yProp(rest)`) whenever no a11y prop is present, so a
+// (`Boolean(children) || hasA11yProp(rest)` is false) whenever no a11y prop is present, so a
 // test asserting on the rendered attribute cannot tell "SearchField set
 // this" from "lucide defaulted it" — SearchField's explicit aria-hidden
 // could be deleted and the assertion below would still pass. The icon isn't

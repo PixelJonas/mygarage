@@ -15,8 +15,11 @@ from app.models.service_line_item import ServiceLineItem
 from app.models.service_visit import ServiceVisit
 from app.schemas.reminder import ReminderCreate, ReminderResponse, ReminderUpdate
 from app.services.hours_service import latest_engine_hours_and_date
+from app.services.maintenance_recurrence import project_usage_date
 from app.utils.hours_formatting import format_hours
+from app.utils.household_time import household_today
 from app.utils.logging_utils import sanitize_for_log
+from app.utils.maintenance_types import classify
 from app.utils.render_context import RenderContext, render_context_for_vehicle
 from app.utils.unit_formatting import format_quantity
 
@@ -66,7 +69,7 @@ async def calculate_driving_rate(vin: str, db: AsyncSession) -> float | None:
 
     Returns None if fewer than 2 records in the window.
     """
-    cutoff = date.today() - timedelta(days=90)
+    cutoff = household_today() - timedelta(days=90)
     result = await db.execute(
         select(
             func.min(OdometerRecord.odometer_km),
@@ -92,11 +95,15 @@ async def calculate_driving_rate(vin: str, db: AsyncSession) -> float | None:
 
 
 async def get_current_mileage(vin: str, db: AsyncSession) -> Decimal | None:
-    """Get the most recent odometer reading (km) for a vehicle."""
+    """The vehicle's current odometer (km): the highest reading of its latest day."""
     result = await db.execute(
         select(OdometerRecord.odometer_km)
         .where(OdometerRecord.vin == vin)
-        .order_by(OdometerRecord.date.desc(), OdometerRecord.id.desc())
+        .order_by(
+            OdometerRecord.date.desc(),
+            OdometerRecord.odometer_km.desc(),
+            OdometerRecord.id.desc(),
+        )
         .limit(1)
     )
     row = result.scalar_one_or_none()
@@ -111,7 +118,7 @@ async def calculate_hours_driving_rate(vin: str, db: AsyncSession) -> float | No
 
     Returns None if fewer than 2 records in the window.
     """
-    cutoff = date.today() - timedelta(days=90)
+    cutoff = household_today() - timedelta(days=90)
     result = await db.execute(
         select(
             func.min(HoursRecord.engine_hours),
@@ -177,13 +184,17 @@ def is_reminder_overdue(
         current_hours: The vehicle's current engine-hours reading, or
             ``None`` if no reading exists yet.
         today: Override for "today" (tests only); defaults to
-            ``date.today()``.
+            ``household_today()``.
 
     Returns:
         ``True`` if the reminder is overdue by date, mileage, or hours.
     """
     if today is None:
-        today = date.today()
+        today = household_today()
+    if is_reminder_snoozed(reminder, today):
+        # A snooze silences every trigger alike, date, mileage and hours:
+        # "not now" is about the nagging, not about which threshold fired.
+        return False
     if reminder.due_date and reminder.due_date <= today:
         return True
     if reminder.due_mileage_km and current_km and current_km >= reminder.due_mileage_km:
@@ -191,6 +202,19 @@ def is_reminder_overdue(
     if reminder.due_hours and current_hours and current_hours >= reminder.due_hours:
         return True
     return False
+
+
+def is_reminder_snoozed(reminder: Reminder, today: date | None = None) -> bool:
+    """Whether the reminder's snooze is active right now.
+
+    Strictly before: a snooze until the 20th means "leave me alone UNTIL
+    the 20th", and on the 20th the reminder is back. Inert on non-pending
+    reminders only by virtue of every consumer filtering status first; the
+    field itself needs no clearing to expire.
+    """
+    if today is None:
+        today = household_today()
+    return reminder.snoozed_until is not None and today < reminder.snoozed_until
 
 
 def calculate_smart_estimated_date(
@@ -201,9 +225,9 @@ def calculate_smart_estimated_date(
 ) -> date:
     """Estimate when km target will be hit. Never later than hard_date."""
     if target_odometer_km <= current_odometer_km:
-        return date.today()
+        return household_today()
     days = float(target_odometer_km - current_odometer_km) / avg_km_per_day
-    estimated = date.today() + timedelta(days=days)
+    estimated = household_today() + timedelta(days=days)
     return min(estimated, hard_date)
 
 
@@ -239,11 +263,24 @@ async def create_reminder(
     db: AsyncSession,
     line_item_id: int | None = None,
 ) -> Reminder:
-    """Create a reminder. Used both from routes and inline from service_visit_service."""
+    """Create a ONE-OFF reminder from the client's thresholds.
+
+    A reminder with a ``recurrence`` goes through
+    ``maintenance_service.create_recurring_reminder`` instead (the route
+    branches); a line item's reminder through
+    ``maintenance_service.create_reminder_for_line_item``, which anchors it
+    on the visit. The type is stored so duplicates of the same maintenance
+    are detectable even for a hand-made reminder.
+    """
+    if data.recurrence is not None:
+        raise HTTPException(
+            status_code=400, detail="A recurring reminder is created through the maintenance flow"
+        )
     effective_line_item_id = line_item_id or data.line_item_id
     if effective_line_item_id:
         await _validate_line_item_vin(effective_line_item_id, vin, db)
 
+    assert data.reminder_type is not None  # the schema requires it without a recurrence
     validate_reminder_state(data.reminder_type, data.due_date, data.due_mileage_km, data.due_hours)
 
     reminder = Reminder(
@@ -255,6 +292,7 @@ async def create_reminder(
         due_mileage_km=data.due_mileage_km,
         due_hours=data.due_hours,
         notes=data.notes,
+        maintenance_type=data.maintenance_type or classify(data.title),
     )
     db.add(reminder)
     return reminder
@@ -263,9 +301,27 @@ async def create_reminder(
 async def update_reminder(reminder: Reminder, data: ReminderUpdate, db: AsyncSession) -> Reminder:
     """Merge patch onto existing reminder using model_fields_set.
 
-    Validates the final merged state before persisting.
+    Validates the final merged state before persisting. A reminder with an
+    ACTIVE rule derives its thresholds from the rule and its anchor, so the
+    ``due_*`` fields are a 422 for it; the recurrence and type parts of the
+    patch are applied by ``maintenance_service.update_reminder_recurrence``.
     """
+    from app.services.maintenance_service import update_reminder_recurrence
+
     set_fields = data.model_fields_set
+    rule = reminder.rule
+    rule_active = rule is not None and rule.is_active
+    stops_recurring = "recurrence" in set_fields and data.recurrence is None
+    if rule_active and not stops_recurring:
+        derived = {"due_date", "due_mileage_km", "due_hours", "reminder_type"} & set_fields
+        if derived:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "This reminder's due values are derived from its maintenance rule; "
+                    "edit the recurrence intervals instead of " + ", ".join(sorted(derived))
+                ),
+            )
 
     final_type = (
         str(data.reminder_type)
@@ -294,33 +350,44 @@ async def update_reminder(reminder: Reminder, data: ReminderUpdate, db: AsyncSes
     if "notes" in set_fields:
         reminder.notes = data.notes
 
+    await update_reminder_recurrence(db, reminder, data)
     return reminder
 
 
 async def enrich_with_estimate(reminder: Reminder, db: AsyncSession) -> ReminderResponse:
-    """Build ReminderResponse, computing estimated_due_date for smart type.
+    """Build ReminderResponse with the usage projection for a pending reminder.
 
-    A smart reminder targets exactly one of ``due_mileage_km``/``due_hours``
-    (enforced by ``validate_reminder_state``); branch on which is set and
-    project from the matching accumulation rate (km/day or hours/day), both
-    fed through the same ``calculate_smart_estimated_date`` formula.
+    Any pending reminder with a mileage or hours target and a usage rate gets
+    ``projected_usage_date``, the uncapped date the target is reached at the
+    current rate, and ``estimated_due_date``, the earlier of that projection
+    and the calendar threshold (which is what ``calculate_smart_estimated_date``
+    always computed for ``smart``). The two are separate fields on purpose: a
+    slow driver's projection may sit months past the calendar threshold, and
+    the threshold is the one that fires.
+
+    A reminder with both targets (legacy ``both``-typed rows can only carry
+    mileage; a rule never produces both) projects from the mileage.
     """
     response = ReminderResponse.model_validate(reminder)
-    if reminder.reminder_type == "smart" and reminder.status == "pending":
-        rate: float | None = None
-        current: Decimal | None = None
-        target: Decimal | None = None
-        if reminder.due_mileage_km is not None:
-            rate = await calculate_driving_rate(reminder.vin, db)
-            current = await get_current_mileage(reminder.vin, db)
-            target = reminder.due_mileage_km
-        elif reminder.due_hours is not None:
-            rate = await calculate_hours_driving_rate(reminder.vin, db)
-            current = await get_current_hours(reminder.vin, db)
-            target = reminder.due_hours
-        if rate and current and target and reminder.due_date:
-            response.estimated_due_date = calculate_smart_estimated_date(
-                current, target, rate, reminder.due_date
+    if reminder.status != "pending":
+        return response
+    rate: float | None = None
+    current: Decimal | None = None
+    target: Decimal | None = None
+    if reminder.due_mileage_km is not None:
+        rate = await calculate_driving_rate(reminder.vin, db)
+        current = await get_current_mileage(reminder.vin, db)
+        target = reminder.due_mileage_km
+    elif reminder.due_hours is not None:
+        rate = await calculate_hours_driving_rate(reminder.vin, db)
+        current = await get_current_hours(reminder.vin, db)
+        target = reminder.due_hours
+    if rate and current is not None and target is not None:
+        projected = project_usage_date(current, target, rate, household_today())
+        response.projected_usage_date = projected
+        if projected is not None:
+            response.estimated_due_date = (
+                min(projected, reminder.due_date) if reminder.due_date else projected
             )
     return response
 
@@ -335,11 +402,26 @@ async def list_reminders(
     query = query.order_by(Reminder.created_at.desc())
 
     result = await db.execute(query)
-    reminders = result.scalars().all()
+    reminders = list(result.scalars().all())
+
+    # Duplicates are judged over the vehicle's PENDING reminders whatever the
+    # filter, so a done-tab listing still carries no flags and a pending-tab
+    # listing sees every sibling.
+    from app.services.maintenance_service import duplicate_map
+
+    if status and status != "all" and status != "pending":
+        duplicates: dict[int, list[int]] = {}
+    else:
+        pending = (
+            reminders if status == "pending" else [r for r in reminders if r.status == "pending"]
+        )
+        duplicates = duplicate_map(pending)
 
     responses = []
     for r in reminders:
-        responses.append(await enrich_with_estimate(r, db))
+        response = await enrich_with_estimate(r, db)
+        response.duplicate_of = duplicates.get(r.id, [])
+        responses.append(response)
     return responses
 
 
@@ -351,7 +433,7 @@ async def check_due_reminders(db: AsyncSession) -> None:
     from app.services.notifications.dispatcher import NotificationDispatcher
 
     now = datetime.now(UTC)
-    today = date.today()
+    today = household_today()
 
     # Get all pending reminders
     result = await db.execute(select(Reminder).where(Reminder.status == "pending"))
@@ -360,6 +442,12 @@ async def check_due_reminders(db: AsyncSession) -> None:
     dispatcher = NotificationDispatcher(db)
 
     for reminder in reminders:
+        if is_reminder_snoozed(reminder, today):
+            # Snoozed: no notification whatever the thresholds say, and no
+            # cooldown stamp either, so the day the snooze expires the very
+            # next run notifies (plan 2026-09-18, feature A).
+            continue
+
         # Dedup check. Reminder.last_notified_at is a plain (non-tz-aware)
         # DateTime column — SQLite's bind processor silently drops tzinfo on
         # write, so a value round-tripped through the DB comes back naive

@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { getActiveLocale, setActiveLocale } from '@/constants/i18n'
-import { makeUnitFormat } from '@/utils/unitFormat'
+import { formatAtPrecision, makeUnitFormat } from '@/utils/unitFormat'
 import { presetUnitsFor } from '@/types/units'
 import { formatDateForDisplay, getDateFnsLocale } from '@/utils/dateUtils'
 
@@ -43,6 +43,20 @@ describe('locale-aware number formatting', () => {
     expect(en).toBe('12,345 km')
     expect(de).toBe('12.345 km')
     expect(en).not.toBe(de)
+  })
+
+  it('keeps precisions and languages apart when formatters are reused', () => {
+    // `formatAtPrecision` caches its `Intl.NumberFormat` instances, so both
+    // halves of the cache key have to be asserted: drop the locale and the de
+    // lines return English separators, drop the precision and the second line
+    // of each pair returns the first line's decimals.
+    setActiveLocale('en')
+    expect(formatAtPrecision(1234.5, 0)).toBe('1,235')
+    expect(formatAtPrecision(1234.5, 2)).toBe('1,234.50')
+
+    setActiveLocale('de')
+    expect(formatAtPrecision(1234.5, 0)).toBe('1.235')
+    expect(formatAtPrecision(1234.5, 2)).toBe('1.234,50')
   })
 
   it('formats mass with the separators of the active language', () => {

@@ -1978,6 +1978,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/insurance/parse-pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Parse Insurance Pdf
+         * @description Read a declarations page and return what it says, persisting nothing.
+         *
+         *     `vehicles` lists every VIN on the document with its own premium and
+         *     deductible where the parser finds a per-vehicle section. `matched` marks
+         *     the ones the caller has WRITE access to, which is what attaching one takes.
+         */
+        post: operations["parse_insurance_pdf_api_insurance_parse_pdf_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/insurance/parsers": {
         parameters: {
             query?: never;
@@ -1992,6 +2016,167 @@ export interface paths {
         get: operations["list_insurance_parsers_api_insurance_parsers_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/insurance/policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Policies
+         * @description Household policies the caller may see, each with its vehicles beneath it.
+         */
+        get: operations["list_policies_api_insurance_policies_get"];
+        put?: never;
+        /**
+         * Create Policy
+         * @description Create a policy, optionally with the vehicles it covers.
+         */
+        post: operations["create_policy_api_insurance_policies_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/insurance/policies/{policy_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Policy */
+        get: operations["read_policy_api_insurance_policies__policy_id__get"];
+        /** Update Policy */
+        put: operations["update_policy_api_insurance_policies__policy_id__put"];
+        post?: never;
+        /** Delete Policy */
+        delete: operations["delete_policy_api_insurance_policies__policy_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/insurance/policies/{policy_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Policy History
+         * @description Every term and insurer in this policy's chain, oldest first.
+         */
+        get: operations["policy_history_api_insurance_policies__policy_id__history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/insurance/policies/{policy_id}/renew": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Renew Policy
+         * @description Enter the next term. Allowed before the current one ends.
+         */
+        post: operations["renew_policy_api_insurance_policies__policy_id__renew_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/insurance/policies/{policy_id}/replace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replace Policy
+         * @description Switch insurers: a new policy takes over this one's vehicles.
+         */
+        post: operations["replace_policy_api_insurance_policies__policy_id__replace_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/insurance/policies/{policy_id}/vehicles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Attach Vehicle */
+        post: operations["attach_vehicle_api_insurance_policies__policy_id__vehicles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/insurance/policies/{policy_id}/vehicles/{link_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Detach Vehicle */
+        delete: operations["detach_vehicle_api_insurance_policies__policy_id__vehicles__link_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Policy Vehicle */
+        patch: operations["update_policy_vehicle_api_insurance_policies__policy_id__vehicles__link_id__patch"];
+        trace?: never;
+    };
+    "/api/insurance/test-parse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Parse Insurance Pdf
+         * @description Debug parse, returning the document's full raw text.
+         *
+         *     ADMIN only: a declarations page names every driver, address and VIN in the
+         *     household, and this endpoint returns all of it verbatim.
+         */
+        post: operations["test_parse_insurance_pdf_api_insurance_test_parse_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2014,7 +2199,15 @@ export interface paths {
          */
         get: operations["list_devices_api_livelink_devices_get"];
         put?: never;
-        post?: never;
+        /**
+         * Create Device
+         * @description Create a device by hand.
+         *
+         *     Auto-discovery covers WiCAN and a token flow covers Torque; a generic MQTT
+         *     device has neither, so without this an admin can save topic maps against a
+         *     device id that does not exist and every reading is silently discarded.
+         */
+        post: operations["create_device_api_livelink_devices_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2050,7 +2243,8 @@ export interface paths {
          * Delete Device
          * @description Delete a device.
          *
-         *     Historical telemetry and sessions are retained (keyed on vehicle).
+         *     Historical telemetry and sessions are retained (keyed on vehicle), except a
+         *     preset sensor's readings, which are deleted with it.
          *
          *     **Security:**
          *     - Owner of the device's linked vehicle (admin for unlinked devices).
@@ -2073,6 +2267,10 @@ export interface paths {
         /**
          * Trigger Backfill
          * @description Pull and backfill the device's SD logs immediately.
+         *
+         *     409 while LiveLink is switched off: the service would quietly do nothing
+         *     (it checks the master switch too, for queued backfills), and an operator
+         *     who pressed "pull now" deserves to be told why nothing arrived.
          *
          *     **Security:**
          *     - Requires admin authentication
@@ -2110,6 +2308,108 @@ export interface paths {
          *     - MQTT subscriber must be connected
          */
         post: operations["send_device_command_api_livelink_devices__device_id__command_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/livelink/devices/{device_id}/firmware/skip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Skip Firmware Version
+         * @description Skip firmware-update notifications for one release on one device.
+         *
+         *     The next (newer) release notifies again. Note the interplay with
+         *     notify-once: a release that was already notified stays silenced even
+         *     after an unskip, because ``firmware_notified_version`` still matches —
+         *     that is the notify-once rule working, not a bug.
+         *
+         *     **Security:**
+         *     - Requires admin authentication
+         */
+        post: operations["skip_firmware_version_api_livelink_devices__device_id__firmware_skip_post"];
+        /**
+         * Unskip Firmware Version
+         * @description Clear a device's skipped firmware version.
+         *
+         *     Because ``firmware_notified_version`` is only stamped on actual sends,
+         *     an unskipped device that was never notified gets its notification at
+         *     the next daily run.
+         *
+         *     **Security:**
+         *     - Requires admin authentication
+         */
+        delete: operations["unskip_firmware_version_api_livelink_devices__device_id__firmware_skip_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/livelink/devices/{device_id}/param-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Device Param Keys
+         * @description Distinct parameter keys THIS device has reported.
+         *
+         *     Per-device on purpose. `vehicle_telemetry_latest` has no device_id column
+         *     and is keyed (vin, param_key), so a per-vehicle list would offer a Torque
+         *     phone the co-located WiCAN's A6-ODOMETER, which it never emits.
+         */
+        get: operations["list_device_param_keys_api_livelink_devices__device_id__param_keys_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/livelink/devices/{device_id}/readings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Device Readings
+         * @description Every parameter this device is mapped to, with its current value.
+         *
+         *     Which keys comes from `livelink_topic_maps`: those rows are what route a
+         *     topic to a parameter, so a device's mapped key set IS its parameter list.
+         *
+         *     Whose value cannot come from `vehicle_telemetry_latest`. That table is
+         *     UNIQUE(vin, param_key) with no device_id, so two devices on one vehicle
+         *     mapping the same key means the last writer owns the row and the other
+         *     device's sidecar would display a reading that is not its own. Values come
+         *     from `vehicle_telemetry`, which carries device_id.
+         *
+         *     The cost is recency: `vehicle_telemetry` is written subject to
+         *     `storage_interval_seconds`. The timestamp is returned so the UI can show
+         *     how old the value actually is rather than implying it is live.
+         *
+         *     Values are the device's under its CURRENT vehicle. A device relinked to
+         *     another vehicle starts again rather than showing the old one's readings.
+         *
+         *     **Security:**
+         *     - Requires admin
+         */
+        get: operations["get_device_readings_api_livelink_devices__device_id__readings_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2299,6 +2599,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/livelink/integrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Integrations
+         * @description The integrations card's tab strip, with each tab's status.
+         *
+         *     One request replaces the card's previous four. The status rules live in
+         *     `app.services.livelink_integrations` so they can be unit-tested without a
+         *     database, a broker or an HTTP client.
+         *
+         *     **Security:**
+         *     - Requires admin
+         */
+        get: operations["list_integrations_api_livelink_integrations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/livelink/mqtt/restart": {
         parameters: {
             query?: never;
@@ -2457,6 +2784,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/livelink/presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Presets
+         * @description Sensor templates, with the readings each sensor publishes.
+         */
+        get: operations["list_presets_api_livelink_presets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/livelink/presets/{name}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Preset
+         * @description Add one sensor: its own device, and a topic map per reading given.
+         *
+         *     Which readings a preset has, and which it requires, is the preset's, so
+         *     `topics` is checked against it here rather than on the schema.
+         *
+         *     Each reading's parameter gets the preset's `storage_interval_seconds`.
+         *     REQUIRED, not tuning: retained messages replay on every resubscribe and
+         *     the storage path stamps server time, so without it each reconnect writes a
+         *     fresh row.
+         */
+        post: operations["apply_preset_api_livelink_presets__name__apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/livelink/settings": {
         parameters: {
             query?: never;
@@ -2480,6 +2855,26 @@ export interface paths {
          *     - Requires authentication
          */
         put: operations["update_livelink_settings_api_livelink_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/livelink/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Sources
+         * @description Every registered source kind and what it produces.
+         */
+        get: operations["list_sources_api_livelink_sources_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -2512,6 +2907,99 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/livelink/topic-discovery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Discover Topics
+         * @description Listen briefly and report what the broker is publishing.
+         */
+        post: operations["discover_topics_api_livelink_topic_discovery_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/livelink/topic-maps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Topic Maps
+         * @description All topic maps, optionally for one device.
+         */
+        get: operations["list_topic_maps_api_livelink_topic_maps_get"];
+        put?: never;
+        /**
+         * Create Topic Map
+         * @description Add a mapping and resubscribe.
+         */
+        post: operations["create_topic_map_api_livelink_topic_maps_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/livelink/topic-maps/{map_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Topic Map
+         * @description Remove a mapping and resubscribe.
+         */
+        delete: operations["delete_topic_map_api_livelink_topic_maps__map_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Topic Map
+         * @description Change a mapping and resubscribe.
+         *
+         *     Re-validates the MERGED row through TopicMapCreate rather than assigning
+         *     the patch fields directly: otherwise a PATCH could null `param_key` on a
+         *     telemetry row, set a wildcard topic, or skip param-key canonicalisation,
+         *     all of which create rejects.
+         */
+        patch: operations["update_topic_map_api_livelink_topic_maps__map_id__patch"];
+        trace?: never;
+    };
+    "/api/maintenance-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Maintenance Types
+         * @description The canonical maintenance types, in registry order, for pickers.
+         */
+        get: operations["list_maintenance_types_api_maintenance_types_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/notifications/inbox": {
         parameters: {
             query?: never;
@@ -2524,6 +3012,26 @@ export interface paths {
          * @description Return actionable in-app alerts (overdue and soon-due reminders).
          */
         get: operations["notification_inbox_api_notifications_inbox_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notifications/telegram/fuel-commands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Telegram Fuel Status
+         * @description Whether Telegram fuel commands are being fetched, and the last error if not.
+         */
+        get: operations["get_telegram_fuel_status_api_notifications_telegram_fuel_commands_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2892,15 +3400,54 @@ export interface paths {
         };
         /**
          * List Reminder Packs
-         * @description List built-in reminder packs available to apply to a vehicle.
+         * @description List the reminder packs available to apply to a vehicle.
+         *
+         *     Built-in and saved packs in one list. A saved pack is marked `is_custom`, and
+         *     `can_edit` says whether this caller may change it.
          */
         get: operations["list_reminder_packs_api_reminder_packs_get"];
         put?: never;
-        post?: never;
+        /**
+         * Save Reminder Pack
+         * @description Save one vehicle's chosen maintenance rules as a reusable pack.
+         *
+         *     Needs WRITE access to the source vehicle, not read: the pack is visible to
+         *     every user of the instance, so this publishes that vehicle's schedule.
+         */
+        post: operations["save_reminder_pack_api_reminder_packs_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/reminder-packs/{pack_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Overwrite Reminder Pack
+         * @description Replace a saved pack's contents from a vehicle, keeping its id.
+         */
+        put: operations["overwrite_reminder_pack_api_reminder_packs__pack_id__put"];
+        post?: never;
+        /**
+         * Delete Reminder Pack
+         * @description Delete a saved pack. Rules it already created are left alone.
+         */
+        delete: operations["delete_reminder_pack_api_reminder_packs__pack_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename Reminder Pack
+         * @description Rename a saved pack. Its id does not change, so rules it created keep
+         *     pointing at it.
+         */
+        patch: operations["rename_reminder_pack_api_reminder_packs__pack_id__patch"];
         trace?: never;
     };
     "/api/search": {
@@ -3618,29 +4165,6 @@ export interface paths {
         put?: never;
         /** Webhook Complete Reminder */
         post: operations["webhook_complete_reminder_api_v1_webhooks_reminders_complete_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/webhooks/telegram": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Webhook Telegram
-         * @description Telegram bot webhook — structured text fuel commands only (no OCR).
-         *
-         *     Enable with ``telegram_inbound_enabled=true``. Auth: same webhook ingest
-         *     token via the ``X-Webhook-Token`` header.
-         */
-        post: operations["webhook_telegram_api_v1_webhooks_telegram_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4491,94 +5015,13 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get Insurance Policies
-         * @description Get all insurance policies for a vehicle.
+         * List Vehicle Insurance
+         * @description Every policy, past and present, covering one vehicle.
          */
-        get: operations["get_insurance_policies_api_vehicles__vin__insurance_get"];
+        get: operations["list_vehicle_insurance_api_vehicles__vin__insurance_get"];
         put?: never;
-        /**
-         * Create Insurance Policy
-         * @description Create a new insurance policy.
-         */
-        post: operations["create_insurance_policy_api_vehicles__vin__insurance_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/vehicles/{vin}/insurance/parse-pdf": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Parse Insurance Pdf
-         * @description Parse an insurance PDF and extract policy data.
-         *
-         *     Uses OCR and auto-detection to identify the insurance provider and extract
-         *     relevant policy information. Supports Progressive, State Farm, GEICO, Allstate,
-         *     and other providers via generic parsing.
-         *
-         *     Returns extracted data without saving to database.
-         *     User can review and edit before creating the policy.
-         */
-        post: operations["parse_insurance_pdf_api_vehicles__vin__insurance_parse_pdf_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/vehicles/{vin}/insurance/test-parse": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Test Parse Insurance Pdf
-         * @description Test parse an insurance document - returns full debug info including raw text.
-         *
-         *     Useful for troubleshooting parsing issues.
-         */
-        post: operations["test_parse_insurance_pdf_api_vehicles__vin__insurance_test_parse_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/vehicles/{vin}/insurance/{policy_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Insurance Policy
-         * @description Get a specific insurance policy.
-         */
-        get: operations["get_insurance_policy_api_vehicles__vin__insurance__policy_id__get"];
-        /**
-         * Update Insurance Policy
-         * @description Update an insurance policy.
-         */
-        put: operations["update_insurance_policy_api_vehicles__vin__insurance__policy_id__put"];
         post?: never;
-        /**
-         * Delete Insurance Policy
-         * @description Delete an insurance policy.
-         */
-        delete: operations["delete_insurance_policy_api_vehicles__vin__insurance__policy_id__delete"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -4772,6 +5215,36 @@ export interface paths {
          *     - Requires authentication
          */
         get: operations["get_last_location_api_vehicles__vin__livelink_location_last_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vehicles/{vin}/livelink/parameters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Vehicle Parameters
+         * @description List the parameters this vehicle actually reports.
+         *
+         *     The admin `/api/livelink/parameters` catalog is global: it holds every
+         *     parameter any device has ever sent, fleet-wide. Charting from it offers a
+         *     propane trailer a list of engine PIDs that can only ever draw an empty
+         *     graph. Scoping to `get_latest_values` reuses its staleness rule, so a
+         *     parameter the rest of the vehicle has left behind drops out of the picker
+         *     the same way it drops off the live dashboard.
+         *
+         *     **Security:**
+         *     - Requires authentication and access to the vehicle
+         */
+        get: operations["list_vehicle_parameters_api_vehicles__vin__livelink_parameters_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5044,6 +5517,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/vehicles/{vin}/maintenance-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Rules
+         * @description Every maintenance rule on the vehicle, active first.
+         */
+        get: operations["list_rules_api_vehicles__vin__maintenance_rules_get"];
+        put?: never;
+        /**
+         * Create Rule
+         * @description Create a rule explicitly (a second rule of a type is allowed here).
+         */
+        post: operations["create_rule_api_vehicles__vin__maintenance_rules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vehicles/{vin}/maintenance-rules/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Rule
+         * @description Edit a rule's intervals, title, type or activity; its pending reminder follows.
+         */
+        put: operations["update_rule_api_vehicles__vin__maintenance_rules__rule_id__put"];
+        post?: never;
+        /**
+         * Delete Rule
+         * @description Remove a rule nothing references; deactivate one with history.
+         */
+        delete: operations["delete_rule_api_vehicles__vin__maintenance_rules__rule_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/vehicles/{vin}/notes": {
         parameters: {
             query?: never;
@@ -5137,6 +5658,29 @@ export interface paths {
          *     - **500**: Database error
          */
         post: operations["create_odometer_record_api_vehicles__vin__odometer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vehicles/{vin}/odometer/nearest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Nearest Odometer Record
+         * @description The odometer record closest to a date, for prefilling a tire dialog.
+         *
+         *     404 when the vehicle has no odometer records at all: that is an answer
+         *     the suggestion renders as "no readings yet", not an error.
+         */
+        get: operations["nearest_odometer_record_api_vehicles__vin__odometer_nearest_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -5442,6 +5986,11 @@ export interface paths {
         /**
          * Create Reminder
          * @description Create a new reminder for a vehicle.
+         *
+         *     With ``recurrence`` the reminder gets a maintenance rule and its
+         *     thresholds are derived from the anchor and the intervals; the vehicle's
+         *     existing rule of the type is reused, so this may return that rule's
+         *     existing pending reminder rather than a new row.
          */
         post: operations["create_reminder_api_vehicles__vin__reminders_post"];
         delete?: never;
@@ -5461,9 +6010,92 @@ export interface paths {
         put?: never;
         /**
          * Apply Reminder Pack
-         * @description Apply a built-in reminder pack to a vehicle (creates pending reminders).
+         * @description Apply a built-in reminder pack to a vehicle.
+         *
+         *     Returns the pending reminder of every rule the pack touched: created,
+         *     reused or adopted, never a duplicate of one already tracking the type.
          */
         post: operations["apply_reminder_pack_api_vehicles__vin__reminders_apply_pack_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vehicles/{vin}/reminders/apply-pack/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Reminder Pack
+         * @description What applying the pack would do: rules, anchors, adoptions, thresholds. No writes.
+         */
+        post: operations["preview_reminder_pack_api_vehicles__vin__reminders_apply_pack_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vehicles/{vin}/reminders/duplicates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Duplicates
+         * @description Pending reminders that share a maintenance type, with a suggested keeper.
+         */
+        get: operations["list_duplicates_api_vehicles__vin__reminders_duplicates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vehicles/{vin}/reminders/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reconcile Reminders
+         * @description Recompute every active rule's pending reminder from the history. Idempotent.
+         */
+        post: operations["reconcile_reminders_api_vehicles__vin__reminders_reconcile_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vehicles/{vin}/reminders/reconcile-duplicates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reconcile Duplicates
+         * @description Keep one reminder of a duplicate group and supersede the others.
+         */
+        post: operations["reconcile_duplicates_api_vehicles__vin__reminders_reconcile_duplicates_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5480,7 +6112,7 @@ export interface paths {
         get?: never;
         /**
          * Update Reminder
-         * @description Update a reminder (content only — use /done or /dismiss for status).
+         * @description Update a reminder (content only — use /done, /dismiss or /complete for status).
          */
         put: operations["update_reminder_api_vehicles__vin__reminders__reminder_id__put"];
         post?: never;
@@ -5489,6 +6121,29 @@ export interface paths {
          * @description Delete a reminder.
          */
         delete: operations["delete_reminder_api_vehicles__vin__reminders__reminder_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vehicles/{vin}/reminders/{reminder_id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete Reminder
+         * @description Complete a reminder with the actual date and readings.
+         *
+         *     Logs a service visit (default), links an existing one, or just records
+         *     the completion; a recurring reminder's successor is created from it.
+         */
+        post: operations["complete_reminder_api_vehicles__vin__reminders__reminder_id__complete_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -5505,7 +6160,7 @@ export interface paths {
         put?: never;
         /**
          * Dismiss
-         * @description Mark a reminder as dismissed.
+         * @description Mark a reminder as dismissed; a recurring one stops repeating.
          */
         post: operations["dismiss_api_vehicles__vin__reminders__reminder_id__dismiss_post"];
         delete?: never;
@@ -5525,9 +6180,56 @@ export interface paths {
         put?: never;
         /**
          * Mark Done
-         * @description Mark a reminder as done.
+         * @description Mark a reminder as done today, without a service record.
+         *
+         *     The fallback: a recurring reminder still advances, anchored on today's
+         *     date and the nearest readings. ``/complete`` records the real ones.
          */
         post: operations["mark_done_api_vehicles__vin__reminders__reminder_id__done_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vehicles/{vin}/reminders/{reminder_id}/snooze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Snooze
+         * @description Hide a pending reminder from every nag surface until a date.
+         *
+         *     The due fields stay untouched: on `until` the reminder is back, with
+         *     whatever overdue state reality gives it. Dismiss is "stop repeating";
+         *     this is "not now".
+         */
+        post: operations["snooze_api_vehicles__vin__reminders__reminder_id__snooze_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vehicles/{vin}/reminders/{reminder_id}/unsnooze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unsnooze
+         * @description Clear a pending reminder's snooze; it counts again immediately.
+         */
+        post: operations["unsnooze_api_vehicles__vin__reminders__reminder_id__unsnooze_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6221,6 +6923,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/vehicles/{vin}/tires/{tire_id}/mount-periods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Mount Period
+         * @description Record a closed period the tire spent on a corner in the past.
+         *
+         *     409 when it contradicts the tire's other periods or its readings. Returns
+         *     the whole tire.
+         */
+        post: operations["create_mount_period_api_vehicles__vin__tires__tire_id__mount_periods_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vehicles/{vin}/tires/{tire_id}/mount-periods/{period_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Mount Period
+         * @description Correct one mount period's dates, odometers or notes.
+         *
+         *     Absent keys are untouched; null clears a value to unknown. 409 when the
+         *     edit contradicts the tire's other periods or its readings, when a dismount
+         *     field is set on the open period, or when a closed period would be
+         *     reopened. Returns the whole tire, so the card and the history refresh
+         *     from one payload.
+         */
+        put: operations["update_mount_period_api_vehicles__vin__tires__tire_id__mount_periods__period_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/vehicles/{vin}/tires/{tire_id}/readings": {
         parameters: {
             query?: never;
@@ -6235,6 +6986,51 @@ export interface paths {
          * @description Append a tread/pressure reading and refresh wear projection + reminders.
          */
         post: operations["add_tire_reading_api_vehicles__vin__tires__tire_id__readings_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vehicles/{vin}/tires/{tire_id}/readings/{reading_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Tire Reading
+         * @description Delete one reading, for one logged with the wrong odometer or date.
+         *
+         *     404 when the reading is not this tire's. The tire's tread and pressure fall
+         *     back to the newest remaining reading when they still hold the deleted
+         *     reading's value, the odometer record the reading published goes with it,
+         *     and the low-tread reminder is re-synced.
+         */
+        delete: operations["delete_tire_reading_api_vehicles__vin__tires__tire_id__readings__reading_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vehicles/{vin}/tires/{tire_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Tire
+         * @description Un-retire a tire: back to storage, history intact. 409 if it is not retired.
+         */
+        post: operations["restore_tire_api_vehicles__vin__tires__tire_id__restore_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7186,6 +7982,83 @@ export interface components {
             time_format?: string | null;
         };
         /**
+         * AnchorCandidate
+         * @description A line item the preview can point at.
+         */
+        AnchorCandidate: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Description */
+            description: string;
+            /** Engine Hours */
+            engine_hours: string | null;
+            /** Line Item Id */
+            line_item_id: number;
+            /** Maintenance Type */
+            maintenance_type: string | null;
+            /** Odometer Km */
+            odometer_km: string | null;
+            /** Visit Id */
+            visit_id: number;
+        };
+        /**
+         * AnchorChoice
+         * @description The caller's pick for one pack item: a line item to type, or done today.
+         */
+        AnchorChoice: {
+            /**
+             * Done Today
+             * @default false
+             */
+            done_today: boolean;
+            /** Line Item Id */
+            line_item_id?: number | null;
+        };
+        /**
+         * AnchorProposal
+         * @description What a reminder would count from, and why.
+         */
+        AnchorProposal: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Hours */
+            hours: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "service" | "completion" | "baseline";
+            /** Line Item Id */
+            line_item_id?: number | null;
+            /** Note */
+            note?: string | null;
+            /** Odometer Km */
+            odometer_km: string | null;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "reminder" | "history" | "baseline";
+        };
+        /**
+         * AnchorSpec
+         * @description A hand-entered anchor: when and at what reading the work was last done.
+         */
+        AnchorSpec: {
+            /** Date */
+            date?: string | null;
+            /** Hours */
+            hours?: number | string | null;
+            /** Odometer Km */
+            odometer_km?: number | string | null;
+        };
+        /**
          * AnomalyAlert
          * @description Alert for detected spending anomalies.
          */
@@ -7208,10 +8081,38 @@ export interface components {
             severity: "warning" | "critical";
         };
         /**
+         * ApplyPackPreview
+         * @description The plan for one pack on one vehicle.
+         */
+        ApplyPackPreview: {
+            /** Items */
+            items: components["schemas"]["PackItemPlan"][];
+            /** Pack Id */
+            pack_id: string;
+            /** Pack Name */
+            pack_name: string;
+        };
+        /**
          * ApplyReminderPackRequest
-         * @description Request body for applying a reminder pack to a vehicle.
+         * @description Request body for applying (or previewing) a reminder pack on a vehicle.
+         *
+         *     ``anchors`` maps a pack item key to the caller's anchor choice; an item
+         *     not named keeps the preview's proposal.
+         *
+         *     ``overrides`` maps a pack item key to intervals the caller typed, keyed the
+         *     same way. An item not named keeps the pack's own intervals, so an untouched
+         *     form sends nothing. An unknown key is a 422, the same answer ``anchors``
+         *     gives.
          */
         ApplyReminderPackRequest: {
+            /** Anchors */
+            anchors?: {
+                [key: string]: components["schemas"]["AnchorChoice"] | null;
+            } | null;
+            /** Overrides */
+            overrides?: {
+                [key: string]: components["schemas"]["IntervalOverride"] | null;
+            } | null;
             /** Pack Id */
             pack_id: string;
         };
@@ -7530,13 +8431,13 @@ export interface components {
             /** Text */
             text?: string | null;
         };
-        /** Body_parse_insurance_pdf_api_vehicles__vin__insurance_parse_pdf_post */
-        Body_parse_insurance_pdf_api_vehicles__vin__insurance_parse_pdf_post: {
+        /** Body_parse_insurance_pdf_api_insurance_parse_pdf_post */
+        Body_parse_insurance_pdf_api_insurance_parse_pdf_post: {
             /** File */
             file: string;
         };
-        /** Body_test_parse_insurance_pdf_api_vehicles__vin__insurance_test_parse_post */
-        Body_test_parse_insurance_pdf_api_vehicles__vin__insurance_test_parse_post: {
+        /** Body_test_parse_insurance_pdf_api_insurance_test_parse_post */
+        Body_test_parse_insurance_pdf_api_insurance_test_parse_post: {
             /** File */
             file: string;
         };
@@ -7877,6 +8778,68 @@ export interface components {
              * @default 0.00
              */
             twelve_month_projection: string;
+        };
+        /**
+         * CoverageEntry
+         * @description One standard coverage on one vehicle.
+         *
+         *     Sending the entry at all is what says the coverage is carried, so every
+         *     amount may be omitted (roadside assistance usually has none). A slot the
+         *     catalogue does not give this coverage is REJECTED rather than ignored: a
+         *     stored "each accident" limit on a coverage whose card has no such line
+         *     would be money no screen ever shows.
+         *
+         *     `premium` is what the declarations page charges for this coverage alone.
+         *     It is a record of the bill, NOT part of the allocation: the policy premium
+         *     and the per-vehicle shares are what analytics and the even split work from,
+         *     so editing it moves no money between vehicles and needs only write access
+         *     to the vehicle it is on.
+         */
+        "CoverageEntry-Input": {
+            /**
+             * Coverage Key
+             * @enum {string}
+             */
+            coverage_key: "bodily_injury" | "property_damage" | "uninsured_bodily_injury" | "uninsured_property_damage" | "personal_injury_protection" | "medical_payments" | "comprehensive" | "collision" | "glass" | "rental_reimbursement" | "roadside_assistance" | "loan_lease_gap" | "custom_equipment";
+            /** Deductible */
+            deductible?: number | string | null;
+            /** Limit Primary */
+            limit_primary?: number | string | null;
+            /** Limit Secondary */
+            limit_secondary?: number | string | null;
+            /** Premium */
+            premium?: number | string | null;
+        };
+        /**
+         * CoverageEntry
+         * @description One standard coverage on one vehicle.
+         *
+         *     Sending the entry at all is what says the coverage is carried, so every
+         *     amount may be omitted (roadside assistance usually has none). A slot the
+         *     catalogue does not give this coverage is REJECTED rather than ignored: a
+         *     stored "each accident" limit on a coverage whose card has no such line
+         *     would be money no screen ever shows.
+         *
+         *     `premium` is what the declarations page charges for this coverage alone.
+         *     It is a record of the bill, NOT part of the allocation: the policy premium
+         *     and the per-vehicle shares are what analytics and the even split work from,
+         *     so editing it moves no money between vehicles and needs only write access
+         *     to the vehicle it is on.
+         */
+        "CoverageEntry-Output": {
+            /**
+             * Coverage Key
+             * @enum {string}
+             */
+            coverage_key: "bodily_injury" | "property_damage" | "uninsured_bodily_injury" | "uninsured_property_damage" | "personal_injury_protection" | "medical_payments" | "comprehensive" | "collision" | "glass" | "rental_reimbursement" | "roadside_assistance" | "loan_lease_gap" | "custom_equipment";
+            /** Deductible */
+            deductible?: string | null;
+            /** Limit Primary */
+            limit_primary?: string | null;
+            /** Limit Secondary */
+            limit_secondary?: string | null;
+            /** Premium */
+            premium?: string | null;
         };
         /**
          * DEFAnalytics
@@ -8315,11 +9278,88 @@ export interface components {
             latest_version: string | null;
             /** Release Url */
             release_url?: string | null;
+            /** Skipped Version */
+            skipped_version?: string | null;
             /**
              * Update Available
              * @default false
              */
             update_available: boolean | null;
+        };
+        /**
+         * DeviceReading
+         * @description One mapped parameter and its most recent device-attributed value.
+         */
+        DeviceReading: {
+            /**
+             * Alert Lines
+             * @description The alert lines Settings offers for this reading: a preset sensor's tank level offers low and critical, its battery low. Empty for anything else.
+             */
+            alert_lines?: ("low" | "critical")[];
+            /**
+             * Critical Min
+             * @description The critical alert line, if set
+             */
+            critical_min?: number | null;
+            /** Display Name */
+            display_name?: string | null;
+            /**
+             * Format
+             * @description How to show the value: through the unit adapter, as Yes/No, as a whole number, or as 'n of max_value'. A preset sensor's readings say; anything else is a plain value.
+             * @default value
+             * @enum {string}
+             */
+            format: "value" | "boolean" | "count" | "of_max";
+            /**
+             * Max Value
+             * @description The top of the scale for an 'of_max' reading
+             */
+            max_value?: number | null;
+            /** Param Key */
+            param_key: string;
+            /**
+             * Show On Dashboard
+             * @default true
+             */
+            show_on_dashboard: boolean;
+            /**
+             * Timestamp
+             * @description When that value was stored. Subject to storage_interval_seconds, so it is not the wall-clock moment the sensor published.
+             */
+            timestamp?: string | null;
+            /** Unit */
+            unit?: string | null;
+            /**
+             * Value
+             * @description None when never reported
+             */
+            value?: number | null;
+            /**
+             * Warning Min
+             * @description The low alert line, if set
+             */
+            warning_min?: number | null;
+        };
+        /**
+         * DeviceReadingsResponse
+         * @description Every parameter one device is mapped to, with current values.
+         */
+        DeviceReadingsResponse: {
+            /** Device Id */
+            device_id: string;
+            /**
+             * Online
+             * @description Whether the device is reporting now: the integrations card's own rule, so a device with no status topic counts as online while it has reported within the offline timeout.
+             * @default false
+             */
+            online: boolean;
+            /** Readings */
+            readings: components["schemas"]["DeviceReading"][];
+            /**
+             * Vin
+             * @description None when the device is unlinked
+             */
+            vin?: string | null;
         };
         /**
          * DocumentListResponse
@@ -8645,6 +9685,20 @@ export interface components {
             started_at: string;
             /** Vin */
             vin: string;
+        };
+        /**
+         * DuplicateGroup
+         * @description Pending reminders that share a maintenance type.
+         */
+        DuplicateGroup: {
+            /** Label */
+            label: string;
+            /** Maintenance Type */
+            maintenance_type: string;
+            /** Reminder Ids */
+            reminder_ids: number[];
+            /** Suggested Keep Id */
+            suggested_keep_id: number;
         };
         /**
          * EVChargingMetadata
@@ -9107,6 +10161,17 @@ export interface components {
             release_url?: string | null;
         };
         /**
+         * FirmwareSkipRequest
+         * @description Body of POST /devices/{device_id}/firmware/skip.
+         *
+         *     The client names the version it saw, so a release landing between
+         *     render and click is never silently skipped.
+         */
+        FirmwareSkipRequest: {
+            /** Version */
+            version: string;
+        };
+        /**
          * FirmwareTrack
          * @description Firmware track selector for WiCAN device families.
          * @enum {string}
@@ -9228,6 +10293,8 @@ export interface components {
             liters?: number | null;
             /** Notes */
             notes?: string | null;
+            /** Octane */
+            octane?: number | null;
             /** Odometer Km */
             odometer_km?: number | null;
             /** Price Per Unit */
@@ -9294,6 +10361,11 @@ export interface components {
              * @description DEF tank level (0.00=empty, 1.00=full) — auto-creates a DEF observation
              */
             def_fill_level?: number | string | null;
+            /**
+             * Diesel Grade
+             * @description Diesel grade: 'onroad' (clear) or 'offroad' (dyed/farm)
+             */
+            diesel_grade?: string | null;
             /**
              * Driver Name Freetext
              * @description Freetext driver name (non-account household member)
@@ -9367,6 +10439,11 @@ export interface components {
              * @description OBC reported trip duration in seconds
              */
             obc_trip_duration_s?: number | null;
+            /**
+             * Octane
+             * @description Octane rating for gasoline/E85 fill-ups (AKI or RON)
+             */
+            octane?: number | null;
             /**
              * Odometer Km
              * @description Odometer reading in kilometers
@@ -9543,6 +10620,11 @@ export interface components {
              */
             date: string;
             /**
+             * Diesel Grade
+             * @description Diesel grade: 'onroad' (clear) or 'offroad' (dyed/farm)
+             */
+            diesel_grade?: string | null;
+            /**
              * Driver Name Freetext
              * @description Freetext driver name (non-account household member)
              */
@@ -9627,6 +10709,11 @@ export interface components {
              * @description OBC reported trip duration in seconds
              */
             obc_trip_duration_s?: number | null;
+            /**
+             * Octane
+             * @description Octane rating for gasoline/E85 fill-ups (AKI or RON)
+             */
+            octane?: number | null;
             /**
              * Odometer Km
              * @description Odometer reading in kilometers
@@ -9735,6 +10822,11 @@ export interface components {
              * @description DEF tank level (0.00=empty, 1.00=full) — auto-creates a DEF observation
              */
             def_fill_level?: number | string | null;
+            /**
+             * Diesel Grade
+             * @description Diesel grade: 'onroad' (clear) or 'offroad' (dyed/farm)
+             */
+            diesel_grade?: string | null;
             /** Driver Name Freetext */
             driver_name_freetext?: string | null;
             /** Driver User Id */
@@ -9790,6 +10882,11 @@ export interface components {
             obc_l_per_100km?: number | string | null;
             /** Obc Trip Duration S */
             obc_trip_duration_s?: number | null;
+            /**
+             * Octane
+             * @description Octane rating for gasoline/E85 fill-ups (AKI or RON)
+             */
+            octane?: number | null;
             /**
              * Odometer Km
              * @description Odometer reading in kilometers
@@ -9985,6 +11082,11 @@ export interface components {
              * @default 0.00
              */
             fuel: string;
+            /**
+             * Insurance
+             * @default 0.00
+             */
+            insurance: string;
             /** Month */
             month: string;
             /**
@@ -10048,6 +11150,11 @@ export interface components {
              */
             total_inspection: string;
             /**
+             * Total Insurance
+             * @default 0.00
+             */
+            total_insurance: string;
+            /**
              * Total Maintenance
              * @default 0.00
              */
@@ -10086,6 +11193,25 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * HistoryFaultResponse
+         * @description One contradiction in a tire's mount history.
+         *
+         *     The same validator that refuses a contradictory write, run over the
+         *     stored history, so a contradiction that blocks writes always has a period
+         *     to badge even when no distance or projection figure is blocked by it.
+         *     `message` is in the requesting user's distance unit.
+         */
+        HistoryFaultResponse: {
+            /** Code */
+            code: string;
+            /** Counterpart Id */
+            counterpart_id?: number | null;
+            /** Message */
+            message: string;
+            /** Period Id */
+            period_id: number;
         };
         /**
          * HoursAccumulatedDataPoint
@@ -10354,155 +11480,279 @@ export interface components {
             unread_count: number;
         };
         /**
-         * InsurancePolicy
-         * @description Schema for insurance policy response.
-         */
-        InsurancePolicy: {
-            /**
-             * Coverage Limits
-             * @description Coverage limits details
-             */
-            coverage_limits?: string | null;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Deductible
-             * @description Deductible amount
-             */
-            deductible?: string | null;
-            /**
-             * End Date
-             * Format: date
-             * @description Policy end date
-             */
-            end_date: string;
-            /** Id */
-            id: number;
-            /**
-             * Notes
-             * @description Additional notes
-             */
-            notes?: string | null;
-            /**
-             * Policy Number
-             * @description Policy number
-             */
-            policy_number: string;
-            /**
-             * Policy Type
-             * @description Type of insurance coverage
-             */
-            policy_type: string;
-            /**
-             * Premium Amount
-             * @description Premium amount
-             */
-            premium_amount?: string | null;
-            /**
-             * Premium Frequency
-             * @description How often premium is paid
-             */
-            premium_frequency?: string | null;
-            /**
-             * Provider
-             * @description Insurance provider name
-             */
-            provider: string;
-            /**
-             * Start Date
-             * Format: date
-             * @description Policy start date
-             */
-            start_date: string;
-            /** Vin */
-            vin: string;
-        };
-        /**
          * InsurancePolicyCreate
-         * @description Schema for creating an insurance policy.
+         * @description Create a household policy, optionally with its vehicles.
          */
         InsurancePolicyCreate: {
             /**
-             * Coverage Limits
-             * @description Coverage limits details
-             */
-            coverage_limits?: string | null;
-            /**
-             * Deductible
-             * @description Deductible amount
-             */
-            deductible?: number | string | null;
-            /**
              * End Date
              * Format: date
-             * @description Policy end date
              */
             end_date: string;
-            /**
-             * Notes
-             * @description Additional notes
-             */
+            /** Fields */
+            fields?: components["schemas"]["NamedField"][];
+            /** Notes */
             notes?: string | null;
-            /**
-             * Policy Number
-             * @description Policy number
-             */
+            /** Policy Number */
             policy_number: string;
             /**
-             * Policy Type
-             * @description Type of insurance coverage
-             */
-            policy_type: string;
-            /**
              * Premium Amount
-             * @description Premium amount
+             * @description Whole-policy amount per premium_frequency period
              */
             premium_amount?: number | string | null;
-            /**
-             * Premium Frequency
-             * @description How often premium is paid
-             */
-            premium_frequency?: string | null;
-            /**
-             * Provider
-             * @description Insurance provider name
-             */
+            /** Premium Frequency */
+            premium_frequency?: ("Monthly" | "Quarterly" | "Semi-Annual" | "Annual") | null;
+            /** Provider */
             provider: string;
             /**
              * Start Date
              * Format: date
-             * @description Policy start date
              */
             start_date: string;
+            /** Vehicles */
+            vehicles?: components["schemas"]["PolicyVehicleCreate"][];
+        };
+        /**
+         * InsurancePolicyRenew
+         * @description Enter the next term. Allowed any time, so a renewal notice can be
+         *     recorded the day it arrives; the new term reads `upcoming` until it starts.
+         */
+        InsurancePolicyRenew: {
+            /**
+             * End Date
+             * @description Default: the same term length
+             */
+            end_date?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Premium Amount */
+            premium_amount?: number | string | null;
+            /** Premium Frequency */
+            premium_frequency?: ("Monthly" | "Quarterly" | "Semi-Annual" | "Annual") | null;
+            /**
+             * Start Date
+             * @description Default: the current end_date
+             */
+            start_date?: string | null;
+        };
+        /**
+         * InsurancePolicyReplace
+         * @description Switch insurers: a new policy succeeds this one and takes its vehicles.
+         */
+        InsurancePolicyReplace: {
+            /**
+             * End Date
+             * Format: date
+             */
+            end_date: string;
+            /**
+             * End Old On
+             * @description Shorten the old policy to this date for a mid-term switch
+             */
+            end_old_on?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Policy Number */
+            policy_number: string;
+            /** Premium Amount */
+            premium_amount?: number | string | null;
+            /** Premium Frequency */
+            premium_frequency?: ("Monthly" | "Quarterly" | "Semi-Annual" | "Annual") | null;
+            /** Provider */
+            provider: string;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            /**
+             * Vehicles
+             * @description The new policy's vehicles WITH the new insurer's coverages. When present it replaces `vins`; omit both to carry every vehicle over by type only
+             */
+            vehicles?: components["schemas"]["PolicyVehicleCreate"][] | null;
+            /**
+             * Vins
+             * @description Vehicles to carry over; omit to carry every vehicle
+             */
+            vins?: string[] | null;
+        };
+        /**
+         * InsurancePolicyResponse
+         * @description A policy with the vehicles the caller may see beneath it.
+         */
+        InsurancePolicyResponse: {
+            /**
+             * Can Edit
+             * @default false
+             */
+            can_edit: boolean;
+            /** Created At */
+            created_at?: string | null;
+            /** Created By User Id */
+            created_by_user_id?: number | null;
+            /**
+             * End Date
+             * Format: date
+             */
+            end_date: string;
+            /** Fields */
+            fields?: components["schemas"]["NamedField"][];
+            /**
+             * Has Successor
+             * @default false
+             */
+            has_successor: boolean;
+            /** Id */
+            id: number;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Other Vehicle Count
+             * @description Covered vehicles the caller has no access to see
+             * @default 0
+             */
+            other_vehicle_count: number;
+            /** Policy Number */
+            policy_number: string;
+            /** Premium Amount */
+            premium_amount?: string | null;
+            /** Premium Frequency */
+            premium_frequency?: string | null;
+            /** Previous Policy Id */
+            previous_policy_id?: number | null;
+            /** Provider */
+            provider: string;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "upcoming" | "active" | "expired";
+            /** Vehicles */
+            vehicles?: components["schemas"]["PolicyVehicleResponse"][];
         };
         /**
          * InsurancePolicyUpdate
-         * @description Schema for updating an insurance policy.
+         * @description Edit the policy-level details. Vehicles are edited through their links.
          */
         InsurancePolicyUpdate: {
-            /** Coverage Limits */
-            coverage_limits?: string | null;
-            /** Deductible */
-            deductible?: number | string | null;
             /** End Date */
             end_date?: string | null;
+            /** Fields */
+            fields?: components["schemas"]["NamedField"][] | null;
             /** Notes */
             notes?: string | null;
             /** Policy Number */
             policy_number?: string | null;
-            /** Policy Type */
-            policy_type?: string | null;
             /** Premium Amount */
             premium_amount?: number | string | null;
             /** Premium Frequency */
-            premium_frequency?: string | null;
+            premium_frequency?: ("Monthly" | "Quarterly" | "Semi-Annual" | "Annual") | null;
             /** Provider */
             provider?: string | null;
+            /**
+             * Share Strategy
+             * @description Required when the premium changes on a policy whose vehicle shares are all explicit: rescale them proportionally, or reset to an even split
+             */
+            share_strategy?: ("rescale" | "reset_even") | null;
             /** Start Date */
             start_date?: string | null;
+            /**
+             * Vehicles
+             * @description The policy's COMPLETE vehicle list. Omit to leave the vehicles alone; when present, vehicles not listed are removed. Sending the premium and every share together is how a vehicle is added and the premium raised in one valid step
+             */
+            vehicles?: components["schemas"]["PolicyVehicleUpsert"][] | null;
+        };
+        /**
+         * IntegrationListResponse
+         * @description The whole tab strip, in display order.
+         */
+        IntegrationListResponse: {
+            /** Tabs */
+            tabs: components["schemas"]["IntegrationTab"][];
+        };
+        /**
+         * IntegrationTab
+         * @description One entry in the integrations card's tab strip.
+         */
+        IntegrationTab: {
+            /**
+             * Description
+             * @description Literal text, sent only for preset tabs
+             */
+            description?: string | null;
+            /**
+             * Device Count
+             * @default 0
+             */
+            device_count: number;
+            /**
+             * Firmware Updates
+             * @default 0
+             */
+            firmware_updates: number;
+            /**
+             * Id
+             * @description 'wican' | 'torque' | 'broker' | 'preset:<preset name>' (every sensor made from that preset) | 'device:<device_id>' (any other generic MQTT device)
+             */
+            id: string;
+            /**
+             * Kind
+             * @description Source-module kind; None for the broker
+             */
+            kind?: string | null;
+            /**
+             * Label
+             * @description Proper noun. Never translated.
+             */
+            label: string;
+            /**
+             * Linked Count
+             * @default 0
+             */
+            linked_count: number;
+            /**
+             * Online Count
+             * @default 0
+             */
+            online_count: number;
+            /**
+             * Reason
+             * @description Why it has that status. Status and counts alone cannot tell an unlinked device from one that has never reported: both are 'attention' with zero online.
+             */
+            reason: string;
+            /**
+             * Status
+             * @description 'ok' | 'attention' | 'off'
+             */
+            status: string;
+        };
+        /**
+         * IntervalOverride
+         * @description Intervals the caller typed while applying a pack, for one item.
+         *
+         *     Subclasses `RecurrenceSpec` so the rules a rule obeys (at least one
+         *     interval, never distance and hours together) are enforced from one place
+         *     rather than restated here.
+         *
+         *     An override is not the pack's value, it is a number the caller typed just
+         *     now, so it wins over BOTH the pack's own interval and the destination
+         *     vehicle's existing rule. See `maintenance_service._plan_item`: without that
+         *     second part the override is planned, previewed, and then dropped on a reuse.
+         */
+        IntervalOverride: {
+            /** Interval Days */
+            interval_days?: number | null;
+            /** Interval Hours */
+            interval_hours?: number | string | null;
+            /** Interval Km */
+            interval_km?: number | string | null;
+            /** Interval Months */
+            interval_months?: number | null;
         };
         /**
          * LastLocationResponse
@@ -10573,6 +11823,30 @@ export interface components {
             total: number;
         };
         /**
+         * LiveLinkDeviceManualCreate
+         * @description Schema for creating a device by hand, rather than by auto-discovery.
+         *
+         *     `LiveLinkDeviceCreate` above is the auto-discovery shape: it carries no
+         *     `kind` and no `vin` because a WiCAN dongle announces itself and is linked
+         *     afterwards. A `generic_mqtt` device declares neither AUTO_DISCOVER nor a
+         *     token flow, so without this route the only way such a device can exist is
+         *     by applying a preset.
+         *
+         *     `vin` is optional, matching every other device: the pipeline returns early
+         *     for a device with no VIN, so an unlinked device is a valid intermediate
+         *     state rather than an error.
+         */
+        LiveLinkDeviceManualCreate: {
+            /** Device Id */
+            device_id: string;
+            /** Kind */
+            kind: string;
+            /** Label */
+            label?: string | null;
+            /** Vin */
+            vin?: string | null;
+        };
+        /**
          * LiveLinkDeviceResponse
          * @description Schema for device response.
          */
@@ -10628,6 +11902,12 @@ export interface components {
             /** Id */
             id: number;
             /**
+             * Kind
+             * @description Source module that owns this device (see GET /sources)
+             * @default wican
+             */
+            kind: string;
+            /**
              * Label
              * @description User-friendly device name
              */
@@ -10646,10 +11926,20 @@ export interface components {
              */
             movement_unreadable: boolean;
             /**
+             * Odometer Param Key
+             * @description Which reported parameter carries this device's odometer
+             */
+            odometer_param_key?: string | null;
+            /**
              * Odometer Unit
              * @description Declared odometer units ('km'/'mi'); None means inferred from the key
              */
             odometer_unit?: string | null;
+            /**
+             * Preset Key
+             * @description The preset that created this device, if any. A preset device's tab is named by its preset, and its mappings are the preset's, not hand-made.
+             */
+            preset_key?: string | null;
             /**
              * Rssi
              * @description WiFi signal strength (dBm)
@@ -10690,13 +11980,18 @@ export interface components {
              */
             label?: string | null;
             /**
+             * Odometer Param Key
+             * @description Which reported parameter carries this device's odometer. Omitted leaves it unchanged, an empty string clears it, a key sets it (uppercased). The empty string must NOT be coerced to None here, or the service cannot tell 'clear it' from 'not supplied'.
+             */
+            odometer_param_key?: string | null;
+            /**
              * Odometer Unit
              * @description Units this device reports its odometer in. 'auto' clears the override and infers from the param key shape. None leaves it unchanged.
              */
             odometer_unit?: ("km" | "mi" | "auto") | null;
             /**
              * Vin
-             * @description VIN to link device to
+             * @description VIN to link the device to, any case. An empty string UNLINKS it; omitted or null leaves the link unchanged. Same convention as odometer_param_key below.
              */
             vin?: string | null;
         };
@@ -10724,6 +12019,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Critical Min */
+            critical_min: number | null;
             /**
              * Display Name
              * @description User-friendly display name
@@ -10776,6 +12073,11 @@ export interface components {
              * @description Category for grouping
              */
             category?: string | null;
+            /**
+             * Critical Min
+             * @description Urgent alert if value drops below; must sit under warning_min
+             */
+            critical_min?: number | null;
             /**
              * Display Name
              * @description User-friendly display name
@@ -10946,6 +12248,60 @@ export interface components {
             session_timeout_minutes?: number | null;
             /** Telemetry Retention Days */
             telemetry_retention_days?: number | null;
+        };
+        /**
+         * LiveSensor
+         * @description One preset sensor on this vehicle (a propane tank), drawn as its own card.
+         *
+         *     Its readings' values are in `latest_values`, looked up by `param_key`.
+         */
+        LiveSensor: {
+            /** Device Id */
+            device_id: string;
+            /**
+             * Fill Key
+             * @description The reading drawn as the tank's fill (its level), when mapped
+             */
+            fill_key?: string | null;
+            /**
+             * Label
+             * @description The sensor's name, which its readings' display names start with
+             */
+            label: string;
+            /** Last Seen */
+            last_seen?: string | null;
+            /**
+             * Online
+             * @description Reporting now, by the integrations card's rule
+             */
+            online: boolean;
+            /** Preset Key */
+            preset_key: string;
+            /**
+             * Readings
+             * @description Every reading the sensor maps, in the preset's order, the fill included
+             */
+            readings?: components["schemas"]["LiveSensorReading"][];
+        };
+        /**
+         * LiveSensorReading
+         * @description One of a preset sensor's readings, and how to show it.
+         */
+        LiveSensorReading: {
+            /**
+             * Format
+             * @description Through the unit adapter, as Yes/No, as a whole number, or as 'n of max_value'
+             * @default value
+             * @enum {string}
+             */
+            format: "value" | "boolean" | "count" | "of_max";
+            /**
+             * Max Value
+             * @description The top of the scale for an 'of_max' reading
+             */
+            max_value?: number | null;
+            /** Param Key */
+            param_key: string;
         };
         /**
          * LocationPointOut
@@ -11195,6 +12551,118 @@ export interface components {
             service_type: string;
         };
         /**
+         * MaintenanceRuleCreate
+         * @description The explicit path: creates a rule even when one of the type exists.
+         */
+        MaintenanceRuleCreate: {
+            /** Interval Days */
+            interval_days?: number | null;
+            /** Interval Hours */
+            interval_hours?: number | string | null;
+            /** Interval Km */
+            interval_km?: number | string | null;
+            /** Interval Months */
+            interval_months?: number | null;
+            /** Maintenance Type */
+            maintenance_type?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Title */
+            title: string;
+        };
+        /**
+         * MaintenanceRuleResponse
+         * @description A rule on its own.
+         */
+        MaintenanceRuleResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: number;
+            /** Interval Days */
+            interval_days: number | null;
+            /** Interval Hours */
+            interval_hours: string | null;
+            /** Interval Km */
+            interval_km: string | null;
+            /** Interval Months */
+            interval_months: number | null;
+            /** Is Active */
+            is_active: boolean;
+            /** Maintenance Type */
+            maintenance_type: string | null;
+            /** Notes */
+            notes: string | null;
+            /** Source */
+            source: string;
+            /** Source Pack Id */
+            source_pack_id: string | null;
+            /** Source Pack Key */
+            source_pack_key: string | null;
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at: string | null;
+            /** Vin */
+            vin: string;
+        };
+        /**
+         * MaintenanceRuleSummary
+         * @description The rule a reminder is derived from, embedded in the reminder response.
+         */
+        MaintenanceRuleSummary: {
+            /** Id */
+            id: number;
+            /** Interval Days */
+            interval_days: number | null;
+            /** Interval Hours */
+            interval_hours: string | null;
+            /** Interval Km */
+            interval_km: string | null;
+            /** Interval Months */
+            interval_months: number | null;
+            /** Is Active */
+            is_active: boolean;
+            /** Maintenance Type */
+            maintenance_type: string | null;
+            /** Source */
+            source: string;
+            /** Source Pack Id */
+            source_pack_id: string | null;
+            /** Title */
+            title: string;
+        };
+        /**
+         * MaintenanceRuleUpdate
+         * @description Patch a rule. Omitted fields keep their values.
+         */
+        MaintenanceRuleUpdate: {
+            /** Is Active */
+            is_active?: boolean | null;
+            /** Maintenance Type */
+            maintenance_type?: string | null;
+            /** Notes */
+            notes?: string | null;
+            recurrence?: components["schemas"]["RecurrenceSpec"] | null;
+            /** Title */
+            title?: string | null;
+        };
+        /**
+         * MaintenanceTypeResponse
+         * @description One registry entry for pickers.
+         */
+        MaintenanceTypeResponse: {
+            /** Category */
+            category: string;
+            /** Code */
+            code: string;
+            /** Label */
+            label: string;
+        };
+        /**
          * MonthlyCostSummary
          * @description Monthly cost summary.
          */
@@ -11262,6 +12730,38 @@ export interface components {
             year: number;
         };
         /**
+         * MountPeriodCreate
+         * @description A closed period the tire spent on a corner, recorded after the fact.
+         *
+         *     Closed only: an open period is what Mount creates, and it is the one whose
+         *     corner `tires.position` holds. Odometers optional, dates required, the
+         *     dismount no later than tomorrow (a day of slack for a user whose calendar
+         *     is ahead of the server's).
+         */
+        MountPeriodCreate: {
+            /** Dismounted Odometer Km */
+            dismounted_odometer_km?: number | string | null;
+            /**
+             * Dismounted On
+             * Format: date
+             */
+            dismounted_on: string;
+            /** Mounted Odometer Km */
+            mounted_odometer_km?: number | string | null;
+            /**
+             * Mounted On
+             * Format: date
+             */
+            mounted_on: string;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Position
+             * @enum {string}
+             */
+            position: "FL" | "FR" | "RL" | "RR" | "SPARE";
+        };
+        /**
          * MountPeriodResponse
          * @description One interval a tire spent mounted at one position.
          */
@@ -11284,6 +12784,54 @@ export interface components {
             observed_active_on: string | null;
             /** Position */
             position: string;
+        };
+        /**
+         * MountPeriodUpdate
+         * @description Correct one mount period's bounds or notes.
+         *
+         *     Every field optional, `exclude_unset` semantics: a key absent from the
+         *     body is untouched, a key sent as null is cleared to unknown. `position`
+         *     is deliberately not here (D14: only mount, dismount and rotate write it),
+         *     and forbid-extra makes sending it a 422 rather than a silent ignore.
+         */
+        MountPeriodUpdate: {
+            /** Dismounted Odometer Km */
+            dismounted_odometer_km?: number | string | null;
+            /** Dismounted On */
+            dismounted_on?: string | null;
+            /** Mounted Odometer Km */
+            mounted_odometer_km?: number | string | null;
+            /** Mounted On */
+            mounted_on?: string | null;
+            /** Notes */
+            notes?: string | null;
+        };
+        /**
+         * NamedField
+         * @description A user-named field: a suggested label or anything the user typed.
+         */
+        NamedField: {
+            /** Label */
+            label: string;
+            /** Value */
+            value: string;
+        };
+        /**
+         * NearestOdometerResponse
+         * @description The reading closest to a requested day, for the tire dialogs' suggestion.
+         */
+        NearestOdometerResponse: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Days Away */
+            days_away: number;
+            /** Odometer Km */
+            odometer_km: string;
+            /** Source */
+            source: string;
         };
         /**
          * NoteCreate
@@ -11769,6 +13317,60 @@ export interface components {
             source: string;
         };
         /**
+         * PackItemPlan
+         * @description Everything apply-pack would do for one item, computed before any write.
+         */
+        PackItemPlan: {
+            /**
+             * Adopted
+             * @default false
+             */
+            adopted: boolean;
+            anchor?: components["schemas"]["AnchorProposal"] | null;
+            /** Due Date */
+            due_date?: string | null;
+            /** Due Hours */
+            due_hours?: string | null;
+            /** Due Mileage Km */
+            due_mileage_km?: string | null;
+            /** Interval Days */
+            interval_days: number | null;
+            /** Interval Hours */
+            interval_hours: string | null;
+            /** Interval Km */
+            interval_km: string | null;
+            /** Interval Months */
+            interval_months: number | null;
+            /** Keep Reminder Id */
+            keep_reminder_id?: number | null;
+            /** Key */
+            key: string;
+            /** Maintenance Type */
+            maintenance_type: string;
+            newer_service?: components["schemas"]["AnchorCandidate"] | null;
+            /** Note */
+            note?: string | null;
+            /** Reminder Type */
+            reminder_type?: string | null;
+            /**
+             * Rule Action
+             * @enum {string}
+             */
+            rule_action: "create" | "reuse" | "reactivate" | "skip";
+            /** Rule Id */
+            rule_id?: number | null;
+            /** Skip Reason */
+            skip_reason?: string | null;
+            /** Supersede Reminder Ids */
+            supersede_reminder_ids?: number[];
+            /** Title */
+            title: string;
+            /** Typed History */
+            typed_history?: components["schemas"]["AnchorCandidate"][];
+            /** Untyped Candidates */
+            untyped_candidates?: components["schemas"]["AnchorCandidate"][];
+        };
+        /**
          * ParserInfo
          * @description Schema for parser information.
          */
@@ -11904,10 +13506,243 @@ export interface components {
             zip_code?: string | null;
         };
         /**
+         * PolicyHistoryEntry
+         * @description One term in a policy's chain, for review.
+         */
+        PolicyHistoryEntry: {
+            /**
+             * End Date
+             * Format: date
+             */
+            end_date: string;
+            /** Id */
+            id: number;
+            /**
+             * Is Current
+             * @description The policy the history was requested for
+             * @default false
+             */
+            is_current: boolean;
+            /** Policy Number */
+            policy_number: string;
+            /** Premium Amount */
+            premium_amount?: string | null;
+            /**
+             * Premium Change
+             * @description This term's premium minus the prior term's, same frequency only
+             */
+            premium_change?: string | null;
+            /** Premium Frequency */
+            premium_frequency?: string | null;
+            /** Provider */
+            provider: string;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "upcoming" | "active" | "expired";
+            /** Vehicles */
+            vehicles?: components["schemas"]["PolicyVehicleResponse"][];
+        };
+        /**
+         * PolicyVehicleCreate
+         * @description Attach one vehicle to a policy.
+         */
+        PolicyVehicleCreate: {
+            /** Coverages */
+            coverages?: components["schemas"]["CoverageEntry-Input"][];
+            /** Deductible */
+            deductible?: number | string | null;
+            /** Fields */
+            fields?: components["schemas"]["NamedField"][];
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Policy Type
+             * @enum {string}
+             */
+            policy_type: "Liability" | "Comprehensive" | "Collision" | "Full Coverage" | "Minimum" | "Other";
+            /**
+             * Premium Share
+             * @description Per-period share; omit for an even split
+             */
+            premium_share?: number | string | null;
+            /** Vin */
+            vin: string;
+        };
+        /**
+         * PolicyVehicleResponse
+         * @description One vehicle beneath a policy.
+         */
+        PolicyVehicleResponse: {
+            /**
+             * Can Edit
+             * @default false
+             */
+            can_edit: boolean;
+            /** Coverages */
+            coverages?: components["schemas"]["CoverageEntry-Output"][];
+            /** Deductible */
+            deductible?: string | null;
+            /**
+             * Effective Share
+             * @description What this vehicle costs per period: explicit, or the even split
+             */
+            effective_share?: string | null;
+            /** Effective To */
+            effective_to?: string | null;
+            /** Fields */
+            fields?: components["schemas"]["NamedField"][];
+            /** Id */
+            id: number;
+            /** Notes */
+            notes?: string | null;
+            /** Policy Type */
+            policy_type: string;
+            /**
+             * Premium Share
+             * @description Explicit share, if the user set one
+             */
+            premium_share?: string | null;
+            /** Vehicle Name */
+            vehicle_name: string;
+            /** Vin */
+            vin: string;
+        };
+        /**
+         * PolicyVehicleUpdate
+         * @description Edit one vehicle's place on a policy.
+         *
+         *     `fields` omitted leaves the named fields alone; present (even empty)
+         *     replaces them. `premium_share` and `effective_to` move money between
+         *     vehicles, so the route demands write access to the whole policy for them.
+         */
+        PolicyVehicleUpdate: {
+            /** Coverages */
+            coverages?: components["schemas"]["CoverageEntry-Input"][] | null;
+            /** Deductible */
+            deductible?: number | string | null;
+            /** Effective To */
+            effective_to?: string | null;
+            /** Fields */
+            fields?: components["schemas"]["NamedField"][] | null;
+            /** Notes */
+            notes?: string | null;
+            /** Policy Type */
+            policy_type?: ("Liability" | "Comprehensive" | "Collision" | "Full Coverage" | "Minimum" | "Other") | null;
+            /** Premium Share */
+            premium_share?: number | string | null;
+        };
+        /**
+         * PolicyVehicleUpsert
+         * @description One vehicle in the policy form's FULL vehicle list (see
+         *     `InsurancePolicyUpdate.vehicles`). Matched to an existing link by VIN.
+         */
+        PolicyVehicleUpsert: {
+            /**
+             * Coverages
+             * @description Omit to leave an existing vehicle's coverages alone
+             */
+            coverages?: components["schemas"]["CoverageEntry-Input"][] | null;
+            /** Deductible */
+            deductible?: number | string | null;
+            /** Effective To */
+            effective_to?: string | null;
+            /**
+             * Fields
+             * @description Omit to leave an existing vehicle's named fields alone
+             */
+            fields?: components["schemas"]["NamedField"][] | null;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Policy Type
+             * @enum {string}
+             */
+            policy_type: "Liability" | "Comprehensive" | "Collision" | "Full Coverage" | "Minimum" | "Other";
+            /** Premium Share */
+            premium_share?: number | string | null;
+            /** Vin */
+            vin: string;
+        };
+        /**
+         * PresetApplyRequest
+         * @description Body for adding one sensor from a preset.
+         *
+         *     Which readings exist, and which are required, is the preset's, so the
+         *     route checks `topics` against it. What does not depend on the preset is
+         *     checked here.
+         */
+        PresetApplyRequest: {
+            /** Label */
+            label: string;
+            /**
+             * Topics
+             * @description The exact topic carrying each reading, keyed by reading suffix (LEVEL_PCT). A reading left out or blank is not mapped.
+             */
+            topics: {
+                [key: string]: string;
+            };
+            /** Vin */
+            vin?: string | null;
+        };
+        /**
+         * PresetInfo
+         * @description A sensor template, as the add-sensor form needs it.
+         */
+        PresetInfo: {
+            /** Description */
+            description: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Readings */
+            readings: components["schemas"]["PresetReadingInfo"][];
+            /** Title */
+            title: string;
+        };
+        /**
+         * PresetReadingInfo
+         * @description One reading a preset's sensor publishes.
+         */
+        PresetReadingInfo: {
+            /**
+             * Default Topic
+             * @description Last topic segment in the reference layout; suggested when none is heard
+             */
+            default_topic: string;
+            /**
+             * Keywords
+             * @description Lowercase substrings that identify this reading's topic in any layout
+             */
+            keywords: string[];
+            /** Name */
+            name: string;
+            /** Required */
+            required: boolean;
+            /**
+             * Suffix
+             * @description Key into PresetApplyRequest.topics
+             */
+            suffix: string;
+            /** Unit */
+            unit: string | null;
+        };
+        /**
          * QuickEntryVehicle
          * @description Lightweight vehicle summary for the Quick Entry selector.
          */
         QuickEntryVehicle: {
+            /** Fuel Type */
+            fuel_type?: string | null;
+            /** Fuel Type Secondary */
+            fuel_type_secondary?: string | null;
             /** Make */
             make: string | null;
             /** Model */
@@ -12108,10 +13943,86 @@ export interface components {
             summary?: string | null;
         };
         /**
+         * ReconcileDuplicatesRequest
+         * @description Keep one reminder of a group and supersede the rest.
+         */
+        ReconcileDuplicatesRequest: {
+            /** Keep Id */
+            keep_id: number;
+            /** Supersede Ids */
+            supersede_ids: number[];
+        };
+        /**
+         * RecurrenceSpec
+         * @description The intervals of a rule. At least one; km and hours never together.
+         */
+        RecurrenceSpec: {
+            /** Interval Days */
+            interval_days?: number | null;
+            /** Interval Hours */
+            interval_hours?: number | string | null;
+            /** Interval Km */
+            interval_km?: number | string | null;
+            /** Interval Months */
+            interval_months?: number | null;
+        };
+        /**
+         * ReminderCompleteRequest
+         * @description Close a reminder with the real completion date and readings.
+         *
+         *     With `link_visit` the linked visit is the service record: its date,
+         *     odometer and engine hours are the completion, and `completed_date`,
+         *     `odometer_km` and `engine_hours` in the request are not used.
+         */
+        ReminderCompleteRequest: {
+            /**
+             * Completed Date
+             * Format: date
+             */
+            completed_date: string;
+            /** Cost */
+            cost?: number | string | null;
+            /** Engine Hours */
+            engine_hours?: number | string | null;
+            /**
+             * Mode
+             * @default create_visit
+             * @enum {string}
+             */
+            mode: "create_visit" | "link_visit" | "mark_only";
+            /** Notes */
+            notes?: string | null;
+            /** Odometer Km */
+            odometer_km?: number | string | null;
+            /** Service Visit Id */
+            service_visit_id?: number | null;
+            /** Vendor Id */
+            vendor_id?: number | null;
+        };
+        /**
+         * ReminderCompleteResponse
+         * @description What completing a reminder produced: the closed one, its successor,
+         *     and the service record it created or linked.
+         */
+        ReminderCompleteResponse: {
+            /** Line Item Id */
+            line_item_id?: number | null;
+            next_reminder?: components["schemas"]["ReminderResponse"] | null;
+            reminder: components["schemas"]["ReminderResponse"];
+            /** Service Visit Id */
+            service_visit_id?: number | null;
+        };
+        /**
          * ReminderCreate
          * @description Schema for creating a vehicle reminder.
+         *
+         *     With ``recurrence`` the server derives ``reminder_type`` and the ``due_*``
+         *     thresholds from the anchor (``anchor``, the linked line item's visit, or
+         *     a baseline) plus the intervals, and creates a maintenance rule. Without
+         *     it the reminder is a one-off and the ``due_*`` rules below apply.
          */
         ReminderCreate: {
+            anchor?: components["schemas"]["AnchorSpec"] | null;
             /** Due Date */
             due_date?: string | null;
             /** Due Hours */
@@ -12120,13 +14031,56 @@ export interface components {
             due_mileage_km?: number | string | null;
             /** Line Item Id */
             line_item_id?: number | null;
+            /** Maintenance Type */
+            maintenance_type?: string | null;
             /** Notes */
             notes?: string | null;
+            recurrence?: components["schemas"]["RecurrenceSpec"] | null;
+            /** Reminder Type */
+            reminder_type?: ("date" | "mileage" | "both" | "smart" | "hours") | null;
+            /** Title */
+            title: string;
+        };
+        /**
+         * ReminderPackDetail
+         * @description Full pack definition including reminder templates.
+         */
+        ReminderPackDetail: {
+            /** Description */
+            description: string;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Reminders */
+            reminders: components["schemas"]["ReminderPackItem"][];
             /**
-             * Reminder Type
-             * @enum {string}
+             * Vehicle Types
+             * @description Applicable vehicle types; empty means all types
              */
-            reminder_type: "date" | "mileage" | "both" | "smart" | "hours";
+            vehicle_types?: string[];
+        };
+        /**
+         * ReminderPackItem
+         * @description A single maintenance rule template inside a pack.
+         */
+        ReminderPackItem: {
+            /** Interval Days */
+            interval_days?: number | null;
+            /** Interval Hours */
+            interval_hours?: string | null;
+            /** Interval Km */
+            interval_km?: string | null;
+            /** Interval Months */
+            interval_months?: number | null;
+            /** Key */
+            key?: string | null;
+            /** Maintenance Type */
+            maintenance_type?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Reminder Type */
+            reminder_type?: string | null;
             /** Title */
             title: string;
         };
@@ -12135,10 +14089,22 @@ export interface components {
          * @description Pack metadata returned by list endpoint.
          */
         ReminderPackSummary: {
+            /**
+             * Can Edit
+             * @description This caller may rename, overwrite or delete it; always false for built-ins
+             * @default false
+             */
+            can_edit: boolean;
             /** Description */
             description: string;
             /** Id */
             id: string;
+            /**
+             * Is Custom
+             * @description Saved on this instance rather than shipped with the app
+             * @default false
+             */
+            is_custom: boolean;
             /** Name */
             name: string;
             /**
@@ -12157,6 +14123,24 @@ export interface components {
          * @description Schema for reminder response.
          */
         ReminderResponse: {
+            /** Anchor Date */
+            anchor_date?: string | null;
+            /** Anchor Hours */
+            anchor_hours?: string | null;
+            /** Anchor Kind */
+            anchor_kind?: string | null;
+            /** Anchor Odometer Km */
+            anchor_odometer_km?: string | null;
+            /** Completed At */
+            completed_at?: string | null;
+            /** Completed Date */
+            completed_date?: string | null;
+            /** Completed Hours */
+            completed_hours?: string | null;
+            /** Completed Line Item Id */
+            completed_line_item_id?: number | null;
+            /** Completed Odometer Km */
+            completed_odometer_km?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -12168,6 +14152,8 @@ export interface components {
             due_hours: string | null;
             /** Due Mileage Km */
             due_mileage_km: string | null;
+            /** Duplicate Of */
+            duplicate_of?: number[];
             /** Estimated Due Date */
             estimated_due_date?: string | null;
             /** Id */
@@ -12176,12 +14162,23 @@ export interface components {
             last_notified_at: string | null;
             /** Line Item Id */
             line_item_id: number | null;
+            /** Maintenance Type */
+            maintenance_type?: string | null;
             /** Notes */
             notes: string | null;
+            /** Projected Usage Date */
+            projected_usage_date?: string | null;
             /** Reminder Type */
             reminder_type: string;
+            rule?: components["schemas"]["MaintenanceRuleSummary"] | null;
+            /** Rule Id */
+            rule_id?: number | null;
+            /** Snoozed Until */
+            snoozed_until?: string | null;
             /** Status */
             status: string;
+            /** Superseded By Id */
+            superseded_by_id?: number | null;
             /** Title */
             title: string;
             /**
@@ -12193,12 +14190,32 @@ export interface components {
             vin: string;
         };
         /**
+         * ReminderSnoozeRequest
+         * @description Body of POST /{reminder_id}/snooze.
+         *
+         *     The range check (strictly after household "today", at most ten years
+         *     out) lives in the route: it needs ``household_today()``, which is
+         *     request-scoped state a schema validator cannot see.
+         */
+        ReminderSnoozeRequest: {
+            /**
+             * Until
+             * Format: date
+             */
+            until: string;
+        };
+        /**
          * ReminderUpdate
          * @description Schema for updating a vehicle reminder.
          *
-         *     Status is NOT here — use /done or /dismiss endpoints.
+         *     Status is NOT here — use /done, /dismiss or /complete endpoints.
          *     Validation is lenient (fields may be absent). The route handler merges
          *     this patch onto the existing reminder and validates the final state.
+         *
+         *     ``recurrence`` edits the reminder's rule (or creates one); an explicit
+         *     ``null`` deactivates the rule and leaves the reminder as a one-off. For a
+         *     reminder with an active rule the ``due_*`` fields are derived and
+         *     rejected with 422 if sent.
          */
         ReminderUpdate: {
             /** Due Date */
@@ -12207,12 +14224,61 @@ export interface components {
             due_hours?: number | string | null;
             /** Due Mileage Km */
             due_mileage_km?: number | string | null;
+            /** Maintenance Type */
+            maintenance_type?: string | null;
             /** Notes */
             notes?: string | null;
+            recurrence?: components["schemas"]["RecurrenceSpec"] | null;
             /** Reminder Type */
             reminder_type?: ("date" | "mileage" | "both" | "smart" | "hours") | null;
             /** Title */
             title?: string | null;
+        };
+        /**
+         * RenameReminderPackRequest
+         * @description Rename a saved pack.
+         *
+         *     Only the name. `pack_id` is deliberately immutable: rules record it in
+         *     `source_pack_id`, so changing it would orphan the link from a rule back to
+         *     the pack that made it.
+         */
+        RenameReminderPackRequest: {
+            /** Name */
+            name: string;
+        };
+        /**
+         * SaveReminderPackRequest
+         * @description Save (or overwrite) a pack from one vehicle's maintenance rules.
+         *
+         *     The rules named must be active and on `vin`, and each must be savable: the
+         *     service refuses a typeless rule and the second rule of a repeated type,
+         *     because the apply pipeline resolves an item to a rule by `maintenance_type`
+         *     and would silently retype or collapse them. That check needs the database,
+         *     so it lives in `reminder_pack_service`, not here.
+         */
+        SaveReminderPackRequest: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Name */
+            name: string;
+            /**
+             * Rule Ids
+             * @description Maintenance rules to include
+             */
+            rule_ids: number[];
+            /**
+             * Vehicle Types
+             * @description Applicable vehicle types; empty means all types
+             */
+            vehicle_types?: ("Car" | "Truck" | "SUV" | "Motorcycle" | "ATV" | "RV" | "Trailer" | "FifthWheel" | "TravelTrailer" | "Electric" | "Hybrid" | "Boat" | "UTV" | "Snowmobile" | "Bicycle" | "EBike")[];
+            /**
+             * Vin
+             * @description Vehicle to read the rules from
+             */
+            vin: string;
         };
         /**
          * SdConfigResponse
@@ -12395,6 +14461,11 @@ export interface components {
              */
             is_inspection: boolean;
             /**
+             * Maintenance Type
+             * @description Canonical maintenance type code; classified from the description when omitted
+             */
+            maintenance_type?: string | null;
+            /**
              * Notes
              * @description Additional notes
              */
@@ -12479,6 +14550,11 @@ export interface components {
              */
             is_inspection: boolean;
             /**
+             * Maintenance Type
+             * @description Canonical maintenance type code; classified from the description when omitted
+             */
+            maintenance_type?: string | null;
+            /**
              * Needs Followup
              * @description Whether this inspection needs followup
              * @default false
@@ -12527,6 +14603,8 @@ export interface components {
              * @default false
              */
             is_inspection: boolean;
+            /** Maintenance Type */
+            maintenance_type?: string | null;
             /** Notes */
             notes?: string | null;
             reminder?: components["schemas"]["ReminderCreate"] | null;
@@ -13751,16 +15829,24 @@ export interface components {
             tax_type?: ("Registration" | "Inspection" | "Property Tax" | "Tolls") | null;
         };
         /**
-         * TelegramUpdate
-         * @description Minimal Telegram Bot API Update subset.
+         * TelegramFuelStatus
+         * @description The Telegram fuel-command poller's state, for Settings > Notifications > Telegram.
          */
-        TelegramUpdate: {
-            /** Message */
-            message?: {
-                [key: string]: unknown;
-            } | null;
-            /** Update Id */
-            update_id?: number | null;
+        TelegramFuelStatus: {
+            /** Description */
+            description?: string | null;
+            /** Error Code */
+            error_code?: ("bot_token_rejected" | "conflict" | "rate_limited" | "unreachable" | "database_error" | "unexpected") | null;
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "off" | "starting" | "listening" | "error";
         };
         /**
          * TelemetryDataPoint
@@ -13781,6 +15867,11 @@ export interface components {
          */
         TelemetryLatestValue: {
             /**
+             * Alert Band
+             * @description Which alert line the value is past: below low, below critical (a tank's red line, under low), or above high. None inside its lines.
+             */
+            alert_band?: ("low" | "critical" | "high") | null;
+            /**
              * Display Name
              * @description User-friendly name
              */
@@ -13796,6 +15887,12 @@ export interface components {
              * @description Parameter key
              */
             param_key: string;
+            /**
+             * Show On Dashboard
+             * @description Whether the Live tab draws a gauge for this reading. Every value is still returned: the vehicle widget looks keys up by name and must not lose one because its gauge is hidden.
+             * @default true
+             */
+            show_on_dashboard: boolean;
             /**
              * Timestamp
              * Format: date-time
@@ -13921,6 +16018,8 @@ export interface components {
             pressure_kpa?: number | string | null;
             /** Size */
             size?: string | null;
+            /** Storage Location */
+            storage_location?: string | null;
             /** Tread Depth Mm */
             tread_depth_mm?: number | string | null;
             /** Vin */
@@ -13964,6 +16063,8 @@ export interface components {
             pressure_kpa?: number | string | null;
             /** Size */
             size?: string | null;
+            /** Storage Location */
+            storage_location?: string | null;
             /** Tread Depth Mm */
             tread_depth_mm?: number | string | null;
             /** Vin */
@@ -13980,6 +16081,8 @@ export interface components {
             dismounted_on?: string | null;
             /** Notes */
             notes?: string | null;
+            /** Storage Location */
+            storage_location?: string | null;
         };
         /**
          * TireListResponse
@@ -14161,6 +16264,8 @@ export interface components {
             distance_status?: string | null;
             /** Dot Code */
             dot_code?: string | null;
+            /** History Faults */
+            history_faults?: components["schemas"]["HistoryFaultResponse"][];
             /** Id */
             id: number;
             /** Installed Date */
@@ -14197,6 +16302,8 @@ export interface components {
             set_id?: number | null;
             /** Size */
             size?: string | null;
+            /** Storage Location */
+            storage_location?: string | null;
             /** Tread Depth Mm */
             tread_depth_mm?: string | null;
             /** Updated At */
@@ -14338,6 +16445,8 @@ export interface components {
             set_id?: number | null;
             /** Size */
             size?: string | null;
+            /** Storage Location */
+            storage_location?: string | null;
             /** Tread Depth Mm */
             tread_depth_mm?: number | string | null;
         };
@@ -14709,6 +16818,119 @@ export interface components {
              * @description Transaction date
              */
             transaction_date?: string | null;
+        };
+        /**
+         * TopicDiscoveryRequest
+         * @description Body for a discovery run.
+         */
+        TopicDiscoveryRequest: {
+            /** Prefix */
+            prefix: string;
+            /**
+             * Seconds
+             * @default 15
+             */
+            seconds: number;
+        };
+        /**
+         * TopicMapCreate
+         * @description Request body for POST.
+         */
+        TopicMapCreate: {
+            /** Device Id */
+            device_id: string;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Param Class */
+            param_class?: string | null;
+            /** Param Key */
+            param_key?: string | null;
+            /**
+             * Role
+             * @default telemetry
+             * @enum {string}
+             */
+            role: "telemetry" | "status";
+            /**
+             * Scale
+             * @default 1
+             */
+            scale: number | string;
+            /** Topic */
+            topic: string;
+            /** Unit */
+            unit?: string | null;
+            /**
+             * Value Offset
+             * @default 0
+             */
+            value_offset: number | string;
+            /** Value Path */
+            value_path?: string | null;
+        };
+        /**
+         * TopicMapResponse
+         * @description One stored row.
+         */
+        TopicMapResponse: {
+            /** Device Id */
+            device_id: string;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Id */
+            id: number;
+            /** Param Class */
+            param_class?: string | null;
+            /** Param Key */
+            param_key?: string | null;
+            /**
+             * Role
+             * @default telemetry
+             * @enum {string}
+             */
+            role: "telemetry" | "status";
+            /**
+             * Scale
+             * @default 1
+             */
+            scale: string;
+            /** Topic */
+            topic: string;
+            /** Unit */
+            unit?: string | null;
+            /**
+             * Value Offset
+             * @default 0
+             */
+            value_offset: string;
+            /** Value Path */
+            value_path?: string | null;
+        };
+        /**
+         * TopicMapUpdate
+         * @description Request body for PATCH. Every field optional.
+         */
+        TopicMapUpdate: {
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Param Class */
+            param_class?: string | null;
+            /** Param Key */
+            param_key?: string | null;
+            /** Scale */
+            scale?: number | string | null;
+            /** Unit */
+            unit?: string | null;
+            /** Value Offset */
+            value_offset?: number | string | null;
+            /** Value Path */
+            value_path?: string | null;
         };
         /**
          * TorqueSourceCreate
@@ -16003,6 +18225,11 @@ export interface components {
              */
             battery_voltage?: number | null;
             /**
+             * Capabilities
+             * @description Union of Capability values across every device linked to this VIN. The UI gates sub-tabs on these: a propane gateway declares telemetry alone and must not be offered DTCs, sessions or trips.
+             */
+            capabilities?: string[];
+            /**
              * Current Session Id
              * @description Active session ID
              */
@@ -16025,6 +18252,11 @@ export interface components {
              */
             ecu_status: string;
             /**
+             * Kind
+             * @description Source kind of the reporting device
+             */
+            kind?: string | null;
+            /**
              * Last Seen
              * @description Last data received
              */
@@ -16035,10 +18267,21 @@ export interface components {
              */
             latest_values?: components["schemas"]["TelemetryLatestValue"][];
             /**
+             * Online
+             * @description Whether the reporting device is reporting now, by the integrations card's rule: a source with no status topic (a Mopeka sensor) keeps device_status 'unknown' and counts as online while it has reported within the offline timeout. Read this, not device_status.
+             * @default false
+             */
+            online: boolean;
+            /**
              * Rssi
              * @description WiFi signal (dBm)
              */
             rssi?: number | null;
+            /**
+             * Sensors
+             * @description Preset sensors on this vehicle, in the order they were added. Their readings are in latest_values too; the Live tab draws them on the sensor's card instead of as separate gauges.
+             */
+            sensors?: components["schemas"]["LiveSensor"][];
             /**
              * Session Duration Seconds
              * @description Session duration so far
@@ -16421,6 +18664,8 @@ export interface components {
             average_cost_per_hr?: string | null;
             /** Average L Per 100Km */
             average_l_per_100km?: string | null;
+            /** Average L Per 100Km With Towing */
+            average_l_per_100km_with_towing?: string | null;
             /** Average L Per Hr */
             average_l_per_hr?: string | null;
             /** Current Hours */
@@ -16454,6 +18699,8 @@ export interface components {
             owner_relationship_custom?: string | null;
             /** Recent L Per 100Km */
             recent_l_per_100km?: string | null;
+            /** Recent L Per 100Km With Towing */
+            recent_l_per_100km_with_towing?: string | null;
             /**
              * Secondary Usage Enabled
              * @default false
@@ -17199,6 +19446,8 @@ export interface components {
             cost?: number | string | null;
             /** Date */
             date?: string | null;
+            /** Diesel Grade */
+            diesel_grade?: string | null;
             /** Fuel Type Used */
             fuel_type_used?: string | null;
             /**
@@ -17212,6 +19461,8 @@ export interface components {
             liters?: number | string | null;
             /** Notes */
             notes?: string | null;
+            /** Octane */
+            octane?: number | null;
             /** Odometer Km */
             odometer_km?: number | string | null;
             /** Price Basis */
@@ -20596,6 +22847,44 @@ export interface operations {
             };
         };
     };
+    parse_insurance_pdf_api_insurance_parse_pdf_post: {
+        parameters: {
+            query?: {
+                /** @description Optional provider hint (progressive, statefarm, geico, allstate) */
+                provider?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_parse_insurance_pdf_api_insurance_parse_pdf_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_insurance_parsers_api_insurance_parsers_get: {
         parameters: {
             query?: never;
@@ -20618,6 +22907,410 @@ export interface operations {
             };
         };
     };
+    list_policies_api_insurance_policies_get: {
+        parameters: {
+            query?: {
+                /** @description Only policies covering this vehicle */
+                vin?: string | null;
+                /** @description current = active + upcoming */
+                status?: "current" | "active" | "upcoming" | "expired" | "all";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InsurancePolicyResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_policy_api_insurance_policies_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InsurancePolicyCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InsurancePolicyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_policy_api_insurance_policies__policy_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policy_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InsurancePolicyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_policy_api_insurance_policies__policy_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policy_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InsurancePolicyUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InsurancePolicyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_policy_api_insurance_policies__policy_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policy_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    policy_history_api_insurance_policies__policy_id__history_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policy_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyHistoryEntry"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    renew_policy_api_insurance_policies__policy_id__renew_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policy_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InsurancePolicyRenew"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InsurancePolicyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replace_policy_api_insurance_policies__policy_id__replace_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policy_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InsurancePolicyReplace"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InsurancePolicyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    attach_vehicle_api_insurance_policies__policy_id__vehicles_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policy_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PolicyVehicleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InsurancePolicyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    detach_vehicle_api_insurance_policies__policy_id__vehicles__link_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policy_id: number;
+                link_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InsurancePolicyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_policy_vehicle_api_insurance_policies__policy_id__vehicles__link_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policy_id: number;
+                link_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PolicyVehicleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InsurancePolicyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_parse_insurance_pdf_api_insurance_test_parse_post: {
+        parameters: {
+            query?: {
+                /** @description Optional provider hint */
+                provider?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_test_parse_insurance_pdf_api_insurance_test_parse_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_devices_api_livelink_devices_get: {
         parameters: {
             query?: never;
@@ -20634,6 +23327,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LiveLinkDeviceListResponse"];
+                };
+            };
+        };
+    };
+    create_device_api_livelink_devices_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiveLinkDeviceManualCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveLinkDeviceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -20786,6 +23512,134 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeviceCommandResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    skip_firmware_version_api_livelink_devices__device_id__firmware_skip_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FirmwareSkipRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceFirmwareStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unskip_firmware_version_api_livelink_devices__device_id__firmware_skip_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceFirmwareStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_device_param_keys_api_livelink_devices__device_id__param_keys_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_device_readings_api_livelink_devices__device_id__readings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceReadingsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -21072,6 +23926,26 @@ export interface operations {
             };
         };
     };
+    list_integrations_api_livelink_integrations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationListResponse"];
+                };
+            };
+        };
+    };
     restart_mqtt_subscriber_api_livelink_mqtt_restart_post: {
         parameters: {
             query?: never;
@@ -21271,6 +24145,61 @@ export interface operations {
             };
         };
     };
+    list_presets_api_livelink_presets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresetInfo"][];
+                };
+            };
+        };
+    };
+    apply_preset_api_livelink_presets__name__apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PresetApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveLinkDeviceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_livelink_settings_api_livelink_settings_get: {
         parameters: {
             query?: never;
@@ -21324,6 +24253,28 @@ export interface operations {
             };
         };
     };
+    list_sources_api_livelink_sources_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
     regenerate_global_token_api_livelink_token_post: {
         parameters: {
             query?: never;
@@ -21344,6 +24295,189 @@ export interface operations {
             };
         };
     };
+    discover_topics_api_livelink_topic_discovery_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopicDiscoveryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_topic_maps_api_livelink_topic_maps_get: {
+        parameters: {
+            query?: {
+                device_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopicMapResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_topic_map_api_livelink_topic_maps_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopicMapCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopicMapResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_topic_map_api_livelink_topic_maps__map_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                map_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_topic_map_api_livelink_topic_maps__map_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                map_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopicMapUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopicMapResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_maintenance_types_api_maintenance_types_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaintenanceTypeResponse"][];
+                };
+            };
+        };
+    };
     notification_inbox_api_notifications_inbox_get: {
         parameters: {
             query?: never;
@@ -21360,6 +24494,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InboxResponse"];
+                };
+            };
+        };
+    };
+    get_telegram_fuel_status_api_notifications_telegram_fuel_commands_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramFuelStatus"];
                 };
             };
         };
@@ -21739,6 +24893,138 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReminderPackSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_reminder_pack_api_reminder_packs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveReminderPackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderPackDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    overwrite_reminder_pack_api_reminder_packs__pack_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pack_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveReminderPackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderPackDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_reminder_pack_api_reminder_packs__pack_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pack_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_reminder_pack_api_reminder_packs__pack_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pack_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameReminderPackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderPackDetail"];
                 };
             };
             /** @description Validation Error */
@@ -22956,41 +26242,6 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["WebhookCompleteReminderPayload"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    webhook_telegram_api_v1_webhooks_telegram_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TelegramUpdate"];
             };
         };
         responses: {
@@ -24440,7 +27691,7 @@ export interface operations {
             };
         };
     };
-    get_insurance_policies_api_vehicles__vin__insurance_get: {
+    list_vehicle_insurance_api_vehicles__vin__insurance_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -24457,221 +27708,8 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["InsurancePolicy"][];
+                    "application/json": components["schemas"]["InsurancePolicyResponse"][];
                 };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_insurance_policy_api_vehicles__vin__insurance_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                vin: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["InsurancePolicyCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["InsurancePolicy"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    parse_insurance_pdf_api_vehicles__vin__insurance_parse_pdf_post: {
-        parameters: {
-            query?: {
-                /** @description Optional provider hint (progressive, statefarm, geico, allstate) */
-                provider?: string | null;
-            };
-            header?: never;
-            path: {
-                vin: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": components["schemas"]["Body_parse_insurance_pdf_api_vehicles__vin__insurance_parse_pdf_post"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    test_parse_insurance_pdf_api_vehicles__vin__insurance_test_parse_post: {
-        parameters: {
-            query?: {
-                /** @description Optional provider hint */
-                provider?: string | null;
-            };
-            header?: never;
-            path: {
-                vin: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": components["schemas"]["Body_test_parse_insurance_pdf_api_vehicles__vin__insurance_test_parse_post"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_insurance_policy_api_vehicles__vin__insurance__policy_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                vin: string;
-                policy_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["InsurancePolicy"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_insurance_policy_api_vehicles__vin__insurance__policy_id__put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                vin: string;
-                policy_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["InsurancePolicyUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["InsurancePolicy"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_insurance_policy_api_vehicles__vin__insurance__policy_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                vin: string;
-                policy_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -24954,6 +27992,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LastLocationResponse"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_vehicle_parameters_api_vehicles__vin__livelink_parameters_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveLinkParameterListResponse"];
                 };
             };
             /** @description Validation Error */
@@ -25272,6 +28341,138 @@ export interface operations {
             };
         };
     };
+    list_rules_api_vehicles__vin__maintenance_rules_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaintenanceRuleResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_rule_api_vehicles__vin__maintenance_rules_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MaintenanceRuleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaintenanceRuleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_rule_api_vehicles__vin__maintenance_rules__rule_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+                rule_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MaintenanceRuleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaintenanceRuleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_rule_api_vehicles__vin__maintenance_rules__rule_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+                rule_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_notes_api_vehicles__vin__notes_get: {
         parameters: {
             query?: never;
@@ -25492,6 +28693,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OdometerRecordResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    nearest_odometer_record_api_vehicles__vin__odometer_nearest_get: {
+        parameters: {
+            query: {
+                date: string;
+            };
+            header?: never;
+            path: {
+                vin: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NearestOdometerResponse"];
                 };
             };
             /** @description Validation Error */
@@ -26133,6 +29367,138 @@ export interface operations {
             };
         };
     };
+    preview_reminder_pack_api_vehicles__vin__reminders_apply_pack_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyReminderPackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplyPackPreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_duplicates_api_vehicles__vin__reminders_duplicates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DuplicateGroup"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reconcile_reminders_api_vehicles__vin__reminders_reconcile_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reconcile_duplicates_api_vehicles__vin__reminders_reconcile_duplicates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReconcileDuplicatesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     update_reminder_api_vehicles__vin__reminders__reminder_id__put: {
         parameters: {
             query?: never;
@@ -26199,6 +29565,42 @@ export interface operations {
             };
         };
     };
+    complete_reminder_api_vehicles__vin__reminders__reminder_id__complete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+                reminder_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReminderCompleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderCompleteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     dismiss_api_vehicles__vin__reminders__reminder_id__dismiss_post: {
         parameters: {
             query?: never;
@@ -26232,6 +29634,74 @@ export interface operations {
         };
     };
     mark_done_api_vehicles__vin__reminders__reminder_id__done_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+                reminder_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    snooze_api_vehicles__vin__reminders__reminder_id__snooze_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+                reminder_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReminderSnoozeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unsnooze_api_vehicles__vin__reminders__reminder_id__unsnooze_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -27655,6 +31125,79 @@ export interface operations {
             };
         };
     };
+    create_mount_period_api_vehicles__vin__tires__tire_id__mount_periods_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+                tire_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MountPeriodCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TireResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_mount_period_api_vehicles__vin__tires__tire_id__mount_periods__period_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+                tire_id: number;
+                period_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MountPeriodUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TireResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     add_tire_reading_api_vehicles__vin__tires__tire_id__readings_post: {
         parameters: {
             query?: never;
@@ -27673,6 +31216,69 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TireResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_tire_reading_api_vehicles__vin__tires__tire_id__readings__reading_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+                tire_id: number;
+                reading_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_tire_api_vehicles__vin__tires__tire_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vin: string;
+                tire_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

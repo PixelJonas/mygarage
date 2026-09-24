@@ -1,6 +1,8 @@
-import { AtSign, Send, Info, ExternalLink } from 'lucide-react';
+import { AtSign, Send, Info, ExternalLink, Fuel } from 'lucide-react';
 import { useTranslation } from 'react-i18next'
 import { Toggle } from '@/components/ui'
+
+import { FuelCommandStatus } from './FuelCommandStatus'
 
 interface TelegramConfigProps {
   settings: Record<string, unknown>;
@@ -116,6 +118,31 @@ export function TelegramConfig({
             </div>
           </div>
         </div>
+
+        {/* The same bot, inbound. The server ignores it while Telegram is off. */}
+        <section aria-labelledby="telegram-fuel-heading" className="pt-4 border-t border-garage-border space-y-3">
+          <div>
+            <h3 id="telegram-fuel-heading" className="flex items-center gap-2 text-sm font-semibold text-garage-text">
+              <Fuel aria-hidden="true" className="w-4 h-4 text-primary" />
+              {t('telegram.fuel.title')}
+            </h3>
+            <p className="mt-1 text-sm text-garage-text-muted">{t('telegram.fuel.description')}</p>
+          </div>
+          <Toggle
+            label={t('telegram.fuel.enable')}
+            checked={settings.telegram_inbound_enabled === 'true'}
+            onChange={(next) => onSettingChange('telegram_inbound_enabled', next)}
+            disabled={saving || !isEnabled}
+          />
+          <FuelCommandStatus />
+          <div className="p-3 bg-garage-bg/50 border border-garage-border rounded-lg space-y-2 text-xs text-garage-text-muted">
+            <p>{t('telegram.fuel.commandHint')}</p>
+            <p className="font-mono">
+              fuel &lt;vin|nickname&gt; &lt;odo&gt;[km|mi] &lt;vol&gt;[L|gal|kWh] [price] [cost]
+            </p>
+            <p>{t('telegram.fuel.groupHint')}</p>
+          </div>
+        </section>
       </div>
     </div>
   );

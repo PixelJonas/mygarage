@@ -99,7 +99,6 @@
     "partialFilledAt": "Podaj datę i godzinę tankowania albo wyczyść oba pola."
   },
   "insurance": {
-    "coverageLimits": "Limity ochrony",
     "createTitle": "Dodaj ubezpieczenie",
     "deductible": "Udział własny",
     "editTitle": "Edytuj ubezpieczenie",
@@ -113,7 +112,6 @@
     "selectFrequency": "Wybierz częstotliwość"
   },
   "modal": {
-    "acceptTelemetry": "Akceptuj telemetrię",
     "activeUser": "Aktywny użytkownik",
     "addProvider": "Dodaj {{name}}",
     "addShare": "Udostępnij",
@@ -181,14 +179,12 @@
     "failedToGenerateDeviceToken": "Nie udało się wygenerować tokena urządzenia",
     "failedToGenerateToken": "Nie udało się wygenerować tokena",
     "failedToLoadFamilyData": "Nie udało się załadować danych rodziny",
-    "failedToLoadLiveLink": "Nie udało się załadować Live Link",
     "failedToLoadRecipients": "Nie udało się załadować odbiorców",
     "failedToLoadSharingData": "Nie udało się załadować danych udostępniania",
     "failedToReorder": "Nie udało się zmienić kolejności",
     "failedToRestartMqtt": "Nie udało się zrestartować MQTT",
     "failedToRevokeDeviceToken": "Nie udało się unieważnić tokena urządzenia",
     "failedToRevokeShare": "Nie udało się cofnąć udostępniania",
-    "failedToSaveMqtt": "Nie udało się zapisać ustawień MQTT",
     "failedToSaveSettings": "Nie udało się zapisać ustawień",
     "failedToSendCommand": "Nie udało się wysłaować polecenia",
     "failedToShareVehicle": "Nie udało się udostępnić pojazdu",
@@ -214,18 +210,14 @@
     "ingestionUrl": "Adres URL wprowadzania danych",
     "lastActiveAdminWarning": "Ostrzeżenie o ostatnim aktywnym administratorze",
     "leaveBlankToKeep": "Pozostaw puste, aby zachować",
-    "liveLinkDescription": "Opis Live Link",
-    "liveLinkSettings": "Ustawienia Live Link",
     "localAuth": {
       "title": "Uwierzytelnianie lokalne"
     },
     "managedByOidc": "Zarządzane przez OIDC",
     "memberDataUnavailable": "Dane członka niedostępne",
     "members": "Członkowie",
-    "mqttDescription": "Opis MQTT",
     "mqttRestarted": "MQTT zrestartowane",
     "mqttSettingsSaved": "Ustawienia MQTT zapisane",
-    "mqttSubscription": "Subskrypcja MQTT",
     "multiUserMode": "Tryb dla wielu użytkowników",
     "newOwner": "Nowy właściciel",
     "newTokenGenerated": "Wygenerowano nowy token",
@@ -274,7 +266,6 @@
     "shownOnDashboardMsg": "{{name}} wyświetlany na panelu sterowania",
     "test": "Test",
     "testing": "Testowanie...",
-    "topicPrefix": "Prefiks tematu",
     "torque": {
       "title": "Torque Pro Sources",
       "description": "Manage Torque Pro upload sources for this vehicle. Each source gets its own upload URL and token.",

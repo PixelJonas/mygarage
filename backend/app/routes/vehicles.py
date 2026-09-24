@@ -38,10 +38,11 @@ from app.services.auth import (
 from app.services.fuel_service import calculate_average_hours_economy
 from app.services.hours_service import latest_engine_hours_and_date
 from app.services.odometer_service import latest_odometer_km_and_date
-from app.services.reminder_service import is_reminder_overdue
+from app.services.reminder_service import is_reminder_overdue, is_reminder_snoozed
 from app.services.service_visit_service import service_visit_cost_load_options
 from app.services.vehicle_service import VehicleService
 from app.utils.datetime_utils import utc_now
+from app.utils.household_time import household_today
 from app.utils.logging_utils import sanitize_for_log
 
 logger = logging.getLogger(__name__)
@@ -136,7 +137,7 @@ async def _vehicle_detail_stats(db: AsyncSession, vin: str) -> VehicleDetailStat
     float. latest_odometer_km stays raw canonical km (converted at the API
     boundary on the client).
     """
-    today = date.today()
+    today = household_today()
     year = today.year
     year_start = date(year, 1, 1)
 
@@ -158,11 +159,12 @@ async def _vehicle_detail_stats(db: AsyncSession, vin: str) -> VehicleDetailStat
     latest_hours, _latest_hours_date = await latest_engine_hours_and_date(db, vin)
     average_l_per_hr, average_cost_per_hr = await calculate_average_hours_economy(db, vin)
 
-    # Latest odometer reading (km) + its date — ONE deterministic fetch via the
-    # SHARED helper (date DESC, id DESC), the SAME selection the dashboard's
-    # calculate_vehicle_stats now uses (R2-B1/B2), so the two routes agree on a
-    # same-date-reading vehicle. The model has no VIN/date uniqueness
-    # (app/models/odometer.py:21), hence the id.desc() tie-break inside the helper.
+    # Latest odometer reading (km) + its date: ONE deterministic fetch via the
+    # SHARED helper (date DESC, odometer_km DESC, id DESC: the highest reading on
+    # the latest date), the SAME selection the dashboard's calculate_vehicle_stats
+    # uses (R2-B1/B2), so the two routes agree on a same-date-reading vehicle. The
+    # model has no VIN/date uniqueness (app/models/odometer.py:21), hence the
+    # odometer and id ordering inside the helper.
     # current_odometer_km for the mileage-reminder evaluation is derived from THIS
     # SAME returned row (reused, not a second query) so the displayed reading and
     # the mileage-eval reading can never disagree.
@@ -201,6 +203,9 @@ async def _vehicle_detail_stats(db: AsyncSession, vin: str) -> VehicleDetailStat
     overdue_count = 0
     upcoming_count = 0
     for reminder in pending:
+        if is_reminder_snoozed(reminder, today):
+            # Out of BOTH counts while snoozed (plan 2026-09-18, decision 4).
+            continue
         if is_reminder_overdue(reminder, current_odometer_km, latest_hours, today):
             overdue_count += 1
         else:

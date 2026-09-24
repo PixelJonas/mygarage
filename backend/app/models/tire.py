@@ -60,8 +60,8 @@ class TireMountPeriod(Base):
     in the design (D4): the "one open period per corner per vehicle" rule
     cannot be written as a database constraint here, because the constraint
     would need a `vin` this table does not have. It is enforced in the service
-    under the parent-tire row lock, and it has its own test, because no index
-    will catch it.
+    under the vehicle write lock (`app.services.vehicle_lock`), and it has its
+    own race test, because no index will catch it.
     """
 
     __tablename__ = "tire_mount_periods"
@@ -152,6 +152,10 @@ class Tire(Base):
     # Wear-out threshold used for reminder hooks (default 2.0 mm / ~2/32").
     min_tread_mm: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), default=Decimal("2.0"))
     notes: Mapped[str | None] = mapped_column(Text)
+    # Where the tire is kept while it is off the vehicle (#153, IanVinkHub).
+    # Free text; never cleared by a mount, because it is where the tire goes
+    # back to. Migration 100.
+    storage_location: Mapped[str | None] = mapped_column(String(120))
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()

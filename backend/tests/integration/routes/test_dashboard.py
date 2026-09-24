@@ -850,3 +850,149 @@ class TestDashboardRoutes:
         # If scope leaked, the day+1 out-of-scope reminder (earlier) would win.
         assert next_due["vin"] == owned_vin
         assert next_due["label"] == "Mine due later"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+class TestHomePageFuelEconomyAndTowing:
+    """Issue #181: the home page quoted a towing-inclusive figure, unlabelled.
+
+    `calculate_average_l_per_100km` defaults to `exclude_hauling=True` and the
+    vehicle's own Fuel tab follows it, but `compute_full_tank_economy` defaults
+    the other way and this route passed no argument. So a vehicle that tows read
+    worse on the home page than on its own page, with nothing saying why.
+
+    The reporter asked for the non-towing figure as the headline and a smaller
+    towing-inclusive one beside it, shown only when the vehicle actually tows.
+    """
+
+    async def _tow_fleet(self, db_session: AsyncSession) -> tuple[str, dict[str, str]]:
+        vin, headers = await _isolated_fleet(db_session)
+        today = date.today()
+        # Endpoints tile the odometer axis. The first yields no figure (nothing
+        # before it); the second is a clean 500 km on 40 L; the third is a
+        # hauling tank, 500 km on 80 L.
+        #
+        #   excluding towing -> [8.00]         -> average 8.00
+        #   including towing -> [8.00, 16.00]  -> average 12.00
+        #
+        # Two figures that cannot be confused for each other, which is the point:
+        # an assertion that happens to hold under both settings proves nothing.
+        db_session.add_all(
+            [
+                FuelRecord(
+                    vin=vin,
+                    date=today - timedelta(days=20),
+                    odometer_km=Decimal("1000"),
+                    liters=Decimal("40"),
+                    is_full_tank=True,
+                    is_hauling=False,
+                ),
+                FuelRecord(
+                    vin=vin,
+                    date=today - timedelta(days=10),
+                    odometer_km=Decimal("1500"),
+                    liters=Decimal("40"),
+                    is_full_tank=True,
+                    is_hauling=False,
+                ),
+                FuelRecord(
+                    vin=vin,
+                    date=today,
+                    odometer_km=Decimal("2000"),
+                    liters=Decimal("80"),
+                    is_full_tank=True,
+                    is_hauling=True,
+                ),
+            ]
+        )
+        await db_session.commit()
+        return vin, headers
+
+    async def _stats(self, client: AsyncClient, headers: dict[str, str], vin: str) -> dict:
+        response = await client.get("/api/dashboard", headers=headers)
+        assert response.status_code == 200, response.text
+        vehicles = [v for v in response.json()["vehicles"] if v["vin"] == vin]
+        assert len(vehicles) == 1, "the isolated fleet should hold exactly this vehicle"
+        return vehicles[0]
+
+    async def test_the_headline_figure_excludes_towing(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        vin, headers = await self._tow_fleet(db_session)
+        stats = await self._stats(client, headers, vin)
+        assert Decimal(str(stats["average_l_per_100km"])) == Decimal("8.00")
+
+    async def test_the_towing_inclusive_figure_is_reported_separately(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        vin, headers = await self._tow_fleet(db_session)
+        stats = await self._stats(client, headers, vin)
+        assert Decimal(str(stats["average_l_per_100km_with_towing"])) == Decimal("12.00")
+
+    async def test_a_vehicle_that_never_tows_reports_one_figure_twice_over(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        """With no hauling fill-up the two passes agree, and the frontend uses
+        that equality to decide there is nothing extra to show."""
+        vin, headers = await _isolated_fleet(db_session)
+        today = date.today()
+        db_session.add_all(
+            [
+                FuelRecord(
+                    vin=vin,
+                    date=today - timedelta(days=10),
+                    odometer_km=Decimal("1000"),
+                    liters=Decimal("40"),
+                    is_full_tank=True,
+                    is_hauling=False,
+                ),
+                FuelRecord(
+                    vin=vin,
+                    date=today,
+                    odometer_km=Decimal("1500"),
+                    liters=Decimal("40"),
+                    is_full_tank=True,
+                    is_hauling=False,
+                ),
+            ]
+        )
+        await db_session.commit()
+
+        stats = await self._stats(client, headers, vin)
+        assert Decimal(str(stats["average_l_per_100km"])) == Decimal("8.00")
+        assert stats["average_l_per_100km_with_towing"] == stats["average_l_per_100km"]
+
+    async def test_a_vehicle_that_only_ever_tows_still_reports_a_figure(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        """Every fill-up hauling means there is no non-towing figure to headline.
+        Reporting nothing would hide a number the vehicle genuinely has, so the
+        towing-inclusive figure stands alone and the frontend labels it."""
+        vin, headers = await _isolated_fleet(db_session)
+        today = date.today()
+        db_session.add_all(
+            [
+                FuelRecord(
+                    vin=vin,
+                    date=today - timedelta(days=10),
+                    odometer_km=Decimal("1000"),
+                    liters=Decimal("50"),
+                    is_full_tank=True,
+                    is_hauling=True,
+                ),
+                FuelRecord(
+                    vin=vin,
+                    date=today,
+                    odometer_km=Decimal("1500"),
+                    liters=Decimal("50"),
+                    is_full_tank=True,
+                    is_hauling=True,
+                ),
+            ]
+        )
+        await db_session.commit()
+
+        stats = await self._stats(client, headers, vin)
+        assert stats["average_l_per_100km"] is None
+        assert Decimal(str(stats["average_l_per_100km_with_towing"])) == Decimal("10.00")

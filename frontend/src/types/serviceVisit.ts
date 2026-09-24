@@ -41,6 +41,8 @@ export interface ServiceVisitFormLineItem {
   tempId?: number
   description: string
   category: ServiceCategory | ''
+  /** Canonical maintenance type code; blank lets the backend classify. */
+  maintenance_type?: string | null
   cost: number | undefined
   notes: string
   is_inspection: boolean

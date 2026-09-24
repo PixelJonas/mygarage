@@ -5,6 +5,8 @@ import logging
 from abc import ABC, abstractmethod
 from types import TracebackType
 
+from app.utils.http_errors import describe_http_error
+
 logger = logging.getLogger(__name__)
 
 
@@ -42,7 +44,11 @@ class NotificationService(ABC):
                     return True
             except Exception as e:
                 logger.warning(
-                    f"[{self.service_name}] Attempt {attempt + 1}/{max_attempts} failed: {e}"
+                    "[%s] Attempt %d/%d failed: %s",
+                    self.service_name,
+                    attempt + 1,
+                    max_attempts,
+                    describe_http_error(e),
                 )
 
             if attempt < max_attempts - 1:

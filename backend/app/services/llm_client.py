@@ -25,10 +25,6 @@ async def setting(db: AsyncSession, key: str, default: str = "") -> str:
     return (row.value if row and row.value is not None else default) or default
 
 
-async def setting_enabled(db: AsyncSession, key: str) -> bool:
-    return (await setting(db, key, "false")).lower() in ("true", "1", "yes")
-
-
 def extract_json_object(text: str) -> dict[str, Any]:
     """Parse a JSON object from an LLM response, tolerating surrounding prose."""
     text = text.strip()

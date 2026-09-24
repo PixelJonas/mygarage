@@ -83,7 +83,7 @@ beforeEach(() => {
 
 describe('an entered volume, through the adapter and the wire precision', () => {
   it('converts on the resolved volume token, not the instance gallon standard', () => {
-    // 10 x 3.78541 = 37.8541 -> 37.854 at the API contract's 3 decimal places.
+    // 10 x 3.785411784 = 37.85411784 -> 37.854 at the API contract's 3 decimal places.
     expect(enteredVolume(10, US)).toBe(37.854)
     // 10 x 4.54609 = 45.4609 -> 45.461. The instance standard is `us`, so a
     // path reading the global would answer 37.854 here.
@@ -109,9 +109,9 @@ describe('an entered volume, through the adapter and the wire precision', () => 
 
   it('★ applies the wire precision to a value the adapter left at twelve digits', () => {
     // The half `toLitersWirePrecision` owns, isolated. 12.345 US gal is
-    // 46.73088645 L, which the adapter answers unrounded and pydantic rejects.
+    // 46.7309084735 L, which the adapter answers unrounded and pydantic rejects.
     const u = makeUnitFormat(US)
-    expect(u.volume.toCanonical(12.345)).toBe(46.73088645)
+    expect(u.volume.toCanonical(12.345)).toBe(46.7309084735)
     expect(toLitersWirePrecision(u.volume.toCanonical(12.345))).toBe(46.731)
     expect(toLitersWirePrecision(null)).toBeNull()
     expect(toLitersWirePrecision(NaN)).toBeNull()
@@ -133,7 +133,7 @@ describe('an entered volume, through the adapter and the wire precision', () => 
 describe('price display and entry — per_volume', () => {
   it('scales the canonical $/L by the resolved set\'s litres-per-unit', () => {
     // Real bug repro: stored $1.136/L reads $4.30/gal on US gallons and
-    // $5.16/gal on imperial ones. 1.136 x 3.78541 = 4.30022576 -> 4.300;
+    // $5.16/gal on imperial ones. 1.136 x 3.785411784 = 4.300227787 -> 4.300;
     // 1.136 x 4.54609 = 5.16435824 -> 5.164.
     expect(priceToDisplay(1.136, US, 'per_volume')).toBe(4.3)
     expect(priceToDisplay(1.136, UK, 'per_volume')).toBe(5.164)
@@ -144,9 +144,9 @@ describe('price display and entry — per_volume', () => {
 
   it('divides an entered price by the resolved set\'s litres-per-unit', () => {
     // 6.00/gal is 6 / 4.54609 = 1.31981548979 $/L for an imperial gallon and
-    // 6 / 3.78541 = 1.58503306115 for a US one. The 20.1 percent that L1 was.
+    // 6 / 3.785411784 = 1.58503231415 for a US one. The 20.1 percent that L1 was.
     expect(enteredPrice(6, UK, 'per_volume')).toBe(1.31981548979)
-    expect(enteredPrice(6, US, 'per_volume')).toBe(1.58503306115)
+    expect(enteredPrice(6, US, 'per_volume')).toBe(1.58503231415)
     expect(enteredPrice(1.136, METRIC, 'per_volume')).toBe(1.136)
   })
 
@@ -165,9 +165,9 @@ describe('price display and entry — per_volume', () => {
 
 describe('price display and entry — per_weight', () => {
   it('scales by the resolved MASS token, independently of the volume one', () => {
-    // $2.2046/kg is about $1.00/lb; $1.00/lb is 1 / 0.453592 = 2.20462442018.
+    // $2.2046/kg is about $1.00/lb; $1.00/lb is 1 / 0.45359237 = 2.20462262185.
     expect(priceToDisplay(2.2046, UK, 'per_weight')).toBe(1)
-    expect(enteredPrice(1, UK, 'per_weight')).toBe(2.20462442018)
+    expect(enteredPrice(1, UK, 'per_weight')).toBe(2.20462262185)
     // A kilogram user's price is already canonical, even though the same set
     // names a gallon for volume.
     const kgWithGallons = makeUnitSet({ volume: 'gal_uk', mass: 'kg' })
@@ -261,8 +261,8 @@ describe('seedPriceField / canonicalFromPriceField — the origin', () => {
     // price as a pound price.
     const origin = seedPriceField(1.136, US, 'per_volume')
     expect(origin.display).toBe('4.3')
-    // 4.3 / 0.453592 = 9.47988500679 $/kg
-    expect(canonicalFromPriceField('4.3', origin, US, 'per_weight')).toBe(9.47988500679)
+    // 4.3 / 0.45359237 = 9.47987727395 $/kg
+    expect(canonicalFromPriceField('4.3', origin, US, 'per_weight')).toBe(9.47987727395)
     expect(canonicalFromPriceField('4.3', origin, US, 'per_weight')).not.toBe(1.136)
   })
 
@@ -274,8 +274,8 @@ describe('seedPriceField / canonicalFromPriceField — the origin', () => {
     // as a per-litre price.
     const origin = seedPriceField(2.899, US, 'per_tank')
     expect(origin.display).toBe('2.899')
-    // 2.899 / 3.78541 = 0.765835140711 $/L
-    expect(canonicalFromPriceField('2.899', origin, US, 'per_volume')).toBe(0.765835140711)
+    // 2.899 / 3.785411784 = 0.765834779786 $/L
+    expect(canonicalFromPriceField('2.899', origin, US, 'per_volume')).toBe(0.765834779786)
   })
 
   it('holds an unchanged basis and an unchanged number together', () => {

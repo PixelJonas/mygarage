@@ -191,6 +191,11 @@ class FirmwareService:
                         "release_url": cache_info.get("release_url"),
                         "sta_ip": device.sta_ip,
                         "firmware_track": track,
+                        # Notification state for the daily job's notify-once /
+                        # skip filtering; this method stays the pure "what
+                        # needs an update" answer.
+                        "notified_version": device.firmware_notified_version,
+                        "skipped_version": device.firmware_skipped_version,
                     }
                 )
         return out
@@ -294,6 +299,7 @@ class FirmwareService:
             "current_version": device.fw_version,
             "current_tag": device.git_version,
             "firmware_track": track,
+            "skipped_version": device.firmware_skipped_version,
         }
 
         # Unknown hardware → no comparison, no update surfaced.

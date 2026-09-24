@@ -140,8 +140,9 @@ def main(base: str) -> int:
                 fails += 1
 
         banner("Imperial display conversion sanity check (frontend math)")
-        gal = float(got["liters"]) / 3.78541
-        usd_per_gal = float(got["price_per_unit"]) * 3.78541
+        us_gallon_l = 3.785411784  # exact by definition
+        gal = float(got["liters"]) / us_gallon_l
+        usd_per_gal = float(got["price_per_unit"]) * us_gallon_l
         derived_cost = gal * usd_per_gal
         print(f"  liters {got['liters']} L -> {gal:.3f} gal")
         print(f"  price {got['price_per_unit']} $/L -> ${usd_per_gal:.3f}/gal")

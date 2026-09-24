@@ -8,15 +8,13 @@
  * card quietly disappears behind a mis-paired `</div>`.
  *
  * So this asserts the inventory (every section is present, and the two that
- * carry an About sidecar still offer it), plus the provider table's state
- * column, which is a real accessibility fix rather than a cosmetic one: it
- * rendered a bare lucide Check / X with no accessible name, so a screen reader
- * announced an empty cell for every provider.
+ * carry an About sidecar still offer it). The Shop Finder provider table moved
+ * to Find POI's own sidecar (`components/poi/PoiProvidersDrawer`), tested there.
  */
 
 import { useEffect } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { SettingsProvider, useSettings } from '@/contexts/SettingsContext'
 
 vi.mock('@/services/api', () => ({
@@ -53,7 +51,45 @@ vi.mock('@/services/livelinkService', () => ({
 vi.mock('../../settings/WidgetKeysPanel', () => ({ default: () => <div data-testid="widget-keys" /> }))
 vi.mock('../../modals/AddProviderModal', () => ({ default: () => null }))
 vi.mock('../../modals/EditProviderModal', () => ({ default: () => null }))
-vi.mock('../../modals/LiveLinkSettingsModal', () => ({ default: () => null }))
+// Fetches on its own and has its own suite. Exposes refreshKey and the
+// settings callback so this suite can test the wiring between the two.
+vi.mock('../../livelink/LiveLinkIntegrationsCard', () => ({
+  default: ({
+    refreshKey,
+    onOpenSettings,
+    onAddSource,
+  }: {
+    refreshKey?: number
+    onOpenSettings: (tab: { id: string }) => void
+    onAddSource?: () => void
+  }) => (
+    <div data-testid="livelink-integrations" data-refresh={refreshKey}>
+      <button onClick={() => onOpenSettings({ id: 'wican' })}>open-source-settings</button>
+      {onAddSource ? <button onClick={onAddSource}>open-add-source</button> : null}
+    </div>
+  ),
+}))
+// The settings drawers have their own suites. The stub exposes which target
+// is open and a way to close it, so this suite can test the wiring.
+vi.mock('../../livelink/settings/LiveLinkSettingsDrawers', () => ({
+  default: ({
+    target,
+    onClose,
+  }: {
+    target: { type: string; tab?: { id: string } } | null
+    onClose: () => void
+  }) =>
+    target ? (
+      <div data-testid="settings-drawer" data-target={target.type} data-tab={target.tab?.id}>
+        <button onClick={onClose}>close-settings-drawer</button>
+      </div>
+    ) : null,
+}))
+// Fetches presets and vehicles on its own; has its own suite.
+vi.mock('../../livelink/AddSourceDrawer', () => ({
+  default: ({ open, onCreated }: { open: boolean; onCreated: () => void }) =>
+    open ? <button onClick={onCreated}>source-created</button> : null,
+}))
 
 import api from '@/services/api'
 import SettingsIntegrationsTab from '../SettingsIntegrationsTab'
@@ -115,12 +151,10 @@ describe('SettingsIntegrationsTab', () => {
     // specific name says which.
     for (const key of [
       'integrations.webhooks',
-      'integrations.telegramInbound',
       'integrations.llmSection',
       'integrations.nhtsa',
       'integrations.carComplaints',
       'integrations.livelink',
-      'integrations.shopFinder',
     ]) {
       expect(await screen.findByText(key), key).toBeInTheDocument()
     }
@@ -140,16 +174,100 @@ describe('SettingsIntegrationsTab', () => {
     ).toBeInTheDocument()
   })
 
-  it('names the enabled state of each provider in text, not only as an icon', async () => {
+  it('leaves the search providers to Find POI', async () => {
+    renderTab()
+    await screen.findByText('integrations.livelink')
+
+    expect(screen.queryByText('integrations.shopFinderDesc')).not.toBeInTheDocument()
+    expect(screen.queryByText('TomTom Places API')).not.toBeInTheDocument()
+    expect(mockedApi.get).not.toHaveBeenCalledWith('/settings/poi-providers')
+  })
+
+  it('leaves Telegram fuel commands to Settings > Notifications > Telegram', async () => {
+    // Two tabs saving one key would each write back whatever they loaded.
+    renderTab()
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'integrations.enableCarComplaints' }))
+
+    await waitFor(() => expect(mockedApi.post).toHaveBeenCalled(), { timeout: 3000 })
+    const [url, body] = mockedApi.post.mock.calls.at(-1) as [string, { settings: Record<string, string> }]
+    expect(url).toBe('/settings/batch')
+    expect(body.settings).toHaveProperty('webhook_ingest_token')
+    expect(body.settings).not.toHaveProperty('telegram_inbound_enabled')
+  })
+
+  it('describes LiveLink by its sources, not by one vendor', async () => {
+    // A new key rather than a rewrite of livelinkDesc: six locales translate
+    // the old WiCAN-specific text, and rewriting its English value would leave
+    // every one of them silently stale.
     renderTab()
 
-    await waitFor(() => {
-      expect(screen.getByText('TomTom Places API')).toBeInTheDocument()
-    })
+    expect(await screen.findByText('integrations.livelinkSourcesDesc')).toBeInTheDocument()
+    expect(screen.queryByText('integrations.livelinkDesc')).not.toBeInTheDocument()
+  })
 
-    // Both rows must carry a readable state. The retired Check / X icons had no
-    // accessible name, so this assertion is false against that version.
-    expect(screen.getByText('integrations.statusActive')).toBeInTheDocument()
-    expect(screen.getByText('integrations.statusInactive')).toBeInTheDocument()
+  it('mounts the integrations strip inside the LiveLink card', async () => {
+    renderTab()
+
+    expect(await screen.findByTestId('livelink-integrations')).toBeInTheDocument()
+    // The old body's Configure button is gone; the strip's per-source
+    // Settings button replaces it.
+    expect(screen.queryByText('integrations.configureLiveLink')).not.toBeInTheDocument()
+  })
+
+  it("opens a tab's own settings drawer from its Settings button", async () => {
+    // Each source's settings, and nothing else: there is no all-in-one modal.
+    renderTab()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'open-source-settings' }))
+
+    const drawer = await screen.findByTestId('settings-drawer')
+    expect(drawer).toHaveAttribute('data-target', 'tab')
+    expect(drawer).toHaveAttribute('data-tab', 'wican')
+  })
+
+  it('opens the Add-source drawer from the strip', async () => {
+    renderTab()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'open-add-source' }))
+
+    expect(await screen.findByRole('button', { name: 'source-created' })).toBeInTheDocument()
+  })
+
+  it('a created source refreshes the strip', async () => {
+    // So the new tab appears without a reload.
+    renderTab()
+
+    const strip = await screen.findByTestId('livelink-integrations')
+    const before = Number(strip.dataset.refresh)
+
+    fireEvent.click(screen.getByRole('button', { name: 'open-add-source' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'source-created' }))
+
+    await waitFor(() =>
+      expect(Number(screen.getByTestId('livelink-integrations').dataset.refresh)).toBe(before + 1),
+    )
+  })
+
+  it('opens the global LiveLink settings from the gear', async () => {
+    // Retention, alerts and the master switch belong to no single source.
+    renderTab()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'integrations.livelinkGeneral' }))
+
+    expect(await screen.findByTestId('settings-drawer')).toHaveAttribute('data-target', 'general')
+  })
+
+  it('refetches the strip when a settings drawer closes', async () => {
+    renderTab()
+
+    const strip = await screen.findByTestId('livelink-integrations')
+    const before = Number(strip.dataset.refresh)
+    fireEvent.click(screen.getByRole('button', { name: 'integrations.livelinkGeneral' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'close-settings-drawer' }))
+
+    await waitFor(() =>
+      expect(Number(screen.getByTestId('livelink-integrations').dataset.refresh)).toBe(before + 1),
+    )
+    expect(screen.queryByTestId('settings-drawer')).not.toBeInTheDocument()
   })
 })

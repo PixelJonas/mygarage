@@ -12,6 +12,7 @@ from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import unquote, urlparse
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +21,7 @@ from app.utils.default_unit_prefs import (
     DEFAULT_UNIT_PREFS_KEY,
     validate_default_unit_prefs_value,
 )
+from app.utils.household_time import EFFECTIVE_TIMEZONE_KEY, TIMEZONE_SETTING_KEY
 from app.utils.logging_utils import sanitize_for_log
 
 logger = logging.getLogger(__name__)
@@ -450,6 +452,23 @@ class BackupService:
                 # coming back; the row reseeds from
                 # `default_unit_prefs_for_instance` on the next boot if it is
                 # missing, and keeps its current value if it is not.
+                if key == EFFECTIVE_TIMEZONE_KEY:
+                    logger.warning(
+                        "Skipping %s during restore: computed, never stored",
+                        sanitize_for_log(key),
+                    )
+                    continue
+
+                if key == TIMEZONE_SETTING_KEY and value:
+                    try:
+                        ZoneInfo(value)
+                    except Exception:
+                        logger.warning(
+                            "Skipping %s during restore: not a valid IANA time zone",
+                            sanitize_for_log(key),
+                        )
+                        continue
+
                 if key == DEFAULT_UNIT_PREFS_KEY:
                     try:
                         validate_default_unit_prefs_value(value)

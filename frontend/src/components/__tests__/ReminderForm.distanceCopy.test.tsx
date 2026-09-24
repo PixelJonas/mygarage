@@ -160,7 +160,9 @@ const DISTANCE_UNIT_NAMES: Record<string, RegExp> = {
 function missingIntervalKey(): string {
   const source = readFileSync(resolve(__dirname, '../ReminderForm.tsx'), 'utf-8')
   const matches = [
-    ...source.matchAll(/!mileageInterval\)\s*\{\s*setError\(t\('([^']+)'\)\)/g),
+    // The guard may carry further conditions (`&& !mileageUntouched`), which
+    // decide WHEN the message shows, not WHICH message it is.
+    ...source.matchAll(/!mileageInterval(?:\s*&&\s*![A-Za-z]+)*\)\s*\{\s*setError\(t\('([^']+)'\)\)/g),
   ]
   if (matches.length !== 1) {
     throw new Error(

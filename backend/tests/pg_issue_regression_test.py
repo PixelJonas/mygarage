@@ -48,7 +48,9 @@ async def pg_engine():
 @pytest_asyncio.fixture(loop_scope="session")
 async def pg_session(pg_engine):
     """Fresh session per test with suppressed teardown errors."""
-    factory = async_sessionmaker(pg_engine, class_=AsyncSession, expire_on_commit=False)
+    factory = async_sessionmaker(
+        pg_engine, class_=AsyncSession, expire_on_commit=False, autoflush=False
+    )
     async with factory() as session:
         yield session
         try:

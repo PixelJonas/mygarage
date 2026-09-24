@@ -5,6 +5,7 @@ import logging
 import httpx
 
 from app.services.notifications.base import NotificationService
+from app.utils.http_errors import describe_http_error
 
 logger = logging.getLogger(__name__)
 
@@ -69,10 +70,10 @@ class GotifyNotificationService(NotificationService):
             return True
 
         except httpx.HTTPStatusError as e:
-            logger.error("[gotify] HTTP error: %s", e)
+            logger.error("[gotify] HTTP error: %s", describe_http_error(e))
             return False
         except (httpx.ConnectError, httpx.TimeoutException) as e:
-            logger.error("[gotify] Connection error: %s", e)
+            logger.error("[gotify] Connection error: %s", describe_http_error(e))
             return False
         except (ValueError, KeyError) as e:
             logger.error("[gotify] Invalid data: %s", e)
@@ -91,4 +92,4 @@ class GotifyNotificationService(NotificationService):
             return False, "Failed to send test notification"
 
         except Exception as e:
-            return False, f"Connection test failed: {str(e)}"
+            return False, f"Connection test failed: {describe_http_error(e)}"

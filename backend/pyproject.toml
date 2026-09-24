@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mygarage"
-version = "3.3.1"
+version = "3.6.0"
 description = "Self-hosted vehicle maintenance tracking application"
 requires-python = ">=3.14"
 dependencies = [
@@ -20,10 +20,13 @@ dependencies = [
     "httpx>=0.28.1",
     "python-dateutil>=2.9.0.post0",
     "apscheduler>=3.11.3",
+    "tzlocal>=5.3.1",  # direct: household timezone fallback (was transitive via apscheduler)
     "pillow>=12.3.0",
     "pillow-heif>=1.5.0",
     "reportlab>=5.0.0",
     "pandas>=3.0.5",
+    "numpy>=2.3.3",  # direct: used in analytics trends, PDF charts and both OCR paths;
+                     # was only ever a pandas/matplotlib transitive, so its major was not ours to choose
     "email-validator>=2.3.0",
     "python-magic>=0.4.27",
     "slowapi>=0.1.10",

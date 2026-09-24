@@ -50,6 +50,14 @@ if is_sqlite:
     #   busy_timeout (via connect_args "timeout") makes a writer WAIT up to 30s for
     #   the lock instead of erroring immediately. aiosqlite blocks in its worker
     #   thread, so the event loop is not stalled.
+    # Transactions stay under the pysqlite driver's legacy control, which
+    # issues an implicit BEGIN only before INSERT, UPDATE or DELETE. A
+    # SAVEPOINT issued with no transaction open starts one of its own and its
+    # RELEASE commits it, so a `begin_nested()` block that runs first commits
+    # its writes on exit, beyond the reach of a later rollback. Code that must
+    # stay all-or-nothing across such savepoints opens the transaction first:
+    # every import route takes `lock_vehicle_for_write` (a BEGIN IMMEDIATE on
+    # SQLite) before its first write for exactly this reason.
     engine = create_async_engine(
         settings.database_url,
         echo=settings.debug,

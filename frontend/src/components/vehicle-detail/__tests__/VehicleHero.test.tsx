@@ -52,6 +52,27 @@ const STATS: VehicleDetailStats = {
 }
 
 describe('VehicleHero', () => {
+  it('leaves the VIN, name and model selectable (#179)', () => {
+    // The hero's bottom overlay is `pointer-events-none`, which does not just
+    // stop clicks: it makes the text inside unable to receive a selection at
+    // all, by mouse drag or by long-press. The VIN is the value people most
+    // often want to copy out of this app, and it sits in that overlay.
+    //
+    // jsdom applies no CSS, so this asserts the structural cause rather than a
+    // computed style: no ancestor of the VIN may disable pointer events.
+    render(<VehicleHero vehicle={VEHICLE} photoUrl={null} fromCache={false} detailStats={null} />)
+
+    let node: HTMLElement | null = screen.getByText('TEST12345678901234')
+    const blocking: string[] = []
+    while (node) {
+      if (node.className && String(node.className).includes('pointer-events-none')) {
+        blocking.push(String(node.className))
+      }
+      node = node.parentElement
+    }
+    expect(blocking).toEqual([])
+  })
+
   it('renders name / ymm / VIN and NO reading or badge when stats are null', () => {
     render(<VehicleHero vehicle={VEHICLE} photoUrl={null} fromCache={false} detailStats={null} />)
     expect(screen.getByRole('heading', { name: 'Test Car' })).toBeInTheDocument()

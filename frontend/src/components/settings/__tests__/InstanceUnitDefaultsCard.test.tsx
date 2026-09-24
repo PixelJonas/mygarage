@@ -40,6 +40,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { IMPERIAL_UNITS, METRIC_UNITS, UK_IMPERIAL_UNITS } from '@/__tests__/factories'
 import { UNIT_OPTION_LABELS, type UnitSet } from '@/types/units'
 
@@ -143,14 +144,21 @@ function UnitsProbe(): React.ReactElement {
   )
 }
 
-/** Mount the card (and the probe) inside a real AuthProvider. */
-function renderCard(): void {
+/**
+ * Mount the card (and the probe) inside a real AuthProvider, and a real
+ * `QueryClient` the tire-invalidation case can spy on.
+ */
+function renderCard(): QueryClient {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
-    <AuthProvider>
-      <InstanceUnitDefaultsCard />
-      <UnitsProbe />
-    </AuthProvider>,
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <InstanceUnitDefaultsCard />
+        <UnitsProbe />
+      </AuthProvider>
+    </QueryClientProvider>,
   )
+  return queryClient
 }
 
 /** The card's own region, so a second units editor on the screen cannot match. */
@@ -305,6 +313,20 @@ describe('InstanceUnitDefaultsCard: the write', () => {
     await choosePreset('units.metric')
 
     await waitFor(() => expect(screen.getByTestId('probe').textContent).toBe('L'))
+  })
+
+  it('invalidates the tire queries after a successful save', async () => {
+    // An instance on auth mode none formats `history_faults[].message` from
+    // this default, so a cached tire list would keep the previous unit's
+    // sentences after the default moves.
+    serveInstance({ authMode: 'none', defaults: IMPERIAL_UNITS })
+    const queryClient = renderCard()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    await waitFor(() => expect(screen.getByTestId('probe').textContent).toBe('gal_us'))
+    await choosePreset('units.metric')
+
+    await waitFor(() => expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['tires'] }))
   })
 })
 

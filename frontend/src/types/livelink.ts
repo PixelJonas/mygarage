@@ -41,6 +41,8 @@ export type DeviceFirmwareStatus = components['schemas']['DeviceFirmwareStatus']
 // -- Live Status Types --
 export type TelemetryLatestValue = components['schemas']['TelemetryLatestValue']
 export type VehicleLiveLinkStatus = components['schemas']['VehicleLiveLinkStatus']
+/** One preset sensor (a propane tank) on the vehicle, drawn as its own Live tab card. */
+export type LiveSensor = components['schemas']['LiveSensor']
 
 // -- Historical Telemetry Types --
 export type TelemetryDataPoint = components['schemas']['TelemetryDataPoint']
@@ -82,6 +84,12 @@ export type TorqueSourceCreate = components['schemas']['TorqueSourceCreate']
 export type TorqueSourceCreateResponse = components['schemas']['TorqueSourceCreateResponse']
 export type TorqueSourceResponse = components['schemas']['TorqueSourceResponse']
 export type TorqueSourceListResponse = components['schemas']['TorqueSourceListResponse']
+
+// -- Integrations Card Types --
+export type IntegrationTab = components['schemas']['IntegrationTab']
+export type IntegrationListResponse = components['schemas']['IntegrationListResponse']
+export type DeviceReading = components['schemas']['DeviceReading']
+export type DeviceReadingsResponse = components['schemas']['DeviceReadingsResponse']
 
 // =============================================================================
 // Section B — Manual types (backend uses str, frontend-only, or no generated schema)

@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # Shared status literals for OpenAPI schema generation
 DeviceStatusType = Literal["online", "offline", "unknown"]
@@ -29,11 +29,58 @@ class LiveLinkDeviceCreate(LiveLinkDeviceBase):
     git_version: str | None = Field(None, description="Git version tag (e.g., v4.45p)")
 
 
+#: A device id an operator types must be safe as a single URL path segment.
+#: Every per-device admin route embeds it (`/devices/{device_id}/readings`), so
+#: `rv/gw` routes elsewhere, `gw#1` is cut at the fragment and `""` produces
+#: `/devices//readings`. Leading letter or digit also rules out `.` and `..`.
+#: Auto-discovered WiCAN ids (hex) and generated Torque ids already fit.
+DEVICE_ID_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+
+
+class LiveLinkDeviceManualCreate(BaseModel):
+    """Schema for creating a device by hand, rather than by auto-discovery.
+
+    `LiveLinkDeviceCreate` above is the auto-discovery shape: it carries no
+    `kind` and no `vin` because a WiCAN dongle announces itself and is linked
+    afterwards. A `generic_mqtt` device declares neither AUTO_DISCOVER nor a
+    token flow, so without this route the only way such a device can exist is
+    by applying a preset.
+
+    `vin` is optional, matching every other device: the pipeline returns early
+    for a device with no VIN, so an unlinked device is a valid intermediate
+    state rather than an error.
+    """
+
+    device_id: str = Field(..., max_length=20, pattern=DEVICE_ID_PATTERN)
+    kind: str = Field(..., max_length=20)
+    label: str | None = Field(None, max_length=100)
+    vin: str | None = Field(None, min_length=17, max_length=17)
+
+    @field_validator("kind")
+    @classmethod
+    def kind_must_be_registered(cls, v: str) -> str:
+        """The registry owns the set of valid kinds, not a database CHECK."""
+        from app.services.livelink_sources.registry import default_registry
+
+        valid = default_registry().valid_kinds()
+        if v not in valid:
+            raise ValueError(f"Unknown source kind {v!r}. Valid kinds: {sorted(valid)}")
+        return v
+
+
 class LiveLinkDeviceUpdate(BaseModel):
     """Schema for updating a device."""
 
     label: str | None = Field(None, description="User-friendly device name")
-    vin: str | None = Field(None, description="VIN to link device to", min_length=17, max_length=17)
+    vin: str | None = Field(
+        None,
+        max_length=17,
+        description=(
+            "VIN to link the device to, any case. An empty string UNLINKS it; "
+            "omitted or null leaves the link unchanged. Same convention as "
+            "odometer_param_key below."
+        ),
+    )
     enabled: bool | None = Field(None, description="Enable/disable device")
     odometer_unit: Literal["km", "mi", "auto"] | None = Field(
         None,
@@ -42,6 +89,31 @@ class LiveLinkDeviceUpdate(BaseModel):
             "override and infers from the param key shape. None leaves it unchanged."
         ),
     )
+    odometer_param_key: str | None = Field(
+        None,
+        max_length=100,
+        description=(
+            "Which reported parameter carries this device's odometer. Omitted "
+            "leaves it unchanged, an empty string clears it, a key sets it "
+            "(uppercased). The empty string must NOT be coerced to None here, "
+            "or the service cannot tell 'clear it' from 'not supplied'."
+        ),
+    )
+
+    @field_validator("vin", mode="before")
+    @classmethod
+    def _vin_is_empty_or_whole(cls, value: object) -> object:
+        """Normalise before the length check, so the ownership check and the
+        store see one string. The route checked an uppercased VIN and then
+        stored the one it was sent, so a lowercase VIN failed the foreign key
+        to vehicles.vin at commit: a 500.
+        """
+        if not isinstance(value, str):
+            return value
+        normalised = value.strip().upper()
+        if normalised and len(normalised) != 17:
+            raise ValueError("vin must be 17 characters, or empty to unlink")
+        return normalised
 
 
 class LiveLinkDeviceResponse(LiveLinkDeviceBase):
@@ -64,6 +136,17 @@ class LiveLinkDeviceResponse(LiveLinkDeviceBase):
     sd_backfill_enabled: bool = Field(False, description="Whether SD-card backfill is enabled")
     odometer_unit: str | None = Field(
         None, description="Declared odometer units ('km'/'mi'); None means inferred from the key"
+    )
+    kind: str = Field("wican", description="Source module that owns this device (see GET /sources)")
+    odometer_param_key: str | None = Field(
+        None, description="Which reported parameter carries this device's odometer"
+    )
+    preset_key: str | None = Field(
+        None,
+        description=(
+            "The preset that created this device, if any. A preset device's tab "
+            "is named by its preset, and its mappings are the preset's, not hand-made."
+        ),
     )
     enabled: bool
     last_seen: datetime | None
@@ -146,8 +229,20 @@ class LiveLinkParameterUpdate(BaseModel):
     display_name: str | None = Field(None, description="User-friendly display name")
     category: str | None = Field(None, description="Category for grouping")
     icon: str | None = Field(None, description="Icon identifier for frontend")
-    warning_min: float | None = Field(None, description="Alert if value drops below")
-    warning_max: float | None = Field(None, description="Alert if value exceeds")
+    # The three alert lines: an explicit null switches a line off, an omitted
+    # field leaves it as it is. Not NaN or infinity: NaN is a line no value
+    # ever crosses.
+    warning_min: float | None = Field(
+        None, description="Alert if value drops below", allow_inf_nan=False
+    )
+    critical_min: float | None = Field(
+        None,
+        description="Urgent alert if value drops below; must sit under warning_min",
+        allow_inf_nan=False,
+    )
+    warning_max: float | None = Field(
+        None, description="Alert if value exceeds", allow_inf_nan=False
+    )
     display_order: int | None = Field(None, description="Gauge display order", ge=0)
     show_on_dashboard: bool | None = Field(None, description="Show in live gauges")
     archive_only: bool | None = Field(None, description="Hide from default views")
@@ -163,6 +258,7 @@ class LiveLinkParameterResponse(LiveLinkParameterBase):
     category: str | None
     icon: str | None
     warning_min: float | None
+    critical_min: float | None
     warning_max: float | None
     display_order: int
     show_on_dashboard: bool
@@ -265,6 +361,105 @@ class DeviceFirmwareStatus(BaseModel):
     update_available: bool | None = False
     release_url: str | None = None
     firmware_track: str | None = None
+    #: The version the admin chose to skip (silences its notification and
+    #: badge until a newer release). Surfaced so the UI can show "Skipped
+    #: vX" instead of the update badge.
+    skipped_version: str | None = None
+
+
+class IntegrationTab(BaseModel):
+    """One entry in the integrations card's tab strip."""
+
+    id: str = Field(
+        description=(
+            "'wican' | 'torque' | 'broker' | 'preset:<preset name>' (every "
+            "sensor made from that preset) | 'device:<device_id>' (any other "
+            "generic MQTT device)"
+        )
+    )
+    label: str = Field(description="Proper noun. Never translated.")
+    kind: str | None = Field(None, description="Source-module kind; None for the broker")
+    status: str = Field(description="'ok' | 'attention' | 'off'")
+    reason: str = Field(
+        description=(
+            "Why it has that status. Status and counts alone cannot tell an "
+            "unlinked device from one that has never reported: both are "
+            "'attention' with zero online."
+        )
+    )
+    description: str | None = Field(None, description="Literal text, sent only for preset tabs")
+    device_count: int = 0
+    online_count: int = 0
+    linked_count: int = 0
+    firmware_updates: int = 0
+
+
+class IntegrationListResponse(BaseModel):
+    """The whole tab strip, in display order."""
+
+    tabs: list[IntegrationTab]
+
+
+class DeviceReading(BaseModel):
+    """One mapped parameter and its most recent device-attributed value."""
+
+    param_key: str
+    display_name: str | None = None
+    unit: str | None = None
+    value: float | None = Field(None, description="None when never reported")
+    timestamp: datetime | None = Field(
+        None,
+        description=(
+            "When that value was stored. Subject to storage_interval_seconds, "
+            "so it is not the wall-clock moment the sensor published."
+        ),
+    )
+    show_on_dashboard: bool = True
+    format: Literal["value", "boolean", "count", "of_max"] = Field(
+        "value",
+        description=(
+            "How to show the value: through the unit adapter, as Yes/No, as a "
+            "whole number, or as 'n of max_value'. A preset sensor's readings "
+            "say; anything else is a plain value."
+        ),
+    )
+    max_value: int | None = Field(None, description="The top of the scale for an 'of_max' reading")
+    warning_min: float | None = Field(None, description="The low alert line, if set")
+    critical_min: float | None = Field(None, description="The critical alert line, if set")
+    alert_lines: list[Literal["low", "critical"]] = Field(
+        default_factory=list,
+        description=(
+            "The alert lines Settings offers for this reading: a preset sensor's "
+            "tank level offers low and critical, its battery low. Empty for "
+            "anything else."
+        ),
+    )
+
+
+class DeviceReadingsResponse(BaseModel):
+    """Every parameter one device is mapped to, with current values."""
+
+    device_id: str
+    vin: str | None = Field(None, description="None when the device is unlinked")
+    online: bool = Field(
+        False,
+        description=(
+            "Whether the device is reporting now: the integrations card's own "
+            "rule, so a device with no status topic counts as online while it "
+            "has reported within the offline timeout."
+        ),
+    )
+    readings: list[DeviceReading]
+
+
+class FirmwareSkipRequest(BaseModel):
+    """Body of POST /devices/{device_id}/firmware/skip.
+
+    The client names the version it saw, so a release landing between
+    render and click is never silently skipped.
+    """
+
+    version: str = Field(..., min_length=1, max_length=20)
 
 
 # =============================================================================

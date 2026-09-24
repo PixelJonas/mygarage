@@ -31,9 +31,10 @@
  * rather than chosen:
  *
  * 1. **Results are normalised to 12 significant digits.** The backend converts
- *    in `Decimal` and is exact. `number` is IEEE 754, so `34.8 * 6.89476`
- *    evaluates to `239.93764799999997`, and posting that to the API stores a
- *    value one ulp away from its own conversion. Twelve digits is what
+ *    in `Decimal` and is exact. `number` is IEEE 754, so
+ *    `34.8 * 6.894757293168361` evaluates to `239.93755380225895`, and
+ *    posting that to the API stores a value one ulp away from its own
+ *    conversion. Twelve digits is what
  *    `UnitConverter.toCanonicalMetricString` already uses for the same reason,
  *    and it is lossless for every factor in the table: `9 * (25.4 / 32)` is
  *    still exactly `7.14375`.

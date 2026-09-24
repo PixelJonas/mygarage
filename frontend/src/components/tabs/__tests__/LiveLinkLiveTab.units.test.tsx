@@ -61,6 +61,7 @@ const status = (
     vin: 'V1',
     device_id: 'DEV1',
     device_status: 'online',
+    online: true,
     ecu_status: 'online',
     rssi: -55,
     current_session_id: null,
@@ -82,12 +83,13 @@ describe('LiveLinkLiveTab gauges', () => {
           unit: null,
           display_name: 'Odometer',
           in_warning: false,
+          show_on_dashboard: true,
           timestamp: 'x',
         },
       ]),
     )
     render(<LiveLinkLiveTab vin="V1" />)
-    // 1000 / 1.60934 = 621.37..., at the mi adapter's 0 dp.
+    // 1000 / 1.609344 = 621.37..., at the mi adapter's 0 dp.
     expect(await screen.findByText('621')).toBeInTheDocument()
     expect(screen.getByText('mi')).toBeInTheDocument()
   })
@@ -101,6 +103,7 @@ describe('LiveLinkLiveTab gauges', () => {
           unit: null,
           display_name: 'Odometer',
           in_warning: false,
+          show_on_dashboard: true,
           timestamp: 'x',
         },
       ]),
@@ -124,6 +127,7 @@ describe('LiveLinkLiveTab gauges', () => {
           unit: 'C',
           display_name: 'Coolant',
           in_warning: false,
+          show_on_dashboard: true,
           timestamp: 'x',
         },
       ]),

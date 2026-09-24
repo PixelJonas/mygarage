@@ -22,7 +22,11 @@ const { VIN, STATUS } = vi.hoisted(() => {
     VIN,
     STATUS: {
       device_id: 'wican-1',
+      // A WiCAN declares DRIVE_SESSION, which is what makes Running/Parked
+      // meaningful. A telemetry-only source reports reachability instead.
+      capabilities: ['telemetry', 'drive_session', 'location', 'dtc', 'odometer'],
       device_status: 'online',
+      online: true,
       ecu_status: 'offline',
       vin: VIN,
       latest_values: [],
@@ -44,9 +48,9 @@ const RUNNING = {
   ...STATUS,
   ecu_status: 'online',
   latest_values: [
-    { param_key: 'SPEED', value: 100, unit: 'km/h', display_name: 'Speed', in_warning: false, timestamp: 'x' },
-    { param_key: 'ENGINE_RPM', value: 3200, unit: 'rpm', display_name: 'RPM', in_warning: false, timestamp: 'x' },
-    { param_key: 'COOLANT_TMP', value: 90, unit: 'C', display_name: 'Coolant', in_warning: false, timestamp: 'x' },
+    { param_key: 'SPEED', value: 100, unit: 'km/h', display_name: 'Speed', in_warning: false, show_on_dashboard: true, timestamp: 'x' },
+    { param_key: 'ENGINE_RPM', value: 3200, unit: 'rpm', display_name: 'RPM', in_warning: false, show_on_dashboard: true, timestamp: 'x' },
+    { param_key: 'COOLANT_TMP', value: 90, unit: 'C', display_name: 'Coolant', in_warning: false, show_on_dashboard: true, timestamp: 'x' },
   ],
 } satisfies VehicleLiveLinkStatus
 
@@ -84,7 +88,7 @@ describe('VehicleLiveLinkWidget keyboard activation (I12 a11y fix)', () => {
     getVehicleStatus.mockResolvedValue(RUNNING)
     render(<VehicleLiveLinkWidget vin={VIN} />)
     // No account and no stored choice, so `useUnitPreference` lands on the
-    // imperial preset. 100 km/h / 1.60934 = 62.13..., at the mph adapter's 0 dp.
+    // imperial preset. 100 km/h / 1.609344 = 62.13..., at the mph adapter's 0 dp.
     expect(await screen.findByText('62')).toBeInTheDocument()
     expect(screen.getByText('MPH')).toBeInTheDocument()
     // 90 C x 9/5 + 32 = 194, at the f adapter's 1 dp. It read "194\u00b0F" before,
@@ -94,6 +98,29 @@ describe('VehicleLiveLinkWidget keyboard activation (I12 a11y fix)', () => {
     // grouped for the locale by the same helper every other figure uses. It
     // read "3200" here and "3,200" on the LiveLink gauge, from one reading.
     expect(screen.getByText('3,200')).toBeInTheDocument()
+  })
+
+  it('shows a sensor with no status topic as connected while the server says it reports', async () => {
+    // The RV: a Mopeka sensor's device_status stays 'unknown'. Read raw, the
+    // widget said Offline while Settings said online.
+    getVehicleStatus.mockResolvedValue({
+      ...STATUS,
+      capabilities: ['telemetry'],
+      device_status: 'unknown',
+      ecu_status: 'unknown',
+      online: true,
+    } satisfies VehicleLiveLinkStatus)
+    render(<VehicleLiveLinkWidget vin={VIN} />)
+
+    expect(await screen.findByText('vehicleLiveLinkWidget.statusConnected')).toBeInTheDocument()
+    expect(screen.queryByText('vehicleLiveLinkWidget.statusOffline')).not.toBeInTheDocument()
+  })
+
+  it('shows offline when the server says so, whatever device_status says', async () => {
+    getVehicleStatus.mockResolvedValue({ ...STATUS, online: false } satisfies VehicleLiveLinkStatus)
+    render(<VehicleLiveLinkWidget vin={VIN} />)
+
+    expect(await screen.findByText('vehicleLiveLinkWidget.statusOffline')).toBeInTheDocument()
   })
 
   it('ignores other keys', async () => {

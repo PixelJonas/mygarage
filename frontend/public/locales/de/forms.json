@@ -128,7 +128,6 @@
     "chargeLocationPlaceholder": "Nicht erfasst"
   },
   "insurance": {
-    "coverageLimits": "Deckungssummen",
     "createTitle": "Versicherungspolice hinzufügen",
     "deductible": "Selbstbeteiligung",
     "editTitle": "Versicherungspolice bearbeiten",
@@ -143,7 +142,6 @@
     "saveAction": "Versicherungspolice speichern"
   },
   "modal": {
-    "acceptTelemetry": "Telemetriedaten von WiCAN-Geräten akzeptieren",
     "activeUser": "Aktiver Benutzer",
     "addProvider": "{{name}} hinzufügen",
     "addShare": "Freigabe hinzufügen",
@@ -211,14 +209,12 @@
     "failedToGenerateDeviceToken": "Geräte-Token konnte nicht generiert werden",
     "failedToGenerateToken": "Token konnte nicht generiert werden",
     "failedToLoadFamilyData": "Familienverwaltungsdaten konnten nicht geladen werden",
-    "failedToLoadLiveLink": "LiveLink-Einstellungen konnten nicht geladen werden",
     "failedToLoadRecipients": "Berechtigte Empfänger konnten nicht geladen werden",
     "failedToLoadSharingData": "Freigabedaten konnten nicht geladen werden",
     "failedToReorder": "Neusortierung fehlgeschlagen",
     "failedToRestartMqtt": "MQTT-Abonnent konnte nicht neu gestartet werden",
     "failedToRevokeDeviceToken": "Geräte-Token konnte nicht widerrufen werden",
     "failedToRevokeShare": "Freigabe konnte nicht widerrufen werden",
-    "failedToSaveMqtt": "MQTT-Einstellungen konnten nicht gespeichert werden",
     "failedToSaveSettings": "Einstellungen konnten nicht gespeichert werden",
     "failedToSendCommand": "Befehl konnte nicht an das Gerät gesendet werden",
     "failedToShareVehicle": "Fahrzeug konnte nicht freigegeben werden",
@@ -244,15 +240,11 @@
     "ingestionUrl": "Ingestion-URL",
     "lastActiveAdminWarning": "Rolle kann nicht geändert werden – du bist der letzte aktive Admin",
     "leaveBlankToKeep": "leer lassen, um aktuellen Wert zu behalten",
-    "liveLinkDescription": "Konfiguriere die WiCAN OBD2-Telemetrieintegration",
-    "liveLinkSettings": "LiveLink-Einstellungen",
     "managedByOidc": "Vom OIDC-Anbieter verwaltet",
     "memberDataUnavailable": "Mitgliederdaten nicht verfügbar — einige Aktionen sind deaktiviert.",
     "members": "Mitglieder",
-    "mqttDescription": "Abonniere WiCAN MQTT-Themen auf einem lokalen Broker",
     "mqttRestarted": "MQTT-Abonnent neu gestartet",
     "mqttSettingsSaved": "MQTT-Einstellungen gespeichert",
-    "mqttSubscription": "MQTT-Abonnement",
     "multiUserMode": "Multi-User-Modus",
     "newOwner": "Neuer Besitzer",
     "newTokenGenerated": "Neuer Token generiert",
@@ -301,7 +293,6 @@
     "shownOnDashboardMsg": "{{name}} auf dem Dashboard angezeigt",
     "test": "Testen",
     "testing": "Wird getestet...",
-    "topicPrefix": "Themenpräfix (Topic Prefix)",
     "torque": {
       "title": "Torque Pro Quellen",
       "description": "Verwalte die Torque Pro Upload-Quellen für dieses Fahrzeug. Jede Quelle erhält ihre eigene Upload-URL und ein eigenes Token.",
@@ -441,7 +432,6 @@
       "backfillSummary": "{{ingested}} eingelesen, {{skipped}} übersprungen",
       "checkBatteryVoltage": "Batteriespannung prüfen",
       "checkNow": "Jetzt prüfen",
-      "close": "Schließen",
       "confirmDeleteDevice": "Dieses Gerät löschen? Historische Telemetriedaten bleiben erhalten, aber das Gerät muss neu erkannt werden.",
       "confirmRegenerateToken": "Das Neugenerieren des globalen Tokens macht den aktuellen Token sofort ungültig. Alle WiCAN-Geräte, die den alten Token verwenden, senden keine Daten mehr, bis sie neu konfiguriert wurden. Fortfahren?",
       "confirmRevokeDeviceToken": "Diesen Geräte-Token widerrufen? Das Gerät fällt auf die Verwendung des globalen Tokens zurück.",
@@ -451,7 +441,6 @@
       "deleteDevice": "Gerät löschen",
       "device": "Gerät",
       "deviceAddress": "Geräteadresse (IP oder Hostname)",
-      "deviceCounts": "({{total}} erkannt, {{online}} online)",
       "deviceOfflineTimeout": "Geräte-Offline-Timeout",
       "deviceTokenGenerated": "Geräte-Token generiert",
       "done": "Fertig",
@@ -482,7 +471,6 @@
       "save": "Speichern",
       "saveTokenNowDesc": "Er wird nicht noch einmal angezeigt.",
       "saveTokenNowLabel": "Diesen Token jetzt speichern!",
-      "sdBackfillConfig": "SD-Karten-Backfill-Konfig",
       "sdBackfillFailed": "SD-Backfill fehlgeschlagen",
       "sdConfigSaved": "SD-Konfiguration gespeichert",
       "seconds": "Sekunden",
@@ -829,8 +817,7 @@
     "providerPlaceholder": "z. B. HUK-Coburg, Allianz",
     "policyNumberPlaceholder": "z. B. INS-12345",
     "premiumAmountPlaceholder": "z. B. 150.00",
-    "deductiblePlaceholder": "z. B. 500.00",
-    "coverageLimitsPlaceholder": "z. B. 100 Mio. Pauschal / Personenschäden / Sachschäden"
+    "deductiblePlaceholder": "z. B. 500.00"
   },
   "billingEntryForm": {
     "electric": "Elektro",

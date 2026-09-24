@@ -4,6 +4,8 @@ import { renderHook, act, waitFor } from '@testing-library/react'
 const h = vi.hoisted(() => ({
   setTheme: vi.fn(),
   refreshUser: vi.fn(),
+    refreshPublicSettings: vi.fn(),
+    householdTimeZone: null,
   put: vi.fn(),
   state: { theme: 'dark' as 'dark' | 'light', authed: true, authMode: 'local' as string },
 }))

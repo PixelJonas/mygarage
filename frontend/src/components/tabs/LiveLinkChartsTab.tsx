@@ -68,11 +68,13 @@ export default function LiveLinkChartsTab({ vin }: LiveLinkChartsTabProps) {
     '30d': t('livelinkCharts.range30d'),
   }
 
-  // Fetch available parameters
+  // Fetch the parameters THIS vehicle reports. The fleet-wide catalog would
+  // offer a propane trailer engine RPM and coolant temperature, then auto-select
+  // three of them and draw "no data" — which is exactly what it did.
   useEffect(() => {
     const fetchParameters = async () => {
       try {
-        const data = await livelinkService.getParameters()
+        const data = await livelinkService.getVehicleParameters(vin)
         // Show all parameters except archive_only (charts should allow any parameter)
         const chartableParams = data.parameters.filter((p) => !p.archive_only)
         setParameters(chartableParams)
@@ -87,7 +89,7 @@ export default function LiveLinkChartsTab({ vin }: LiveLinkChartsTabProps) {
       }
     }
     fetchParameters()
-  }, [])
+  }, [vin])
 
   // Calculate time range
   const getTimeRange = useCallback(() => {
@@ -279,7 +281,11 @@ export default function LiveLinkChartsTab({ vin }: LiveLinkChartsTabProps) {
                     borderRadius: '8px',
                     color: 'var(--color-text)',
                   }}
-                  labelFormatter={(value) => formatDateTime(value, timeFormat, { seconds: true })}
+                  labelFormatter={(label) =>
+                    typeof label === 'number' || typeof label === 'string'
+                      ? formatDateTime(label, timeFormat, { seconds: true })
+                      : label
+                  }
                   formatter={(value, name) => {
                     const param = parameters.find((p) => p.param_key === name)
                     const displayValue = typeof value === 'number' ? value.toFixed(2) : t('livelinkCharts.notAvailable')

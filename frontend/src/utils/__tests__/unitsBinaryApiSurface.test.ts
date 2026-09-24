@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { execFileSync } from 'node:child_process'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
@@ -41,6 +41,13 @@ import * as ts from 'typescript'
  * catch. Property accesses come from the parser, so a mention in prose is not a
  * caller.
  */
+
+// Several tests here parse every production source file, so their cost grows
+// with the tree and with CPU contention rather than with the code under test.
+// Measured on the heaviest: 558ms alone, 2.1s under v8 coverage, and 5.4s
+// under full-suite coverage, which failed the 5s default. The budget is for a
+// scan, not a unit test; a genuine hang still fails.
+vi.setConfig({ testTimeout: 30_000 })
 
 const FRONTEND = resolve(__dirname, '../../..')
 const SRC = resolve(FRONTEND, 'src')

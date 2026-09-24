@@ -16,6 +16,9 @@ from app.routes.garage_assistant import router as garage_assistant_router
 from app.routes.hours import router as hours_router
 from app.routes.import_data import router as import_router
 from app.routes.insurance import router as insurance_router
+from app.routes.insurance import vehicle_insurance_router
+from app.routes.maintenance import rules_router as maintenance_rules_router
+from app.routes.maintenance import types_router as maintenance_types_router
 from app.routes.notes import router as notes_router
 from app.routes.notifications import router as notifications_router
 from app.routes.odometer import router as odometer_router
@@ -59,6 +62,7 @@ __all__ = [
     "analytics_router",
     "warranty_router",
     "insurance_router",
+    "vehicle_insurance_router",
     "reports_router",
     "toll_tags_router",
     "toll_transactions_router",
@@ -77,6 +81,8 @@ __all__ = [
     "shop_discovery_router",
     "vendors_router",
     "reminders_router",
+    "maintenance_rules_router",
+    "maintenance_types_router",
     "reminder_packs_router",
     "service_visits_router",
     "supplies_router",

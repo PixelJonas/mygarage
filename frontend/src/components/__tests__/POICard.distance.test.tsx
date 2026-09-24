@@ -53,7 +53,7 @@ describe('POICard distance follows the resolved distance unit', () => {
   })
 
   it('shows miles for a mile client', () => {
-    // 2.3 km / 1.60934 = 1.4291..., at one decimal.
+    // 2.3 km / 1.609344 = 1.4292..., at one decimal.
     const unmount = renderAt(2300, IMPERIAL)
     expect(screen.getByText('1.4 mi')).toBeInTheDocument()
     unmount()

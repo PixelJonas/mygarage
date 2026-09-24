@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
+import { act, render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { Link, MemoryRouter, Route, Routes } from 'react-router-dom'
 
 // Mock all tab components to avoid deep dependency trees
@@ -18,7 +18,17 @@ vi.mock('../../components/tabs/SafetyTab', () => ({ default: () => <div>SafetyTa
 vi.mock('../../components/tabs/SpotRentalsTab', () => ({ default: () => <div>SpotRentalsTab</div> }))
 vi.mock('../../components/tabs/PropaneTab', () => ({ default: () => <div>PropaneTab</div> }))
 vi.mock('../../components/tabs/DEFTab', () => ({ default: () => <div>DEFTab</div> }))
-vi.mock('../../components/ReminderList', () => ({ default: () => <div>ReminderList</div> }))
+// Capture onStatsChanged so a test can invoke it like a real reminder write
+// would (vi.hoisted holder — the house idiom for hoisted mock factories).
+const reminderListProps = vi.hoisted(() => ({
+  onStatsChanged: undefined as (() => void) | undefined,
+}))
+vi.mock('../../components/ReminderList', () => ({
+  default: (props: { onStatsChanged?: () => void }) => {
+    reminderListProps.onStatsChanged = props.onStatsChanged
+    return <div>ReminderList</div>
+  },
+}))
 vi.mock('../../components/tabs/LiveLinkLiveTab', () => ({ default: () => <div>LiveLinkLiveTab</div> }))
 vi.mock('../../components/tabs/LiveLinkDTCsTab', () => ({ default: () => <div>LiveLinkDTCsTab</div> }))
 vi.mock('../../components/tabs/LiveLinkSessionsTab', () => ({ default: () => <div>LiveLinkSessionsTab</div> }))
@@ -71,7 +81,7 @@ vi.mock('../../services/vehicleService', () => ({
 }))
 vi.mock('../../services/livelinkService', () => ({
   livelinkService: {
-    hasLinkedDevice: vi.fn(),
+    getVehicleStatus: vi.fn(),
   },
 }))
 vi.mock('../../services/api', () => ({
@@ -111,7 +121,8 @@ vi.mock('../../contexts/AuthContext', () => ({
     login: vi.fn(),
     register: vi.fn(),
     logout: vi.fn(),
-    refreshUser: vi.fn(),
+    refreshUser: vi.fn(), refreshPublicSettings: vi.fn(),
+    householdTimeZone: null,
     setAuthToken: vi.fn(),
   })),
 }))
@@ -158,13 +169,30 @@ function renderVehicleDetail(initialPath = '/vehicles/TEST12345678901234') {
   )
 }
 
+// The LiveLink tab strip is driven entirely by the status endpoint: a null
+// device_id hides the primary tab, and `capabilities` decides which sub-tabs
+// exist. These are the Capability values from the backend registry.
+const status = (device_id: string | null, capabilities: string[]) => ({
+  vin: 'TEST12345678901234',
+  device_id,
+  capabilities,
+  device_status: device_id ? 'online' : 'offline',
+  online: device_id !== null,
+  ecu_status: 'unknown',
+  latest_values: [],
+})
+const noDevice = status(null, [])
+const linked = (capabilities: string[]) => status('dev01', capabilities)
+const WICAN_CAPS = ['telemetry', 'drive_session', 'location', 'dtc', 'odometer']
+
 describe('VehicleDetail', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
+    reminderListProps.onStatsChanged = undefined
     mockedVehicleService.get.mockResolvedValue(mockVehicle)
     mockedVehicleService.getDetailStats.mockRejectedValue(new Error('no stats'))
-    mockedLivelinkService.hasLinkedDevice.mockResolvedValue(false)
+    mockedLivelinkService.getVehicleStatus.mockResolvedValue(noDevice)
   })
 
   // --- Loading & Error States ---
@@ -432,7 +460,7 @@ describe('VehicleDetail', () => {
   // --- LiveLink Tab Visibility ---
 
   it('shows LiveLink tab when device is linked', async () => {
-    mockedLivelinkService.hasLinkedDevice.mockResolvedValue(true)
+    mockedLivelinkService.getVehicleStatus.mockResolvedValue(linked(['telemetry']))
 
     renderVehicleDetail()
 
@@ -446,8 +474,46 @@ describe('VehicleDetail', () => {
     })
   })
 
+  // --- LiveLink Sub-tab Capability Gating ---
+
+  it('hides DTCs, Sessions and Trips for a telemetry-only source', async () => {
+    mockedLivelinkService.getVehicleStatus.mockResolvedValue(linked(['telemetry']))
+
+    renderVehicleDetail('/vehicles/TEST12345678901234?tab=live')
+
+    // Wait for a sub-tab that SHOULD be there, so the negatives below are read
+    // against a rendered strip rather than an empty page.
+    expect(await screen.findByText('detail.misc.charts')).toBeInTheDocument()
+
+    expect(screen.queryByText('DTCs')).not.toBeInTheDocument()
+    expect(screen.queryByText('detail.misc.sessions')).not.toBeInTheDocument()
+    expect(screen.queryByText('detail.misc.trips')).not.toBeInTheDocument()
+  })
+
+  it('shows every LiveLink sub-tab for a source that declares the full set', async () => {
+    mockedLivelinkService.getVehicleStatus.mockResolvedValue(linked(WICAN_CAPS))
+
+    renderVehicleDetail('/vehicles/TEST12345678901234?tab=live')
+
+    expect(await screen.findByText('DTCs')).toBeInTheDocument()
+    expect(screen.getByText('detail.misc.sessions')).toBeInTheDocument()
+    expect(screen.getByText('detail.misc.trips')).toBeInTheDocument()
+  })
+
+  it('does not render a capability-gated sub-tab reached by deep link', async () => {
+    // `?tab=dtcs` never passes the tab strip, so hiding the button is not
+    // enough: without a guard on the content a propane trailer renders the
+    // full DTC dashboard.
+    mockedLivelinkService.getVehicleStatus.mockResolvedValue(linked(['telemetry']))
+
+    renderVehicleDetail('/vehicles/TEST12345678901234?tab=dtcs')
+
+    expect(await screen.findByText('detail.misc.charts')).toBeInTheDocument()
+    expect(screen.queryByText('LiveLinkDTCsTab')).not.toBeInTheDocument()
+  })
+
   it('hides LiveLink tab when no device is linked', async () => {
-    mockedLivelinkService.hasLinkedDevice.mockResolvedValue(false)
+    mockedLivelinkService.getVehicleStatus.mockResolvedValue(noDevice)
 
     renderVehicleDetail()
 
@@ -473,7 +539,8 @@ describe('VehicleDetail', () => {
       login: vi.fn(),
       register: vi.fn(),
       logout: vi.fn(),
-      refreshUser: vi.fn(),
+      refreshUser: vi.fn(), refreshPublicSettings: vi.fn(),
+    householdTimeZone: null,
       setAuthToken: vi.fn(),
     })
 
@@ -608,6 +675,73 @@ describe('VehicleDetail', () => {
     fireEvent.click(screen.getByRole('button', { name: 'detail.hero.addFuel' }))
     expect(await screen.findByText('DEFTab')).toBeInTheDocument()
     expect(screen.queryByText('PropaneTab')).not.toBeInTheDocument()
+  })
+
+  it('a reminder write refetches the detail stats through onStatsChanged (the stats are local state, not react-query — nothing else can reach them)', async () => {
+    renderVehicleDetail('/vehicles/TEST12345678901234?tab=reminders')
+    await waitFor(() => expect(screen.getByText('ReminderList')).toBeInTheDocument())
+    expect(reminderListProps.onStatsChanged).toBeDefined()
+    const baseline = mockedVehicleService.getDetailStats.mock.calls.length
+    act(() => reminderListProps.onStatsChanged?.())
+    await waitFor(() =>
+      expect(mockedVehicleService.getDetailStats.mock.calls.length).toBe(baseline + 1),
+    )
+    expect(mockedVehicleService.getDetailStats).toHaveBeenLastCalledWith('TEST12345678901234')
+  })
+
+  it('an older stats response never overwrites a newer one (codex R1-M2: every load carries a generation)', async () => {
+    const deferred: Array<(stats: VehicleDetailStats) => void> = []
+    mockedVehicleService.getDetailStats.mockImplementation(
+      () =>
+        new Promise<VehicleDetailStats>((resolve) => {
+          deferred.push(resolve)
+        }),
+    )
+    renderVehicleDetail('/vehicles/TEST12345678901234?tab=reminders')
+    await waitFor(() => expect(reminderListProps.onStatsChanged).toBeDefined())
+    await waitFor(() => expect(deferred.length).toBe(1)) // the initial load
+
+    act(() => reminderListProps.onStatsChanged?.()) // older refresh
+    act(() => reminderListProps.onStatsChanged?.()) // newest refresh
+    await waitFor(() => expect(deferred.length).toBe(3))
+
+    // Newest resolves FIRST with an overdue count; the two stale responses
+    // then land with zero. The hero badge must survive them.
+    await act(async () => deferred[2]({ overdue_count: 2 } as unknown as VehicleDetailStats))
+    await screen.findByText('vehicleStats.overdue')
+    await act(async () => deferred[1]({ overdue_count: 0 } as unknown as VehicleDetailStats))
+    await act(async () => deferred[0]({ overdue_count: 0 } as unknown as VehicleDetailStats))
+    expect(screen.getByText('vehicleStats.overdue')).toBeInTheDocument()
+  })
+
+  it('a mutation callback for A landing after navigation to B cannot start an A request (codex R2-M1)', async () => {
+    mockedVehicleService.getDetailStats.mockResolvedValue(
+      { overdue_count: 0 } as unknown as VehicleDetailStats,
+    )
+    render(
+      <MemoryRouter initialEntries={['/vehicles/TEST12345678901234?tab=reminders']}>
+        <Link to="/vehicles/OTHERV123456789012">go-other</Link>
+        <Routes>
+          <Route path="/vehicles/:vin" element={<VehicleDetail />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(reminderListProps.onStatsChanged).toBeDefined())
+    const capturedForA = reminderListProps.onStatsChanged!
+
+    fireEvent.click(screen.getByText('go-other'))
+    await waitFor(() =>
+      expect(mockedVehicleService.getDetailStats).toHaveBeenLastCalledWith('OTHERV123456789012'),
+    )
+
+    const callsForA = (): number =>
+      mockedVehicleService.getDetailStats.mock.calls.filter(
+        ([v]) => v === 'TEST12345678901234',
+      ).length
+    const before = callsForA()
+    act(() => capturedForA())
+    await new Promise((r) => setTimeout(r, 0))
+    expect(callsForA()).toBe(before)
   })
 
   it('Reminder switches the active primary tab to Tracking (SDQ-1)', async () => {

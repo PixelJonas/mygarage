@@ -1,6 +1,7 @@
 """Error handling utilities for secure error responses."""
 
 import logging
+import math
 
 from fastapi import Request, status
 from fastapi.exceptions import RequestValidationError
@@ -67,7 +68,10 @@ class SecureErrorResponse:
             content["request_id"] = request_id
 
         return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            # Renamed upstream: starlette 1.6.0 deprecated
+            # HTTP_422_UNPROCESSABLE_ENTITY in favour of the RFC 9110 spelling.
+            # Same 422 on the wire.
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             content=content,
         )
 
@@ -118,8 +122,12 @@ async def handle_validation_error(request: Request, exc: RequestValidationError)
         # Convert each error dict, ensuring all values are JSON-serializable
         json_error = {}
         for key, value in error.items():
-            # Convert any non-serializable objects to strings
-            if isinstance(value, (str, int, float, bool, type(None))):
+            # Convert any non-serializable objects to strings. NaN and
+            # infinity are floats JSON has no spelling for: echoed back as
+            # the rejected input, they turned this 422 into a 500.
+            if isinstance(value, float) and not math.isfinite(value):
+                json_error[key] = str(value)
+            elif isinstance(value, (str, int, float, bool, type(None))):
                 json_error[key] = value
             elif isinstance(value, (list, tuple)):
                 json_error[key] = [str(v) for v in value]

@@ -1,4 +1,4 @@
-import { type Page, type Response, request as apiRequest } from '@playwright/test'
+import { type Locator, type Page, type Response, request as apiRequest } from '@playwright/test'
 
 import { test, expect } from './helpers/fixtures'
 import { adminSessionFromStorageState, type AdminSession } from './helpers/seed'
@@ -113,16 +113,35 @@ async function adminSession(): Promise<AdminSession> {
 }
 
 /**
- * The client's own units card, as distinct from the instance-default card.
+ * The client's own units, in Quick Settings (the gear), as distinct from the
+ * instance-default card on Settings > System.
  *
  * Both render the identical Imperial / Metric / Custom controls, so every
- * assertion has to say which one it means.
+ * assertion has to say which one it means. Opens the drawer first; a reload
+ * closes it, so call this again after one.
  *
  * @param page The page under test.
  * @returns The region locator.
  */
-function unitsCard(page: Page) {
-  return page.getByRole('region', { name: 'Unit System' })
+async function openUnits(page: Page): Promise<Locator> {
+  const drawer = page.getByRole('dialog', { name: 'Quick settings' })
+  if (!(await drawer.isVisible())) {
+    await page.getByRole('button', { name: 'Quick settings' }).click()
+  }
+  await expect(drawer).toBeVisible({ timeout: 15000 })
+  return drawer.getByRole('region', { name: 'Unit System' })
+}
+
+/**
+ * Open the Custom accordion, where the eleven per-quantity selects live.
+ *
+ * Picking Custom opens it; after a reload it starts closed.
+ *
+ * @param units The units region.
+ */
+async function openCustomUnits(units: Locator): Promise<void> {
+  const toggle = units.getByRole('button', { name: 'Custom units' })
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click()
 }
 
 /**
@@ -133,11 +152,11 @@ function unitsCard(page: Page) {
  * `<option>` labels contain every unit symbol in the vocabulary, so a card-wide
  * text assertion would pass while the card said the opposite.
  *
- * @param page The page under test.
+ * @param units The units region.
  * @returns The paragraph locator.
  */
-function resolvedSentence(page: Page) {
-  return unitsCard(page).getByText(/^Using these units:/)
+function resolvedSentence(units: Locator) {
+  return units.getByText(/^Using these units:/)
 }
 
 test.describe('Settings', () => {
@@ -199,8 +218,8 @@ test.describe('Settings: units (authenticated)', () => {
   })
 
   test('a preset click is accepted by the dedicated units route', async ({ page }) => {
-    await page.goto('/settings')
-    const units = unitsCard(page)
+    await page.goto('/')
+    const units = await openUnits(page)
     await expect(units).toBeVisible({ timeout: 15000 })
     await expect(units.getByRole('button', { name: 'Metric', exact: true })).toHaveAttribute(
       'aria-pressed',
@@ -221,12 +240,12 @@ test.describe('Settings: units (authenticated)', () => {
       'aria-pressed',
       'true',
     )
-    await expect(resolvedSentence(page)).toContainText(', PSI,')
+    await expect(resolvedSentence(units)).toContainText(', PSI,')
   })
 
   test('a custom per-quantity set survives a reload', async ({ page }) => {
-    await page.goto('/settings')
-    const units = unitsCard(page)
+    await page.goto('/')
+    const units = await openUnits(page)
     await expect(units).toBeVisible({ timeout: 15000 })
     // Precondition, not proof: the grid is hidden while the account is on a
     // preset, so the assertions after the reload describe a state this test
@@ -245,15 +264,25 @@ test.describe('Settings: units (authenticated)', () => {
     // that `resolved_units` came back on `/auth/me`: the optimistic overlay the
     // card holds while saving does not survive a navigation.
     await page.reload()
-    await expect(units.getByRole('button', { name: 'Custom', exact: true })).toHaveAttribute(
+    const reloaded = await openUnits(page)
+    await expect(reloaded.getByRole('button', { name: 'Custom', exact: true })).toHaveAttribute(
       'aria-pressed',
       'true',
       { timeout: 15000 },
     )
+    // After a reload the accordion starts closed, and closed means out of
+    // sight, not just unfocusable. Measured as the panel's height: Playwright's
+    // toBeVisible/toBeHidden ignore clipping by an `overflow: hidden` ancestor,
+    // so a collapsed select still reads as "visible" to them.
+    const panelHeight = async (): Promise<number> =>
+      (await page.locator('#unit-custom-panel').boundingBox())?.height ?? -1
+    await expect.poll(panelHeight).toBe(0)
+    await openCustomUnits(reloaded)
+    await expect.poll(panelHeight).toBeGreaterThan(0)
     await expect(page.locator('#unit-pressure')).toHaveValue('psi')
     // The whole resolved set, so a change that moved more than pressure fails
     // here rather than passing as "still PSI".
-    await expect(resolvedSentence(page)).toHaveText(
+    await expect(resolvedSentence(reloaded)).toHaveText(
       'Using these units: km, km/h, m, L, L/100km, PSI, °C, kg, Nm, mm',
     )
   })
@@ -289,8 +318,8 @@ test.describe('Settings: units (authenticated)', () => {
     ).toContain(seeded.status())
 
     // 1. Set Custom, with pressure on PSI.
-    await page.goto('/settings')
-    const units = unitsCard(page)
+    await page.goto('/')
+    const units = await openUnits(page)
     await expect(units).toBeVisible({ timeout: 15000 })
     const openCustom = waitForUnitWrite(page)
     await units.getByRole('button', { name: 'Custom', exact: true }).click()
@@ -389,8 +418,8 @@ test.describe('Settings: units (auth_mode=none)', () => {
   })
 
   test('a client with no account keeps its per-quantity choice', async ({ page }) => {
-    await page.goto('/settings')
-    const units = unitsCard(page)
+    await page.goto('/')
+    const units = await openUnits(page)
     await expect(units).toBeVisible({ timeout: 15000 })
 
     // `bar` is the deliberate choice here: no preset and no instance default
@@ -412,12 +441,14 @@ test.describe('Settings: units (auth_mode=none)', () => {
     )
 
     await page.reload()
-    await expect(units.getByRole('button', { name: 'Custom', exact: true })).toHaveAttribute(
+    const reloaded = await openUnits(page)
+    await expect(reloaded.getByRole('button', { name: 'Custom', exact: true })).toHaveAttribute(
       'aria-pressed',
       'true',
       { timeout: 15000 },
     )
+    await openCustomUnits(reloaded)
     await expect(page.locator('#unit-pressure')).toHaveValue('bar')
-    await expect(resolvedSentence(page)).toContainText(', bar,')
+    await expect(resolvedSentence(reloaded)).toContainText(', bar,')
   })
 })

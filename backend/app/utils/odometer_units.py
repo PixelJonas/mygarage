@@ -60,8 +60,20 @@ def bare_param_key(param_key: str) -> str:
     return OBD2_PID_PREFIX_RE.sub("", param_key.upper())
 
 
-def is_odometer_param_key(param_key: str) -> bool:
-    """True if ``param_key`` names an odometer, prefixed or bare."""
+def is_odometer_param_key(param_key: str, declared: str | None = None) -> bool:
+    """True if ``param_key`` names an odometer, prefixed or bare.
+
+    ``declared`` is a device's ``odometer_param_key``. When set it REPLACES the
+    name matching for that one key: the point of a declaration is that the
+    device knows and we stop guessing.
+
+    Deliberately `if declared: return ...` rather than an `or`. Widening the
+    match would reintroduce exactly what the exact-set comment above rules out:
+    a device that declares `TORQUE_ODOMETER` must not thereby have
+    `21-DISTANCEMILON` treated as an odometer too.
+    """
+    if declared:
+        return param_key.upper() == declared.upper()
     return bare_param_key(param_key) in _ODOMETER_BARE_KEYS
 
 

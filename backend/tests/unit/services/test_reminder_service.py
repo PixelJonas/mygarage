@@ -781,3 +781,62 @@ class TestBuildReminderMessage:
         message = _build_reminder_message(reminder, _METRIC_CTX)
         assert "Due hours" not in message
         assert "Due mileage: 50,000 km" in message
+
+
+# ---------------------------------------------------------------------------
+# Snooze predicate (plan 2026-09-18, feature A)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestReminderSnooze:
+    """The snooze predicate and its guard inside `is_reminder_overdue`.
+
+    The guard is what makes any FUTURE caller of `is_reminder_overdue`
+    snooze-correct without knowing the feature exists; these tests are what
+    keeps that guard killable (delete it and they fail).
+    """
+
+    def _reminder(self, **kwargs) -> Reminder:
+        base = {
+            "vin": "1HGBH41JXMN109186",
+            "title": "Snoozed reminder",
+            "reminder_type": "date",
+            "status": "pending",
+        }
+        base.update(kwargs)
+        return Reminder(**base)
+
+    def test_snoozed_strictly_before_the_until_date(self):
+        from app.services.reminder_service import is_reminder_snoozed
+
+        reminder = self._reminder(snoozed_until=date(2026, 9, 20))
+        assert is_reminder_snoozed(reminder, today=date(2026, 9, 19)) is True
+        # "Until the 20th" means back ON the 20th.
+        assert is_reminder_snoozed(reminder, today=date(2026, 9, 20)) is False
+        assert is_reminder_snoozed(reminder, today=date(2026, 9, 21)) is False
+
+    def test_no_snooze_means_not_snoozed(self):
+        from app.services.reminder_service import is_reminder_snoozed
+
+        assert is_reminder_snoozed(self._reminder(), today=date(2026, 9, 19)) is False
+
+    def test_a_snooze_silences_every_overdue_trigger(self):
+        from app.services.reminder_service import is_reminder_overdue
+
+        reminder = self._reminder(
+            due_date=date(2020, 1, 1),
+            due_mileage_km=Decimal("1000"),
+            due_hours=Decimal("100"),
+            snoozed_until=date(2026, 9, 20),
+        )
+        overdue = is_reminder_overdue(
+            reminder, Decimal("99999"), Decimal("9999"), today=date(2026, 9, 19)
+        )
+        assert overdue is False
+
+    def test_the_overdue_state_returns_the_day_the_snooze_expires(self):
+        from app.services.reminder_service import is_reminder_overdue
+
+        reminder = self._reminder(due_date=date(2020, 1, 1), snoozed_until=date(2026, 9, 20))
+        assert is_reminder_overdue(reminder, None, None, today=date(2026, 9, 20)) is True

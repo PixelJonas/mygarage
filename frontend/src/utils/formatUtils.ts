@@ -2,6 +2,8 @@
  * Shared formatting utilities for currency and numbers.
  */
 
+import { cachedCurrencyFormat } from './numberFormatCache'
+
 const GENERIC_CURRENCY_SIGN = '¤'
 
 /**
@@ -16,12 +18,10 @@ function formatWithIntl(
 ): string {
   const digits = wholeDollars ? 0 : 2
   try {
-    const formatted = new Intl.NumberFormat(locale, {
-      style: 'currency',
-      currency: currencyCode,
-      minimumFractionDigits: digits,
-      maximumFractionDigits: digits,
-    }).format(num)
+    // Inside the try, so an invalid currency code still throws where it always
+    // did and still falls back below; the cache stores nothing on a throw, so a
+    // bad code costs one construction per call exactly as before.
+    const formatted = cachedCurrencyFormat(locale, currencyCode, digits).format(num)
     // Intl emits ¤ for ISO "no currency" codes (e.g. XXX). Swap for the code.
     if (formatted.includes(GENERIC_CURRENCY_SIGN)) {
       return formatted.replace(GENERIC_CURRENCY_SIGN, currencyCode)

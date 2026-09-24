@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
-from sqlalchemy import desc, or_, select
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -21,14 +21,14 @@ from app.models import (
     WarrantyRecord,
 )
 from app.models.user import User
-from app.models.vehicle_share import VehicleShare
 from app.schemas.calendar import CalendarEvent, CalendarResponse, CalendarSummary
-from app.services.auth import require_auth
+from app.services.auth import require_auth, visible_vehicles_filter
 from app.services.reminder_service import (
     calculate_hours_driving_rate,
     calculate_smart_estimated_date,
     get_current_hours,
 )
+from app.utils.household_time import household_today
 
 router = APIRouter(prefix="/api", tags=["calendar"])
 
@@ -41,7 +41,7 @@ def calculate_urgency(event_date: date, is_overdue: bool) -> UrgencyLevel:
     if is_overdue:
         return "overdue"
 
-    days_until = (event_date - date.today()).days
+    days_until = (event_date - household_today()).days
 
     if days_until <= 7:
         return "high"
@@ -66,9 +66,9 @@ async def get_calendar_events(
 
     # Set default date range if not provided
     if start_date is None:
-        start_date = date.today() - timedelta(days=30)
+        start_date = household_today() - timedelta(days=30)
     if end_date is None:
-        end_date = date.today() + timedelta(days=365)
+        end_date = household_today() + timedelta(days=365)
 
     # Parse filters
     vin_list = vehicle_vins.split(",") if vehicle_vins else None
@@ -80,15 +80,9 @@ async def get_calendar_events(
 
     # Get vehicles scoped to current user (owned + shared), or all for admins
     vehicle_query = select(Vehicle)
-    if current_user is not None and not current_user.is_admin:
-        shared_vins = (
-            select(VehicleShare.vehicle_vin)
-            .where(VehicleShare.user_id == current_user.id)
-            .scalar_subquery()
-        )
-        vehicle_query = vehicle_query.where(
-            or_(Vehicle.user_id == current_user.id, Vehicle.vin.in_(shared_vins))
-        )
+    scope = visible_vehicles_filter(current_user)
+    if scope is not None:
+        vehicle_query = vehicle_query.where(scope)
     vehicles_result = await db.execute(vehicle_query)
     vehicles_dict = {v.vin: v for v in vehicles_result.scalars().all()}
 
@@ -99,7 +93,7 @@ async def get_calendar_events(
         allowed_vins = allowed_vins & set(vin_list)
 
     events = []
-    today = date.today()
+    today = household_today()
 
     # Fetch pending reminders for calendar
     if "maintenance" in type_list:
@@ -162,7 +156,11 @@ async def get_calendar_events(
                 odo_result = await db.execute(
                     select(OdometerRecord.odometer_km)
                     .where(OdometerRecord.vin == reminder.vin)
-                    .order_by(OdometerRecord.date.desc())
+                    .order_by(
+                        OdometerRecord.date.desc(),
+                        OdometerRecord.odometer_km.desc(),
+                        OdometerRecord.id.desc(),
+                    )
                     .limit(1)
                 )
                 current_odometer_km = odo_result.scalar_one_or_none()
@@ -200,38 +198,54 @@ async def get_calendar_events(
                 )
             )
 
-    # Fetch insurance policies
+    # Fetch insurance policies. A policy is a household record covering several
+    # vehicles, so it is ONE event, anchored on the first covered vehicle the
+    # caller may see that is still in service.
     if "insurance" in type_list:
-        insurance_query = select(InsurancePolicy).where(
-            InsurancePolicy.end_date >= start_date,
-            InsurancePolicy.end_date <= end_date,
+        insurance_result = await db.execute(
+            select(InsurancePolicy).where(
+                InsurancePolicy.end_date >= start_date,
+                InsurancePolicy.end_date <= end_date,
+            )
+        )
+        renewed = set(
+            (
+                await db.execute(
+                    select(InsurancePolicy.previous_policy_id).where(
+                        InsurancePolicy.previous_policy_id.is_not(None)
+                    )
+                )
+            )
+            .scalars()
+            .all()
         )
 
-        if allowed_vins:
-            insurance_query = insurance_query.where(InsurancePolicy.vin.in_(allowed_vins))
-        else:
-            insurance_query = insurance_query.where(InsurancePolicy.vin.in_([]))
-
-        insurance_result = await db.execute(insurance_query)
-        insurance_policies = insurance_result.scalars().all()
-
-        for policy in insurance_policies:
-            vehicle = vehicles_dict.get(policy.vin)
+        for policy in insurance_result.scalars().unique().all():
+            covered = [
+                vehicles_dict[link.vin]
+                for link in policy.vehicle_links
+                if link.vin in allowed_vins and vehicles_dict[link.vin].archived_at is None
+            ]
+            if not covered:
+                continue
+            vehicle = covered[0]
+            names = ", ".join(v.nickname or v.vin for v in covered)
             is_overdue = policy.end_date < today
 
             events.append(
                 CalendarEvent(
                     id=f"insurance-{policy.id}",
                     type="insurance",
-                    title=f"{policy.provider} - {policy.policy_type} Renewal",
-                    description=f"Policy #{policy.policy_number}",
+                    title=f"{policy.provider} Renewal",
+                    description=f"Policy #{policy.policy_number} ({names})",
                     date=policy.end_date,
-                    vehicle_vin=policy.vin,
-                    vehicle_nickname=vehicle.nickname if vehicle else None,
+                    vehicle_vin=vehicle.vin,
+                    vehicle_nickname=vehicle.nickname,
                     vehicle_color=None,
                     urgency=calculate_urgency(policy.end_date, is_overdue),
                     is_recurring=True,  # Insurance typically renews annually
-                    is_completed=False,
+                    # The next term or a new insurer is already entered.
+                    is_completed=policy.id in renewed,
                     is_estimated=False,
                     category="legal",
                     notes=None,
@@ -369,11 +383,15 @@ async def get_calendar_events(
 
 async def calculate_average_km_per_day(vin: str, db: AsyncSession) -> float | None:
     """Calculate average km per day for a vehicle based on odometer history."""
-    # Get last 30 days of odometer readings (or all if less than 30 days of data)
+    # Get last 30 days of odometer readings (or all if less than 30 days of data).
+    # The newest is read as the current odometer, so a day's highest reading
+    # comes first within its day (an odometer does not run backwards in a day).
     odometer_query = (
         select(OdometerRecord)
         .where(OdometerRecord.vin == vin)
-        .order_by(desc(OdometerRecord.date))
+        .order_by(
+            desc(OdometerRecord.date), desc(OdometerRecord.odometer_km), desc(OdometerRecord.id)
+        )
         .limit(30)
     )
 
@@ -405,7 +423,9 @@ async def estimate_date_from_mileage(
     odometer_query = (
         select(OdometerRecord)
         .where(OdometerRecord.vin == vin)
-        .order_by(desc(OdometerRecord.date))
+        .order_by(
+            desc(OdometerRecord.date), desc(OdometerRecord.odometer_km), desc(OdometerRecord.id)
+        )
         .limit(1)
     )
 
@@ -420,7 +440,7 @@ async def estimate_date_from_mileage(
 
     if km_remaining <= 0:
         # Already past due
-        return date.today()
+        return household_today()
 
     # Get average km per day
     avg_km_per_day = await calculate_average_km_per_day(vin, db)
@@ -432,7 +452,7 @@ async def estimate_date_from_mileage(
     # Calculate estimated days until due
     days_until_due = int(float(km_remaining) / avg_km_per_day)
 
-    return date.today() + timedelta(days=days_until_due)
+    return household_today() + timedelta(days=days_until_due)
 
 
 async def estimate_date_from_hours(vin: str, due_hours: Decimal, db: AsyncSession) -> date | None:
@@ -460,7 +480,7 @@ async def estimate_date_from_hours(vin: str, due_hours: Decimal, db: AsyncSessio
 
     if hours_remaining <= 0:
         # Already past due
-        return date.today()
+        return household_today()
 
     # Get average engine-hours per day
     avg_hours_per_day = await calculate_hours_driving_rate(vin, db)
@@ -545,6 +565,6 @@ async def export_calendar_ical(
         content=ical.getvalue(),
         media_type="text/calendar",
         headers={
-            "Content-Disposition": f"attachment; filename=mygarage-calendar-{date.today().strftime('%Y%m%d')}.ics"
+            "Content-Disposition": f"attachment; filename=mygarage-calendar-{household_today().strftime('%Y%m%d')}.ics"
         },
     )

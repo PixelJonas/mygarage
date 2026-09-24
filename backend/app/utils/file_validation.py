@@ -3,6 +3,7 @@
 # pyright: reportOptionalMemberAccess=false, reportPossiblyUnboundVariable=false
 
 import csv
+import io
 import logging
 
 from fastapi import HTTPException, UploadFile
@@ -156,22 +157,32 @@ async def validate_csv_upload(file: UploadFile, max_size: int = None) -> str:
             detail=f"File too large. Maximum size: {max_size / (1024 * 1024):.1f}MB",
         )
 
-    # Decode content
+    # Decode content. `utf-8-sig` drops the byte-order mark a spreadsheet writes
+    # at the start of a "CSV UTF-8" file, which would otherwise become part of
+    # the first column's name and hide that column from every importer.
     try:
-        csv_data = contents.decode("utf-8")
+        csv_data = contents.decode("utf-8-sig")
     except UnicodeDecodeError:
         raise HTTPException(status_code=400, detail="Invalid file encoding. Expected UTF-8.")
 
-    # Validate it's actually CSV format
-    try:
-        # Try to detect CSV format
-        csv.Sniffer().sniff(csv_data[:1024] if len(csv_data) > 1024 else csv_data)
-    except csv.Error as e:
-        raise HTTPException(status_code=400, detail=f"Invalid CSV format: {str(e)}")
-
-    # Check if file is empty
     if not csv_data.strip():
         raise HTTPException(status_code=400, detail="CSV file is empty")
+
+    # Judge the file by the shape every importer reads: comma-separated, with a
+    # header row. Not `csv.Sniffer`, which guessed a delimiter from how evenly
+    # characters repeat across the first 1,024 characters. An export about
+    # thirty columns wide fits a header, four or five rows and one row cut in
+    # half in that sample, so the guess failed on valid files (#163), and no
+    # importer used the dialect it detected.
+    try:
+        header = next(csv.reader(io.StringIO(csv_data)), [])
+    except csv.Error as e:
+        raise HTTPException(status_code=400, detail=f"Invalid CSV format: {e}")
+    if sum(1 for column in header if column.strip()) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid CSV format: expected a comma-separated file with a header row.",
+        )
 
     return csv_data
 

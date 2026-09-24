@@ -99,7 +99,6 @@
     }
   },
   "insurance": {
-    "coverageLimits": "Limites de cobertura",
     "createTitle": "Adicionar seguro",
     "deductible": "Franquia",
     "editTitle": "Editar seguro",
@@ -113,7 +112,6 @@
     "selectFrequency": "Selecione a frequência"
   },
   "modal": {
-    "acceptTelemetry": "Aceitar telemetria",
     "activeUser": "Usuário ativo",
     "addProvider": "Adicionar {{name}}",
     "addShare": "Compartilhar",
@@ -181,14 +179,12 @@
     "failedToGenerateDeviceToken": "Falha ao gerar token do dispositivo",
     "failedToGenerateToken": "Falha ao gerar token",
     "failedToLoadFamilyData": "Falha ao carregar dados da família",
-    "failedToLoadLiveLink": "Falha ao carregar o Live Link",
     "failedToLoadRecipients": "Falha ao carregar destinatários",
     "failedToLoadSharingData": "Falha ao carregar dados de compartilhamento",
     "failedToReorder": "Falha ao reordenar",
     "failedToRestartMqtt": "Falha ao reiniciar MQTT",
     "failedToRevokeDeviceToken": "Falha ao revogar token do dispositivo",
     "failedToRevokeShare": "Falha ao revogar compartilhamento",
-    "failedToSaveMqtt": "Falha ao salvar configurações do MQTT",
     "failedToSaveSettings": "Falha ao salvar configurações",
     "failedToSendCommand": "Falha ao enviar comando",
     "failedToShareVehicle": "Falha ao compartilhar veículo",
@@ -214,18 +210,14 @@
     "ingestionUrl": "URL de ingestão",
     "lastActiveAdminWarning": "Aviso de último administrador ativo",
     "leaveBlankToKeep": "Deixe em branco para manter",
-    "liveLinkDescription": "Configure a integração de telemetria OBD2 do WiCAN",
-    "liveLinkSettings": "Configurações do Live Link",
     "localAuth": {
       "title": "Autenticação local"
     },
     "managedByOidc": "Gerenciado via OIDC",
     "memberDataUnavailable": "Dados do membro indisponíveis",
     "members": "Membros",
-    "mqttDescription": "Assine os tópicos MQTT do WiCAN em um broker local",
     "mqttRestarted": "MQTT reiniciado",
     "mqttSettingsSaved": "Configurações do MQTT salvas",
-    "mqttSubscription": "Inscrição MQTT",
     "multiUserMode": "Modo multiusuário",
     "newOwner": "Novo proprietário",
     "newTokenGenerated": "Novo token gerado",
@@ -274,7 +266,6 @@
     "shownOnDashboardMsg": "{{name}} exibido no painel",
     "test": "Testar",
     "testing": "Testando...",
-    "topicPrefix": "Prefixo do tópico",
     "torque": {
       "title": "Torque Pro Sources",
       "description": "Manage Torque Pro upload sources for this vehicle. Each source gets its own upload URL and token.",

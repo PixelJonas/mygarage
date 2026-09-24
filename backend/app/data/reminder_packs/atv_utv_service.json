@@ -2,22 +2,23 @@
   "id": "atv_utv_service",
   "name": "ATV / UTV Hours Service",
   "description": "Engine oil and air filter intervals for hour-metered ATVs and side-by-sides.",
-  "vehicle_types": ["ATV", "UTV"],
+  "vehicle_types": [
+    "ATV",
+    "UTV"
+  ],
   "reminders": [
     {
+      "key": "engine_oil",
+      "maintenance_type": "engine_oil_filter",
       "title": "Engine Oil Change",
-      "reminder_type": "hours",
-      "due_mileage_km": null,
-      "due_date_offset_days": null,
-      "due_hours": 50,
+      "interval_hours": 50,
       "notes": "Change engine oil and filter per the hours interval in your owner's manual."
     },
     {
+      "key": "air_filter",
+      "maintenance_type": "air_filter",
       "title": "Air Filter Inspection",
-      "reminder_type": "hours",
-      "due_mileage_km": null,
-      "due_date_offset_days": null,
-      "due_hours": 25,
+      "interval_hours": 25,
       "notes": "Inspect and clean or replace the air filter after dusty rides."
     }
   ]

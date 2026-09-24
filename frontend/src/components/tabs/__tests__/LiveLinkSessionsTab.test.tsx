@@ -99,7 +99,7 @@ describe('LiveLinkSessionsTab', () => {
     // odometer with the device's declared odometer_unit before storing it, so the
     // reader's own unit can be claimed for it again.
     expect(screen.getByText('62 mi')).toBeInTheDocument()
-    expect(screen.getByText('37 mph')).toBeInTheDocument()         // 60 km/h / 1.60934, at 0 dp
+    expect(screen.getByText('37 mph')).toBeInTheDocument()         // 60 km/h / 1.609344, at 0 dp
     expect(getSessions.mock.calls).toStrictEqual([['V1', { limit: 50, include_stationary: false }]])
   })
 

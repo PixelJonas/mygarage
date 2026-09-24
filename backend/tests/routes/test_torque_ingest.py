@@ -28,6 +28,11 @@ from app.models.vehicle_telemetry import VehicleTelemetry
 from app.routes.torque import TorqueTokenRedactionFilter, redact_torque_path
 from app.services.torque_service import TorqueService
 
+# Uploads store nothing while LiveLink's master switch is off (it gates the
+# ingest pipeline). Explicit, not inherited from whatever an earlier test left
+# in the shared database.
+pytestmark = pytest.mark.usefixtures("livelink_enabled")
+
 # Module-level counter for unique identifiers across all tests in this file.
 _SEQ = itertools.count()
 
@@ -366,3 +371,108 @@ async def test_ecu_status_online_after_data_bearing_ingest(
         )
     ).scalar_one()
     assert refreshed.ecu_status == "online"
+
+
+# ---------------------------------------------------------------------------
+# Routed through the source pipeline (source-modules plan, Task 9)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_ingest_runs_through_the_source_pipeline(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """The route must delegate, not keep its own copy of the orchestration.
+
+    A VALID token and EXACTLY one call. `await_count <= 1` would pass when the
+    route never delegates at all, which is the regression this exists to catch.
+    """
+    from unittest.mock import AsyncMock, patch
+
+    _vin, _device, token = await _make_torque_source(db_session)
+
+    with patch("app.routes.torque.ingest", new=AsyncMock()) as ing:
+        resp = await client.get(f"/api/v1/torque/{token}/upload", params={"k0c": "900"})
+
+    assert resp.status_code == 200
+    assert resp.text == "OK!"
+    ing.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_an_unlinked_source_still_answers_ok(client: AsyncClient, db_session: AsyncSession):
+    """Torque retries forever on any non-OK response, and the pipeline returns
+    early for an unlinked device, so the route must still say OK!."""
+    from app.services.livelink_service import LiveLinkService
+
+    n = next(_SEQ)
+    token = LiveLinkService.generate_token()
+    db_session.add(
+        LiveLinkDevice(
+            device_id=f"tq_unlinked_{n}",
+            kind="torque",
+            vin=None,
+            torque_device_id=f"{n:032d}",
+            device_token_hash=LiveLinkService.hash_token(token),
+            enabled=True,
+        )
+    )
+    await db_session.commit()
+
+    resp = await client.get(f"/api/v1/torque/{token}/upload", params={"k0c": "900"})
+
+    assert resp.status_code == 200
+    assert resp.text == "OK!"
+
+
+@pytest.mark.asyncio
+async def test_an_upload_leaves_device_status_alone(client: AsyncClient, db_session: AsyncSession):
+    """The route never wrote device_status, so a Torque source stays 'unknown'.
+
+    Not cosmetic. check_device_offline_status only sweeps devices whose
+    device_status is 'online', and notifies for each one it marks offline. A
+    phone uploads only while driving, so marking it online on upload would
+    send a "device offline" notification after every drive, to users who
+    have never had one.
+    """
+    _vin, device, token = await _make_torque_source(db_session)
+    await db_session.refresh(device)
+    device_id, before = device.device_id, device.device_status
+
+    resp = await client.get(
+        f"/api/v1/torque/{token}/upload",
+        params={"session": "S1", "time": _epoch_ms(datetime.now(UTC)), "k0c": "1800"},
+    )
+    assert resp.status_code == 200
+
+    db_session.expire_all()
+    refreshed = (
+        await db_session.execute(
+            select(LiveLinkDevice).where(LiveLinkDevice.device_id == device_id)
+        )
+    ).scalar_one()
+    assert refreshed.device_status == before
+    assert refreshed.last_seen is not None
+
+
+@pytest.mark.asyncio
+async def test_an_upload_while_livelink_is_off_answers_ok_and_stores_nothing(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """OK!, because Torque retries forever on anything else; nothing stored,
+    because the master switch now gates every ingest path."""
+    from app.models.settings import Setting
+
+    vin, _device, token = await _make_torque_source(db_session)
+    row = await db_session.get(Setting, "livelink_enabled")
+    row.value = "false"  # the module's fixture put it on, and puts it back
+    await db_session.commit()
+
+    resp = await client.get(
+        f"/api/v1/torque/{token}/upload",
+        params={"session": "S1", "time": _epoch_ms(datetime.now(UTC)), "k0c": "1800"},
+    )
+
+    assert resp.status_code == 200
+    assert resp.text == "OK!"
+    assert await _telemetry_rows(db_session, vin) == []

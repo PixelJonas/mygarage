@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 import httpx
 
 from app.services.poi.base import BasePOIProvider, POICategory
+from app.utils.http_errors import describe_http_error
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +99,7 @@ class GooglePlacesProvider(BasePOIProvider):
                 logger.warning(
                     "Google Places search failed for category %s: %s",
                     category.value,
-                    str(e),
+                    describe_http_error(e),
                 )
                 continue
 
@@ -177,7 +178,7 @@ class GooglePlacesProvider(BasePOIProvider):
                 logger.error(
                     "Google Places API error for category %s: %s",
                     category.value,
-                    str(e),
+                    describe_http_error(e),
                 )
                 raise
 

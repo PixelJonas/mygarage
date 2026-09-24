@@ -110,4 +110,21 @@ migrations must swallow their own operational errors.
 | `097_tire_mount_periods` | **FATAL** — Give tires a mount history, and make `position` mean "where it is now". |
 | `098_session_boundaries` | Durable movement state, session provenance, and one open session per device. |
 | `099_add_vehicle_fuel_filter` | **FATAL** — Add ``vehicles.fuel_filter_part_number`` to the maintenance specs. |
-| `100_add_financing_records` | Create financing_records table for lease/loan/upfront-fee costs (ADR 0001). |
+| `100_add_tire_storage_location` | **FATAL** — Add ``tires.storage_location``: where a tire is kept while it is off the car. |
+| `101_maintenance_rules_and_anchors` | **FATAL** — Maintenance rules, service anchors and canonical types for the reminder lifecycle. |
+| `102_drop_incidental_utc_timezone` | Delete an incidental ``timezone=UTC`` settings row (household timezone fix). |
+| `103_add_reminder_snoozed_until` | **FATAL** — Add ``vehicle_reminders.snoozed_until`` — reminder snooze (hide until date). |
+| `104_add_device_firmware_notification_state` | **FATAL** — Add firmware notification state to ``livelink_devices``. |
+| `105_add_fuel_octane_grade` | **FATAL** — Add ``fuel_records.octane`` and ``fuel_records.diesel_grade`` (#164). |
+| `106_repair_odometer_sync_duplicates` | Repair odometer rows duplicated by pre-fix auto-sync date edits (issue #171). |
+| `107_household_insurance_policies` | **FATAL** — Make an insurance policy a household record that covers many vehicles. |
+| `108_insurance_standard_coverages` | **FATAL** — Turn each vehicle's free-text coverage limits into standard coverage rows. |
+| `109_user_defined_reminder_packs` | Add the tables that hold user-saved reminder packs. |
+| `110_widen_livelink_device_kind` | **FATAL** — Widen ``livelink_devices.kind`` from VARCHAR(10) to VARCHAR(20). |
+| `111_livelink_topic_maps` | Add ``livelink_topic_maps``, the table behind config-driven MQTT sources. |
+| `112_device_odometer_param_key` | **FATAL** — Add ``livelink_devices.odometer_param_key``: which parameter carries this device's odometer. |
+| `113_livelink_device_preset_key` | **FATAL** — Add ``livelink_devices.preset_key``: which preset created this device. |
+| `114_livelink_parameter_dashboard_default` | **FATAL** — Reset ``livelink_parameters.show_on_dashboard`` to TRUE everywhere. |
+| `116_livelink_enable_for_active_installs` | **FATAL** — Switch LiveLink on for installs already receiving MQTT or Torque data. |
+| `117_livelink_alert_lines` | **FATAL** — Add a critical alert line and a notify-once state to ``livelink_parameters``. |
+| `118_livelink_notify_switch_keys` | Carry LiveLink notification switches over to the keys Settings writes. |

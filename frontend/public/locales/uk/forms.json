@@ -99,7 +99,6 @@
     "partialFilledAt": "Вкажіть дату й час заправки або очистіть обидва поля."
   },
   "insurance": {
-    "coverageLimits": "Ліміти покриття",
     "createTitle": "Додати страховку",
     "deductible": "Франшиза",
     "editTitle": "Редагувати страховку",
@@ -113,7 +112,6 @@
     "selectFrequency": "Виберіть частоту"
   },
   "modal": {
-    "acceptTelemetry": "Прийняти телеметрію",
     "activeUser": "Активний користувач",
     "addProvider": "Додати {{name}}",
     "addShare": "Надати доступ",
@@ -181,14 +179,12 @@
     "failedToGenerateDeviceToken": "Не вдалося створити токен пристрою",
     "failedToGenerateToken": "Не вдалося згенерувати токен",
     "failedToLoadFamilyData": "Не вдалося завантажити дані сім'ї",
-    "failedToLoadLiveLink": "Не вдалося завантажити Live Link",
     "failedToLoadRecipients": "Не вдалося завантажити одержувачів",
     "failedToLoadSharingData": "Не вдалося завантажити дані спільного доступу",
     "failedToReorder": "Не вдалося змінити порядок",
     "failedToRestartMqtt": "Не вдалося перезапустити MQTT",
     "failedToRevokeDeviceToken": "Не вдалося анулювати токен пристрою",
     "failedToRevokeShare": "Не вдалося скасувати доступ",
-    "failedToSaveMqtt": "Не вдалося зберегти налаштування MQTT",
     "failedToSaveSettings": "Не вдалося зберегти налаштування",
     "failedToSendCommand": "Не вдалося відправити команду",
     "failedToShareVehicle": "Не вдалося поділитися ТЗ",
@@ -214,18 +210,14 @@
     "ingestionUrl": "URL прийому даних",
     "lastActiveAdminWarning": "Попередження про останнього активного адміністратора",
     "leaveBlankToKeep": "Залиште порожнім, щоб зберегти",
-    "liveLinkDescription": "Опис Live Link",
-    "liveLinkSettings": "Налаштування Live Link",
     "localAuth": {
       "title": "Локальна аутентифікація"
     },
     "managedByOidc": "Керується через OIDC",
     "memberDataUnavailable": "Дані учасника недоступні",
     "members": "Учасники",
-    "mqttDescription": "Опис MQTT",
     "mqttRestarted": "MQTT перезапущено",
     "mqttSettingsSaved": "Налаштування MQTT збережено",
-    "mqttSubscription": "Підписка MQTT",
     "multiUserMode": "Багатокористувацький режим",
     "newOwner": "Новий власник",
     "newTokenGenerated": "Згенеровано новий токен",
@@ -274,7 +266,6 @@
     "shownOnDashboardMsg": "{{name}} показано на панелі керування",
     "test": "Тест",
     "testing": "Тестування...",
-    "topicPrefix": "Префікс топіка",
     "torque": {
       "title": "Torque Pro Sources",
       "description": "Manage Torque Pro upload sources for this vehicle. Each source gets its own upload URL and token.",

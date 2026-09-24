@@ -14,6 +14,8 @@
  * input on save.
  */
 
+import { getActiveLocale } from '@/constants/i18n'
+
 export type DecimalParseResult =
   | { kind: 'empty' }
   | { kind: 'value'; value: number; ambiguous: boolean }
@@ -35,9 +37,27 @@ const NON_NUMERIC = /[^\d.,+-]/g
 const groupingWellFormed = (parts: string[]): boolean =>
   parts[0] !== '' && parts[0].length <= 3 && parts.slice(1).every(p => p.length === 3)
 
+const separators = new Map<string, string>()
+
+/**
+ * The character this locale writes a decimal point with.
+ *
+ * Cached because `parseDecimalInput` reaches it on the ambiguous-separator path,
+ * which means once per keystroke in every `NumberInput` on screen, and it built a
+ * whole `Intl.NumberFormat` each time only to read ONE character out of it. The
+ * RESULT is cached rather than the formatter (so this does not use
+ * `numberFormatCache`): a single character is cheaper to keep than the machine
+ * that produced it, and nothing else here needs that machine.
+ *
+ * Keyed on the locale, which is the only thing the answer depends on.
+ */
 export function localeDecimalSeparator(locale: string): string {
+  const cached = separators.get(locale)
+  if (cached !== undefined) return cached
   const parts = new Intl.NumberFormat(locale).formatToParts(1.1)
-  return parts.find(p => p.type === 'decimal')?.value ?? '.'
+  const separator = parts.find(p => p.type === 'decimal')?.value ?? '.'
+  separators.set(locale, separator)
+  return separator
 }
 
 export function parseDecimalInput(raw: string, locale: string): DecimalParseResult {
@@ -115,4 +135,15 @@ export function parseDecimalInput(raw: string, locale: string): DecimalParseResu
   if (!Number.isFinite(value)) return { kind: 'invalid' }
 
   return { kind: 'value', value: sign * value, ambiguous }
+}
+
+/**
+ * The value of a controlled numeric field, or `undefined` when it is empty or
+ * not a number. For fields whose empty and invalid states both mean "no
+ * value" (an optional interval, a cost); a field that must tell them apart
+ * calls `parseDecimalInput` itself.
+ */
+export function parseOptionalDecimal(raw: string): number | undefined {
+  const result = parseDecimalInput(raw, getActiveLocale())
+  return result.kind === 'value' ? result.value : undefined
 }

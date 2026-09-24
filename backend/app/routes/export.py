@@ -10,6 +10,7 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.constants.units import IMPERIAL_PRESET, METRIC_PRESET, UnitSet
@@ -19,6 +20,7 @@ from app.models import (
     FuelRecord,
     HoursRecord,
     InsurancePolicy,
+    InsurancePolicyVehicle,
     Note,
     OdometerRecord,
     ServiceVisit,
@@ -31,6 +33,8 @@ from app.services.fuel_service import resolve_station_names
 from app.services.service_visit_service import service_visit_cost_load_options
 from app.utils.csv_emission import apply_unit_set, marker_for
 from app.utils.csv_safe import sanitize_csv_row
+from app.utils.insurance_coverages import coverage_text
+from app.utils.insurance_shares import effective_shares
 from app.utils.render_context import render_context_for_request
 
 router = APIRouter(prefix="/api/export", tags=["export"])
@@ -67,8 +71,17 @@ limiter = Limiter(key_func=get_remote_address)
 # JSON_SCHEMA_VERSION plus a `"units"` field.
 # The importer (`app/routes/import_data.py`) reads the marker and falls back
 # to v2 imperial conversion when it's missing (legacy v2 backups).
-CSV_SCHEMA_VERSION = "6"
-JSON_SCHEMA_VERSION = "5"
+# - CSV "7" / JSON "6": additive fuel grade columns, #164 — `Octane` and
+#   `Diesel Grade` in the fuel CSV, `octane`/`diesel_grade` keys in the JSON
+#   fuel records (same additive treatment as the v3→v4 fuel columns).
+# - JSON "7": additive `insurance_policies` list (household insurance,
+#   migration 107). The CSV shape is unchanged, so its version is too.
+# - JSON "8": each insurance entry carries `coverages` (the standard coverage
+#   catalogue, migration 108) in place of the `coverage_limits` text box. The
+#   CSV keeps its `Coverage Limits` column, now rendered from those rows and
+#   read back through the same parser, so its shape and version are unchanged.
+CSV_SCHEMA_VERSION = "7"
+JSON_SCHEMA_VERSION = "8"
 EXPORT_UNITS = "metric"
 
 
@@ -280,6 +293,8 @@ async def export_fuel_records_csv(
         "Missed Fill-up",
         "Is Hauling",
         "Fuel Type Used",
+        "Octane",
+        "Diesel Grade",
         "Station ID",
         "Station",
         "Driver ID",
@@ -323,6 +338,10 @@ async def export_fuel_records_csv(
                 "Yes" if record.missed_fillup else "No",
                 "Yes" if record.is_hauling else "No",
                 record.fuel_type_used or "",
+                # Dimensionless grade fields (#164) — an octane is an int label,
+                # not a unit-bearing quantity, so no csv_emission conversion.
+                record.octane if record.octane is not None else "",
+                record.diesel_grade or "",
                 record.station_address_book_id or "",
                 station_names.get(record.id) or "",
                 record.driver_user_id or "",
@@ -436,7 +455,9 @@ async def export_odometer_records_csv(
 
     # Get all odometer records
     result = await db.execute(
-        select(OdometerRecord).where(OdometerRecord.vin == vin).order_by(OdometerRecord.date.desc())
+        select(OdometerRecord)
+        .where(OdometerRecord.vin == vin)
+        .order_by(OdometerRecord.date.desc(), OdometerRecord.id.desc())
     )
     records = result.scalars().all()
 
@@ -591,6 +612,29 @@ async def export_warranties_csv(
     )
 
 
+#: Reaching a policy THROUGH one of its links does not eager-load the policy's
+#: own collections: SQLAlchemy will not walk back down the relationship it just
+#: came up. Spell them out, or the first read is an async lazy load.
+#: The sibling links are loaded only so `_insurance_share` can read their ids
+#: and shares; `noload` keeps each of them from dragging its own coverages,
+#: which this export never reads off a sibling.
+_INSURANCE_LINK_LOADS = (
+    selectinload(InsurancePolicyVehicle.policy)
+    .selectinload(InsurancePolicy.vehicle_links)
+    .noload(InsurancePolicyVehicle.coverages),
+    selectinload(InsurancePolicyVehicle.policy).selectinload(InsurancePolicy.all_fields),
+)
+
+
+def _insurance_share(link: InsurancePolicyVehicle) -> float | None:
+    """One vehicle's effective per-period share of its policy, for JSON."""
+    policy = link.policy
+    share = effective_shares(
+        policy.premium_amount, [(item.id, item.premium_share) for item in policy.vehicle_links]
+    ).get(link.id)
+    return float(share) if share is not None else None
+
+
 @router.get("/vehicles/{vin}/insurance/csv")
 @limiter.limit(settings.rate_limit_exports)
 async def export_insurance_csv(
@@ -603,13 +647,18 @@ async def export_insurance_csv(
     # Verify vehicle exists and user has access
     vehicle = await get_vehicle_or_403(vin, current_user, db)
 
-    # Get all insurance records
+    # One row per policy covering THIS vehicle. The columns are unchanged from
+    # the per-vehicle era, so older files still import: Type, Deductible,
+    # Coverage Limits and Notes are this vehicle's own, and Premium is its
+    # effective share of the household policy.
     result = await db.execute(
-        select(InsurancePolicy)
-        .where(InsurancePolicy.vin == vin)
+        select(InsurancePolicyVehicle)
+        .join(InsurancePolicy, InsurancePolicy.id == InsurancePolicyVehicle.policy_id)
+        .where(InsurancePolicyVehicle.vin == vin)
+        .options(*_INSURANCE_LINK_LOADS)
         .order_by(InsurancePolicy.start_date.desc())
     )
-    records = result.scalars().all()
+    links = result.scalars().all()
 
     # Generate CSV
     headers = [
@@ -626,19 +675,23 @@ async def export_insurance_csv(
     ]
 
     rows = []
-    for record in records:
+    for link in links:
+        policy = link.policy
+        share = effective_shares(
+            policy.premium_amount, [(item.id, item.premium_share) for item in policy.vehicle_links]
+        ).get(link.id)
         rows.append(
             [
-                record.provider or "",
-                record.policy_number or "",
-                record.policy_type or "",
-                record.start_date.isoformat() if record.start_date else "",
-                record.end_date.isoformat() if record.end_date else "",
-                f"{record.premium_amount:.2f}" if record.premium_amount else "",
-                record.premium_frequency or "",
-                f"{record.deductible:.2f}" if record.deductible else "",
-                record.coverage_limits or "",
-                record.notes or "",
+                policy.provider or "",
+                policy.policy_number or "",
+                link.policy_type or "",
+                policy.start_date.isoformat() if policy.start_date else "",
+                policy.end_date.isoformat() if policy.end_date else "",
+                f"{share:.2f}" if share is not None else "",
+                policy.premium_frequency or "",
+                f"{link.deductible:.2f}" if link.deductible is not None else "",
+                coverage_text(link.coverages),
+                link.notes or "",
             ]
         )
 
@@ -779,7 +832,9 @@ async def export_vehicle_json(
     fuel_records = fuel_result.scalars().all()
 
     odometer_result = await db.execute(
-        select(OdometerRecord).where(OdometerRecord.vin == vin).order_by(OdometerRecord.date.desc())
+        select(OdometerRecord)
+        .where(OdometerRecord.vin == vin)
+        .order_by(OdometerRecord.date.desc(), OdometerRecord.id.desc())
     )
     odometer_records = odometer_result.scalars().all()
 
@@ -790,6 +845,14 @@ async def export_vehicle_json(
 
     note_result = await db.execute(select(Note).where(Note.vin == vin).order_by(Note.date.desc()))
     notes = note_result.scalars().all()
+
+    insurance_result = await db.execute(
+        select(InsurancePolicyVehicle)
+        .where(InsurancePolicyVehicle.vin == vin)
+        .options(*_INSURANCE_LINK_LOADS)
+        .order_by(InsurancePolicyVehicle.id)
+    )
+    insurance_links = insurance_result.scalars().all()
 
     def_result = await db.execute(
         select(DEFRecord).where(DEFRecord.vin == vin).order_by(DEFRecord.date.desc())
@@ -840,6 +903,8 @@ async def export_vehicle_json(
                 "missed_fillup": r.missed_fillup,
                 "is_hauling": r.is_hauling,
                 "fuel_type_used": r.fuel_type_used,
+                "octane": r.octane,
+                "diesel_grade": r.diesel_grade,
                 "notes": r.notes,
             }
             for r in fuel_records
@@ -882,6 +947,43 @@ async def export_vehicle_json(
                 "content": n.content,
             }
             for n in notes
+        ],
+        # This vehicle's place on each household policy. `premium_share` is the
+        # EFFECTIVE share, so a restore reproduces what this vehicle cost even
+        # when the other vehicles on the policy are not part of the backup.
+        "insurance_policies": [
+            {
+                "provider": link.policy.provider,
+                "policy_number": link.policy.policy_number,
+                "start_date": link.policy.start_date.isoformat(),
+                "end_date": link.policy.end_date.isoformat(),
+                "premium_frequency": link.policy.premium_frequency,
+                "policy_notes": link.policy.notes,
+                "policy_fields": [{"label": f.label, "value": f.value} for f in link.policy.fields],
+                "policy_type": link.policy_type,
+                "premium_share": _insurance_share(link),
+                "deductible": float(link.deductible) if link.deductible is not None else None,
+                "coverages": [
+                    {
+                        "coverage_key": c.coverage_key,
+                        "limit_primary": float(c.limit_primary)
+                        if c.limit_primary is not None
+                        else None,
+                        "limit_secondary": float(c.limit_secondary)
+                        if c.limit_secondary is not None
+                        else None,
+                        "deductible": float(c.deductible) if c.deductible is not None else None,
+                        "premium": float(c.premium) if c.premium is not None else None,
+                    }
+                    for c in link.coverages
+                ],
+                "notes": link.notes,
+                # Without it a restore silently puts a vehicle that LEFT the
+                # policy back on it for the whole term.
+                "effective_to": link.effective_to.isoformat() if link.effective_to else None,
+                "fields": [{"label": f.label, "value": f.value} for f in link.fields],
+            }
+            for link in insurance_links
         ],
     }
 

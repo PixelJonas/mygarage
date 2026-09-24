@@ -13,6 +13,8 @@ interface Props {
   isOpen: boolean
   onClose: () => void
   onProviderAdded: () => void
+  /** Opened from inside another drawer (Find POI's providers sidecar): stack over it. */
+  nested?: boolean
 }
 
 const availableProviders = [
@@ -38,7 +40,7 @@ const availableProviders = [
   },
 ]
 
-export default function AddProviderModal({ isOpen, onClose, onProviderAdded }: Props) {
+export default function AddProviderModal({ isOpen, onClose, onProviderAdded, nested }: Props) {
   const { t } = useTranslation('forms')
   const [step, setStep] = useState<ModalStep>(ModalStep.SELECT_PROVIDER)
   const [selectedProviderName, setSelectedProviderName] = useState<string>('')
@@ -104,6 +106,7 @@ export default function AddProviderModal({ isOpen, onClose, onProviderAdded }: P
   return (
     <Drawer
       open
+      nested={nested}
       onClose={handleClose}
       title={step === ModalStep.SELECT_PROVIDER ? t('modal.selectPoiProvider') : t('modal.addProvider', { name: selectedProvider?.displayName })}
       width="md"

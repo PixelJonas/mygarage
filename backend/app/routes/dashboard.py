@@ -4,7 +4,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -31,14 +31,36 @@ from app.services.auth import require_auth
 from app.services.fuel_service import calculate_average_hours_economy, compute_full_tank_economy
 from app.services.hours_service import latest_engine_hours_and_date
 from app.services.odometer_service import latest_odometer_km_and_date
-from app.services.reminder_service import is_reminder_overdue
+from app.services.reminder_service import is_reminder_overdue, is_reminder_snoozed
 from app.services.service_visit_service import service_visit_cost_load_options
+from app.utils.household_time import household_today
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 # Photo directory configuration
 PHOTO_DIR = Path("/data/photos")
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+
+#: How many full-tank fill-ups the "recent" economy figure averages over.
+_RECENT_WINDOW = 3
+
+
+def _economy_pair(values: list[Decimal]) -> tuple[Decimal | None, Decimal | None]:
+    """The all-time and recent means of a list of per-full-tank figures.
+
+    A helper because the towing-inclusive figures need exactly the same two
+    means as the non-towing ones, and issue #181 would have been two copies of
+    this arithmetic that could round or window differently.
+
+    Returns ``(None, None)`` for an empty list, which is a real case: a vehicle
+    with no non-towing fill-up at all has no non-towing economy.
+    """
+    if not values:
+        return None, None
+    average = round(sum(values) / Decimal(len(values)), 2)
+    window = values[-_RECENT_WINDOW:]
+    recent = round(sum(window) / Decimal(len(window)), 2)
+    return average, recent
 
 
 async def calculate_vehicle_stats(
@@ -97,7 +119,7 @@ async def calculate_vehicle_stats(
     )
 
     # Latest odometer reading (km) + its date — one deterministic fetch shared
-    # with detail-stats (date DESC, id DESC tie-break; odometer_service). R2-B1.
+    # with detail-stats (date DESC, odometer_km DESC, id DESC; odometer_service). R2-B1.
     latest_odometer_km, latest_odometer_date = await latest_odometer_km_and_date(db, vehicle.vin)
 
     # Canonical latest engine-hours reading (§1 helper) — NEVER vehicle.current_hours
@@ -106,7 +128,7 @@ async def calculate_vehicle_stats(
     average_l_per_hr, average_cost_per_hr = await calculate_average_hours_economy(db, vehicle.vin)
 
     # Count upcoming and overdue reminders
-    today = date_type.today()
+    today = household_today()
     pending_reminders_result = await db.execute(
         select(Reminder).where(Reminder.vin == vehicle.vin, Reminder.status == "pending")
     )
@@ -124,6 +146,10 @@ async def calculate_vehicle_stats(
     upcoming_count = 0
     overdue_count = 0
     for reminder in pending_reminders:
+        if is_reminder_snoozed(reminder, today):
+            # Excluded, not reclassified: a snoozed reminder is out of BOTH
+            # counts until its date passes (plan 2026-09-18, decision 4).
+            continue
         if is_reminder_overdue(reminder, current_odometer_km, current_engine_hours, today):
             overdue_count += 1
         else:
@@ -139,15 +165,21 @@ async def calculate_vehicle_stats(
         .order_by(FuelRecord.odometer_km.asc(), FuelRecord.date.asc())
     )
     fuel_records_list = list(fuel_records_result.scalars().all())
-    l_per_100km_values = [value for _, value in compute_full_tank_economy(fuel_records_list)]
 
-    average_l_per_100km: Decimal | None = None
-    recent_l_per_100km: Decimal | None = None
-    if l_per_100km_values:
-        average_l_per_100km = round(sum(l_per_100km_values) / Decimal(len(l_per_100km_values)), 2)
-        # Recent L/100km is the average of the last 3 full-tank fill-ups.
-        recent_window = l_per_100km_values[-3:]
-        recent_l_per_100km = round(sum(recent_window) / Decimal(len(recent_window)), 2)
+    # ★ TWO PASSES OVER ONE QUERY, AND THE DEFAULT IS THE BUG (issue #181).
+    # `compute_full_tank_economy` defaults to `exclude_hauling=False` while
+    # `calculate_average_l_per_100km`, which the vehicle's own Fuel tab uses,
+    # defaults to True. This route passed no argument, so the home page quoted a
+    # towing-inclusive figure with nothing saying so, and a vehicle that tows
+    # read worse here than on its own page. The headline now excludes towing and
+    # the towing-inclusive figure is reported alongside it.
+    daily_values = [
+        value for _, value in compute_full_tank_economy(fuel_records_list, exclude_hauling=True)
+    ]
+    towing_values = [value for _, value in compute_full_tank_economy(fuel_records_list)]
+
+    average_l_per_100km, recent_l_per_100km = _economy_pair(daily_values)
+    average_l_per_100km_with_towing, recent_l_per_100km_with_towing = _economy_pair(towing_values)
 
     # Get main photo URL from Vehicle.main_photo field
     main_photo_url: str | None = None
@@ -187,6 +219,8 @@ async def calculate_vehicle_stats(
         overdue_maintenance_count=overdue_count or 0,
         average_l_per_100km=average_l_per_100km,
         recent_l_per_100km=recent_l_per_100km,
+        average_l_per_100km_with_towing=average_l_per_100km_with_towing,
+        recent_l_per_100km_with_towing=recent_l_per_100km_with_towing,
         archived_at=vehicle.archived_at,
         archived_visible=vehicle.archived_visible,
         is_shared_with_me=is_shared_with_me,
@@ -218,6 +252,7 @@ async def _fleet_next_due(
        odometer reading sorted after those that do (falling back to
        ``due_mileage_km ASC``); final tie-break ``id ASC``.
     """
+    today = household_today()
     dated = (
         await db.execute(
             select(
@@ -229,6 +264,9 @@ async def _fleet_next_due(
             .where(
                 Reminder.vin.in_(vins),
                 Reminder.status == "pending",
+                # Snoozed reminders never headline the fleet strip
+                # (plan 2026-09-18, decision 4).
+                or_(Reminder.snoozed_until.is_(None), Reminder.snoozed_until <= today),
                 Reminder.due_date.isnot(None),
             )
             .order_by(Reminder.due_date.asc(), Reminder.id.asc())
@@ -253,6 +291,7 @@ async def _fleet_next_due(
             ).where(
                 Reminder.vin.in_(vins),
                 Reminder.status == "pending",
+                or_(Reminder.snoozed_until.is_(None), Reminder.snoozed_until <= today),
                 Reminder.due_date.is_(None),
                 Reminder.due_mileage_km.isnot(None),
             )
@@ -304,7 +343,7 @@ async def calculate_fleet_health(
     query is identical on SQLite (prod) and PostgreSQL (CI) — no EXTRACT /
     strftime (G8). Costs are Decimal, never float (G9).
     """
-    today = date_type.today()
+    today = household_today()
     year = today.year
     year_start = date_type(year, 1, 1)
     upcoming_end = today + timedelta(days=30)
@@ -327,6 +366,9 @@ async def calculate_fleet_health(
         select(func.count(Reminder.id)).where(
             Reminder.vin.in_(vins),
             Reminder.status == "pending",
+            # A snoozed reminder is out of every due-soon count until its
+            # date passes (plan 2026-09-18, decision 4).
+            or_(Reminder.snoozed_until.is_(None), Reminder.snoozed_until <= today),
             Reminder.due_date.isnot(None),
             Reminder.due_date > today,
             Reminder.due_date <= upcoming_end,

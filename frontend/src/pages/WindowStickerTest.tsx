@@ -24,18 +24,7 @@ import { Select } from '../components/ui'
 import { formatCurrency } from '../utils/formatUtils'
 import { getActionErrorMessage } from '../utils/httpErrorHandler'
 import { useCurrencyPreference } from '../hooks/useCurrencyPreference'
-import { getActiveLocale } from '@/constants/i18n'
-
-/**
- * Format a number with a fixed number of fraction digits in the active app
- * locale (not the browser's — those diverge once the user picks a language).
- */
-function formatDecimal(value: number, digits: number): string {
-  return new Intl.NumberFormat(getActiveLocale(), {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  }).format(value)
-}
+import { formatAtPrecision } from '@/utils/unitFormat'
 
 interface ExtractedData {
   msrp_base: string | null
@@ -196,7 +185,7 @@ export default function WindowStickerTest() {
                   <FileText className="w-12 h-12 text-primary" />
                   <p className="text-garage-text font-medium">{file.name}</p>
                   <p className="text-garage-text-muted text-sm">
-                    {t('windowSticker.test.fileSizeMb', { size: formatDecimal(file.size / 1024 / 1024, 2) })}
+                    {t('windowSticker.test.fileSizeMb', { size: formatAtPrecision(file.size / 1024 / 1024, 2) })}
                   </p>
                   <button
                     onClick={() => setFile(null)}
@@ -305,7 +294,7 @@ export default function WindowStickerTest() {
                       <span className="text-garage-text-muted">{t('windowSticker.test.confidence')}:</span>
                       <span className="ml-2 text-garage-text">
                         {t('windowSticker.test.percentValue', {
-                          percent: formatDecimal(result.extracted_data.confidence_score ?? 0, 1),
+                          percent: formatAtPrecision(result.extracted_data.confidence_score ?? 0, 1),
                         })}
                       </span>
                     </div>

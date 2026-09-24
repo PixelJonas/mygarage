@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { SettingsProvider, useSettings } from '@/contexts/SettingsContext'
 
 vi.mock('@/services/api', () => ({
@@ -31,6 +32,8 @@ vi.mock('@/contexts/AuthContext', () => ({
     isAdmin: true,
     user: { unit_preference: 'imperial', language: 'en', currency_code: 'USD' },
     refreshUser: vi.fn(),
+    refreshPublicSettings: vi.fn(),
+    householdTimeZone: null,
   }),
 }))
 
@@ -53,10 +56,13 @@ function ActiveSystemTab() {
 }
 
 function renderTab(): void {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
-    <SettingsProvider>
-      <ActiveSystemTab />
-    </SettingsProvider>,
+    <QueryClientProvider client={queryClient}>
+      <SettingsProvider>
+        <ActiveSystemTab />
+      </SettingsProvider>
+    </QueryClientProvider>,
   )
 }
 

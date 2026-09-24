@@ -7,6 +7,214 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- LiveLink source modules: telemetry sources now declare their capabilities
+- Generic MQTT sources, mappable from Settings with no code
+- MQTT topic discovery for finding what a device publishes
+- Create a LiveLink device from Settings
+- Mopeka propane sensors: add each tank as its own device from its level topic, with the other readings' topics suggested from the broker; deleting one deletes its readings
+- Propane tanks on the Live tab: one card per tank, drawn at its level in your accent colour, with its other readings beside it
+- Alert lines per tank in Settings (level low and critical, battery low): they colour the tank, label it Low or Critical, and notify once per crossing, re-armed by a refill
+
+### Fixed
+- A request with NaN or infinity in a number field gets a 422, not a 500
+- Quick Entry offers what the vehicle page does: a fifth wheel or travel trailer gets Propane instead of Fuel Up and no Mileage, a diesel gets DEF, and the Add Fuel shortcut opens the vehicle's own fill-up
+- DEF can be logged on a vehicle whose second fuel is diesel; its DEF tab was read-only
+- The propane form no longer shows "NaN" under the tank row before a tank size is chosen
+- The notification switches in LiveLink settings now gate their notifications; **Parameter threshold breaches** did nothing (migration 118 keeps any alert switched off the old way off)
+- Removed `TelemetryService.store_value`, which was unreachable and raised `TypeError`
+- Widened `livelink_devices.kind` so PostgreSQL accepts `generic_mqtt`
+- The Inbound Webhooks hint no longer offers `?token=`, which is refused
+- Secrets (the Telegram bot token, Discord and Slack webhook URLs, TomTom and Google Places API keys) are no longer written to the logs
+
+### Changed
+- A disabled LiveLink device no longer has its status refreshed by status or battery messages
+- **Enable LiveLink** now gates MQTT, Torque and SD-card backfill too: off, nothing is stored and no new device is discovered
+- Installs already receiving MQTT or Torque data have LiveLink switched on at upgrade (migration 116)
+- Search providers moved from Settings > Integrations to a button on **Find POI** (admins only); `/shop-finder` now opens Find POI
+- Telegram fuel commands moved to Settings > Notifications > Telegram and fetch messages from Telegram, so no public address or webhook is needed; they are off while Telegram is off and answer only the chat ID set there
+- Telegram fuel commands accept `/fuel`, so they work in group chats (where the bot answers only commands), and date a fill-up the day its message was sent
+- Units, time format, language and currency moved from Settings > System to Quick Settings (the gear); Custom units open as a section there
+- Non-admins see only their own settings: the Files, Notifications and Backup tabs are hidden, and System and Integrations show only their personal cards
+
+### Removed
+- `POST /api/v1/webhooks/telegram` (fuel commands are fetched by polling)
+- The Debug Mode switch, which changed nothing (debug logging is the `MYGARAGE_DEBUG` environment variable)
+
+## [3.6.0] - 2026-09-21
+
+### Added
+- Save a vehicle's recurring reminders as a pack and apply it to other vehicles; rename, delete or save a vehicle over one (#165).
+- Change any interval while applying a pack, instead of editing each reminder afterwards (#165).
+- Household insurance: one policy covers many vehicles, each listed beneath it with its own coverage type, premium share and deductible.
+- Insurance page for the whole garage; a vehicle's Insurance tab shows the same policies with that vehicle in full.
+- Renew a policy as soon as the notice arrives (it stays Upcoming until it starts), switch insurers, and review the history of prior terms with the premium change.
+- Named fields on a policy or on one vehicle's coverage, with common labels one tap away, in an order you choose.
+- Standard coverages per vehicle: a fixed checklist from bodily injury to roadside assistance, each with its limits, deductible and premium.
+- PDF import attaches every vehicle on the declarations page that is in the garage, with its coverages filled in.
+- JSON backups include insurance.
+
+### Changed
+- **BREAKING:** the insurance API moved to `/api/insurance/policies`; `POST`/`PUT`/`DELETE /api/vehicles/{vin}/insurance` and the per-vehicle `parse-pdf` are gone. `GET /api/vehicles/{vin}/insurance` remains with a new shape.
+- Existing policies are merged at upgrade: rows sharing owner, provider, policy number, dates and frequency become one policy. Every vehicle keeps the numbers it had; if the full premium was typed on each vehicle, correct the policy total once.
+- Insurance expiry sends one notification per policy, not per vehicle, skips policies covering only archived vehicles, and stops once the renewal is entered.
+- Garage analytics counts insurance by billing frequency and date, per vehicle and per month.
+- A transferred vehicle leaves the previous owner's policies.
+- Insurance `test-parse` is admin only.
+- **BREAKING:** a vehicle's `coverage_limits` text is replaced by `coverages`. Existing text is converted at upgrade: recognised lines become coverages, priced leftovers become named fields, the rest stays in that vehicle's notes. Check each policy once afterwards.
+- Policy cards show every figure as a label above its value and pack them across the card, instead of three columns stretched over the page.
+- JSON backup schema version 8. Version 7 backups still restore; their coverage text is converted the same way.
+
+### Fixed
+- Text on the vehicle overview page can be selected and copied again; the click-to-edit cards no longer cover their own values (#179).
+- Home page fuel economy no longer quotes a towing figure as if it were ordinary economy; it shows the non-towing average, with an "Including towing" figure beneath when a vehicle tows (#181).
+- The home page remembers the vehicle sort order for the session (#180).
+- Production images now install from `uv.lock`, so they no longer resolve a different dependency set on every build.
+- Registered the four models missing from `app.models`, which left the ORM registry incomplete for anything importing it directly.
+
+### Build
+- Migration 107: household insurance policies (FATAL; back up first).
+- Migration 108: standard insurance coverages (FATAL; back up first).
+- Migration 109: saved reminder pack tables (additive).
+- Backend dependencies bumped, including granian 2.8.3, starlette 1.6.0, sqlalchemy 2.0.54, numpy 2.5.3, ruff 0.16.8 and pyright 1.1.414.
+
+## [3.5.0] - 2026-09-18
+
+### Added
+- Reminder snooze: hide a pending reminder from overdue/upcoming counts and notifications until a date; due dates stay unchanged.
+- Octane and diesel grade (on-road/off-road) on fuel records, prefilled from the last fill-up (#164).
+- WiCAN firmware notifications fire once per release, with a per-device "skip this version" in LiveLink settings.
+- Recurring reminders: a maintenance rule (interval in distance, months or hours) per vehicle, from a pack, the reminder form or a service line item (#165).
+- Completing a reminder takes the real date and reading and can log or link a service visit; the next reminder is created from it.
+- Applying a reminder pack previews first: it counts from the most recent matching service and adopts an existing reminder instead of adding another.
+- Canonical maintenance types on service line items and reminders; a "possible duplicate" flag and a reconcile action for reminders of one type.
+- `GET /api/maintenance-types`, `/api/vehicles/{vin}/maintenance-rules` and the reminder `complete`, `apply-pack/preview`, `duplicates`, `reconcile` and `reconcile-duplicates` endpoints.
+
+### Changed
+- A reminder created from a service line item is anchored on that visit's date and odometer, not on the vehicle's latest reading.
+- Mark done records today's date and the nearest reading and still advances a recurring reminder.
+- Every pending reminder with a mileage or hours target reports `projected_usage_date` separately from its calendar threshold.
+- Reminder packs declare `maintenance_type` and intervals (`interval_km`, `interval_months`, `interval_days`, `interval_hours`); the v3.4 keys still load.
+
+### Fixed
+- Editing a fuel, service or DEF date moved its auto-synced odometer reading instead of leaving a duplicate at the old date; existing duplicates are repaired at upgrade (#171).
+- Restoring a JSON backup dropped each fuel record's fuel type and hauling flag.
+- Server and browser now compute "today" in one household time zone (Settings -> System -> Timezone, then MYGARAGE_TIMEZONE, then the container zone); tire defaults used UTC and everything else used the container zone, so evening dates disagreed west of Greenwich.
+- An incidental timezone=UTC settings row written by earlier System-tab saves is removed once at upgrade when the container zone differs; re-select UTC in Settings if you had deliberately chosen it.
+- Backend log statements sanitize user-provided values (CodeQL log-injection).
+- Importing with Skip duplicates dropped a second reading from the same day.
+- Applying a pack no longer duplicates a reminder already tracking the same maintenance.
+- Saving an overdue distance or hours reminder unchanged no longer fails validation or moves its target to the current reading.
+- Correcting a service's maintenance type moves the old type's reminder off it, and the new type can count from it.
+- Dismissing or deleting a recurring reminder stops it repeating instead of having it come back on the next service.
+- Resolving duplicate reminders refuses a request mixing maintenance types.
+- Deleting the service a reminder counted from re-anchors it on the previous matching service instead of keeping the deleted one.
+
+### Security
+- Frontend: drop all `overrides` (`bun audit` clean).
+
+### Build
+- Migrations 103-106: reminder `snoozed_until`, device firmware notification state, fuel `octane`/`diesel_grade`, odometer-sync duplicate repair.
+- Migration 101: `vehicle_maintenance_rules`, `service_line_items.maintenance_type` and the reminder anchor, completion and rule columns.
+- Bump Bun to 1.4.2.
+- Pin Node 24 in `.nvmrc`.
+- Bump shared-workflows to v1.6.0-rc1.
+- Frontend: replace `@vitejs/plugin-react-swc` with `@vitejs/plugin-react`.
+- Frontend: merge `vitest.config.ts` into `vite.config.ts`.
+- Frontend: move Vite config off deprecated options.
+- Frontend: switch ESLint config to `defineConfig`.
+- Frontend: drop `baseUrl` from tsconfig.
+- Frontend: exclude `src/__tests__/` helpers from coverage.
+
+### Dev Dependencies
+- **@playwright/test**: 1.61.1 → 1.63.0
+- **@testing-library/dom**: added at 10.4.2
+- **@testing-library/jest-dom**: 6.9.1 → 7.0.1
+- **@testing-library/react**: 16.3.2 → 16.3.3
+- **@testing-library/user-event**: 14.6.1 → 14.6.7
+- **@types/leaflet**: 1.9.21 → 1.9.22
+- **@types/node**: 26.1.1 → 24.13.5
+- **@types/react**: 19.2.17 → 19.3.0
+- **@types/react-dom**: 19.2.3 → 19.3.0
+- **@typescript-eslint/eslint-plugin**: 8.64.0 → 8.70.0
+- **@typescript-eslint/parser**: 8.64.0 → 8.70.0
+- **@vitejs/plugin-react**: added at 6.1.1
+- **@vitejs/plugin-react-swc**: 4.3.1 → removed
+- **@vitest/coverage-v8**: 4.1.10 → 5.0.1
+- **@vitest/ui**: 4.1.10 → 5.0.1
+- **autoprefixer**: 10.5.4 → removed
+- **eslint**: 10.7.0 → 10.10.0
+- **eslint-plugin-react-refresh**: 0.5.3 → 0.5.7
+- **globals**: 17.7.0 → 17.12.0
+- **jsdom**: 29.1.1 → 30.0.1
+- **typescript-eslint**: 8.64.0 → 8.70.0
+- **vite**: 8.1.5 → 8.3.0
+- **vitest**: 4.1.10 → 5.0.1
+
+### App Dependencies
+- **@hookform/resolvers**: 5.4.0 → 5.9.1
+- **@schedule-x/calendar**: 4.6.1 → 4.8.0
+- **@schedule-x/calendar-controls**: 4.6.1 → 4.8.0
+- **@schedule-x/events-service**: 4.6.1 → 4.8.0
+- **@schedule-x/theme-default**: 4.6.1 → 4.8.0
+- **@tanstack/react-query**: 5.101.2 → 5.103.1
+- **@tanstack/react-query-devtools**: 5.101.2 → 5.103.1
+- **axios**: 1.18.1 → 1.20.0
+- **i18next**: 26.3.6 → 26.4.2
+- **i18next-http-backend**: 4.0.0 → 4.0.2
+- **lucide-react**: 1.25.0 → 1.46.0
+- **react**: 19.2.7 → 19.3.0
+- **react-dom**: 19.2.7 → 19.3.0
+- **react-hook-form**: 7.82.0 → 7.88.0
+- **react-i18next**: 17.0.10 → 17.0.14
+- **react-is**: 19.2.7 → 19.3.0
+- **react-router-dom**: 7.18.1 → 7.18.4
+- **recharts**: 3.9.2 → 3.10.1
+- **sonner**: 2.0.7 → 2.0.8
+- **temporal-polyfill**: 1.0.1 → 1.0.5
+- **zod**: 4.4.3 → 4.6.5
+
+## [3.4.0] - 2026-09-15
+
+### Upgrade note
+
+Back up first. Migration 100 adds a nullable column to `tires`.
+
+### Added
+
+- Mount date and odometer on the Add Tire form, with the nearest odometer reading suggested (#153).
+- A date on every tire operation, so a swap can be logged after the fact.
+- Mount history on every tire, with editing of each period's dates, odometers and notes.
+- Add a past mount period from a tire's history.
+- Contradictions in a tire's mount history are badged, with a Fix button on the card.
+- Tire cards show the mount date and odometer, or the date a tire went into storage.
+- A storage location on a tire (#153).
+- Retired tires can be shown on the Tires tab and restored to storage.
+- A tread reading can be deleted from a tire's history.
+
+### Changed
+
+- A vehicle's current odometer is the highest reading of its latest day.
+
+### Fixed
+
+- The Add Tire form never sent the mount odometer, leaving the tire's distance and wear estimate blank.
+- Tire operations accepted a history that contradicts itself, such as a dismount before its mount.
+- A retired tire could be mounted or rotated through the API.
+- Two simultaneous mounts at one corner returned 500 instead of 409.
+- The Log Reading date defaulted to the UTC date instead of your local date.
+- Imperial conversions in the app and server now use the same exact factors.
+- Tire operations could overwrite a same-day odometer reading from a service visit, fuel-up or LiveLink.
+- Re-saving a fuel, DEF or service record could overwrite a same-day tire odometer reading.
+- LiveLink skipped its odometer reading on a day that already had one from another record.
+- SD-card backfill could stop importing a device's logs when a reading appeared twice in one file.
+- A LiveLink reading replayed after a drive ended was left out of that drive's totals.
+- A re-run SD-card backfill did not extend two drives that touch end to start.
+- Fuel, DEF, hours and vehicle JSON imports ignored skip duplicates for rows repeated within one file.
+- One invalid row could discard a whole JSON import.
+- An import that failed partway could leave some of its rows saved.
+- CSV imports longer than about ten rows were refused with "Could not determine delimiter" (#163).
+
 ## [3.3.1] - 2026-09-10
 
 ### Behaviour note

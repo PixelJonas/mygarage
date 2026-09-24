@@ -2,6 +2,7 @@
 
 from app.models.address_book import AddressBookEntry
 from app.models.attachment import Attachment
+from app.models.audit_log import AuditLog
 from app.models.csrf_token import CSRFToken
 from app.models.def_record import DEFRecord
 from app.models.document import Document
@@ -11,17 +12,26 @@ from app.models.external_vehicle import ExternalVehicle
 from app.models.financing import FinancingRecord
 from app.models.fuel import FuelRecord
 from app.models.hours import HoursRecord
-from app.models.insurance import InsurancePolicy
+from app.models.insurance import (
+    InsuranceCoverage,
+    InsurancePolicy,
+    InsurancePolicyField,
+    InsurancePolicyVehicle,
+)
 from app.models.livelink_device import LiveLinkDevice
 from app.models.livelink_firmware_cache import LiveLinkFirmwareCache
 from app.models.livelink_parameter import LiveLinkParameter
+from app.models.livelink_topic_map import LiveLinkTopicMap
 from app.models.location_point import LocationPoint
+from app.models.maintenance_rule import MaintenanceRule
 from app.models.note import Note
 from app.models.odometer import OdometerRecord
+from app.models.oidc_pending_link import OIDCPendingLink
 from app.models.oidc_state import OIDCState
 from app.models.photo import VehiclePhoto
 from app.models.recall import Recall
 from app.models.reminder import Reminder
+from app.models.reminder_pack import ReminderPack, ReminderPackItemRow
 from app.models.sd_log_ingest_state import SdLogIngestState
 from app.models.service_line_item import ServiceLineItem
 from app.models.service_visit import ServiceVisit
@@ -31,6 +41,8 @@ from app.models.spot_rental_billing import SpotRentalBilling
 from app.models.supply import Supply, SupplyPurchase, SupplyUsage
 from app.models.tax import TaxRecord
 from app.models.tire import Tire, TireReading
+from app.models.toll import TollTag, TollTransaction
+from app.models.user import User
 from app.models.vehicle import TrailerDetails, Vehicle
 from app.models.vehicle_dtc import VehicleDTC
 from app.models.vehicle_share import VehicleShare
@@ -63,7 +75,10 @@ __all__ = [
     "VehiclePhoto",
     "Document",
     "WarrantyRecord",
+    "InsuranceCoverage",
     "InsurancePolicy",
+    "InsurancePolicyField",
+    "InsurancePolicyVehicle",
     "Supply",
     "SupplyPurchase",
     "SupplyUsage",
@@ -72,6 +87,7 @@ __all__ = [
     # LiveLink (Telemetry)
     "LiveLinkDevice",
     "LiveLinkParameter",
+    "LiveLinkTopicMap",
     "LiveLinkFirmwareCache",
     "VehicleTelemetry",
     "VehicleTelemetryLatest",
@@ -92,8 +108,17 @@ __all__ = [
     "OIDCState",
     "Vendor",
     "Reminder",
+    "MaintenanceRule",
+    "ReminderPack",
+    "ReminderPackItemRow",
     "ServiceVisit",
     "ServiceLineItem",
     # Integrations
     "WidgetApiKey",
+    # Previously missing from the registry
+    "AuditLog",
+    "OIDCPendingLink",
+    "TollTag",
+    "TollTransaction",
+    "User",
 ]

@@ -1,4 +1,5 @@
 import js from '@eslint/js'
+import { defineConfig } from 'eslint/config'
 import globals from 'globals'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
@@ -66,7 +67,7 @@ const UNIT_CONSTANT_RESTRICTED = [
     //
     // 1.8 and 9/5 are deliberately absent: they are indistinguishable from an
     // ordinary ratio, so the Celsius idiom is matched structurally below.
-    selector: 'Literal[raw=/^(?:1609\\.34|25\\.4|235\\.214|282\\.481)$/]',
+    selector: 'Literal[raw=/^(?:1609\\.34|1609\\.344|25\\.4|235\\.214|282\\.481)$/]',
     message:
       'Raw unit-conversion constant. Convert through useUnitFormat() (or makeUnitFormat() outside a component); UnitConverter in utils/units.ts owns every factor.',
   },
@@ -160,7 +161,7 @@ const UNITS_CONSTANT_EXEMPT = [
   'src/utils/supplyUnits.ts',
 ]
 
-export default tseslint.config(
+export default defineConfig(
   {
     // `*.mutant.generated.*` is the unit gate's selftest: it mutates COPIES of
     // this file and of scripts/validate-units.ts rather than the originals, so

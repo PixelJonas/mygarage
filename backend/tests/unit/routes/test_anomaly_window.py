@@ -25,15 +25,8 @@ def _alert(month: str, amount: str = "500.00") -> AnomalyAlert:
 
 @pytest.fixture
 def fixed_today(monkeypatch: pytest.MonkeyPatch):
-    """Pin date.today() used by filter_anomalies_to_window."""
-    monkeypatch.setattr(
-        "app.routes.analytics.date_type",
-        type(
-            "FixedDate",
-            (date,),
-            {"today": classmethod(lambda cls: date(2026, 8, 15))},
-        ),
-    )
+    """Pin the household today used by filter_anomalies_to_window."""
+    monkeypatch.setattr("app.routes.analytics.household_today", lambda: date(2026, 8, 15))
 
 
 @pytest.mark.unit

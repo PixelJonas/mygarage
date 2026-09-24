@@ -66,8 +66,16 @@ async def test_engine():
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def test_sessionmaker(test_engine):
-    """Create session maker for tests."""
-    return async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    """Create session maker for tests.
+
+    `autoflush=False`, exactly as `app/database.py` builds production sessions.
+    With the default the suite flushed before every query, so a service that
+    added a row and then queried for it in the same unit of work passed every
+    test and failed in production.
+    """
+    return async_sessionmaker(
+        test_engine, class_=AsyncSession, expire_on_commit=False, autoflush=False
+    )
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
@@ -87,6 +95,41 @@ async def db_session(test_sessionmaker, init_test_db) -> AsyncGenerator[AsyncSes
     """Provide a database session for tests. Depends on init_test_db to ensure tables exist."""
     async with test_sessionmaker() as session:
         yield session
+
+
+@pytest_asyncio.fixture
+async def livelink_enabled(db_session: AsyncSession) -> AsyncGenerator[None]:
+    """Switch LiveLink's master switch on for one test, then put it back.
+
+    The switch gates every ingest path (`livelink_ingest.ingest`, the HTTPS
+    route, SD backfill), and migration 034 seeds it off. A test that drives
+    ingest without it asserts against an early return: "no session opened"
+    passes for the wrong reason. Not autouse, because the tests pinning the
+    switched-off behaviour must see the real default. The suite shares one
+    database, so the prior value is restored.
+    """
+    from app.models.settings import Setting
+
+    existing = await db_session.get(Setting, "livelink_enabled")
+    previous = existing.value if existing is not None else None
+    if existing is not None:
+        existing.value = "true"
+    else:
+        db_session.add(Setting(key="livelink_enabled", value="true"))
+    await db_session.commit()
+
+    yield
+
+    # A failed test can leave the session mid-transaction; restoring through
+    # it would raise here and bury the real failure under a teardown error.
+    await db_session.rollback()
+    row = await db_session.get(Setting, "livelink_enabled")
+    if previous is None:
+        if row is not None:
+            await db_session.delete(row)
+    elif row is not None:
+        row.value = previous
+    await db_session.commit()
 
 
 @pytest.fixture(scope="session")
@@ -121,7 +164,15 @@ async def client(db_session, test_data_dir: Path) -> AsyncGenerator[AsyncClient]
 
     # Override the get_db dependency to use our test session
     async def override_get_db():
-        yield db_session
+        # Mirror production `get_db`: a route's exception, HTTPException
+        # included, is raised here after the yield, and the request's
+        # flushed-but-uncommitted writes must not survive into the next
+        # request or the test's own assertions.
+        try:
+            yield db_session
+        except Exception:
+            await db_session.rollback()
+            raise
 
     app.dependency_overrides[get_db] = override_get_db
 
@@ -401,3 +452,14 @@ def non_admin_headers(non_admin_user: dict[str, object]) -> dict[str, str]:
         data={"sub": str(non_admin_user["id"]), "username": str(non_admin_user["username"])}
     )
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture(autouse=True)
+def _reset_household_zone():
+    """Per-test reset of the household-zone globals (plan 4.7)."""
+    from app.utils import household_time
+
+    household_time.household_zone_var.set(None)
+    household_time._warned_values.clear()
+    yield
+    household_time.household_zone_var.set(None)

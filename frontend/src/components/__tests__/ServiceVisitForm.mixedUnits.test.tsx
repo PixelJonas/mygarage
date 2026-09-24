@@ -13,7 +13,7 @@
  * test that mocked the child could not see the pair disagree.
  *
  * Expected values are hand-written and derived in comments, never computed
- * through the code under test. `MILES_TO_KM` is 1.60934 (`utils/units.ts`).
+ * through the code under test. `MILES_TO_KM` is 1.609344 (`utils/units.ts`).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -44,6 +44,10 @@ vi.mock('../../hooks/useUnitPreference', () => ({
     units: unitPrefMock.units,
     gallonStandard: unitPrefMock.units.secondary_gallon,
   }),
+}))
+vi.mock('../../hooks/useReminders', () => ({
+  useMaintenanceTypes: () => ({ data: [] }),
+  invalidateMaintenanceQueries: () => {},
 }))
 vi.mock('../../hooks/useCurrencyPreference', () => ({
   useCurrencyPreference: () => ({
@@ -115,7 +119,7 @@ beforeEach(() => {
 
 describe('ServiceVisitForm — the odometer follows units.distance', () => {
   it('★ EDIT: a litres-and-miles client reads miles, under a miles label, with a miles example', async () => {
-    // 72420.5 km / 1.60934 = 45000.1242745... mi, shown at the mi adapter's
+    // 72420.5 km / 1.609344 = 45000.0124... mi, shown at the mi adapter's
     // zero decimals as 45000.
     unitPrefMock.units = LITRES_MILES
     render(<ServiceVisitForm {...DEFAULT_PROPS} visit={VISIT} />)
@@ -128,8 +132,8 @@ describe('ServiceVisitForm — the odometer follows units.distance', () => {
   })
 
   it('★ CREATE: a typed reading is stored as kilometres, not verbatim', async () => {
-    // 50000 mi x 1.60934 = 80467 km. Before this slice the same entry stored
-    // 50000, because `system` reads 'metric' off the litres.
+    // 50000 mi x 1.609344 = 80467.2 km. Before this slice the same entry
+    // stored 50000, because `system` reads 'metric' off the litres.
     unitPrefMock.units = LITRES_MILES
     render(<ServiceVisitForm {...DEFAULT_PROPS} />)
     await waitFor(() => expect(mockedApiGet).toHaveBeenCalled())
@@ -142,7 +146,7 @@ describe('ServiceVisitForm — the odometer follows units.distance', () => {
 
     await waitFor(() => expect(createMutateAsync).toHaveBeenCalledTimes(1))
     const payload = createMutateAsync.mock.calls[0][0] as Record<string, unknown>
-    expect(payload.odometer_km).toBe(80467)
+    expect(payload.odometer_km).toBe(80467.2)
     expect(payload.odometer_km).not.toBe(50000)
   })
 
@@ -174,12 +178,14 @@ describe('ServiceVisitForm — the odometer follows units.distance', () => {
   })
 })
 
-describe('ServiceVisitForm — the reminder mileage LineItemEditor writes', () => {
-  it('★ END TO END: a 500-mile reminder is posted as 804.67 km, not 500', async () => {
-    // The headline defect, driven through the real child. 500 mi x 1.60934 =
-    // 804.67 km. `LineItemEditor` converts on change and this form posts the
-    // result verbatim as `reminder.due_mileage_km`; before this slice a
-    // litres-and-miles account stored the typed 500 as kilometres.
+describe('ServiceVisitForm — the reminder interval LineItemEditor writes', () => {
+  it('★ END TO END: a 500-mile recurring reminder is posted as an 804.672 km interval, not 500, and no absolute target', async () => {
+    // The headline defect, driven through the real child. 500 mi x 1.609344 =
+    // 804.672 km. `RecurrenceFields` converts on change and this form posts
+    // the result verbatim as `reminder.recurrence.interval_km`; the backend
+    // anchors the reminder on the visit, so no `due_mileage_km` is sent at all
+    // (v3.5.0: the form used to add the interval to the vehicle's latest
+    // odometer, which put a reminder below the service it followed).
     unitPrefMock.units = LITRES_MILES
     render(<ServiceVisitForm {...DEFAULT_PROPS} />)
     await waitFor(() => expect(mockedApiGet).toHaveBeenCalled())
@@ -188,24 +194,18 @@ describe('ServiceVisitForm — the reminder mileage LineItemEditor writes', () =
       target: { value: 'Oil change' },
     })
     fireEvent.click(document.getElementById('reminder-0') as HTMLInputElement)
-    // The draft opens as a date reminder; switch it to mileage.
-    const typeSelect = screen
-      .getByText('lineItemEditor.misc.reminderTypeLabel')
-      .parentElement!.querySelector('select') as HTMLSelectElement
-    fireEvent.change(typeSelect, { target: { value: 'mileage' } })
-
-    const mileageInput = screen.getByPlaceholderText(
-      'lineItemEditor.misc.egValue'
-    ) as HTMLInputElement
-    fireEvent.change(mileageInput, { target: { value: '500' } })
+    // The draft opens as a RECURRING reminder with the distance interval field.
+    const intervalInput = document.getElementById('line-item-0-interval-km') as HTMLInputElement
+    fireEvent.change(intervalInput, { target: { value: '500' } })
 
     fireEvent.submit(drawerForm())
     await waitFor(() => expect(createMutateAsync).toHaveBeenCalledTimes(1))
     const payload = createMutateAsync.mock.calls[0][0] as {
-      line_items: { reminder?: { due_mileage_km?: number } }[]
+      line_items: { reminder?: { recurrence?: { interval_km?: number }; due_mileage_km?: number } }[]
     }
-    expect(payload.line_items[0].reminder?.due_mileage_km).toBe(804.67)
-    expect(payload.line_items[0].reminder?.due_mileage_km).not.toBe(500)
+    expect(payload.line_items[0].reminder?.recurrence?.interval_km).toBe(804.672)
+    expect(payload.line_items[0].reminder?.recurrence?.interval_km).not.toBe(500)
+    expect(payload.line_items[0].reminder).not.toHaveProperty('due_mileage_km')
     expect(binarySystemFor(unitPrefMock.units.volume)).toBe('metric')
   })
 })

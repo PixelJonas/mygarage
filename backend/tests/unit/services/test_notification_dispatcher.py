@@ -64,6 +64,18 @@ class TestEventSettingsMaps:
         for event_type, priority in EVENT_PRIORITY_MAP.items():
             assert priority in valid_priorities, f"Invalid priority '{priority}' for {event_type}"
 
+    def test_livelink_events_obey_the_switches_in_settings(self):
+        """Settings -> LiveLink writes `livelink_notify_*`. The map pointed at
+        `notify_livelink_*`, which nothing wrote, so those switches were dead."""
+        assert {
+            event: key for event, (_, key) in EVENT_SETTINGS_MAP.items() if "livelink" in event
+        } == {
+            "livelink_new_device": "livelink_notify_new_device",
+            "livelink_device_offline": "livelink_notify_device_offline",
+            "livelink_threshold_alert": "livelink_notify_threshold_alerts",
+            "livelink_firmware_update": "livelink_notify_firmware_update",
+        }
+
     def test_def_low_settings_mapping(self):
         """def_low event maps to the notify_def_low toggle, gated on ntfy_enabled like siblings."""
         assert EVENT_SETTINGS_MAP["def_low"] == ("ntfy_enabled", "notify_def_low")
@@ -244,20 +256,15 @@ class TestNotificationDispatcher:
         assert fake_service.sent_messages == []
 
     @pytest.mark.asyncio
-    async def test_get_setting_bool_true_values(self, dispatcher):
-        """Test boolean setting parsing for true values."""
-        for val in ("true", "1", "yes", "True", "YES"):
-            with patch.object(dispatcher, "_get_setting", return_value=val):
-                result = await dispatcher._get_setting_bool("key")
-                assert result is True, f"Expected True for '{val}'"
+    async def test_get_setting_bool_reads_through_settings_service(self, dispatcher):
+        """The dispatcher reads switches exactly as every other caller does."""
+        with patch(
+            "app.services.notifications.dispatcher.SettingsService.get_bool",
+            new=AsyncMock(return_value=True),
+        ) as get_bool:
+            assert await dispatcher._get_setting_bool("key", default=True) is True
 
-    @pytest.mark.asyncio
-    async def test_get_setting_bool_false_values(self, dispatcher):
-        """Test boolean setting parsing for false values."""
-        for val in ("false", "0", "no", ""):
-            with patch.object(dispatcher, "_get_setting", return_value=val):
-                result = await dispatcher._get_setting_bool("key")
-                assert result is False, f"Expected False for '{val}'"
+        get_bool.assert_awaited_once_with(dispatcher.db, "key", True)
 
     @pytest.mark.asyncio
     async def test_get_setting_int_valid(self, dispatcher):
@@ -348,13 +355,27 @@ class TestConvenienceMethods:
     async def test_notify_livelink_threshold_alert(self, dispatcher):
         """Test threshold alert notification formatting."""
         await dispatcher.notify_livelink_threshold_alert(
-            "My Truck", "Engine Temp", 250.5, "max", 230.0, "°F"
+            "My Truck", "Engine Temp", 250.5, "high", 230.0, "°F"
         )
 
         call_kwargs = dispatcher.dispatch.call_args
         assert call_kwargs.kwargs["event_type"] == "livelink_threshold_alert"
         assert "exceeded maximum" in call_kwargs.kwargs["message"]
         assert "250.5 °F" in call_kwargs.kwargs["message"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("band", "direction"),
+        [("low", "dropped below minimum"), ("critical", "dropped below critical")],
+    )
+    async def test_notify_livelink_threshold_alert_below(self, dispatcher, band, direction):
+        """A tank's low and critical lines read differently."""
+        await dispatcher.notify_livelink_threshold_alert(
+            "KZ Durango", "Tank 1 level", 8.0, band, 10.0, "%"
+        )
+
+        message = dispatcher.dispatch.call_args.kwargs["message"]
+        assert f"Tank 1 level {direction} (8.0 % vs threshold 10.0 %)" in message
 
     @pytest.mark.asyncio
     async def test_notify_livelink_firmware_update(self, dispatcher):

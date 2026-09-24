@@ -79,16 +79,18 @@ REQUIRED_FIELD_CASES: list[RequiredFieldsCase] = [
         schema=ServiceLineItemCreate,
         expected_required={"description"},
     ),
+    # v3.5.0: `reminder_type` is optional because a reminder with a
+    # `recurrence` derives its type and thresholds from the rule and anchor;
+    # the model validator still demands it when no recurrence is given.
     RequiredFieldsCase(
         schema=ReminderCreate,
-        expected_required={"reminder_type", "title"},
+        expected_required={"title"},
     ),
     RequiredFieldsCase(
         schema=InsurancePolicyCreate,
         expected_required={
             "end_date",
             "policy_number",
-            "policy_type",
             "provider",
             "start_date",
         },

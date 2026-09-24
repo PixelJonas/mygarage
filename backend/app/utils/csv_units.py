@@ -25,7 +25,7 @@ inference over the column names. Resolving the importing account's
 preference instead is exactly the defect recorded in
 `import_data._row_gallons_to_liters`: importing an old US-gallon backup on a
 UK-configured instance multiplied every volume by 4.54609 instead of
-3.78541 and wrote the result into canonical storage permanently.
+3.785411784 and wrote the result into canonical storage permanently.
 
 Resolution order (R4), per column, first hit wins
 -------------------------------------------------
@@ -261,7 +261,7 @@ def _reject(detail: str) -> NoReturn:
 
 
 def volume_factor(token: str) -> Decimal:
-    """Litres in one `token`, e.g. `3.78541` for `gal_us`.
+    """Litres in one `token`, e.g. `3.785411784` for `gal_us`.
 
     Read off the adapter rather than re-declared, so the price denominator
     can never drift from the volume column's own factor. Valid only because
@@ -320,6 +320,16 @@ class CsvUnitContext:
         """The vocabulary token `quantity`'s values are in, or None if absent."""
         binding = self._bindings.get(quantity)
         return binding.token if binding is not None else None
+
+    def converts(self, quantity: str) -> bool:
+        """Whether `quantity`'s values change on the way into canonical storage.
+
+        False when the file has no such column or already carries it in the
+        canonical unit (km, L, ...). An importer uses this to tell a figure
+        typed in miles or gallons from one stored exactly as the file gives it.
+        """
+        token = self.token(quantity)
+        return token is not None and token != _CANONICAL_TOKEN[quantity]
 
     def to_canonical(self, quantity: str, value: Decimal | None) -> Decimal | None:
         """Convert one cell of `quantity` into canonical metric storage.

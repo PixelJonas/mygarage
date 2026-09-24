@@ -18,4 +18,24 @@ describe('POI provider modals — Drawer conversion', () => {
     // SELECT step has no footer by design (judgment call #9) — the provider cards are the actions.
     expect(screen.getByRole('dialog', { name: 'modal.selectPoiProvider' })).toBeInTheDocument()
   })
+
+  // Opened from Find POI's providers sidecar, they must stack over it: a
+  // drawer at the base layer sits behind the sidecar, and inert.
+  it.each([
+    [true, 'z-drawer-nested'],
+    [false, 'z-drawer'],
+  ])('EditProviderModal nested=%s sits at %s', (nested, layer) => {
+    render(
+      <EditProviderModal isOpen nested={nested} provider={provider as never} onClose={vi.fn()} onSave={vi.fn()} />,
+    )
+    expect(screen.getByRole('dialog').classList.contains(layer)).toBe(true)
+  })
+
+  it.each([
+    [true, 'z-drawer-nested'],
+    [false, 'z-drawer'],
+  ])('AddProviderModal nested=%s sits at %s', (nested, layer) => {
+    render(<AddProviderModal isOpen nested={nested} onClose={vi.fn()} onProviderAdded={vi.fn()} />)
+    expect(screen.getByRole('dialog').classList.contains(layer)).toBe(true)
+  })
 })

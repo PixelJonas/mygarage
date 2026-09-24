@@ -14,6 +14,7 @@ export type TireListResponse = components['schemas']['TireListResponse']
 export type TireCreate = components['schemas']['TireCreate']
 export type TireUpdate = components['schemas']['TireUpdate']
 export type TireReadingCreate = components['schemas']['TireReadingCreate']
+export type HistoryFault = components['schemas']['HistoryFaultResponse']
 
 /**
  * Where a tire is mounted, or `null`/`undefined` when it is in storage.
@@ -34,7 +35,18 @@ export type TirePosition = Tire['position']
  */
 export type MountedPosition = NonNullable<TirePosition>
 
+/**
+ * Every corner a tire can be mounted at, front-to-back then the spare.
+ *
+ * Shared so a control that offers all five corners (the Add Tire drawer's
+ * mount chips, the past-period drawer's corner picker) reads from one array
+ * rather than each declaring its own copy that can drift from this list.
+ */
+export const POSITIONS: MountedPosition[] = ['FL', 'FR', 'RL', 'RR', 'SPARE']
+
 export type TireMountPeriod = components['schemas']['MountPeriodResponse']
+export type MountPeriodUpdate = components['schemas']['MountPeriodUpdate']
+export type MountPeriodCreate = components['schemas']['MountPeriodCreate']
 export type TireMountRequest = components['schemas']['TireMountRequest']
 export type TireDismountRequest = components['schemas']['TireDismountRequest']
 export type TireCreateAndMountRequest = components['schemas']['TireCreateAndMountRequest']

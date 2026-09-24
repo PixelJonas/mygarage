@@ -245,7 +245,7 @@ describe('DEFRecordForm — the gallon comes from the user, not the instance', (
       id: 11, vin: DEFAULT_PROPS.vin, date: '2026-02-10',
       liters: 45.461, price_per_unit: 1.31981548979, cost: 60,
     } as never} />)
-    // Seeded in the USER's gallon: 45.461 / 4.54609 = 10, not 45.461 / 3.78541.
+    // Seeded in the USER's gallon: 45.461 / 4.54609 = 10, not 45.461 / 3.785411784.
     expect((document.getElementById('liters') as HTMLInputElement).value).toBe('10')
     expect((document.getElementById('price_per_unit') as HTMLInputElement).value).toBe('6')
 

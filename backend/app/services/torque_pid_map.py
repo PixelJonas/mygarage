@@ -33,6 +33,11 @@ TORQUE_OBD_PID_MAP: dict[str, str] = {
     "k42": "CONTROL_MODULE_VOLTAGE",
     "k46": "AMBIENT_TEMP",
     "k5c": "OIL_TEMP",
+    # Torque's own accumulated total ("Vehicle distance (Odometer) saved with
+    # profile"), NOT an ECU read: it drifts when the phone misses trips. Mapped
+    # to a stable key so it is selectable as a device's odometer_param_key
+    # instead of arriving as the opaque "KFF120C".
+    "kff120c": "TORQUE_ODOMETER",
 }
 
 # Torque GPS/extended PIDs → the LocationPoint field they populate.

@@ -21,12 +21,6 @@ DEFAULT_SETTINGS = {
         "description": "Application version",
         "encrypted": False,
     },
-    "debug_mode": {
-        "value": "false",
-        "category": "general",
-        "description": "Enable debug mode for troubleshooting",
-        "encrypted": False,
-    },
     "auth_mode": {
         "value": "none",
         "category": "security",
@@ -361,14 +355,20 @@ DEFAULT_SETTINGS = {
     },
     "telegram_inbound_enabled": {
         "value": "false",
-        "category": "integrations",
-        "description": "Accept structured fuel commands via Telegram bot webhook",
+        "category": "notifications",
+        "description": "Accept fuel commands sent to the Telegram bot (fetched by polling)",
+        "encrypted": False,
+    },
+    "telegram_update_offset": {
+        "value": "",
+        "category": "notifications",
+        "description": "Where Telegram fuel commands resume (bot id:next update id); written by MyGarage",
         "encrypted": False,
     },
     "webhook_ingest_token": {
         "value": "",
         "category": "integrations",
-        "description": "Shared secret for POST /api/v1/webhooks/* (HA, n8n, Telegram)",
+        "description": "Shared secret for POST /api/v1/webhooks/* (Home Assistant, n8n)",
         "encrypted": True,
     },
     # Email service

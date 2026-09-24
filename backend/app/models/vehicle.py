@@ -29,7 +29,8 @@ if TYPE_CHECKING:
     from app.models.financing import FinancingRecord
     from app.models.fuel import FuelRecord
     from app.models.hours import HoursRecord
-    from app.models.insurance import InsurancePolicy
+    from app.models.insurance import InsurancePolicyVehicle
+    from app.models.maintenance_rule import MaintenanceRule
     from app.models.note import Note
     from app.models.odometer import OdometerRecord
     from app.models.photo import VehiclePhoto
@@ -193,8 +194,11 @@ class Vehicle(Base):
     warranty_records: Mapped[list[WarrantyRecord]] = relationship(
         "WarrantyRecord", back_populates="vehicle", cascade="all, delete-orphan"
     )
-    insurance_policies: Mapped[list[InsurancePolicy]] = relationship(
-        "InsurancePolicy", back_populates="vehicle", cascade="all, delete-orphan"
+    #: This vehicle's places on household insurance policies (migration 107).
+    #: Deleting the vehicle removes its links, never the policy, which may
+    #: cover other vehicles.
+    insurance_links: Mapped[list[InsurancePolicyVehicle]] = relationship(
+        "InsurancePolicyVehicle", back_populates="vehicle", cascade="all, delete-orphan"
     )
     toll_tags: Mapped[list[TollTag]] = relationship(
         "TollTag", back_populates="vehicle", cascade="all, delete-orphan"
@@ -210,6 +214,9 @@ class Vehicle(Base):
     )
     reminders: Mapped[list[Reminder]] = relationship(
         "Reminder", back_populates="vehicle", cascade="all, delete-orphan"
+    )
+    maintenance_rules: Mapped[list[MaintenanceRule]] = relationship(
+        "MaintenanceRule", back_populates="vehicle", cascade="all, delete-orphan"
     )
 
     # No DB-level CHECK on vehicle_type: it is validated by the Pydantic

@@ -24,6 +24,8 @@ import { useTimeFormat } from '@/hooks/useTimeFormat'
 import { convertTelemetryValue, getParamDisplayName } from '@/utils/telemetryUnits'
 import type { UnitFormat } from '@/utils/unitFormat'
 import { formatTime } from '@/utils/parseAPITimestamp'
+import { tankContent } from '@/utils/sensorReadings'
+import TankCard from '../livelink/TankCard'
 import { Card, Mono, EmptyState } from '../ui'
 
 interface LiveLinkLiveTabProps {
@@ -91,16 +93,28 @@ export default function LiveLinkLiveTab({ vin }: LiveLinkLiveTabProps) {
     }
   }, [fetchStatus])
 
-  const getStatusColor = (deviceStatus: string, ecuStatus: string) => {
-    if (deviceStatus !== 'online') return 'danger'
+  // `ecu_status` is a WiCAN concept. A source that cannot open a drive session
+  // leaves it 'unknown' forever, and the old fall-through branch read that as
+  // "parked" — which is how a propane tank sensor came to report a parked
+  // vehicle. Without DRIVE_SESSION there is no parked/running axis at all, only
+  // whether the source is reachable.
+  const tracksDriving = status?.capabilities?.includes('drive_session') ?? false
+
+  // `online` is the server's reachability rule, not `device_status`: a sensor
+  // with no status topic (Mopeka) never leaves 'unknown' and read raw showed
+  // the RV offline while its readings arrived.
+  const getStatusColor = (online: boolean, ecuStatus: string) => {
+    if (!online) return 'danger'
+    if (!tracksDriving) return 'success'
     if (ecuStatus === 'online') return 'success'
     return 'info'
   }
 
-  const getStatusText = (deviceStatus: string, ecuStatus: string) => {
-    if (deviceStatus !== 'online') return t('livelink.wicanOffline')
+  const getStatusText = (online: boolean, ecuStatus: string) => {
+    if (!online) return t('livelink.statusDeviceOffline')
+    if (!tracksDriving) return t('livelink.statusConnected')
     if (ecuStatus === 'online') return t('livelink.vehicleRunning')
-    return t('livelink.vehicleParked')
+    return t('livelink.statusVehicleParked')
   }
 
   const formatDuration = (seconds: number | null | undefined) => {
@@ -126,13 +140,28 @@ export default function LiveLinkLiveTab({ vin }: LiveLinkLiveTabProps) {
       <EmptyState
         icon={Radio}
         title={error || t('livelink.noData')}
-        description={t('livelink.ensureDeviceLinked')}
+        description={t('livelink.ensureSourceLinked')}
       />
     )
   }
 
-  const statusColor = getStatusColor(status.device_status, status.ecu_status)
-  const statusText = getStatusText(status.device_status, status.ecu_status)
+  const statusColor = getStatusColor(status.online, status.ecu_status)
+  const statusText = getStatusText(status.online, status.ecu_status)
+
+  // Hidden readings are still in latest_values: the vehicle widget reads keys
+  // from it by name. Only the gauges and tank cards honour the switch (set per
+  // reading in Settings, Integrations, LiveLink).
+  const latest = status.latest_values ?? []
+  const values = new Map(latest.map((v) => [v.param_key, v]))
+  // A preset sensor's readings go on its own card, not in the gauge grid.
+  const sensors = status.sensors ?? []
+  const onCards = new Set(sensors.flatMap((s) => (s.readings ?? []).map((r) => r.param_key)))
+  const tanks = sensors.filter((s) => {
+    const content = tankContent(s, values)
+    return content.drawsTank || content.rows.length > 0
+  })
+  const gauges = latest.filter((v) => !onCards.has(v.param_key) && v.show_on_dashboard !== false)
+  const allHidden = gauges.length === 0 && tanks.length === 0 && latest.length > 0
 
   return (
     <div className="space-y-6">
@@ -153,7 +182,7 @@ export default function LiveLinkLiveTab({ vin }: LiveLinkLiveTabProps) {
           {/* WiFi Signal */}
           {status.rssi !== null && (
             <div className="flex items-center gap-1 text-text-mute">
-              {status.device_status === 'online' ? (
+              {status.online ? (
                 <Wifi aria-hidden="true" className="w-4 h-4" />
               ) : (
                 <WifiOff aria-hidden="true" className="w-4 h-4" />
@@ -179,13 +208,24 @@ export default function LiveLinkLiveTab({ vin }: LiveLinkLiveTabProps) {
         </div>
       </Card>
 
+      {/* One card per tank, two across on a wide screen. */}
+      {tanks.length > 0 ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {tanks.map((sensor) => (
+            <TankCard key={sensor.device_id} sensor={sensor} values={values} unitFormat={unitFormat} />
+          ))}
+        </div>
+      ) : null}
+
       {/* Live Gauges Grid */}
-      {(status.latest_values?.length ?? 0) > 0 ? (
+      {gauges.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {status.latest_values?.map((value) => (
+          {gauges.map((value) => (
             <GaugeCard key={value.param_key} value={value} unitFormat={unitFormat} />
           ))}
         </div>
+      ) : tanks.length > 0 ? null : allHidden ? (
+        <EmptyState icon={Car} title={t('livelink.allReadingsHidden')} />
       ) : (
         <EmptyState icon={Car} title={t('livelink.noTelemetry')} description={t('livelink.telemetryWillAppear')} />
       )}

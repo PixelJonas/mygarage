@@ -364,9 +364,14 @@ class TestFuelRecordDEFFillLevelGate:
         db_session: AsyncSession,
         gasoline_vehicle: Vehicle,
     ):
+        # Captured before the call: the expected 400 rolls the shared test
+        # session back (conftest mirrors production `get_db`), which expires
+        # `gasoline_vehicle`. Touching `.vin` on it again below would need a
+        # synchronous lazy-refresh and raise MissingGreenlet under async.
+        vin = gasoline_vehicle.vin
         response = await client.post(
-            f"/api/vehicles/{gasoline_vehicle.vin}/fuel",
-            json={"vin": gasoline_vehicle.vin, **_fuel_payload(def_fill_level=0.75)},
+            f"/api/vehicles/{vin}/fuel",
+            json={"vin": vin, **_fuel_payload(def_fill_level=0.75)},
             headers=auth_headers,
         )
 
@@ -375,9 +380,7 @@ class TestFuelRecordDEFFillLevelGate:
 
         # The gate must fire BEFORE any DB insert — no orphaned fuel record.
         count_result = await db_session.execute(
-            select(func.count())
-            .select_from(FuelRecord)
-            .where(FuelRecord.vin == gasoline_vehicle.vin)
+            select(func.count()).select_from(FuelRecord).where(FuelRecord.vin == vin)
         )
         assert count_result.scalar() == 0
 
@@ -551,8 +554,10 @@ class TestDEFCsvImportGate:
         db_session: AsyncSession,
         gasoline_vehicle: Vehicle,
     ):
+        # Captured before the call: see test_create_fuel_with_def_fill_level_on_gasoline_rejected.
+        vin = gasoline_vehicle.vin
         response = await client.post(
-            f"/api/import/vehicles/{gasoline_vehicle.vin}/def/csv",
+            f"/api/import/vehicles/{vin}/def/csv",
             headers=auth_headers,
             files={
                 "file": ("def.csv", BytesIO(_def_csv_content().encode()), "text/csv"),
@@ -564,7 +569,7 @@ class TestDEFCsvImportGate:
 
         # The gate must fire BEFORE any row is processed — no partial import.
         count_result = await db_session.execute(
-            select(func.count()).select_from(DEFRecord).where(DEFRecord.vin == gasoline_vehicle.vin)
+            select(func.count()).select_from(DEFRecord).where(DEFRecord.vin == vin)
         )
         assert count_result.scalar() == 0
 

@@ -47,6 +47,13 @@ class LiveLinkDevice(Base):
     hw_version: Mapped[str | None] = mapped_column(String(50))  # e.g., "WiCAN-OBD-PRO"
     fw_version: Mapped[str | None] = mapped_column(String(20))  # e.g., "4.45"
     git_version: Mapped[str | None] = mapped_column(String(20))  # e.g., "v4.45p"
+    # Firmware notification state (plan 2026-09-18, feature B). Stamped by the
+    # daily check: notified only when at least one backend accepted the send
+    # (notify-once per version); skipped is the admin's "skip this version".
+    # An exact match against the latest release suppresses the notification;
+    # a newer release matches neither and notifies again.
+    firmware_notified_version: Mapped[str | None] = mapped_column(String(20))
+    firmware_skipped_version: Mapped[str | None] = mapped_column(String(20))
     sta_ip: Mapped[str | None] = mapped_column(String(45))  # Device IP for local UI link
     device_address: Mapped[str | None] = mapped_column(
         String(255)
@@ -58,9 +65,30 @@ class LiveLinkDevice(Base):
     # expression and is usually miles on a US-market car. The inference is only
     # a default — hardware varies, so an explicit value always wins.
     odometer_unit: Mapped[str | None] = mapped_column(String(4))  # 'km' | 'mi' | None
+    #: Which telemetry parameter carries THIS device's odometer.
+    #:
+    #: NULL means "declares nothing", the correct default and the reason
+    #: existing installs are unaffected: odometer recording stays as it is.
+    #:
+    #: Exists because name matching does not generalise. ODOMETER_PID_PATTERNS
+    #: matches WiCAN's `A6-ODOMETER` and nothing Torque sends, so a Torque-only
+    #: user gets no odometer records at all. Rather than grow a vendor pattern
+    #: list forever, a device declares its own, and that declaration REPLACES
+    #: the matching rather than filtering it (see `is_odometer_param_key`).
+    #:
+    #: Pairs with `odometer_unit`: there is no unit inference outside WiCAN, so
+    #: a device setting this MUST also set `odometer_unit` or its value is read
+    #: as kilometres.
+    odometer_param_key: Mapped[str | None] = mapped_column(String(100))
+
+    #: Which preset created this device, or NULL for a handmade one. The
+    #: integrations card names a preset-backed tab from this rather than by
+    #: matching the user-editable label against a preset title.
+    preset_key: Mapped[str | None] = mapped_column(String(50))
+
     kind: Mapped[str] = mapped_column(
-        String(10), nullable=False, server_default=text("'wican'")
-    )  # 'wican' | 'torque'
+        String(20), nullable=False, server_default=text("'wican'")
+    )  # Validated by app.services.livelink_sources.registry, not a DB CHECK
     torque_device_id: Mapped[str | None] = mapped_column(
         String(40)
     )  # Torque's raw 32-hex id (kind='torque' only)

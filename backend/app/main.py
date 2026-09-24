@@ -6,7 +6,7 @@ import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -15,6 +15,7 @@ from slowapi.util import get_remote_address
 
 from app.config import settings
 from app.database import init_db
+from app.utils.household_time import household_zone_dependency
 
 
 def _configure_logging() -> None:
@@ -67,6 +68,9 @@ def _configure_logging() -> None:
         fmt = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
     logging.basicConfig(level=level, format=fmt, handlers=handlers, force=True)
+    # httpx logs every request's full URL at INFO. Telegram's bot token is in
+    # its URL path, and Discord and Slack webhook URLs are themselves secrets.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 _configure_logging()
@@ -163,6 +167,7 @@ async def lifespan(app: FastAPI):
             logger.warning("=" * 80)
 
     # Start scheduled background tasks (session timeouts, device offline detection, etc.)
+    from app.services.telegram_poller import telegram_poller
     from app.tasks.livelink_tasks import start_mqtt_subscriber, stop_mqtt_subscriber
     from app.tasks.scheduled import start_scheduler, stop_scheduler
 
@@ -185,8 +190,12 @@ async def lifespan(app: FastAPI):
 
     await start_mqtt_subscriber()
 
+    # Always started: it watches its own switches (Settings > Notifications > Telegram).
+    await telegram_poller.start()
+
     yield
 
+    await telegram_poller.stop()
     # Stop MQTT subscriber on shutdown
     await stop_mqtt_subscriber()
     stop_scheduler()
@@ -200,6 +209,10 @@ app = FastAPI(
     description="Self-hosted vehicle maintenance tracking application",
     lifespan=lifespan,
     root_path=settings.root_path,
+    # The household zone is read per request with the request's own session
+    # (FastAPI de-duplicates get_db), so every writer of the timezone row is
+    # covered without invalidation code.
+    dependencies=[Depends(household_zone_dependency)],
 )
 
 # Configure rate limiting
@@ -330,6 +343,8 @@ from app.routes import (
     hours_router,
     import_router,
     insurance_router,
+    maintenance_rules_router,
+    maintenance_types_router,
     notes_router,
     notifications_router,
     odometer_router,
@@ -348,6 +363,7 @@ from app.routes import (
     tires_router,
     toll_tags_router,
     toll_transactions_router,
+    vehicle_insurance_router,
     vehicle_supplies_router,
     vehicles_router,
     vendors_router,
@@ -392,6 +408,7 @@ app.include_router(financing_router)
 app.include_router(analytics_router)
 app.include_router(warranty_router)
 app.include_router(insurance_router)
+app.include_router(vehicle_insurance_router)
 app.include_router(reports_router)
 app.include_router(toll_tags_router)
 app.include_router(toll_transactions_router)
@@ -413,6 +430,8 @@ app.include_router(vendors_router)
 app.include_router(service_visits_router)
 app.include_router(reminders_router)
 app.include_router(reminder_packs_router)
+app.include_router(maintenance_types_router)
+app.include_router(maintenance_rules_router)
 app.include_router(supplies_router)
 app.include_router(vehicle_supplies_router)
 app.include_router(livelink_ingest_router)

@@ -60,13 +60,13 @@ describe('WarrantyForm — routing + canonical mileage + exact payload', () => {
     await fillCreate(user)
     await user.click(screen.getByRole('button', { name: 'common:create' }))
     await waitFor(() => expect(createMutateAsync).toHaveBeenCalledTimes(1))
-    // 60000 mi x 1.60934 = 96560.4 km, NOT the raw 60000.
+    // 60000 mi x 1.609344 = 96560.64 km, NOT the raw 60000.
     expect(createMutateAsync).toHaveBeenCalledWith({
       warranty_type: 'Manufacturer',
       provider: 'Toyota',
       start_date: '2026-01-01',
       end_date: '2030-01-01',
-      mileage_limit_km: 96560.4,
+      mileage_limit_km: 96560.64,
       coverage_details: 'Full coverage',
       policy_number: 'W-1',
       notes: 'note',
@@ -87,9 +87,9 @@ describe('WarrantyForm — routing + canonical mileage + exact payload', () => {
     await user.click(screen.getByRole('button', { name: 'common:update' }))
     await waitFor(() => expect(updateMutateAsync).toHaveBeenCalledTimes(1))
     // The edit seeds the mileage from 96561 km, shown as 60000 mi
-    // (96561 / 1.60934 = 60000.3728..., at the mi adapter's zero decimals).
+    // (96561 / 1.609344 = 60000.2236936, at the mi adapter's zero decimals).
     // The field was never touched, so the ORIGIN is posted back: 96561, not
-    // the 96560.4 that re-converting 60000 mi would produce.
+    // the 96560.64 that re-converting 60000 mi would produce.
     // B1/LD4: assert the COMPLETE 9-property update object (id + all 8 body fields), not a
     // partial objectContaining — dropping a date/coverage/policy#/notes must FAIL the test.
     expect(updateMutateAsync).toHaveBeenCalledWith({

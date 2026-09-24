@@ -16,12 +16,6 @@
     "label": "Strefa czasowa",
     "description": "Wpływa na znaczniki czasu w logach, zaplanowane zadania i wyświetlanie dat w całej aplikacji."
   },
-  "debug": {
-    "label": "Tryb debugowania",
-    "tooltip": "Wymaga ponownego uruchomienia aplikacji",
-    "enable": "Włącz szczegółowe logowanie i rozbudowane komunikaty o błędach",
-    "warning": "⚠️ Aby zmiany odniosły skutek, wymagane jest ponowne uruchomienie aplikacji. Włączaj tylko w celu rozwiązywania problemów."
-  },
   "units": {
     "label": "System jednostek",
     "imperial": "Imperialny",
@@ -104,13 +98,11 @@
   },
   "language": {
     "label": "Język",
-    "description": "Wybierz preferowany język wyświetlania. Tłumaczenia społecznościowe mogą być niekompletne.",
     "saved": "Preferencje językowe zostały zapisane!",
     "error": "Nie udało się zapisać preferencji językowych"
   },
   "currency": {
     "label": "Waluta",
-    "description": "Wybierz preferowaną walutę do wyświetlania kosztów i cen.",
     "preview": "Podgląd: {{amount}}",
     "saved": "Preferencje walutowe zostały zapisane!",
     "error": "Nie udało się zapisać preferencji walutowych",
@@ -224,7 +216,6 @@
     "enableCarComplaints": "Włącz integrację CarComplaints",
     "enableCarComplaintsDesc": "Dodaj linki do CarComplaints.com w celu badania znanych problemów z pojazdami.",
     "aboutCarComplaints": "O CarComplaints",
-    "shopFinder": "Wyszukiwarka warsztatów",
     "shopFinderDesc": "Konfiguracja dostawców punktów zainteresowania do wyszukiwania pobliskich warsztatów i centrów serwisowych.",
     "provider": "Dostawca",
     "active": "Aktywny",
@@ -324,7 +315,6 @@
   "timeFormat": {
     "label": "Format czasu",
     "twelveHour": "12-godzinny",
-    "twentyFourHour": "24-godzinny",
-    "description": "Wybierz sposób wyświetlania godzin w całej aplikacji."
+    "twentyFourHour": "24-godzinny"
   }
 }

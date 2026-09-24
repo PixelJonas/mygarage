@@ -73,6 +73,7 @@ function vehicle(
     total_detailing: ZERO,
     total_fuel: ZERO,
     total_def: ZERO,
+    total_insurance: ZERO,
     total_financing: ZERO,
     total_cost: ZERO,
     ...overrides,
@@ -104,8 +105,8 @@ const GARAGE: GarageAnalyticsData = {
     vehicle('V2', 'Bike', { total_fuel: '100.00', total_cost: '100.00' }),
   ],
   monthly_trends: [
-    { month: 'Jan 2026', service: ZERO, fuel: '50.00', def_cost: ZERO, financing: '450.00', total: '500.00' },
-    { month: 'Feb 2026', service: ZERO, fuel: '50.00', def_cost: ZERO, financing: '1000.00', total: '1050.00' },
+    { month: 'Jan 2026', service: ZERO, fuel: '50.00', def_cost: ZERO, insurance: ZERO, financing: '450.00', total: '500.00' },
+    { month: 'Feb 2026', service: ZERO, fuel: '50.00', def_cost: ZERO, insurance: ZERO, financing: '1000.00', total: '1050.00' },
   ],
 }
 
@@ -115,7 +116,7 @@ const NO_FINANCING: GarageAnalyticsData = {
   cost_breakdown_by_category: [{ category: 'Fuel', amount: '500.00' }],
   cost_by_vehicle: [vehicle('V1', 'Van', { total_fuel: '400.00', total_cost: '400.00' })],
   monthly_trends: [
-    { month: 'Jan 2026', service: ZERO, fuel: '50.00', def_cost: ZERO, financing: ZERO, total: '50.00' },
+    { month: 'Jan 2026', service: ZERO, fuel: '50.00', def_cost: ZERO, insurance: ZERO, financing: ZERO, total: '50.00' },
   ],
 }
 

@@ -19,6 +19,8 @@ import { useDateLocale } from '../hooks/useDateLocale'
 import { formatDateForDisplay } from '../utils/dateUtils'
 import { withBase } from '../utils/basePath'
 import { getActionErrorMessage } from '../utils/httpErrorHandler'
+import { todayInHousehold } from '@/constants/i18n'
+import { useAuth } from '@/contexts/AuthContext'
 
 // Map event type -> Schedule-X calendarId for per-type coloring
 const EVENT_CALENDARS = {
@@ -63,6 +65,16 @@ const EVENT_TYPE_KEYS: Record<string, string> = {
 const EVENT_TYPE_FALLBACK_KEY = 'eventTypes.unknown'
 
 export default function CalendarPage() {
+  const { householdTimeZone } = useAuth()
+  // Remount on a zone change: Schedule-X reads `timezone` when the app is
+  // created (its internal default is UTC, which is what pinned the Today
+  // button to the UTC date), and the upcoming window anchors on the
+  // household day. Zone changes are rare admin events, so a remount is the
+  // simple correct lever.
+  return <CalendarInner key={householdTimeZone ?? 'browser'} householdTimeZone={householdTimeZone} />
+}
+
+function CalendarInner({ householdTimeZone }: { householdTimeZone: string | null }) {
   const { t } = useTranslation('vehicles')
   const navigate = useNavigate()
   const u = useUnitFormat()
@@ -91,7 +103,8 @@ export default function CalendarPage() {
     weekOptions: {
       timeAxisFormatOptions: { hour: 'numeric', hour12: timeFormat === '12h' },
     },
-    selectedDate: Temporal.PlainDate.from(format(new Date(), 'yyyy-MM-dd')),
+    selectedDate: Temporal.PlainDate.from(todayInHousehold()),
+    timezone: householdTimeZone ?? undefined,
     // Month/weekday names come from Intl via the user's locale — never hand-translated.
     locale: dateLocale,
     isDark,
@@ -107,7 +120,9 @@ export default function CalendarPage() {
             navigate(`/vehicles/${original.vehicle_vin}?tab=maintenance`)
             break
           case 'insurance':
-            navigate(`/vehicles/${original.vehicle_vin}?tab=insurance`)
+            // A policy is a household record covering several vehicles, so its
+            // renewal opens the Insurance page rather than one vehicle's tab.
+            navigate(`/insurance?policy=${original.id.slice('insurance-'.length)}`)
             break
           case 'warranty':
             navigate(`/vehicles/${original.vehicle_vin}?tab=warranties`)
@@ -255,19 +270,22 @@ export default function CalendarPage() {
   }, [filteredEvents, eventsService])
 
   // Get upcoming events (next 30 days, not completed)
+  const householdToday = todayInHousehold()
   const upcomingEvents = useMemo(() => {
-    const today = startOfDay(new Date())
-    const thirtyDaysLater = endOfDay(addDays(new Date(), 30))
+    // Anchor the window on the household's calendar day, parsed at LOCAL
+    // midnight so the comparisons below stay in one frame.
+    const today = startOfDay(new Date(householdToday + 'T00:00:00'))
+    const thirtyDaysLater = endOfDay(addDays(today, 30))
 
     return filteredEvents
       .filter(e => !e.is_completed && e.urgency !== 'historical')
       .filter(e => {
-        const eventDate = new Date(e.date)
+        const eventDate = new Date(e.date.split('T')[0] + 'T00:00:00')
         return !isBefore(eventDate, today) && !isAfter(eventDate, thirtyDaysLater)
       })
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
       .slice(0, 10)
-  }, [filteredEvents])
+  }, [filteredEvents, householdToday])
 
   // Event click is handled via Schedule-X callbacks.onEventClick in useCalendarApp config above
 
@@ -405,7 +423,12 @@ export default function CalendarPage() {
 
   // Get days until/since event
   const getDaysUntil = (dateStr: string): string => {
-    const days = differenceInDays(new Date(dateStr), new Date())
+    // Both sides at local midnight of their calendar dates: whole-day
+    // difference, anchored on the household's day.
+    const days = differenceInDays(
+      new Date(dateStr.split('T')[0] + 'T00:00:00'),
+      new Date(todayInHousehold() + 'T00:00:00'),
+    )
     if (days < 0) return t('calendar.misc.daysAgo', { count: Math.abs(days) })
     if (days === 0) return t('calendar.misc.today')
     if (days === 1) return t('calendar.misc.tomorrow')
@@ -650,7 +673,11 @@ export default function CalendarPage() {
                         toggleEventSelection(event.id)
                       } else {
                         const [type] = event.id.split('-')
-                        const tab = type === 'maintenance' ? 'maintenance' : type === 'insurance' ? 'insurance' : type === 'warranty' ? 'warranties' : 'service'
+                        if (type === 'insurance') {
+                          navigate(`/insurance?policy=${event.id.slice('insurance-'.length)}`)
+                          return
+                        }
+                        const tab = type === 'maintenance' ? 'maintenance' : type === 'warranty' ? 'warranties' : 'service'
                         navigate(`/vehicles/${event.vehicle_vin}?tab=${tab}`)
                       }
                     }}

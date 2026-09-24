@@ -1,6 +1,14 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import {
+  keepPreviousData,
+  useQuery,
+  useMutation,
+  useQueryClient,
+  type UseMutationResult,
+} from '@tanstack/react-query'
 import api from '@/services/api'
 import type {
+  MountPeriodCreate,
+  MountPeriodUpdate,
   Tire,
   TireCreate,
   TireCreateAndMountRequest,
@@ -17,14 +25,30 @@ import type {
   TireUpdate,
 } from '@/types/tire'
 
-export function useTires(vin: string) {
+/**
+ * The vehicle's tires. Retired ones are history rather than inventory, so
+ * they come only when asked for; the flag is part of the key so the two
+ * lists never share a cache entry, and the `['tires', vin]` prefix every
+ * mutation invalidates still covers both.
+ *
+ * Toggling Show retired changes the key, which on its own drops `data` to
+ * undefined and flashes the whole tab to loading. The list on screen is kept
+ * as placeholder data while the other variant loads, but only for the SAME
+ * vehicle: moving to another vehicle's page must not show this one's tires,
+ * and act on them, while that vehicle's list is still loading.
+ */
+export function useTires(vin: string, includeRetired = false) {
   return useQuery({
-    queryKey: ['tires', vin],
+    queryKey: ['tires', vin, includeRetired],
     queryFn: async () => {
-      const { data } = await api.get<TireListResponse>(`/vehicles/${vin}/tires`)
+      const { data } = await api.get<TireListResponse>(`/vehicles/${vin}/tires`, {
+        params: includeRetired ? { include_retired: true } : undefined,
+      })
       return data
     },
     enabled: !!vin,
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[1] === vin ? keepPreviousData(previous) : undefined,
   })
 }
 
@@ -52,6 +76,11 @@ function invalidateTireViews(queryClient: ReturnType<typeof useQueryClient>, vin
   queryClient.invalidateQueries({ queryKey: ['tires', vin] })
   queryClient.invalidateQueries({ queryKey: ['reminders', vin] })
   queryClient.invalidateQueries({ queryKey: ['tire-sets', vin] })
+  // Every tire write publishes, moves or deletes a vehicle odometer record,
+  // and the nearest-reading suggestion lives under this prefix too. Missing
+  // from here until v3.4.0, which is why the Odometer tab showed a stale
+  // reading for thirty seconds after every mount.
+  queryClient.invalidateQueries({ queryKey: ['odometerRecords', vin] })
 }
 
 /**
@@ -135,6 +164,59 @@ export function useRetireTire(vin: string) {
   })
 }
 
+/** Un-retire a tire: back to storage, history intact. 409 if it is not retired. */
+export function useRestoreTire(vin: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (tireId: number) => {
+      const { data } = await api.post<Tire>(`/vehicles/${vin}/tires/${tireId}/restore`)
+      return data
+    },
+    onSuccess: () => invalidateTireViews(queryClient, vin),
+  })
+}
+
+/**
+ * Correct one mount period's dates, odometers or notes.
+ *
+ * Absent keys are untouched, null clears to unknown, and the server answers
+ * with the whole tire so the card and the history refresh from one payload.
+ */
+export function useUpdateMountPeriod(vin: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      tireId,
+      periodId,
+      ...payload
+    }: MountPeriodUpdate & { tireId: number; periodId: number }) => {
+      const { data } = await api.put<Tire>(
+        `/vehicles/${vin}/tires/${tireId}/mount-periods/${periodId}`,
+        payload
+      )
+      return data
+    },
+    onSuccess: () => invalidateTireViews(queryClient, vin),
+  })
+}
+
+/**
+ * Record a closed period the tire spent on a corner in the past.
+ *
+ * The server refuses one that contradicts the tire's other periods or its
+ * readings, and answers with the whole tire.
+ */
+export function useCreateMountPeriod(vin: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ tireId, ...payload }: MountPeriodCreate & { tireId: number }) => {
+      const { data } = await api.post<Tire>(`/vehicles/${vin}/tires/${tireId}/mount-periods`, payload)
+      return data
+    },
+    onSuccess: () => invalidateTireViews(queryClient, vin),
+  })
+}
+
 /** Move several tires at once. All or nothing. */
 export function useRotateTires(vin: string) {
   const queryClient = useQueryClient()
@@ -161,15 +243,35 @@ export function useAddTireReading(vin: string) {
   })
 }
 
+/**
+ * Delete one reading, for one logged with the wrong odometer or date.
+ *
+ * Through the helper like every other tire write: the server may put the
+ * tire's tread and pressure back to an older reading, delete the odometer
+ * record the reading published and complete a low-tread reminder, so the tire
+ * list, reminders and odometer caches are all stale afterwards.
+ */
+export function useDeleteTireReading(
+  vin: string
+): UseMutationResult<void, Error, { tireId: number; readingId: number }> {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ tireId, readingId }: { tireId: number; readingId: number }) => {
+      await api.delete(`/vehicles/${vin}/tires/${tireId}/readings/${readingId}`)
+    },
+    onSuccess: () => invalidateTireViews(queryClient, vin),
+  })
+}
+
 export function useDeleteTire(vin: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (tireId: number) => {
       await api.delete(`/vehicles/${vin}/tires/${tireId}`)
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tires', vin] })
-    },
+    // Through the helper: a delete removes the tire's odometer records on
+    // the server, so the odometer caches are as stale as the tire list.
+    onSuccess: () => invalidateTireViews(queryClient, vin),
   })
 }
 

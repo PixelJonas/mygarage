@@ -19,9 +19,10 @@ interface VehicleHeroProps {
  * Vehicle Detail hero (P5 Task 3). Full-bleed 300px cover photo (or diagonal-
  * stripe placeholder) + bg-derived scrim + absolute display-only overlays
  * (type chip, odometer reading chip incl. the reading DATE, nickname h1,
- * year/make/model, mono VIN), with an overdue/upcoming Badge top-right. All
- * overlays are pointer-events-none (display-only; e2e only asserts
- * .toBeVisible()). Bespoke by design (G4 (a)). Reading is metric-canonical km
+ * year/make/model, mono VIN), with an overdue/upcoming Badge top-right. The
+ * photo, scrim and badge layers are pointer-events-none; the TEXT layer is NOT,
+ * because that also blocks selecting the VIN (issue #179) and nothing beneath it
+ * takes a click. Bespoke by design (G4 (a)). Reading is metric-canonical km
  * converted at the boundary (G9). The reading date renders `latest_odometer_km`'s
  * companion `latest_odometer_date` (m2) so every contract field is displayed.
  */
@@ -110,8 +111,18 @@ export default function VehicleHero({ vehicle, photoUrl, fromCache, detailStats 
         </div>
       ) : null}
 
-      {/* Bottom overlay (display-only): type chip + reading chip + name + ymm + VIN */}
-      <div className="pointer-events-none absolute inset-x-6 bottom-5">
+      {/* Bottom overlay: type chip + reading chip + name + ymm + VIN.
+          ★ NOT `pointer-events-none`, and that is deliberate (issue #179). It
+          reads as harmless on a display-only layer, but it also stops the text
+          inside receiving a SELECTION, by mouse drag or by long-press, and the
+          VIN sits here. It is the value people most often want to copy out of
+          this app. Nothing underneath needs the clicks: the photo, the scrim and
+          the badge layers are each `pointer-events-none` and the hero root has
+          no handler, so passing pointers through this strip bought nothing.
+          If a click target is ever added beneath, re-disable pointers on this
+          wrapper and put `pointer-events-auto` on the text block rather than
+          taking selection away again. */}
+      <div className="absolute inset-x-6 bottom-5">
         <div className="mb-2 flex flex-wrap items-center gap-2.5">
           <Chip tone="accent">{vehicle.vehicle_type}</Chip>
           {primaryReading ? (

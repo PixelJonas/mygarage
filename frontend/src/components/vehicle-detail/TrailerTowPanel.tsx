@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import { Save } from 'lucide-react'
 import { toast } from 'sonner'
 import { Card, CardHeader, Button, Drawer, Field, Select, NumberInput, Mono } from '../ui'
-import CardEditOverlay, { EDITABLE_CARD_CLASS } from './CardEditOverlay'
+import EditableCard from './EditableCard'
 import vehicleService from '../../services/vehicleService'
 import { NON_MOTORIZED_TYPES } from '../../schemas/vehicle'
 import type { TrailerDetails, Vehicle } from '../../types/vehicle'
@@ -177,8 +177,7 @@ export default function TrailerTowPanel({ vehicle }: TrailerTowPanelProps) {
           control and the form lives in a sidecar rather than inline. The card
           must therefore hold NO other interactive element, which is why the
           paired vehicle is plain text rather than a link. */}
-      <Card breakInside className={EDITABLE_CARD_CLASS}>
-        <CardEditOverlay label={t('detail.tow.editTitle')} onClick={() => setEditing(true)} />
+      <EditableCard breakInside label={t('detail.tow.editTitle')} onEdit={() => setEditing(true)}>
         <CardHeader title={t('detail.tow.title')} />
         <div className="space-y-4">
           <div>
@@ -221,7 +220,7 @@ export default function TrailerTowPanel({ vehicle }: TrailerTowPanelProps) {
             </div>
           </div>
         </div>
-      </Card>
+      </EditableCard>
 
       <Drawer
         open={editing}

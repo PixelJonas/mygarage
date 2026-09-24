@@ -45,10 +45,9 @@ const reminder = {
 } as unknown as Reminder
 
 /**
- * Current odometer in canonical km, showing as 149977 mi.
- *
- * 149977 x 1.60934 = 241363.98518, at `UnitConverter.milesToKm`'s two-decimal
- * result rounding: 241363.99.
+ * Current odometer in canonical km: a fixed baseline, passed directly as a
+ * prop rather than computed here. Nothing in this file asserts its own
+ * mile display, so its exact value is arbitrary.
  */
 const CURRENT_KM = 241363.99
 
@@ -216,8 +215,8 @@ describe('ReminderForm — from last service mileage baseline', () => {
       title: 'Oil change',
       reminder_type: 'mileage',
       due_date: undefined,
-      // 241363.99 + (5000 mi x 1.60934 = 8046.7) = 249410.69
-      due_mileage_km: 249410.69,
+      // 241363.99 + (5000 mi x 1.609344 = 8046.72) = 249410.71
+      due_mileage_km: 249410.71,
       due_hours: undefined,
       notes: undefined,
     })
@@ -244,14 +243,14 @@ describe('ReminderForm — from last service mileage baseline', () => {
     fireEvent.click(screen.getByRole('button', { name: 'common:create' }))
 
     await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1))
-    // 142965 mi x 1.60934 = 230079.2931, + 8046.7 = 238125.9931, and the sum
-    // of the two conversions is not itself re-normalised, so the wire value
-    // carries IEEE 754's last digits.
+    // 142965 mi x 1.609344 = 230079.86496, + 8046.72 = 238126.58496, and the
+    // sum of the two conversions is not itself re-normalised, so the wire
+    // value carries IEEE 754's last digits.
     expect(createMock.mock.calls[0][0]).toStrictEqual({
       title: 'Oil change',
       reminder_type: 'mileage',
       due_date: undefined,
-      due_mileage_km: 238125.99310000002,
+      due_mileage_km: 238126.58496,
       due_hours: undefined,
       notes: undefined,
     })

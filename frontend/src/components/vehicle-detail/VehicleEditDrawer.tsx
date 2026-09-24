@@ -35,7 +35,7 @@ const WINDOW_STICKER_TYPES = ['Car', 'Truck', 'SUV']
  * reason PropaneRecordForm's sibling table states: `system` is D8-collapsed
  * from volume, so `gal_uk` and `gal_us` both read 'imperial' and a UK account
  * was shown a US-gallon example beside a field labelled with ITS gallon.
- * 19 L / 3.78541 = 5.0 US gallons and / 4.54609 = 4.2 imperial ones.
+ * 19 L / 3.785411784 = 5.0 US gallons and / 4.54609 = 4.2 imperial ones.
  */
 const DEF_CAPACITY_EXAMPLES: Readonly<Record<UnitSet['volume'], string>> = {
   L: '19.0',

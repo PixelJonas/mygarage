@@ -28,8 +28,8 @@ const QuickEntry = lazy(() => import('./pages/QuickEntry'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const AddressBook = lazy(() => import('./pages/AddressBook'))
 const Supplies = lazy(() => import('./pages/Supplies'))
+const Insurance = lazy(() => import('./pages/Insurance'))
 const POIFinder = lazy(() => import('./pages/POIFinder'))
-const ShopFinder = lazy(() => import('./pages/ShopFinder')) // Backward compatibility
 const Calendar = lazy(() => import('./pages/Calendar'))
 const VehicleDetail = lazy(() => import('./pages/VehicleDetail'))
 const WindowStickerTest = lazy(() => import('./pages/WindowStickerTest'))
@@ -106,8 +106,10 @@ function App() {
                     <Route path="calendar" element={<Calendar />} />
                     <Route path="address-book" element={<AddressBook />} />
                     <Route path="supplies" element={<Supplies />} />
+                    <Route path="insurance" element={<Insurance />} />
                     <Route path="poi-finder" element={<POIFinder />} />
-                    <Route path="shop-finder" element={<ShopFinder />} /> {/* Backward compatibility */}
+                    {/* The old Shop Finder page; Find POI replaced it. Kept for bookmarks. */}
+                    <Route path="shop-finder" element={<Navigate to="/poi-finder" replace />} />
                     <Route path="vin-demo" element={<Navigate to="/about" replace />} />
                     <Route path="vehicles/:vin" element={<VehicleDetail />} />
                     <Route path="vehicles/:vin/window-sticker-test" element={<WindowStickerTest />} />

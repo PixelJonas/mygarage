@@ -15,13 +15,7 @@
   },
   "timezone": {
     "label": "Zeitzone",
-    "description": "Beeinflusst Protokoll-Zeitstempel, geplante Aufgaben und Datumsanzeigen in der gesamten Anwendung."
-  },
-  "debug": {
-    "label": "Debug-Modus",
-    "tooltip": "Erfordert einen Neustart der Anwendung",
-    "enable": "Ausführliche Protokollierung und detaillierte Fehlermeldungen aktivieren",
-    "warning": "⚠️ Erfordert einen Neustart der Anwendung, um wirksam zu werden. Nur zur Fehlerbehebung aktivieren."
+    "description": "Der Kalendertag, den MyGarage für Fälligkeiten, Überfällig-Markierungen, Benachrichtigungen und vorausgefüllte Formulardaten verwendet. Log-Zeitstempel bleiben in UTC."
   },
   "units": {
     "label": "Einheitensystem",
@@ -111,13 +105,11 @@
   },
   "language": {
     "label": "Sprache",
-    "description": "Wähle deine bevorzugte Anzeigesprache. Community-Übersetzungen sind möglicherweise unvollständig.",
     "saved": "Sprachpräferenz gespeichert!",
     "error": "Sprachpräferenz konnte nicht gespeichert werden"
   },
   "currency": {
     "label": "Währung",
-    "description": "Wähle deine bevorzugte Währung für die Anzeige von Kosten und Preisen.",
     "preview": "Vorschau: {{amount}}",
     "saved": "Währungspräferenz gespeichert!",
     "error": "Währungspräferenz konnte nicht gespeichert werden",
@@ -238,7 +230,6 @@
     "enableCarComplaints": "CarComplaints-Integration aktivieren",
     "enableCarComplaintsDesc": "Links zu CarComplaints.com hinzufügen, um bekannte Fahrzeugprobleme zu recherchieren.",
     "aboutCarComplaints": "Über CarComplaints",
-    "shopFinder": "Werkstattsuche",
     "shopFinderDesc": "Konfiguriere POI-Anbieter (Point-of-Interest), um Werkstätten und Servicezentren in der Nähe zu finden.",
     "provider": "Anbieter",
     "active": "Aktiv",
@@ -263,12 +254,7 @@
     "webhookToken": "Webhook-Ingest-Token",
     "webhookTokenPlaceholder": "Generiere ein langes, zufälliges Token",
     "webhookTokenDesc": "Erforderlich für jede eingehende Webhook-Anfrage. Leer lassen, um den Ingest zu deaktivieren.",
-    "webhookHeaderHint": "Sende den Header X-Webhook-Token (oder ?token=), der dem obigen Wert entspricht.",
-    "telegramInbound": "Telegram-Kraftstoff-Bot",
-    "telegramInboundDesc": "Akzeptiere strukturierte Kraftstoff-Befehle von Telegram (verwendet dasselbe Bot-Token wie unter Benachrichtigungen).",
-    "enableTelegramInbound": "Eingehende Telegram-Befehle aktivieren",
-    "enableTelegramInboundDesc": "Erfordert ein Webhook-Ingest-Token sowie ein ausgehendes Telegram-Bot-Token + eine Chat-ID.",
-    "telegramCommandHint": "Richte den Webhook von Telegram auf POST /api/v1/webhooks/telegram und sende dann:",
+    "webhookHeaderHint": "Sende den Header X-Webhook-Token, der dem obigen Wert entspricht.",
     "llmReceipt": "LLM-Belegauslesung",
     "llmReceiptDesc": "Aktiviere die lokale oder OpenAI-kompatible Entwurfsanalyse für Kraftstoffbelege. Es wird nichts gespeichert, bis du es bestätigst.",
     "enableLlmReceipt": "Entwurfsanalyse für Belege aktivieren",
@@ -477,8 +463,7 @@
   "timeFormat": {
     "label": "Zeitformat",
     "twelveHour": "12-Stunden-Format (2:30 PM)",
-    "twentyFourHour": "24-Stunden-Format (14:30)",
-    "description": "Wähle aus, wie Uhrzeiten in der App angezeigt werden."
+    "twentyFourHour": "24-Stunden-Format (14:30)"
   },
   "widgetKeys": {
     "createTitle": "Neuer API-Schlüssel",

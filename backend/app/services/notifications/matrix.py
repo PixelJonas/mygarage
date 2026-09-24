@@ -10,6 +10,7 @@ from urllib.parse import quote
 import httpx
 
 from app.services.notifications.base import NotificationService
+from app.utils.http_errors import describe_http_error
 
 logger = logging.getLogger(__name__)
 
@@ -96,10 +97,10 @@ class MatrixNotificationService(NotificationService):
             return False
 
         except httpx.HTTPStatusError as e:
-            logger.error("[matrix] HTTP error: %s", e)
+            logger.error("[matrix] HTTP error: %s", describe_http_error(e))
             return False
         except (httpx.ConnectError, httpx.TimeoutException) as e:
-            logger.error("[matrix] Connection error: %s", e)
+            logger.error("[matrix] Connection error: %s", describe_http_error(e))
             return False
         except (ValueError, KeyError) as e:
             logger.error("[matrix] Invalid data: %s", e)
@@ -116,4 +117,4 @@ class MatrixNotificationService(NotificationService):
                 return True, "Test notification sent successfully"
             return False, "Failed to send test notification"
         except Exception as e:
-            return False, f"Connection test failed: {str(e)}"
+            return False, f"Connection test failed: {describe_http_error(e)}"

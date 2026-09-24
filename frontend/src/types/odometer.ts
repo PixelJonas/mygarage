@@ -10,6 +10,7 @@ export type OdometerRecord = components['schemas']['OdometerRecordResponse']
 export type OdometerRecordCreate = components['schemas']['OdometerRecordCreate']
 export type OdometerRecordUpdate = components['schemas']['OdometerRecordUpdate']
 export type OdometerRecordListResponse = components['schemas']['OdometerRecordListResponse']
+export type NearestOdometer = components['schemas']['NearestOdometerResponse']
 
 // ============================================================================
 // Section B: Hand-maintained frontend-only types
@@ -29,6 +30,10 @@ export type OdometerRecordListResponse = components['schemas']['OdometerRecordLi
 // This union previously read 'manual' | 'livelink' | 'import'. Nothing writes
 // 'import' -- the CSV importer constructs the row without a source, so those
 // rows are 'manual'.
+//
+// 'tire_mount' and 'tire_dismount' are per-period markers written by mount,
+// dismount and retire since v3.4.0, so the period editor can move the record
+// it owns.
 export type OdometerSource =
   | 'manual'
   | 'livelink'
@@ -38,5 +43,7 @@ export type OdometerSource =
   | 'service'
   | 'service_visit'
   | 'tire'
+  | 'tire_mount'
+  | 'tire_dismount'
   | 'tire_rotation'
   | 'tire_set'

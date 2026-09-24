@@ -10,7 +10,7 @@
  * posted body.
  *
  * Expected values are hand-written and derived in comments, never computed
- * through the code under test. `MILES_TO_KM` is 1.60934 (`utils/units.ts`).
+ * through the code under test. `MILES_TO_KM` is 1.609344 (`utils/units.ts`).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -70,7 +70,7 @@ beforeEach(() => {
 
 describe('OdometerRecordForm — the reading follows units.distance', () => {
   it('★ EDIT: a litres-and-miles client reads miles, under a miles label, with a miles example', () => {
-    // 72420.5 km / 1.60934 = 45000.1242745... mi, shown at the mi adapter's
+    // 72420.5 km / 1.609344 = 45000.0124... mi, shown at the mi adapter's
     // zero decimals as 45000.
     unitPrefMock.units = LITRES_MILES
     render(<OdometerRecordForm {...DEFAULT_PROPS} record={RECORD} />)
@@ -85,8 +85,8 @@ describe('OdometerRecordForm — the reading follows units.distance', () => {
   })
 
   it('★ CREATE: a typed reading is stored as kilometres, not verbatim', async () => {
-    // 50000 mi x 1.60934 = 80467 km. Before this slice the same entry stored
-    // 50000, because `system` reads 'metric' off the litres.
+    // 50000 mi x 1.609344 = 80467.2 km. Before this slice the same entry
+    // stored 50000, because `system` reads 'metric' off the litres.
     unitPrefMock.units = LITRES_MILES
     render(<OdometerRecordForm {...DEFAULT_PROPS} />)
 
@@ -96,7 +96,7 @@ describe('OdometerRecordForm — the reading follows units.distance', () => {
 
     await waitFor(() => expect(createMutateAsync).toHaveBeenCalledTimes(1))
     const payload = createMutateAsync.mock.calls[0][0] as Record<string, unknown>
-    expect(payload.odometer_km).toBe(80467)
+    expect(payload.odometer_km).toBe(80467.2)
     expect(payload.odometer_km).not.toBe(50000)
   })
 

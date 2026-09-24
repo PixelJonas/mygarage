@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import api from '../services/api'
 import { getActionErrorMessage } from '../utils/httpErrorHandler'
-import { InsurancePDFParseResponse, InsurancePolicyCreate } from '../types/insurance'
+import type { InsurancePDFParseResponse } from '../types/insurance'
 import { CloudUpload, X, AlertTriangle, CheckCircle } from 'lucide-react'
 import { Button, Card, IconButton, Chip } from './ui'
 import type { Tone } from './ui'
@@ -21,7 +21,9 @@ const CONFIDENCE_TONE: Record<'high' | 'medium' | 'low', Tone> = {
  * Domain verified against the `data` block built by parse_insurance_pdf in
  * backend/app/routes/insurance.py (provider, policy_number, policy_type,
  * start_date, end_date, premium_amount, premium_frequency, deductible,
- * coverage_limits, notes), which matches InsurancePDFParseResponse. Keys are
+ * notes), which matches InsurancePDFParseResponse. The standard coverages are
+ * NOT here: they are per vehicle, and the form shows them in its own
+ * checklist rather than as a parsed policy-level field. Keys are
  * explicit literals, never built by interpolation, so
  * scripts/validate-i18n-usage.ts can resolve them statically. A field the
  * backend adds later falls through to humanizeFieldName below so it still
@@ -36,7 +38,6 @@ const INSURANCE_FIELD_KEYS: Record<string, string> = {
   premium_amount: 'insuranceFields.premiumAmount',
   premium_frequency: 'insuranceFields.premiumFrequency',
   deductible: 'insuranceFields.deductible',
-  coverage_limits: 'insuranceFields.coverageLimits',
   notes: 'insuranceFields.notes',
 }
 
@@ -45,13 +46,16 @@ function humanizeFieldName(key: string): string {
   return key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())
 }
 
+/** Every parser reports the two dates under ONE confidence key, `dates`. */
+const CONFIDENCE_ALIAS: Record<string, string> = { start_date: 'dates', end_date: 'dates' }
+
 interface InsurancePDFUploadProps {
-  vin: string
-  onDataExtracted: (data: Partial<InsurancePolicyCreate>) => void
+  /** The whole parse: the policy-level data AND every vehicle on the document. */
+  onDataExtracted: (parsed: InsurancePDFParseResponse) => void
   onClose: () => void
 }
 
-export default function InsurancePDFUpload({ vin, onDataExtracted, onClose }: InsurancePDFUploadProps) {
+export default function InsurancePDFUpload({ onDataExtracted, onClose }: InsurancePDFUploadProps) {
   const { t } = useTranslation('vehicles')
   const [file, setFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -109,7 +113,7 @@ export default function InsurancePDFUpload({ vin, onDataExtracted, onClose }: In
       const formData = new FormData()
       formData.append('file', file)
 
-      const response = await api.post(`/vehicles/${vin}/insurance/parse-pdf`, formData, {
+      const response = await api.post('/insurance/parse-pdf', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -125,27 +129,12 @@ export default function InsurancePDFUpload({ vin, onDataExtracted, onClose }: In
 
   const handleUseData = () => {
     if (!parseResult) return
-
-    // Convert parsed data to form data format
-    const formData: Partial<InsurancePolicyCreate> = {}
-
-    if (parseResult.data.provider) formData.provider = parseResult.data.provider
-    if (parseResult.data.policy_number) formData.policy_number = parseResult.data.policy_number
-    if (parseResult.data.policy_type) formData.policy_type = parseResult.data.policy_type
-    if (parseResult.data.start_date) formData.start_date = parseResult.data.start_date
-    if (parseResult.data.end_date) formData.end_date = parseResult.data.end_date
-    if (parseResult.data.premium_amount) formData.premium_amount = parseResult.data.premium_amount
-    if (parseResult.data.premium_frequency) formData.premium_frequency = parseResult.data.premium_frequency
-    if (parseResult.data.deductible) formData.deductible = parseResult.data.deductible
-    if (parseResult.data.coverage_limits) formData.coverage_limits = parseResult.data.coverage_limits
-    if (parseResult.data.notes) formData.notes = parseResult.data.notes
-
-    onDataExtracted(formData)
+    onDataExtracted(parseResult)
     onClose()
   }
 
   const getConfidenceBadge = (field: string) => {
-    const confidence = parseResult?.confidence[field]
+    const confidence = parseResult?.confidence[CONFIDENCE_ALIAS[field] ?? field]
     if (!confidence) return null
 
     const labels = {
@@ -229,11 +218,6 @@ export default function InsurancePDFUpload({ vin, onDataExtracted, onClose }: In
                   <CheckCircle aria-hidden="true" className="w-5 h-5 text-success flex-shrink-0 mt-0.5" />
                   <div className="flex-1">
                     <p className="text-sm font-medium text-success">{t('insurancePdfUpload.parseSuccess')}</p>
-                    {parseResult.vehicles_found.length > 0 && (
-                      <p className="text-sm text-success mt-1">
-                        {t('insurancePdfUpload.vehiclesFound', { count: parseResult.vehicles_found.length, vehicles: parseResult.vehicles_found.join(', ') })}
-                      </p>
-                    )}
                   </div>
                 </div>
 
@@ -258,7 +242,17 @@ export default function InsurancePDFUpload({ vin, onDataExtracted, onClose }: In
                     tone), so compose <Card>, not a raw bg-surface-2/border/rounded/p-4 copy. Do
                     NOT override its fixed bg/border with competing utilities. padding="sm" ⇒ p-4. */}
                 <Card padding="sm">
-                  <h3 className="text-sm font-semibold text-text mb-3">{t('insurancePdfUpload.extractedData')}</h3>
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <h3 className="text-sm font-semibold text-text">{t('insurancePdfUpload.extractedData')}</h3>
+                    {parseResult.parser_used && (
+                      <span className="text-xs text-text-mute">
+                        {t('insurancePdfUpload.readBy', {
+                          parser: parseResult.parser_used,
+                          score: Math.round(parseResult.confidence_score),
+                        })}
+                      </span>
+                    )}
+                  </div>
                   <div className="space-y-2 text-sm">
                     {Object.entries(parseResult.data).map(([key, value]) => {
                       if (!value) return null
@@ -276,6 +270,24 @@ export default function InsurancePDFUpload({ vin, onDataExtracted, onClose }: In
                     })}
                   </div>
                 </Card>
+
+                {parseResult.vehicles.length > 0 && (
+                  <Card padding="sm">
+                    <h3 className="text-sm font-semibold text-text mb-3">{t('insurancePdfUpload.vehiclesOnPolicy')}</h3>
+                    <ul className="space-y-2 text-sm">
+                      {parseResult.vehicles.map((vehicle) => (
+                        <li key={vehicle.vin} className="flex justify-between items-center gap-2">
+                          <span className="text-text">{vehicle.vehicle_name ?? vehicle.vin}</span>
+                          <Chip tone={vehicle.matched ? 'success' : 'muted'}>
+                            {vehicle.matched
+                              ? t('insurancePdfUpload.vehicleMatched')
+                              : t('insurancePdfUpload.vehicleNotInGarage')}
+                          </Chip>
+                        </li>
+                      ))}
+                    </ul>
+                  </Card>
+                )}
 
                 {/* Actions */}
                 <div className="flex gap-3">

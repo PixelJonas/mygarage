@@ -31,6 +31,12 @@ const METRIC = makeUnitFormat(presetUnitsFor('metric', 'us'))
 /** Stand-in for the component's `t`, resolving only the key under test. */
 
 describe('classifyTelemetryParam', () => {
+  it('treats a declared mm as a small length, whatever the key says', () => {
+    expect(classifyTelemetryParam('PROPANE_T1_DEPTH_MM', 'mm')).toStrictEqual({ kind: 'millimetres' })
+    // "temp" in the key must not win over the declaration.
+    expect(classifyTelemetryParam('TEMP_PROBE_DEPTH', 'mm')).toStrictEqual({ kind: 'millimetres' })
+  })
+
   it('routes a hex-prefixed odometer to distance, because SAE J1979 guarantees km', () => {
     expect(classifyTelemetryParam('A6-Odometer', null)).toStrictEqual({
       kind: 'quantity',
@@ -127,7 +133,28 @@ describe('classifyTelemetryParam', () => {
 })
 
 describe('convertTelemetryValue', () => {
-  it('converts speed through the adapter (100 / 1.60934 = 62.137... at 0 dp)', () => {
+  it('reads a millimetre depth in inches when length is in feet (285 / 25.4 = 11.22 at 1 dp)', () => {
+    // A propane sensor's depth. The unit system has no small-length quantity,
+    // so it follows the account's LENGTH choice, with UnitConverter's inch.
+    expect(convertTelemetryValue(285, 'PROPANE_T1_DEPTH_MM', 'mm', IMPERIAL)).toStrictEqual({
+      text: '11.2',
+      unit: 'in',
+    })
+  })
+
+  it('keeps millimetres when length is in metres', () => {
+    expect(convertTelemetryValue(285, 'PROPANE_T1_DEPTH_MM', 'mm', METRIC)).toStrictEqual({
+      text: '285',
+      unit: 'mm',
+    })
+  })
+
+  it('follows the length choice, not the distance one, for a custom account', () => {
+    const metricButFeet = makeUnitFormat({ ...presetUnitsFor('metric', 'us'), length: 'ft' })
+    expect(convertTelemetryValue(254, 'DEPTH', 'MM', metricButFeet)).toStrictEqual({ text: '10.0', unit: 'in' })
+  })
+
+  it('converts speed through the adapter (100 / 1.609344 = 62.137... at 0 dp)', () => {
     expect(convertTelemetryValue(100, '0D-VehicleSpeed', 'km/h', IMPERIAL)).toStrictEqual({
       text: '62',
       unit: 'mph',
@@ -141,7 +168,7 @@ describe('convertTelemetryValue', () => {
     })
   })
 
-  it('converts kPa through the adapter (240 / 6.89476 = 34.809... at 1 dp)', () => {
+  it('converts kPa through the adapter (240 / 6.894757... = 34.809... at 1 dp)', () => {
     expect(convertTelemetryValue(240, 'MANIFOLD_PRESSURE', 'kPa', IMPERIAL)).toStrictEqual({
       text: '34.8',
       unit: 'PSI',
@@ -149,7 +176,7 @@ describe('convertTelemetryValue', () => {
   })
 
   it('canonicalises a bar reading to kPa first, so no bar-to-PSI factor is needed', () => {
-    // 2.4 bar = 240 kPa exactly, then 240 / 6.89476 = 34.809...
+    // 2.4 bar = 240 kPa exactly, then 240 / 6.894757... = 34.809...
     expect(convertTelemetryValue(2.4, 'MANIFOLD_PRESSURE', 'bar', IMPERIAL)).toStrictEqual({
       text: '34.8',
       unit: 'PSI',
@@ -164,14 +191,14 @@ describe('convertTelemetryValue', () => {
   })
 
   it('converts a device-stated kilometre reading whose key names nothing', () => {
-    // 8 km / 1.60934 = 4.97..., at the mi adapter's 0 dp.
+    // 8 km / 1.609344 = 4.97..., at the mi adapter's 0 dp.
     expect(convertTelemetryValue(8, 'TRIP_A', 'km', IMPERIAL)).toStrictEqual({
       text: '5',
       unit: 'mi',
     })
   })
 
-  it('converts a standard odometer (1000 / 1.60934 = 621.37... at 0 dp)', () => {
+  it('converts a standard odometer (1000 / 1.609344 = 621.37... at 0 dp)', () => {
     expect(convertTelemetryValue(1000, 'A6-Odometer', null, IMPERIAL)).toStrictEqual({
       text: '621',
       unit: 'mi',

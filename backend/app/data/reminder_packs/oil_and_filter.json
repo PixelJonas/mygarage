@@ -2,22 +2,28 @@
   "id": "oil_and_filter",
   "name": "Oil & Filter Service",
   "description": "DIY engine oil and oil filter change — typically every 8,000 km or 6 months.",
-  "vehicle_types": ["Car", "Truck", "SUV", "Motorcycle", "Hybrid", "RV"],
+  "vehicle_types": [
+    "Car",
+    "Truck",
+    "SUV",
+    "Motorcycle",
+    "Hybrid",
+    "RV"
+  ],
   "reminders": [
     {
+      "key": "oil_filter",
+      "maintenance_type": "engine_oil_filter",
       "title": "Oil & Filter Change",
-      "reminder_type": "smart",
-      "due_mileage_km": 8000,
-      "due_date_offset_days": 180,
-      "due_hours": null,
+      "interval_km": 8000,
+      "interval_months": 6,
       "notes": "Replace engine oil and oil filter together."
     },
     {
+      "key": "drain_plug_washer",
+      "maintenance_type": "drain_plug_washer",
       "title": "Inspect Drain Plug Washer",
-      "reminder_type": "date",
-      "due_mileage_km": null,
-      "due_date_offset_days": 180,
-      "due_hours": null,
+      "interval_months": 6,
       "notes": "Replace crush washer if required by your vehicle."
     }
   ]

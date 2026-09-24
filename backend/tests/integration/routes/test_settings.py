@@ -54,6 +54,9 @@ class TestSettingsRoutes:
                 "llm_receipt_parse_enabled",
                 "llm_garage_assistant_enabled",
                 "default_unit_prefs",
+                # Computed per request from the household-zone fallback chain,
+                # never a stored row (every write path rejects the key).
+                "effective_timezone",
             }
 
     async def test_public_settings_serve_the_frontend_init_keys(

@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import HoursRecord
+from app.utils.household_time import household_today
 
 
 async def latest_engine_hours_and_date(
@@ -46,6 +47,41 @@ async def latest_engine_hours_and_date(
     if row is None:
         return None, None
     return row[0], row[1]
+
+
+async def nearest_hours(db: AsyncSession, vin: str, on: date) -> Decimal | None:
+    """The engine-hours reading closest to `on` by day distance, or None.
+
+    The mirror of ``odometer_service.nearest_odometer``: the latest reading on
+    or before `on` and the earliest after it, then the smaller day distance,
+    a tie going to the earlier one. Lives here because this module is the one
+    home for hours reads.
+    """
+    before = (
+        await db.execute(
+            select(HoursRecord)
+            .where(HoursRecord.vin == vin, HoursRecord.date <= on)
+            .order_by(
+                HoursRecord.date.desc(), HoursRecord.engine_hours.desc(), HoursRecord.id.desc()
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    after = (
+        await db.execute(
+            select(HoursRecord)
+            .where(HoursRecord.vin == vin, HoursRecord.date > on)
+            .order_by(HoursRecord.date.asc(), HoursRecord.engine_hours.asc(), HoursRecord.id.asc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if before is None:
+        return after.engine_hours if after is not None else None
+    if after is None:
+        return before.engine_hours
+    if (on - before.date).days <= (after.date - on).days:
+        return before.engine_hours
+    return after.engine_hours
 
 
 async def set_manual_current_hours(
@@ -89,7 +125,7 @@ async def set_manual_current_hours(
     Returns:
         The created or updated ``HoursRecord``.
     """
-    today = date.today()
+    today = household_today()
     existing = (
         (
             await db.execute(

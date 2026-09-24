@@ -144,14 +144,20 @@ class TestTrailerChildWrite:
         assert resp.status_code == 201
 
     async def test_write_share_can_update(self, client, owned_vehicle, writer_headers):
-        # Ensure trailer exists, then update as the write-share.
+        # Captured before any call: `owned_vehicle` is shared across this
+        # class's tests, so the "ensure trailer exists" create below may 400
+        # if an earlier test already made one -- tolerated, not asserted. A
+        # 400 rolls the shared test session back (conftest mirrors production
+        # `get_db`), which expires `owned_vehicle`; `vin` was read while
+        # fresh so the update below does not need to touch it again.
+        vin = owned_vehicle.vin
         await client.post(
-            f"/api/vehicles/{owned_vehicle.vin}/trailer",
-            json={"vin": owned_vehicle.vin},
+            f"/api/vehicles/{vin}/trailer",
+            json={"vin": vin},
             headers=writer_headers,
         )
         resp = await client.put(
-            f"/api/vehicles/{owned_vehicle.vin}/trailer",
+            f"/api/vehicles/{vin}/trailer",
             json={"hitch_type": "Ball"},
             headers=writer_headers,
         )

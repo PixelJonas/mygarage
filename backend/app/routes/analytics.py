@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -32,10 +32,10 @@ from app.models import (
     Vehicle,
 )
 from app.models.financing import FinancingRecord
+from app.models.insurance import InsurancePolicy, InsurancePolicyVehicle
 from app.models.service_line_item import ServiceLineItem
 from app.models.spot_rental import SpotRental
 from app.models.user import User
-from app.models.vehicle_share import VehicleShare
 from app.schemas.analytics import (
     AnomalyAlert,
     CategoryChange,
@@ -66,13 +66,16 @@ from app.schemas.analytics import (
 )
 from app.services import analytics_service
 from app.services.analytics_service.tires import tire_readiness
-from app.services.auth import get_vehicle_or_403, require_auth
+from app.services.auth import get_vehicle_or_403, require_auth, visible_vehicles_filter
 from app.services.def_service import DEFRecordService
 from app.services.fuel_service import calculate_average_hours_economy
 from app.services.odometer_service import latest_odometer_km_and_date
 from app.services.service_visit_service import service_visit_cost_load_options
 from app.services.tire_service import TireService
 from app.utils.cache import cached
+from app.utils.household_time import household_today
+from app.utils.insurance_cost import accrued_cost, monthly_costs
+from app.utils.insurance_shares import effective_shares
 from app.utils.logging_utils import sanitize_for_log
 from app.utils.render_context import render_context_for_request
 
@@ -176,7 +179,7 @@ def filter_anomalies_to_window(
     if anomaly_range == "all":
         return list(anomalies)
 
-    today = date_type.today()
+    today = household_today()
     start: date_type | None = None
     end: date_type | None = today
 
@@ -707,7 +710,11 @@ async def get_maintenance_predictions(
         odometer_result = await db.execute(
             select(OdometerRecord.odometer_km)
             .where(OdometerRecord.vin == vin)
-            .order_by(OdometerRecord.date.desc())
+            .order_by(
+                OdometerRecord.date.desc(),
+                OdometerRecord.odometer_km.desc(),
+                OdometerRecord.id.desc(),
+            )
             .limit(1)
         )
         current_odometer_km = odometer_result.scalar_one_or_none()
@@ -745,7 +752,7 @@ async def get_maintenance_predictions(
 
     # Generate predictions
     predictions = []
-    today = date_type.today()
+    today = household_today()
 
     for service_type, intervals in service_intervals.items():
         if not intervals:
@@ -890,11 +897,14 @@ async def get_vehicle_analytics(
     # Get service history timeline
     service_history = await get_service_history_timeline(db, vin)
 
-    # Calculate summary stats - get odometer records first to get current odometer_km
+    # Calculate summary stats - get odometer records first to get current odometer_km.
+    # Ascending, and within a day by odometer: the last row is the highest reading
+    # on the latest date (the current odometer) and the first is the lowest on the
+    # earliest, since an odometer does not run backwards within a day.
     odometer_result = await db.execute(
         select(OdometerRecord.odometer_km, OdometerRecord.date)
         .where(OdometerRecord.vin == vin)
-        .order_by(OdometerRecord.date)
+        .order_by(OdometerRecord.date, OdometerRecord.odometer_km, OdometerRecord.id)
     )
     odometer_records = list(odometer_result.all())
 
@@ -918,7 +928,7 @@ async def get_vehicle_analytics(
         if days_owned > 0:
             average_km_per_month = (total_km_driven / Decimal(str(days_owned))) * Decimal("30")
     elif vehicle.purchase_date:
-        days_owned = (date_type.today() - vehicle.purchase_date).days
+        days_owned = (household_today() - vehicle.purchase_date).days
 
     vehicle_name = f"{vehicle.year} {vehicle.make} {vehicle.model}"
 
@@ -996,19 +1006,13 @@ async def get_garage_analytics(
         selectinload(Vehicle.service_visits).selectinload(ServiceVisit.vendor),
         selectinload(Vehicle.fuel_records),
         selectinload(Vehicle.def_records),
-        selectinload(Vehicle.insurance_policies),
         selectinload(Vehicle.tax_records),
         selectinload(Vehicle.financing_records),
     )
 
-    # Scope to owned + shared vehicles for non-admin users
-    if current_user is not None and not current_user.is_admin:
-        shared_vins = (
-            select(VehicleShare.vehicle_vin)
-            .where(VehicleShare.user_id == current_user.id)
-            .scalar_subquery()
-        )
-        query = query.where(or_(Vehicle.user_id == current_user.id, Vehicle.vin.in_(shared_vins)))
+    scope = visible_vehicles_filter(current_user)
+    if scope is not None:
+        query = query.where(scope)
 
     vehicles_result = await db.execute(query)
     vehicles = vehicles_result.scalars().all()
@@ -1043,9 +1047,56 @@ async def get_garage_analytics(
             "service": Decimal("0.00"),
             "fuel": Decimal("0.00"),
             "def": Decimal("0.00"),
+            "insurance": Decimal("0.00"),
             "financing": Decimal("0.00"),
         }
     )
+
+    # Insurance is a household record: a policy's premium divides among ALL the
+    # vehicles it covers, so the shares are computed over every link, and only
+    # then narrowed to the vehicles this caller may see.
+    today = household_today()
+    garage_vins = {v.vin for v in vehicles}
+    insurance_by_vin: dict[str, Decimal] = defaultdict(lambda: Decimal("0.00"))
+    policies = (
+        (
+            await db.execute(
+                select(InsurancePolicy)
+                .join(InsurancePolicyVehicle)
+                .where(InsurancePolicyVehicle.vin.in_(garage_vins))
+                # This loop reads each link's id, vin, share and end date and
+                # nothing else. Without the noload, the links' `selectin`
+                # coverages fetch every coverage row of every policy in the
+                # garage, on the heaviest endpoint the app has.
+                .options(
+                    selectinload(InsurancePolicy.vehicle_links).noload(
+                        InsurancePolicyVehicle.coverages
+                    )
+                )
+            )
+        )
+        .scalars()
+        .unique()
+        .all()
+    )
+    for policy in policies:
+        shares = effective_shares(
+            policy.premium_amount, [(link.id, link.premium_share) for link in policy.vehicle_links]
+        )
+        for link in policy.vehicle_links:
+            if link.vin not in garage_vins:
+                continue
+            args = (
+                shares.get(link.id),
+                policy.premium_frequency,
+                policy.start_date,
+                policy.end_date,
+            )
+            insurance_by_vin[link.vin] += accrued_cost(*args, today, link.effective_to)
+            for month_key, amount in monthly_costs(
+                *args, today + timedelta(days=1), link.effective_to
+            ).items():
+                monthly_data[month_key]["insurance"] += amount
 
     for vehicle in vehicles:
         vin = vehicle.vin
@@ -1054,9 +1105,8 @@ async def get_garage_analytics(
         purchase_price = vehicle.purchase_price or Decimal("0.00")
         total_garage_value += purchase_price
 
-        for policy in vehicle.insurance_policies:
-            if policy.premium_amount:
-                total_insurance += policy.premium_amount
+        vehicle_insurance = insurance_by_vin[vin]
+        total_insurance += vehicle_insurance
 
         for tax_record in vehicle.tax_records:
             if tax_record.amount:
@@ -1141,6 +1191,7 @@ async def get_garage_analytics(
                 total_detailing=vehicle_detailing,
                 total_fuel=vehicle_fuel,
                 total_def=vehicle_def,
+                total_insurance=vehicle_insurance,
                 total_financing=vehicle_financing,
                 total_cost=vehicle_total,
             )
@@ -1201,8 +1252,15 @@ async def get_garage_analytics(
                 service=data["service"],
                 fuel=data["fuel"],
                 def_cost=data["def"],
+                insurance=data["insurance"],
                 financing=data["financing"],
-                total=data["service"] + data["fuel"] + data["def"] + data["financing"],
+                total=(
+                    data["service"]
+                    + data["fuel"]
+                    + data["def"]
+                    + data["insurance"]
+                    + data["financing"]
+                ),
             )
         )
 

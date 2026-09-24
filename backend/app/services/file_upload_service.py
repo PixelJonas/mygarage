@@ -20,7 +20,10 @@ from app.utils.path_validation import sanitize_filename, validate_path_within_ba
 logger = logging.getLogger(__name__)
 
 try:
-    from pillow_heif import register_heif_opener
+    # Imported from the defining submodule, not the package root: pillow-heif
+    # 1.7.0 ships py.typed but no `__all__`, so a re-export from the root reads
+    # as a private import to a type checker even though it works at runtime.
+    from pillow_heif.as_plugin import register_heif_opener
 
     register_heif_opener()
     _HEIF_AVAILABLE = True

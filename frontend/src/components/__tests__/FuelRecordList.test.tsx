@@ -292,7 +292,7 @@ describe('FuelRecordList — hours usage tracking (Task 13)', () => {
     render(<FuelRecordList {...DEFAULT_PROPS} />)
     await waitFor(() => expect(apiGetMock).toHaveBeenCalled())
 
-    // 235.214 / 7.2 = 32.7 in the row badge; / 8.5 = 27.7 on the tile.
+    // 235.2145833... / 7.2 = 32.7 in the row badge; / 8.5 = 27.7 on the tile.
     expect(within(table()).getByText('32.7 MPG')).toBeInTheDocument()
     expect(screen.getByText('27.7 MPG')).toBeInTheDocument()
     expect(within(table()).queryByText('7.20 L/100km')).not.toBeInTheDocument()
@@ -389,7 +389,7 @@ describe('FuelRecordList — the cost-per-distance card, label and value togethe
   })
 
   it('★ a LITRES-and-MILES account reads its cost per 1,000 MILES', async () => {
-    // $20.00 over 1000 km is $0.02/km; x 1.60934 x 1000 = $32.19 per 1,000 mi.
+    // $20.00 over 1000 km is $0.02/km; x 1.609344 x 1000 = $32.19 per 1,000 mi.
     // The retired pair read 'metric' off the litres and answered $2.00 under
     // "Cost/100 km", beside an odometer column already reading miles.
     unitPrefMock.units = { ...METRIC_UNITS, distance: 'mi', speed: 'mph' }

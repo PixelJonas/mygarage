@@ -81,6 +81,8 @@ const STATS: VehicleStatistics = {
   overdue_maintenance_count: 0,
   average_l_per_100km: null,
   recent_l_per_100km: null,
+  average_l_per_100km_with_towing: null,
+  recent_l_per_100km_with_towing: null,
   archived_at: null,
   archived_visible: false,
   is_shared_with_me: false,
@@ -108,6 +110,120 @@ describe('VehicleStatisticsCard', () => {
       screen.getByRole('button', { name: /vehicleStatisticsCardExtra\.viewDetails/ }),
     )
     expect(mockNavigate).toHaveBeenCalledWith('/vehicles/1HGBH41JXMN109186')
+  })
+
+  describe('the VIN stays selectable (#179)', () => {
+    // ★ WHAT THESE CANNOT COVER. The fix has two halves and only one is
+    // testable here. Removing `pointer-events-none` is structural and the first
+    // case below catches it. The `z-10` that lifts this text above the footer
+    // button's stretched `after:inset-0` is pure STACKING, and jsdom has no
+    // layout and no stacking contexts: deleting `z-10` leaves every test in
+    // this file green while the card goes right back to being unselectable in a
+    // browser. Verified by mutation, not assumed. That half is only ever
+    // confirmed on a real device, so do not read these three passing as proof
+    // the VIN can be highlighted.
+    const vinOf = (vin: string) => screen.getByText(vin)
+
+    it('has no ancestor that disables pointer events', () => {
+      // jsdom applies no CSS, so this asserts the structural cause rather than
+      // a computed style. `pointer-events-none` does not merely pass clicks
+      // through: text under it cannot receive a selection at all.
+      render(<VehicleStatisticsCard stats={STATS} />)
+      let node: HTMLElement | null = vinOf(STATS.vin)
+      const blocking: string[] = []
+      while (node) {
+        if (String(node.className || '').includes('pointer-events-none')) {
+          blocking.push(String(node.className))
+        }
+        node = node.parentElement
+      }
+      expect(blocking).toEqual([])
+    })
+
+    it('still navigates when the VIN itself is clicked', () => {
+      // The whole card is one nav target via the footer button's stretched
+      // `after:inset-0`. Lifting the text above that pseudo-element is what
+      // makes it selectable, so the text has to carry the navigation itself or
+      // clicking the title would quietly stop working.
+      render(<VehicleStatisticsCard stats={STATS} />)
+      fireEvent.click(vinOf(STATS.vin))
+      expect(mockNavigate).toHaveBeenCalledWith(`/vehicles/${STATS.vin}`)
+    })
+
+    it('does not navigate on the click that ends a selection', () => {
+      render(<VehicleStatisticsCard stats={STATS} />)
+      const spy = vi.spyOn(window, 'getSelection').mockReturnValue({
+        isCollapsed: false,
+        toString: () => STATS.vin,
+      } as unknown as Selection)
+
+      fireEvent.click(vinOf(STATS.vin))
+
+      expect(mockNavigate).not.toHaveBeenCalled()
+      spy.mockRestore()
+    })
+  })
+
+  describe('towing (#181)', () => {
+    const distance = {
+      usage_unit: 'distance' as const,
+      total_odometer_records: 1,
+      latest_odometer_km: '5000',
+    }
+
+    it('headlines the non-towing figure and shows the towing one beneath', () => {
+      render(
+        <VehicleStatisticsCard
+          stats={{
+            ...STATS,
+            ...distance,
+            average_l_per_100km: '8.00',
+            average_l_per_100km_with_towing: '12.00',
+          }}
+        />
+      )
+      // 235.2145833/8 = 29.4 and /12 = 19.6, at the mpg_us adapter's one
+      // decimal. 19.6 is the COMBINED figure (every cycle, towing included),
+      // which is why the label reads "including towing" and not "towing": it
+      // is not the towing-only economy and must not be read as one.
+      expect(screen.getByText('29.4 MPG')).toBeInTheDocument()
+      expect(screen.getByText(/vehicleStats\.includingTowing.*19\.6 MPG/)).toBeInTheDocument()
+    })
+
+    it('shows no towing line for a vehicle that never tows', () => {
+      // The two passes agree, so a second line would repeat the first. This is
+      // the "not to clutter the display of vehicles that don't tow" half of the
+      // request, and it is the case almost every vehicle is in.
+      render(
+        <VehicleStatisticsCard
+          stats={{
+            ...STATS,
+            ...distance,
+            average_l_per_100km: '8.00',
+            average_l_per_100km_with_towing: '8.00',
+          }}
+        />
+      )
+      expect(screen.getByText('29.4 MPG')).toBeInTheDocument()
+      expect(screen.queryByText(/vehicleStats\.includingTowing/)).not.toBeInTheDocument()
+    })
+
+    it('labels the figure when every fill-up was towing', () => {
+      // No non-towing figure exists. Showing nothing would hide a number the
+      // vehicle really has, so the towing-inclusive one headlines AND says so.
+      render(
+        <VehicleStatisticsCard
+          stats={{
+            ...STATS,
+            ...distance,
+            average_l_per_100km: null,
+            average_l_per_100km_with_towing: '10.00',
+          }}
+        />
+      )
+      expect(screen.getByText('23.5 MPG')).toBeInTheDocument()
+      expect(screen.getByText('vehicleStats.towingAll')).toBeInTheDocument()
+    })
   })
 
   it('shows the odometer row and MPG strip for a distance-tracked vehicle', () => {
@@ -200,9 +316,9 @@ describe('VehicleStatisticsCard', () => {
       />
     )
 
-    // 5000 / 1.60934 = 3106.86, at the mi adapter's zero decimals.
+    // 5000 / 1.609344 = 3106.86, at the mi adapter's zero decimals.
     expect(screen.getByText('3,107 mi')).toBeInTheDocument()
-    // 235.214 / 9.4160546 = 24.98, at the mpg_us adapter's one.
+    // 235.2145833... / 9.4160546 = 24.98, at the mpg_us adapter's one.
     expect(screen.getByText('vehicleStatisticsCardExtra.averageFuelEconomy (MPG)')).toBeInTheDocument()
     expect(screen.getByText('25.0 MPG')).toBeInTheDocument()
     expect(screen.queryByText('9.4 L/100km')).not.toBeInTheDocument()

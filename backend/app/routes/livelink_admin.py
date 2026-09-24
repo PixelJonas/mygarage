@@ -1,21 +1,37 @@
 """LiveLink admin endpoints for settings, devices, and parameters."""
 
 import logging
+from datetime import datetime
 from enum import StrEnum
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.exceptions import RequestValidationError
+from pydantic import ValidationError
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.models.livelink_device import LiveLinkDevice
+from app.models.livelink_parameter import LiveLinkParameter
+from app.models.livelink_topic_map import LiveLinkTopicMap
 from app.models.user import User
+from app.models.vehicle_telemetry import VehicleTelemetry
 from app.schemas.dtc import DTCDefinitionResponse, DTCSearchResponse
 from app.schemas.livelink import (
     BackfillResultResponse,
     DeviceCommandRequest,
     DeviceCommandResponse,
     DeviceFirmwareStatus,
+    DeviceReading,
+    DeviceReadingsResponse,
     FirmwareInfoResponse,
+    FirmwareSkipRequest,
+    IntegrationListResponse,
+    IntegrationTab,
     LiveLinkDeviceListResponse,
+    LiveLinkDeviceManualCreate,
     LiveLinkDeviceResponse,
     LiveLinkDeviceUpdate,
     LiveLinkParameterListResponse,
@@ -32,6 +48,15 @@ from app.schemas.livelink import (
     TokenGenerateResponse,
     TokenInfoResponse,
 )
+from app.schemas.livelink_topic_map import (
+    PresetApplyRequest,
+    PresetInfo,
+    PresetReadingInfo,
+    TopicDiscoveryRequest,
+    TopicMapCreate,
+    TopicMapResponse,
+    TopicMapUpdate,
+)
 from app.services.auth import (
     get_current_admin_user,
     get_vehicle_for_owner_or_403,
@@ -39,10 +64,28 @@ from app.services.auth import (
 )
 from app.services.dtc_service import DTCService
 from app.services.firmware_service import FirmwareService
+from app.services.livelink_integrations import (
+    derive_broker_status,
+    derive_group_status,
+    device_is_linked,
+    device_is_online,
+    firmware_is_pending,
+)
 from app.services.livelink_service import LiveLinkService
+from app.services.livelink_sources.presets import PRESETS
+from app.services.livelink_sources.presets.sensors import (
+    create_sensor,
+    reading_of,
+    reject_foreign_preset_key,
+    rename_sensor_parameters,
+)
+from app.services.livelink_sources.registry import default_registry
+from app.services.mqtt_subscriber import mqtt_subscriber
 from app.services.sd_backfill_service import SdBackfillService
 from app.services.settings_service import SettingsService
 from app.services.telemetry_service import TelemetryService
+from app.tasks.livelink_tasks import get_mqtt_status as get_subscriber_status
+from app.utils.datetime_utils import utc_now
 from app.utils.request_scheme import get_external_base_url
 
 logger = logging.getLogger(__name__)
@@ -98,20 +141,28 @@ async def get_livelink_settings(
         telemetry_retention_days=await service.get_retention_days(),
         session_timeout_minutes=await service.get_session_timeout_minutes(),
         device_offline_timeout_minutes=await service.get_device_offline_timeout_minutes(),
-        daily_aggregation_enabled=await _get_bool_setting(
-            db, "livelink_daily_aggregation_enabled", True
+        daily_aggregation_enabled=await SettingsService.get_bool(
+            db, "livelink_daily_aggregation_enabled", default=True
         ),
-        firmware_check_enabled=await _get_bool_setting(db, "livelink_firmware_check_enabled", True),
+        firmware_check_enabled=await SettingsService.get_bool(
+            db, "livelink_firmware_check_enabled", default=True
+        ),
         alert_cooldown_minutes=await service.get_alert_cooldown_minutes(),
         session_grace_period_seconds=await service.get_session_grace_period_seconds(),
         session_gap_minutes=await service.get_session_gap_minutes(),
         session_boundary_mode=await service.get_session_boundary_mode(),
-        notify_device_offline=await _get_bool_setting(db, "livelink_notify_device_offline", True),
-        notify_threshold_alerts=await _get_bool_setting(
-            db, "livelink_notify_threshold_alerts", True
+        notify_device_offline=await SettingsService.get_bool(
+            db, "livelink_notify_device_offline", default=True
         ),
-        notify_firmware_update=await _get_bool_setting(db, "livelink_notify_firmware_update", True),
-        notify_new_device=await _get_bool_setting(db, "livelink_notify_new_device", True),
+        notify_threshold_alerts=await SettingsService.get_bool(
+            db, "livelink_notify_threshold_alerts", default=True
+        ),
+        notify_firmware_update=await SettingsService.get_bool(
+            db, "livelink_notify_firmware_update", default=True
+        ),
+        notify_new_device=await SettingsService.get_bool(
+            db, "livelink_notify_new_device", default=True
+        ),
     )
 
 
@@ -296,13 +347,15 @@ async def update_device(
     """
     # Authorise against the current link first.
     device = await _get_device_for_owner_or_404(db, device_id, current_user)
+    # Read before `service.update_device`, which commits.
+    old_label = device.label
 
     # Relink: the target VIN must also be owned by the caller, else a user could
     # attach a device to a vehicle they don't own (cross-tenant telemetry).
-    if updates.vin:
-        target_vin = updates.vin.upper().strip()
-        if target_vin != (device.vin or "").upper():
-            await get_vehicle_for_owner_or_403(target_vin, current_user, db)
+    # The schema has already uppercased it. An empty VIN is an unlink, which
+    # the current-link check above already authorised.
+    if updates.vin and updates.vin != (device.vin or "").upper():
+        await get_vehicle_for_owner_or_403(updates.vin, current_user, db)
 
     service = LiveLinkService(db)
     try:
@@ -312,6 +365,7 @@ async def update_device(
             vin=updates.vin,
             enabled=updates.enabled,
             odometer_unit=updates.odometer_unit,
+            odometer_param_key=updates.odometer_param_key,
         )
     except ValueError as exc:
         # Changing the odometer unit once readings depend on it would split the
@@ -321,6 +375,12 @@ async def update_device(
 
     if not device:
         raise HTTPException(status_code=404, detail=f"Device {device_id} not found")
+
+    # A preset sensor's readings are named after it ("Front tank level").
+    preset = PRESETS.get(device.preset_key or "")
+    if preset is not None and old_label and device.label != old_label:
+        await rename_sensor_parameters(db, preset, device, old_label)
+        await db.commit()
 
     return await _device_response(db, device)
 
@@ -334,7 +394,8 @@ async def delete_device(
     """
     Delete a device.
 
-    Historical telemetry and sessions are retained (keyed on vehicle).
+    Historical telemetry and sessions are retained (keyed on vehicle), except a
+    preset sensor's readings, which are deleted with it.
 
     **Security:**
     - Owner of the device's linked vehicle (admin for unlinked devices).
@@ -346,6 +407,11 @@ async def delete_device(
 
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Device {device_id} not found")
+
+    # delete_device also dropped this device's topic maps. Without a resubscribe
+    # the broker keeps delivering topics that now resolve to no module, one
+    # debug line per message, indefinitely.
+    await mqtt_subscriber.reload()
 
 
 @router.post("/devices/{device_id}/token", response_model=TokenGenerateResponse)
@@ -504,6 +570,22 @@ async def get_parameter(
     return LiveLinkParameterResponse.model_validate(param)
 
 
+def _check_alert_lines(param: LiveLinkParameter, lines: dict[str, float | None]) -> None:
+    """Refuse lines no value could sensibly cross. Raises 422.
+
+    A percentage's lines stay within 0 to 100, and the critical line sits
+    below the low one, taking whichever of the two this update leaves stored.
+    """
+    if param.unit == "%":
+        for name, line in lines.items():
+            if line is not None and not 0 <= line <= 100:
+                raise HTTPException(status_code=422, detail=f"{name} must be between 0 and 100")
+    low = lines.get("warning_min", param.warning_min)
+    critical = lines.get("critical_min", param.critical_min)
+    if low is not None and critical is not None and critical >= low:
+        raise HTTPException(status_code=422, detail="critical_min must be below warning_min")
+
+
 @router.put("/parameters/{param_key}", response_model=LiveLinkParameterResponse)
 async def update_parameter(
     param_key: str,
@@ -530,10 +612,15 @@ async def update_parameter(
         param.category = updates.category
     if updates.icon is not None:
         param.icon = updates.icon
-    if updates.warning_min is not None:
-        param.warning_min = updates.warning_min
-    if updates.warning_max is not None:
-        param.warning_max = updates.warning_max
+    # An explicit null switches a line off; an omitted one stays as it is.
+    lines = {
+        name: getattr(updates, name)
+        for name in ("warning_min", "critical_min", "warning_max")
+        if name in updates.model_fields_set
+    }
+    _check_alert_lines(param, lines)
+    for name, line in lines.items():
+        setattr(param, name, line)
     if updates.display_order is not None:
         param.display_order = updates.display_order
     if updates.show_on_dashboard is not None:
@@ -628,10 +715,81 @@ async def get_device_firmware_status(
                 update_available=status.get("update_available") or False,
                 release_url=status.get("release_url") if status.get("update_available") else None,
                 firmware_track=status.get("firmware_track"),
+                skipped_version=status.get("skipped_version"),
             )
         )
 
     return results
+
+
+async def _get_device_or_404(db: AsyncSession, device_id: str):
+    """Fetch a device for the firmware-skip endpoints; 404 when unknown."""
+    device = await LiveLinkService(db).get_device_by_id(device_id)
+    if device is None:
+        raise HTTPException(status_code=404, detail="Device not found")
+    return device
+
+
+@router.post("/devices/{device_id}/firmware/skip", response_model=DeviceFirmwareStatus)
+async def skip_firmware_version(
+    device_id: str,
+    body: FirmwareSkipRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_current_admin_user),
+):
+    """Skip firmware-update notifications for one release on one device.
+
+    The next (newer) release notifies again. Note the interplay with
+    notify-once: a release that was already notified stays silenced even
+    after an unskip, because ``firmware_notified_version`` still matches —
+    that is the notify-once rule working, not a bug.
+
+    **Security:**
+    - Requires admin authentication
+    """
+    device = await _get_device_or_404(db, device_id)
+    device.firmware_skipped_version = body.version
+    await db.commit()
+    status = await FirmwareService(db).check_device_firmware(device_id)
+    return DeviceFirmwareStatus(
+        device_id=device_id,
+        current_version=status.get("current_version"),
+        latest_version=status.get("latest_version"),
+        update_available=status.get("update_available") or False,
+        release_url=status.get("release_url") if status.get("update_available") else None,
+        firmware_track=status.get("firmware_track"),
+        skipped_version=status.get("skipped_version"),
+    )
+
+
+@router.delete("/devices/{device_id}/firmware/skip", response_model=DeviceFirmwareStatus)
+async def unskip_firmware_version(
+    device_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_current_admin_user),
+):
+    """Clear a device's skipped firmware version.
+
+    Because ``firmware_notified_version`` is only stamped on actual sends,
+    an unskipped device that was never notified gets its notification at
+    the next daily run.
+
+    **Security:**
+    - Requires admin authentication
+    """
+    device = await _get_device_or_404(db, device_id)
+    device.firmware_skipped_version = None
+    await db.commit()
+    status = await FirmwareService(db).check_device_firmware(device_id)
+    return DeviceFirmwareStatus(
+        device_id=device_id,
+        current_version=status.get("current_version"),
+        latest_version=status.get("latest_version"),
+        update_available=status.get("update_available") or False,
+        release_url=status.get("release_url") if status.get("update_available") else None,
+        firmware_track=status.get("firmware_track"),
+        skipped_version=status.get("skipped_version"),
+    )
 
 
 # =============================================================================
@@ -703,13 +861,13 @@ async def get_mqtt_settings(
     **Security:**
     - Requires authentication
     """
-    enabled = await _get_bool_setting(db, "livelink_mqtt_enabled", False)
+    enabled = await SettingsService.get_bool(db, "livelink_mqtt_enabled", default=False)
     broker_host = await SettingsService.get(db, "livelink_mqtt_broker_host")
     broker_port = await SettingsService.get(db, "livelink_mqtt_broker_port")
     username = await SettingsService.get(db, "livelink_mqtt_username")
     password = await SettingsService.get(db, "livelink_mqtt_password")
     topic_prefix = await SettingsService.get(db, "livelink_mqtt_topic_prefix")
-    use_tls = await _get_bool_setting(db, "livelink_mqtt_use_tls", False)
+    use_tls = await SettingsService.get_bool(db, "livelink_mqtt_use_tls", default=False)
 
     return MQTTSettingsResponse(
         enabled=enabled,
@@ -817,7 +975,7 @@ async def test_mqtt_connection(
     broker_port = await SettingsService.get(db, "livelink_mqtt_broker_port")
     username = await SettingsService.get(db, "livelink_mqtt_username")
     password = await SettingsService.get(db, "livelink_mqtt_password")
-    use_tls = await _get_bool_setting(db, "livelink_mqtt_use_tls", False)
+    use_tls = await SettingsService.get_bool(db, "livelink_mqtt_use_tls", default=False)
 
     if not broker_host or not broker_host.value:
         return MQTTTestResult(
@@ -914,9 +1072,15 @@ async def trigger_backfill(
 ):
     """Pull and backfill the device's SD logs immediately.
 
+    409 while LiveLink is switched off: the service would quietly do nothing
+    (it checks the master switch too, for queued backfills), and an operator
+    who pressed "pull now" deserves to be told why nothing arrived.
+
     **Security:**
     - Requires admin authentication
     """
+    if not await LiveLinkService(db).is_enabled():
+        raise HTTPException(status_code=409, detail="LiveLink is switched off")
     result = await SdBackfillService(db).backfill_device(device_id)
     return BackfillResultResponse(
         files_seen=result.files_seen,
@@ -950,9 +1114,560 @@ async def _get_device_for_owner_or_404(db: AsyncSession, device_id: str, current
     return device
 
 
-async def _get_bool_setting(db: AsyncSession, key: str, default: bool = False) -> bool:
-    """Get a boolean setting value."""
-    setting = await SettingsService.get(db, key)
-    if not setting or not setting.value:
-        return default
-    return setting.value.lower() in ("true", "1", "yes")
+# =========================================================================
+# Source modules and topic maps
+# =========================================================================
+
+
+@router.get("/sources")
+async def list_sources(
+    current_user: User | None = Depends(get_current_admin_user),
+) -> list[dict[str, Any]]:
+    """Every registered source kind and what it produces."""
+    return [
+        {
+            "kind": m.kind,
+            "capabilities": sorted(c.value for c in m.capabilities),
+            # The frontend hides the odometer-parameter picker for kinds whose
+            # storage policy already syncs odometer; a declaration on those is
+            # silently ignored today.
+            "syncs_odometer": m.storage_policy.sync_odometer,
+        }
+        for m in default_registry().all_modules()
+    ]
+
+
+#: Display names for the built-in source modules. A kind that is not here gets
+#: its bare `kind` as a label rather than raising: a missing entry that 500s
+#: would take the whole strip down, and the strip is one of six cards.
+_SOURCE_LABELS = {"wican": "WiCAN", "torque": "Torque"}
+
+#: generic_mqtt has no tab of its own: its preset sensors are grouped by
+#: preset, and every other device is its own tab. Nothing on the module says
+#: which behaviour it wants, so this is a rule of the endpoint rather than a
+#: property of the registry.
+_PER_DEVICE_KINDS = frozenset({"generic_mqtt"})
+
+
+@router.get("/integrations", response_model=IntegrationListResponse)
+async def list_integrations(
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_current_admin_user),
+) -> IntegrationListResponse:
+    """The integrations card's tab strip, with each tab's status.
+
+    One request replaces the card's previous four. The status rules live in
+    `app.services.livelink_integrations` so they can be unit-tested without a
+    database, a broker or an HTTP client.
+
+    **Security:**
+    - Requires admin
+    """
+    livelink = LiveLinkService(db)
+    enabled = await livelink.is_enabled()
+    timeout = await livelink.get_device_offline_timeout_minutes()
+    now = utc_now()
+
+    devices = await livelink.list_devices()
+    firmware_by_id: dict[str, DeviceFirmwareStatus] = {}
+    if enabled:
+        firmware_service = FirmwareService(db)
+        for device in devices:
+            status = await firmware_service.check_device_firmware(device.device_id)
+            firmware_by_id[device.device_id] = DeviceFirmwareStatus(
+                device_id=device.device_id,
+                current_version=status.get("current_version"),
+                latest_version=status.get("latest_version"),
+                update_available=status.get("update_available") or False,
+                skipped_version=status.get("skipped_version"),
+            )
+
+    def _tab(
+        tab_id: str,
+        label: str,
+        kind: str | None,
+        group: list[LiveLinkDevice],
+        description: str | None = None,
+    ) -> IntegrationTab:
+        state = derive_group_status(group, firmware_by_id, timeout, now, livelink_enabled=enabled)
+        return IntegrationTab(
+            id=tab_id,
+            label=label,
+            kind=kind,
+            status=state.status,
+            reason=state.reason,
+            description=description,
+            device_count=len(group),
+            online_count=sum(1 for d in group if device_is_online(d, timeout, now)),
+            linked_count=sum(1 for d in group if device_is_linked(d)),
+            firmware_updates=sum(
+                1 for d in group if firmware_is_pending(firmware_by_id.get(d.device_id))
+            ),
+        )
+
+    tabs: list[IntegrationTab] = []
+    for module in default_registry().all_modules():
+        if module.kind in _PER_DEVICE_KINDS:
+            continue
+        group = [d for d in devices if d.kind == module.kind]
+        tabs.append(
+            _tab(module.kind, _SOURCE_LABELS.get(module.kind, module.kind), module.kind, group)
+        )
+
+    # The broker is not a source module. It is the transport the MQTT sources
+    # share, and "is my broker up" is exactly the kind of thing a status dot
+    # is for.
+    try:
+        connection_status = get_subscriber_status().get("connection_status", "disconnected")
+    except Exception:  # noqa: BLE001 - a broker we cannot read is not healthy
+        logger.warning("Could not read MQTT subscriber status", exc_info=True)
+        connection_status = "error"
+    broker = derive_broker_status(connection_status, livelink_enabled=enabled)
+    tabs.append(
+        IntegrationTab(
+            id="broker",
+            label="Mosquitto",
+            kind=None,
+            status=broker.status,
+            reason=broker.reason,
+        )
+    )
+
+    # A preset's sensors share one tab, the way WiCAN's dongles do: two tanks
+    # are "2 devices linked", not two tabs.
+    generic = [d for d in devices if d.kind in _PER_DEVICE_KINDS]
+    for preset in PRESETS.values():
+        group = [d for d in generic if d.preset_key == preset.name]
+        if group:
+            tabs.append(
+                _tab(
+                    f"preset:{preset.name}",
+                    preset.title,
+                    preset.kind,
+                    group,
+                    description=preset.description,
+                )
+            )
+
+    # Every other device is its own tab, including one whose preset no longer
+    # exists: it stays reachable to be edited or deleted.
+    for device in generic:
+        if device.preset_key in PRESETS:
+            continue
+        tabs.append(
+            _tab(
+                f"device:{device.device_id}",
+                device.label or device.device_id,
+                device.kind,
+                [device],
+            )
+        )
+
+    return IntegrationListResponse(tabs=tabs)
+
+
+@router.get("/devices/{device_id}/readings", response_model=DeviceReadingsResponse)
+async def get_device_readings(
+    device_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_current_admin_user),
+) -> DeviceReadingsResponse:
+    """Every parameter this device is mapped to, with its current value.
+
+    Which keys comes from `livelink_topic_maps`: those rows are what route a
+    topic to a parameter, so a device's mapped key set IS its parameter list.
+
+    Whose value cannot come from `vehicle_telemetry_latest`. That table is
+    UNIQUE(vin, param_key) with no device_id, so two devices on one vehicle
+    mapping the same key means the last writer owns the row and the other
+    device's sidecar would display a reading that is not its own. Values come
+    from `vehicle_telemetry`, which carries device_id.
+
+    The cost is recency: `vehicle_telemetry` is written subject to
+    `storage_interval_seconds`. The timestamp is returned so the UI can show
+    how old the value actually is rather than implying it is live.
+
+    Values are the device's under its CURRENT vehicle. A device relinked to
+    another vehicle starts again rather than showing the old one's readings.
+
+    **Security:**
+    - Requires admin
+    """
+    device = await _get_device_or_404(db, device_id)
+    livelink = LiveLinkService(db)
+    online = device_is_online(
+        device, await livelink.get_device_offline_timeout_minutes(), utc_now()
+    )
+
+    # In the order they were first mapped, which for a preset is the preset's
+    # own order (a tank's level first). GROUP BY rather than DISTINCT: one key
+    # may be mapped from two topics, and it is listed once, at its first row.
+    keys_result = await db.execute(
+        select(LiveLinkTopicMap.param_key)
+        .where(
+            LiveLinkTopicMap.device_id == device_id,
+            LiveLinkTopicMap.role == "telemetry",
+            LiveLinkTopicMap.param_key.is_not(None),
+        )
+        .group_by(LiveLinkTopicMap.param_key)
+        .order_by(func.min(LiveLinkTopicMap.id))
+    )
+    param_keys = [key for (key,) in keys_result.all() if key]
+
+    if not param_keys:
+        return DeviceReadingsResponse(
+            device_id=device_id, vin=device.vin, online=online, readings=[]
+        )
+
+    parameters = await TelemetryService(db).get_all_parameters()
+
+    values: dict[str, tuple[float, datetime]] = {}
+    if device.vin:
+        # Newest row per (device_id, param_key) under the current vehicle.
+        # Expressed as a grouped subquery rather than a window function so it
+        # runs unchanged on SQLite (production) and PostgreSQL (CI). The VIN
+        # filter lives here only: rows are UNIQUE(device_id, param_key,
+        # timestamp), so the one row at the newest current-vehicle timestamp
+        # is already this vehicle's.
+        newest = (
+            select(
+                VehicleTelemetry.param_key.label("param_key"),
+                func.max(VehicleTelemetry.timestamp).label("ts"),
+            )
+            .where(
+                VehicleTelemetry.device_id == device_id,
+                VehicleTelemetry.vin == device.vin,
+                VehicleTelemetry.param_key.in_(param_keys),
+            )
+            .group_by(VehicleTelemetry.param_key)
+            .subquery()
+        )
+        rows = await db.execute(
+            select(VehicleTelemetry.param_key, VehicleTelemetry.value, VehicleTelemetry.timestamp)
+            .join(
+                newest,
+                (VehicleTelemetry.param_key == newest.c.param_key)
+                & (VehicleTelemetry.timestamp == newest.c.ts),
+            )
+            .where(VehicleTelemetry.device_id == device_id)
+        )
+        for param_key, value, timestamp in rows.all():
+            values[param_key] = (value, timestamp)
+
+    preset = PRESETS.get(device.preset_key or "")
+    readings: list[DeviceReading] = []
+    for key in param_keys:
+        parameter = parameters.get(key)
+        value, timestamp = values.get(key, (None, None))
+        reading = reading_of(key, preset)
+        readings.append(
+            DeviceReading(
+                param_key=key,
+                display_name=parameter.display_name if parameter else key,
+                unit=parameter.unit if parameter else None,
+                value=value,
+                timestamp=timestamp,
+                show_on_dashboard=bool(parameter.show_on_dashboard) if parameter else True,
+                format=reading.format if reading else "value",
+                max_value=reading.max_value if reading else None,
+                warning_min=parameter.warning_min if parameter else None,
+                critical_min=parameter.critical_min if parameter else None,
+                alert_lines=list(reading.alert_lines) if reading else [],
+            )
+        )
+
+    return DeviceReadingsResponse(
+        device_id=device_id, vin=device.vin, online=online, readings=readings
+    )
+
+
+async def _resolve_new_device_vin(
+    db: AsyncSession, vin: str | None, current_user: User | None
+) -> str | None:
+    """The VIN a newly created device should be linked to, or None.
+
+    Mirrors what `update_device` does when it LINKS a device: uppercase, then
+    resolve through `get_vehicle_for_owner_or_403`. Without this the body's VIN
+    went straight into `livelink_devices.vin`, a foreign key to `vehicles.vin`,
+    so an unknown VIN, or a lowercase one (VINs are stored uppercase), was an
+    IntegrityError at commit: a 500 instead of a 404.
+
+    Called before anything is added to the session, so a bad VIN leaves no
+    device and no topic maps behind.
+    """
+    if not vin:
+        return None
+    normalised = vin.upper().strip()
+    await get_vehicle_for_owner_or_403(normalised, current_user, db)
+    return normalised
+
+
+@router.post("/devices", response_model=LiveLinkDeviceResponse, status_code=201)
+async def create_device(
+    body: LiveLinkDeviceManualCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_current_admin_user),
+) -> LiveLinkDevice:
+    """Create a device by hand.
+
+    Auto-discovery covers WiCAN and a token flow covers Torque; a generic MQTT
+    device has neither, so without this an admin can save topic maps against a
+    device id that does not exist and every reading is silently discarded.
+    """
+    existing = await LiveLinkService(db).get_device_by_id(body.device_id)
+    if existing is not None:
+        raise HTTPException(status_code=409, detail=f"Device {body.device_id} already exists")
+    vin = await _resolve_new_device_vin(db, body.vin, current_user)
+
+    device = LiveLinkDevice(
+        device_id=body.device_id,
+        kind=body.kind,
+        label=body.label,
+        vin=vin,
+        enabled=True,
+    )
+    db.add(device)
+    await db.commit()
+    await db.refresh(device)
+    return device
+
+
+@router.get("/devices/{device_id}/param-keys", response_model=list[str])
+async def list_device_param_keys(
+    device_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_current_admin_user),
+) -> list[str]:
+    """Distinct parameter keys THIS device has reported.
+
+    Per-device on purpose. `vehicle_telemetry_latest` has no device_id column
+    and is keyed (vin, param_key), so a per-vehicle list would offer a Torque
+    phone the co-located WiCAN's A6-ODOMETER, which it never emits.
+    """
+    return await LiveLinkService(db).device_reported_param_keys(device_id)
+
+
+@router.get("/topic-maps", response_model=list[TopicMapResponse])
+async def list_topic_maps(
+    device_id: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_current_admin_user),
+) -> list[LiveLinkTopicMap]:
+    """All topic maps, optionally for one device."""
+    stmt = select(LiveLinkTopicMap).order_by(LiveLinkTopicMap.topic)
+    if device_id:
+        stmt = stmt.where(LiveLinkTopicMap.device_id == device_id)
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def _reject_foreign_topic_claim(
+    db: AsyncSession, topic: str, device_id: str, exclude_id: int | None = None
+) -> None:
+    """One topic belongs to exactly ONE device.
+
+    The unique key is (topic, param_key), which does not stop two devices
+    mapping the same topic under different param keys. `GenericMqttModule.parse`
+    attributes a whole batch to its first entry, so that configuration would
+    write one device's readings against another device's vehicle.
+    """
+    stmt = select(LiveLinkTopicMap).where(
+        LiveLinkTopicMap.topic == topic, LiveLinkTopicMap.device_id != device_id
+    )
+    if exclude_id is not None:
+        stmt = stmt.where(LiveLinkTopicMap.id != exclude_id)
+    clash = (await db.execute(stmt)).scalars().first()
+    if clash is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Topic {topic} is already mapped to device {clash.device_id}",
+        )
+
+
+async def _register_mapped_parameter(db: AsyncSession, row: LiveLinkTopicMap) -> None:
+    """Give a mapped telemetry key a `livelink_parameters` row.
+
+    `apply_preset` registers a parameter per reading; these two write paths must
+    too, or the integrations sidecar renders a show-on-dashboard switch whose
+    `PUT /parameters/{key}` returns 404. Parameters are otherwise registered
+    only at first ingest, and a freshly mapped topic has not ingested yet.
+
+    Called before the caller's commit, so the parameter and the mapping land
+    in one transaction: `get_or_create_parameter` only flushes.
+
+    `get_or_create`, never create-or-clobber. A repointed mapping must not
+    reset an operator's display name or dashboard choice.
+    """
+    if row.role == "telemetry" and row.param_key:
+        await TelemetryService(db).get_or_create_parameter(
+            row.param_key, unit=row.unit, param_class=row.param_class
+        )
+
+
+@router.post("/topic-maps", response_model=TopicMapResponse, status_code=201)
+async def create_topic_map(
+    body: TopicMapCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_current_admin_user),
+) -> LiveLinkTopicMap:
+    """Add a mapping and resubscribe."""
+    await _reject_foreign_topic_claim(db, body.topic, body.device_id)
+    reject_foreign_preset_key(body.param_key, body.device_id)
+    row = LiveLinkTopicMap(**body.model_dump())
+    db.add(row)
+    await _register_mapped_parameter(db, row)
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(409, "That topic already maps to that parameter") from None
+    await db.refresh(row)
+    await mqtt_subscriber.reload()
+    return row
+
+
+@router.patch("/topic-maps/{map_id}", response_model=TopicMapResponse)
+async def update_topic_map(
+    map_id: int,
+    body: TopicMapUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_current_admin_user),
+) -> LiveLinkTopicMap:
+    """Change a mapping and resubscribe.
+
+    Re-validates the MERGED row through TopicMapCreate rather than assigning
+    the patch fields directly: otherwise a PATCH could null `param_key` on a
+    telemetry row, set a wildcard topic, or skip param-key canonicalisation,
+    all of which create rejects.
+    """
+    row = await db.get(LiveLinkTopicMap, map_id)
+    if row is None:
+        raise HTTPException(404, "Topic map not found")
+
+    merged = {
+        "device_id": row.device_id,
+        "topic": row.topic,
+        "role": row.role,
+        "param_key": row.param_key,
+        "value_path": row.value_path,
+        "unit": row.unit,
+        "param_class": row.param_class,
+        "scale": row.scale,
+        "value_offset": row.value_offset,
+        "enabled": row.enabled,
+    }
+    merged.update(body.model_dump(exclude_unset=True))
+    try:
+        validated = TopicMapCreate(**merged)
+    except ValidationError as exc:
+        raise RequestValidationError(exc.errors()) from exc
+
+    await _reject_foreign_topic_claim(db, validated.topic, validated.device_id, exclude_id=map_id)
+    # Only a new claim: a mapping made before the rule (dev's two-tank
+    # `rvgateway`) must still be editable, or it can never be switched off.
+    if validated.param_key != row.param_key:
+        reject_foreign_preset_key(validated.param_key, validated.device_id)
+    for field, value in validated.model_dump().items():
+        setattr(row, field, value)
+    await _register_mapped_parameter(db, row)
+    await db.commit()
+    await db.refresh(row)
+    await mqtt_subscriber.reload()
+    return row
+
+
+@router.delete("/topic-maps/{map_id}", status_code=204)
+async def delete_topic_map(
+    map_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_current_admin_user),
+) -> None:
+    """Remove a mapping and resubscribe."""
+    row = await db.get(LiveLinkTopicMap, map_id)
+    if row is None:
+        raise HTTPException(404, "Topic map not found")
+    await db.delete(row)
+    await db.commit()
+    await mqtt_subscriber.reload()
+
+
+@router.post("/topic-discovery", response_model=list[dict])
+async def discover_topics(
+    body: TopicDiscoveryRequest,
+    current_user: User | None = Depends(get_current_admin_user),
+) -> list[dict[str, str]]:
+    """Listen briefly and report what the broker is publishing."""
+    try:
+        return await mqtt_subscriber.discover_topics(
+            prefix=body.prefix, seconds=min(body.seconds, 60)
+        )
+    except RuntimeError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@router.get("/presets", response_model=list[PresetInfo])
+async def list_presets(
+    current_user: User | None = Depends(get_current_admin_user),
+) -> list[PresetInfo]:
+    """Sensor templates, with the readings each sensor publishes."""
+    return [
+        PresetInfo(
+            name=p.name,
+            title=p.title,
+            description=p.description,
+            kind=p.kind,
+            readings=[
+                PresetReadingInfo(
+                    suffix=r.suffix,
+                    name=r.name,
+                    unit=r.unit,
+                    default_topic=r.default_topic,
+                    keywords=list(r.keywords),
+                    required=r.required,
+                )
+                for r in p.readings
+            ],
+        )
+        for p in PRESETS.values()
+    ]
+
+
+@router.post("/presets/{name}/apply", response_model=LiveLinkDeviceResponse, status_code=201)
+async def apply_preset(
+    name: str,
+    body: PresetApplyRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_current_admin_user),
+) -> LiveLinkDevice:
+    """Add one sensor: its own device, and a topic map per reading given.
+
+    Which readings a preset has, and which it requires, is the preset's, so
+    `topics` is checked against it here rather than on the schema.
+
+    Each reading's parameter gets the preset's `storage_interval_seconds`.
+    REQUIRED, not tuning: retained messages replay on every resubscribe and
+    the storage path stamps server time, so without it each reconnect writes a
+    fresh row.
+    """
+    preset = PRESETS.get(name)
+    if preset is None:
+        raise HTTPException(status_code=404, detail=f"Unknown preset {name!r}")
+
+    known = {reading.suffix for reading in preset.readings}
+    unknown = sorted(set(body.topics) - known)
+    if unknown:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{preset.title} has no reading {', '.join(unknown)}",
+        )
+    missing = [r.name for r in preset.readings if r.required and r.suffix not in body.topics]
+    if missing:
+        raise HTTPException(
+            status_code=422, detail=f"A topic is required for: {', '.join(missing)}"
+        )
+
+    vin = await _resolve_new_device_vin(db, body.vin, current_user)
+    device = await create_sensor(db, preset, body.label, vin, body.topics)
+    await db.commit()
+    await db.refresh(device)
+    await mqtt_subscriber.reload()
+    return device

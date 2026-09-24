@@ -71,9 +71,7 @@ export default function VINInput({
 
   const runDuplicateCheck = async (vin: string) => {
     try {
-      const exists = await (
-        await import('@/services/vinService')
-      ).vinService.exists(vin)
+      const exists = await vinService.exists(vin)
       if (exists) {
         setDuplicateWarning(t('vinInput.alreadyExists'))
       }

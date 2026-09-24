@@ -65,6 +65,11 @@ class FuelRecord(Base):
     # Per-fillup actual fuel dispensed. Surfaced in UI only when the vehicle
     # has a non-null `fuel_type_secondary` (PHEV / flex / dual-fuel).
     fuel_type_used: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # #164 — per-fillup fuel grade. Octane for gasoline/E85 (AKI or RON, so
+    # inputs accept 50-150); diesel_grade is the US clear-vs-dyed distinction
+    # ('onroad' | 'offroad'). Both prefilled client-side from the last fillup.
+    octane: Mapped[int | None] = mapped_column(Integer)
+    diesel_grade: Mapped[str | None] = mapped_column(String(10))
     is_full_tank: Mapped[bool] = mapped_column(Boolean, default=True)
     missed_fillup: Mapped[bool] = mapped_column(Boolean, default=False)
     is_hauling: Mapped[bool] = mapped_column(

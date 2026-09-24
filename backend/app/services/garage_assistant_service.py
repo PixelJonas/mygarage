@@ -16,6 +16,7 @@ from app.schemas.garage_assistant import (
 )
 from app.services import llm_client
 from app.services.garage_context_service import build_garage_context
+from app.services.settings_service import SettingsService
 from app.utils.render_context import UserRenderContextSource, render_context_for_request
 
 logger = logging.getLogger(__name__)
@@ -90,7 +91,7 @@ async def ask_garage(
         not the vehicle owner's: ``get_vehicle_or_403`` admits admins and
         shared viewers, and a shared viewer should read their own units.
     """
-    if not await llm_client.setting_enabled(db, "llm_garage_assistant_enabled"):
+    if not await SettingsService.get_bool(db, "llm_garage_assistant_enabled"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Ask My Garage assistant is disabled",

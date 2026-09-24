@@ -7,6 +7,7 @@ import SettingsIntegrationsTab from '../components/tabs/SettingsIntegrationsTab'
 import SettingsNotificationsTab from '../components/tabs/SettingsNotificationsTab'
 import SettingsBackupTab from '../components/tabs/SettingsBackupTab'
 import { SettingsProvider, useSettings } from '../contexts/SettingsContext'
+import { useCanManageInstance } from '../hooks/useCanManageInstance'
 import SubTabNav from '../components/SubTabNav'
 
 type TabType = 'system' | 'files' | 'integrations' | 'notifications' | 'backup'
@@ -15,6 +16,8 @@ function SettingsContent() {
   const { t } = useTranslation('settings')
   const [activeTab, setActiveTab] = useState<TabType>('system')
   const { setCurrentTabId } = useSettings()
+  // Files, Notifications and Backup hold instance settings only.
+  const canManageInstance = useCanManageInstance()
 
   useEffect(() => {
     setCurrentTabId(activeTab)
@@ -22,10 +25,10 @@ function SettingsContent() {
 
   const tabs = [
     { id: 'system', label: t('tabs.system'), icon: Server },
-    { id: 'files', label: t('tabs.fileManagement'), icon: HardDrive },
+    { id: 'files', label: t('tabs.fileManagement'), icon: HardDrive, visible: canManageInstance },
     { id: 'integrations', label: t('tabs.integrations'), icon: Plug },
-    { id: 'notifications', label: t('tabs.notifications'), icon: Bell },
-    { id: 'backup', label: t('tabs.backupRestore'), icon: Download },
+    { id: 'notifications', label: t('tabs.notifications'), icon: Bell, visible: canManageInstance },
+    { id: 'backup', label: t('tabs.backupRestore'), icon: Download, visible: canManageInstance },
   ]
 
   return (

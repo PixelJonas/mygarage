@@ -6,22 +6,56 @@ storage, session management, and device discovery.
 """
 
 import asyncio
-import json
 import logging
 import ssl
 from datetime import datetime
 from typing import Any
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.database import AsyncSessionLocal
-from app.services.livelink_service import LiveLinkService
-from app.services.session_service import SessionService
+from app.services.livelink_ingest import ingest
+from app.services.livelink_sources.base import BaseSourceModule, MqttEnvelope
+from app.services.livelink_sources.registry import default_registry
 from app.services.settings_service import SettingsService
-from app.services.telemetry_service import TelemetryService
-from app.utils.autopid_normalizer import normalize_autopid_data
 from app.utils.datetime_utils import utc_now
+from app.utils.household_time import load_household_zone
 from app.utils.logging_utils import sanitize_for_log
 
 logger = logging.getLogger(__name__)
+
+
+MAX_DISCOVERY_SECONDS = 60
+MAX_DISCOVERY_TOPICS = 500
+MAX_DISCOVERY_SAMPLE = 256
+
+
+class _DiscoveryCollector:
+    """Accumulates distinct topics with one truncated sample each."""
+
+    def __init__(self, max_topics: int, max_sample: int) -> None:
+        self._max_topics = max_topics
+        self._max_sample = max_sample
+        self._seen: dict[str, str] = {}
+
+    def observe(self, topic: str, payload: bytes) -> None:
+        """Record a topic, keeping the FIRST sample seen for it.
+
+        Truncates BYTES before decoding. Slicing after decode bounds
+        characters, not bytes, so the stated 256-byte limit would not hold for
+        multi-byte UTF-8 and the whole payload gets allocated regardless.
+        """
+        if topic in self._seen or len(self._seen) >= self._max_topics:
+            return
+        self._seen[topic] = payload[: self._max_sample].decode("utf-8", errors="replace")
+
+    def full(self) -> bool:
+        """Whether the topic cap has been reached."""
+        return len(self._seen) >= self._max_topics
+
+    def results(self) -> list[dict[str, str]]:
+        """Observed topics, in first-seen order."""
+        return [{"topic": t, "sample": s} for t, s in self._seen.items()]
 
 
 class MQTTSubscriber:
@@ -47,6 +81,18 @@ class MQTTSubscriber:
         self._connection_status = "disconnected"
         self._last_message_at: datetime | None = None
         self._messages_processed = 0
+
+        self._subscribed: dict[str, BaseSourceModule] = {}
+        #: Serializes reload(). Every topic-map mutation calls it, and FastAPI
+        #: serves requests concurrently, so two admin saves can otherwise
+        #: interleave subscribe/unsubscribe and leave the map disagreeing with
+        #: the broker.
+        self._reload_lock = asyncio.Lock()
+        #: Topics the broker has ACKed. Distinct from `_subscribed`, which is
+        #: the dispatch map and is deliberately a superset during a reload.
+        #: Reset on every reconnect: a new client has no subscriptions.
+        self._confirmed: set[str] = set()
+        self._discovering = False
 
     async def start(self) -> None:
         """Start the MQTT subscriber background task."""
@@ -127,6 +173,7 @@ class MQTTSubscriber:
     async def _get_config(self) -> dict[str, Any] | None:
         """Get MQTT configuration from settings."""
         async with AsyncSessionLocal() as db:
+            await load_household_zone(db)
             enabled = await SettingsService.get(db, "livelink_mqtt_enabled")
             if not enabled or enabled.value != "true":
                 return None
@@ -152,6 +199,138 @@ class MQTTSubscriber:
                 else "wican",
                 "use_tls": use_tls and use_tls.value == "true",
             }
+
+    async def configured_topic_prefix(self, db: AsyncSession) -> str | None:
+        """The configured WiCAN topic prefix, or None when MQTT is off.
+
+        Reads through the CALLER's session rather than delegating to
+        `_get_config`, which opens its own `AsyncSessionLocal`. That would
+        reach the configured database rather than the one the caller is using,
+        which under test is a different file entirely.
+
+        Mirrors the two keys `_get_config` consults for this, including its
+        "wican" default.
+        """
+        enabled = await SettingsService.get(db, "livelink_mqtt_enabled")
+        if not enabled or enabled.value != "true":
+            return None
+        prefix = await SettingsService.get(db, "livelink_mqtt_topic_prefix")
+        return prefix.value if prefix and prefix.value else "wican"
+
+    async def _desired_subscriptions(self) -> dict[str, BaseSourceModule]:
+        """Topic to owning module, from the registry, using a fresh session."""
+        async with AsyncSessionLocal() as db:
+            return await default_registry().mqtt_subscriptions(db)
+
+    def _reset_subscription_state(self) -> None:
+        """Forget which topics the broker had ACKed.
+
+        Called on every (re)connect. A new client holds no subscriptions, so
+        leaving `_confirmed` populated would make `reload()` diff against a
+        previous connection's state and re-subscribe nothing.
+        """
+        self._confirmed = set()
+
+    async def reload(self) -> None:
+        """Re-read subscriptions and apply the delta to the live connection.
+
+        Called whenever a topic-map row changes. Without it, a mapping added
+        from the UI does nothing until the container restarts, which would be
+        the most confusing possible failure mode for that feature.
+
+        aiomqtt permits subscribe/unsubscribe from another task while the
+        message loop is running, so this needs no reconnect.
+        """
+        if self._client is None:
+            return
+        async with self._reload_lock:
+            desired = await self._desired_subscriptions()
+
+            # Install the new dispatch map BEFORE subscribing. The broker can
+            # deliver a retained message the instant SUBSCRIBE lands, and if
+            # the map were still the old one `resolve_topic` would return None
+            # and that reading would be dropped with only a debug line. Every
+            # mapped topic is retained, so this is the common case, not a race
+            # you would hit occasionally.
+            #
+            # Publishing the union first is safe in the other direction: a
+            # topic that is in the map but not yet subscribed simply never
+            # arrives.
+            self._subscribed = {**self._subscribed, **desired}
+
+            # The retry set is desired MINUS CONFIRMED, never desired minus the
+            # dispatch map. The map is the union installed above, so diffing
+            # against it would treat a topic whose SUBSCRIBE failed as already
+            # subscribed and never retry it: the mapping would sit in the UI
+            # looking healthy and silently receive nothing, forever.
+            for topic in sorted(set(desired) - self._confirmed):
+                try:
+                    await self._client.subscribe(topic)
+                except Exception as exc:
+                    logger.error(
+                        "SUBSCRIBE failed for %s: %s (will retry on next reload)",
+                        sanitize_for_log(topic),
+                        exc,
+                    )
+                    continue  # deliberately NOT added to _confirmed
+                self._confirmed.add(topic)
+                logger.info("Subscribed to MQTT topic: %s", sanitize_for_log(topic))
+
+            for topic in sorted(self._confirmed - set(desired)):
+                try:
+                    await self._client.unsubscribe(topic)
+                except Exception as exc:
+                    logger.error("UNSUBSCRIBE failed for %s: %s", sanitize_for_log(topic), exc)
+                self._confirmed.discard(topic)
+                logger.info("Unsubscribed from MQTT topic: %s", sanitize_for_log(topic))
+
+            # Only now drop departed topics from the dispatch map.
+            self._subscribed = desired
+
+    async def discover_topics(self, prefix: str, seconds: int = 15) -> list[dict[str, str]]:
+        """Listen on a temporary client and report what is publishing.
+
+        Opens its OWN client so the live subscription set is untouched. Bounded
+        on every axis: duration, distinct topics and sample size. Raises
+        RuntimeError if a run is already in progress.
+        """
+        import aiomqtt
+
+        # Claim the guard BEFORE the first await. Checking here and setting it
+        # after `_get_config()` leaves a window in which two concurrent
+        # requests both pass.
+        if self._discovering:
+            raise RuntimeError("A discovery run is already in progress")
+        self._discovering = True
+        try:
+            config = await self._get_config()
+            if not config:
+                return []
+
+            seconds = max(1, min(seconds, MAX_DISCOVERY_SECONDS))
+            collector = _DiscoveryCollector(MAX_DISCOVERY_TOPICS, MAX_DISCOVERY_SAMPLE)
+            async with aiomqtt.Client(
+                hostname=config["host"],
+                port=config["port"],
+                username=config["username"],
+                password=config["password"],
+                tls_context=ssl.create_default_context() if config["use_tls"] else None,
+            ) as client:
+                await client.subscribe(prefix)
+
+                async def _collect() -> None:
+                    async for message in client.messages:
+                        collector.observe(str(message.topic), message.payload)
+                        if collector.full():
+                            return
+
+                try:
+                    await asyncio.wait_for(_collect(), timeout=seconds)
+                except TimeoutError:
+                    pass
+        finally:
+            self._discovering = False
+        return collector.results()
 
     async def _run(self) -> None:
         """Main subscriber loop with reconnection handling."""
@@ -199,22 +378,22 @@ class MQTTSubscriber:
                     reconnect_delay = self._reconnect_delay  # Reset on successful connect
                     self._connection_status = "connected"
 
-                    # Subscribe to all WiCAN topics
-                    # Pattern: wican/+/# matches wican/<device_id>/<subtopic>
-                    topic_pattern = f"{config['topic_prefix']}/+/#"
-                    await client.subscribe(topic_pattern)
-                    logger.info("Subscribed to MQTT topic: %s", topic_pattern)
+                    # A fresh client holds no subscriptions, so forget what the
+                    # previous connection had ACKed or reload() would skip
+                    # everything after a reconnect.
+                    self._reset_subscription_state()
+                    self._subscribed = await self._desired_subscriptions()
+                    for topic in self._subscribed:
+                        await client.subscribe(topic)
+                        self._confirmed.add(topic)
+                        logger.info("Subscribed to MQTT topic: %s", sanitize_for_log(topic))
 
                     # Process messages
                     async for message in client.messages:
                         if not self._running:
                             break
                         try:
-                            await self._process_message(
-                                str(message.topic),
-                                message.payload,
-                                config["topic_prefix"],
-                            )
+                            await self._process_message(str(message.topic), message.payload)
                         except Exception as e:
                             logger.error("Error processing MQTT message: %s", e)
 
@@ -231,256 +410,24 @@ class MQTTSubscriber:
                 await asyncio.sleep(reconnect_delay)
                 reconnect_delay = min(reconnect_delay * 2, self._max_reconnect_delay)
 
-    async def _process_message(
-        self,
-        topic: str,
-        payload: bytes,
-        topic_prefix: str,
-    ) -> None:
-        """Process an incoming MQTT message.
-
-        Topic structure:
-        - {prefix}/{device_id}/can/status - Device online/offline
-        - {prefix}/{device_id}/battery - Battery voltage
-        - {prefix}/{device_id}/can/rx - Telemetry data
-        """
-        # Parse topic to extract device_id and message type
-        parts = topic.split("/")
-        if len(parts) < 3:
-            logger.debug("Ignoring malformed topic: %s", sanitize_for_log(topic))
+    async def _process_message(self, topic: str, payload: bytes) -> None:
+        """Dispatch one message to its module and run the pipeline."""
+        module = default_registry().resolve_topic(topic, self._subscribed)
+        if module is None:
+            logger.debug("No module owns topic: %s", sanitize_for_log(topic))
             return
 
-        # Expected: prefix/device_id/...
-        if parts[0] != topic_prefix:
-            return
-
-        device_id = parts[1].lower().replace(":", "").replace("-", "")
-        subtopic = "/".join(parts[2:])
-
-        # Parse payload
-        try:
-            data = json.loads(payload.decode("utf-8"))
-        except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            logger.debug("Failed to parse MQTT payload: %s", e)
-            return
-
-        # The decoded payload is broker-supplied and may contain CR/LF or other
-        # control chars; sanitize it like topic/subtopic before logging. (The
-        # MQTT ingress has no per-user authz by design -- it trusts the broker
-        # credential -- so log hygiene is the relevant control here.)
-        logger.debug(
-            "MQTT message: device=%s, subtopic=%s, data=%s",
-            sanitize_for_log(device_id),
-            sanitize_for_log(subtopic),
-            sanitize_for_log(data),
-        )
-
-        # Route to appropriate handler
         async with AsyncSessionLocal() as db:
+            await load_household_zone(db)
             try:
-                if subtopic == "can/status":
-                    await self._handle_status(db, device_id, data)
-                elif subtopic == "battery":
-                    await self._handle_battery(db, device_id, data)
-                elif subtopic == "can/rx":
-                    await self._handle_telemetry(db, device_id, data)
-                else:
-                    logger.debug("Ignoring unknown subtopic: %s", sanitize_for_log(subtopic))
-                    return
-
+                await ingest(module, MqttEnvelope(topic=topic, payload=payload), db)
                 await db.commit()
                 self._messages_processed += 1
                 self._last_message_at = utc_now()
-
             except Exception as e:
                 await db.rollback()
                 logger.error("Error handling MQTT message: %s", e, exc_info=True)
                 raise
-
-    async def _handle_status(
-        self,
-        db: Any,
-        device_id: str,
-        data: dict[str, Any],
-    ) -> None:
-        """Handle device status message (ECU online/offline)."""
-        status = data.get("status", "unknown").lower()
-        livelink_service = LiveLinkService(db)
-
-        # Auto-discover device if needed
-        device, is_new = await livelink_service.auto_discover_device(device_id)
-
-        if is_new:
-            logger.info("Auto-discovered new device via MQTT: %s", sanitize_for_log(device_id))
-
-        # Map status to ecu_status — only explicit values, not coerced
-        if status == "online":
-            ecu_status = "online"
-        elif status == "offline":
-            ecu_status = "offline"
-        else:
-            ecu_status = "unknown"
-
-        # Handle session transitions with grace period for WiFi drop resilience.
-        # Skip transitions for unknown status — only explicit online/offline matters.
-        if device.vin and ecu_status != "unknown":
-            grace_seconds = await livelink_service.get_session_grace_period_seconds()
-            if ecu_status == "online":
-                # ECU came online — if pending offline, WiFi recovered (clear pending)
-                if device.pending_offline_at:
-                    await livelink_service.clear_pending_offline(device_id)
-                    logger.debug(
-                        "Cleared pending offline for %s (WiFi recovered)",
-                        sanitize_for_log(device_id),
-                    )
-                else:
-                    # Not pending — genuine ECU online, start session
-                    session_service = SessionService(db)
-                    await session_service.handle_ecu_online(device.vin, device_id)
-            else:
-                # ECU offline — start grace period instead of immediate session end
-                if grace_seconds > 0:
-                    await livelink_service.set_pending_offline(device_id)
-                    logger.debug(
-                        "Set pending offline for %s (grace period: %ds)",
-                        sanitize_for_log(device_id),
-                        grace_seconds,
-                    )
-                else:
-                    # Grace period disabled — immediate session end
-                    session_service = SessionService(db)
-                    await session_service.handle_ecu_offline(device.vin, device_id)
-
-        # Update device status (after session detection has read old state)
-        await livelink_service.update_device_status(
-            device_id=device_id,
-            device_status="online",  # Device is online if we're getting MQTT messages
-            ecu_status=ecu_status,
-        )
-
-        logger.debug("Updated device %s status: ecu=%s", sanitize_for_log(device_id), ecu_status)
-
-    async def _handle_battery(
-        self,
-        db: Any,
-        device_id: str,
-        data: dict[str, Any],
-    ) -> None:
-        """Handle battery voltage message."""
-        battery_voltage = data.get("battery_voltage")
-        if battery_voltage is None:
-            return
-
-        livelink_service = LiveLinkService(db)
-
-        # Ensure device exists
-        device = await livelink_service.get_device_by_id(device_id)
-        if not device:
-            device, _ = await livelink_service.auto_discover_device(device_id)
-
-        # Update battery voltage
-        await livelink_service.update_device_status(
-            device_id=device_id,
-            battery_voltage=float(battery_voltage),
-            device_status="online",
-        )
-
-        # If device is linked, also store as telemetry
-        if device.vin:
-            telemetry_service = TelemetryService(db)
-            await telemetry_service.store_telemetry(
-                vin=device.vin,
-                device_id=device_id,
-                autopid_data={"BATTERY_VOLTAGE": float(battery_voltage)},
-                config={"BATTERY_VOLTAGE": {"unit": "V", "class": "voltage"}},
-                timestamp=utc_now(),
-            )
-
-    async def _handle_telemetry(
-        self,
-        db: Any,
-        device_id: str,
-        data: dict[str, Any],
-    ) -> None:
-        """Handle telemetry data message (odometer, temps, etc.)."""
-        livelink_service = LiveLinkService(db)
-
-        # Get device
-        device = await livelink_service.get_device_by_id(device_id)
-        if not device:
-            # Auto-discover but don't process telemetry until linked
-            device, _ = await livelink_service.auto_discover_device(device_id)
-            logger.debug("Device %s not linked, skipping telemetry", sanitize_for_log(device_id))
-            return
-
-        if not device.vin:
-            logger.debug(
-                "Device %s not linked to vehicle, skipping telemetry", sanitize_for_log(device_id)
-            )
-            return
-
-        if not device.enabled:
-            return
-
-        # If device has a pending offline, receiving telemetry means WiFi recovered
-        if device.pending_offline_at:
-            await livelink_service.clear_pending_offline(device_id)
-            logger.debug(
-                "Cleared pending offline for %s (telemetry received)", sanitize_for_log(device_id)
-            )
-
-        # Infer ECU status from telemetry: if we're receiving data, ECU must be on
-        # This handles WiCAN devices that don't send explicit can/status messages
-        ecu_was_offline = device.ecu_status != "online"
-
-        # If ECU just came online, start a drive session BEFORE updating status,
-        # so the transition detector sees the old ecu_status
-        if ecu_was_offline:
-            session_service = SessionService(db)
-            await session_service.handle_ecu_online(device.vin, device_id)
-            logger.info(
-                "ECU online inferred from telemetry for device %s, started session",
-                sanitize_for_log(device_id),
-            )
-
-        # Update last_seen and ECU status (after session detection)
-        await livelink_service.update_device_status(
-            device_id=device_id,
-            device_status="online",
-            ecu_status="online",
-        )
-
-        # Normalize parameter keys and filter values via normalizer.
-        # Canonicalization (uppercase, spaces→underscores) happens in store_telemetry.
-        autopid_data: dict[str, float | int | str | None] = normalize_autopid_data(data)
-
-        if not autopid_data:
-            return
-
-        # Store telemetry using existing service (includes validation)
-        telemetry_service = TelemetryService(db)
-        store_result = await telemetry_service.store_telemetry(
-            vin=device.vin,
-            device_id=device_id,
-            autopid_data=autopid_data,
-            config={},  # No config metadata from MQTT
-            timestamp=utc_now(),
-        )
-
-        # Check thresholds on validated data only (not rejected garbage)
-        for param_key, value in store_result.validated_data.items():
-            if value is not None and isinstance(value, (int, float)):
-                await telemetry_service.check_thresholds(
-                    vin=device.vin,
-                    param_key=param_key,
-                    value=float(value),
-                )
-
-        logger.debug(
-            "Stored %d telemetry parameters for device %s",
-            store_result.stored_count,
-            sanitize_for_log(device_id),
-        )
 
 
 # Singleton instance

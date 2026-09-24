@@ -48,6 +48,7 @@
  */
 
 import { getActiveLocale } from '@/constants/i18n'
+import { cachedCurrencyFormat, cachedNumberFormat } from './numberFormatCache'
 import { UNIT_QUANTITIES, type UnitQuantity, type UnitSet } from '@/types/units'
 import { adapterFor, counterpartFor, type UnitAdapter, type UnitToken } from './unitAdapters'
 
@@ -153,10 +154,15 @@ export interface UnitFieldOrigin {
  * @returns The grouped string, e.g. `'1,000'`.
  */
 export function formatAtPrecision(value: number, precision: number): string {
-  return new Intl.NumberFormat(getActiveLocale(), {
-    minimumFractionDigits: precision,
-    maximumFractionDigits: precision,
-  }).format(value)
+  const locale = getActiveLocale()
+  return cachedNumberFormat(
+    `${locale}|${precision}`,
+    () =>
+      new Intl.NumberFormat(locale, {
+        minimumFractionDigits: precision,
+        maximumFractionDigits: precision,
+      })
+  ).format(value)
 }
 
 /**
@@ -344,8 +350,8 @@ const VOLUME_PER_DISTANCE_PRECISION = 1
 export function formatVolumePerDistance(units: UnitSet, litersPer1kKm: number): string {
   const volume = adapterFor(units, 'volume').toDisplay(litersPer1kKm) ?? 0
   // Per 1,000 km to per 1,000 of the reader's own distance unit. One mile is
-  // 1.60934 km, so the same volume covers that many fewer of them and the rate
-  // rises by the same factor. The canonical length of one display unit is
+  // 1.609344 km, so the same volume covers that many fewer of them and the
+  // rate rises by the same factor. The canonical length of one display unit is
   // exactly what the distance adapter's `toCanonical(1)` answers, so no factor
   // is spelled here.
   //
@@ -522,12 +528,11 @@ export function formatCostPerDistance(
   // rate as a kilometre rate.
   const canonicalPerDistanceUnit = adapterFor(units, 'distance').toCanonical(1)!
   const over = COST_PER_DISTANCE_OVER[units.distance]
-  return new Intl.NumberFormat(locale, {
-    style: 'currency',
-    currency: currencyCode,
-    minimumFractionDigits: COST_PER_DISTANCE_PRECISION,
-    maximumFractionDigits: COST_PER_DISTANCE_PRECISION,
-  }).format(costPerKm * canonicalPerDistanceUnit * over)
+  // The unit-derived factors are already multiplied into the value, so the
+  // formatter depends only on the locale, the currency and the precision.
+  return cachedCurrencyFormat(locale, currencyCode, COST_PER_DISTANCE_PRECISION).format(
+    costPerKm * canonicalPerDistanceUnit * over
+  )
 }
 
 /**

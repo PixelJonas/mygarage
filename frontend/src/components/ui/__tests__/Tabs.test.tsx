@@ -112,4 +112,46 @@ describe('Tabs', () => {
     )
     expect(screen.getByTestId('bare-icon')).toHaveAttribute('aria-hidden', 'true')
   })
+
+  it('renders a status dot in the requested tone', () => {
+    const { container } = render(
+      <Tabs
+        items={[{ id: 'wican', label: 'WiCAN', dot: 'warning' }]}
+        activeId="wican"
+        onChange={() => {}}
+        label="Integrations"
+        variant="pill"
+      />,
+    )
+    expect(container.querySelector('.bg-warning')).toBeInTheDocument()
+    expect(container.querySelector('.bg-success')).not.toBeInTheDocument()
+  })
+
+  it('keeps dot={true} meaning success', () => {
+    // The backward-compatibility control: `true` is the existing spelling and
+    // must not change meaning when the tone vocabulary is added.
+    const { container } = render(
+      <Tabs
+        items={[{ id: 'discord', label: 'Discord', dot: true }]}
+        activeId="discord"
+        onChange={() => {}}
+        label="Channels"
+        variant="pill"
+      />,
+    )
+    expect(container.querySelector('.bg-success')).toBeInTheDocument()
+  })
+
+  it('renders no dot when dot is false or absent', () => {
+    const { container } = render(
+      <Tabs
+        items={[{ id: 'a', label: 'A', dot: false }, { id: 'b', label: 'B' }]}
+        activeId="a"
+        onChange={() => {}}
+        label="Channels"
+        variant="pill"
+      />,
+    )
+    expect(container.querySelector('.rounded-full')).not.toBeInTheDocument()
+  })
 })

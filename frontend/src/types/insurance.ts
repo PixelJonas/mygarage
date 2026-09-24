@@ -6,14 +6,39 @@
 
 import type { components } from './api.generated'
 
-export type InsurancePolicy = components['schemas']['InsurancePolicy']
+export type InsurancePolicy = components['schemas']['InsurancePolicyResponse']
 export type InsurancePolicyCreate = components['schemas']['InsurancePolicyCreate']
 export type InsurancePolicyUpdate = components['schemas']['InsurancePolicyUpdate']
+export type InsurancePolicyRenew = components['schemas']['InsurancePolicyRenew']
+export type InsurancePolicyReplace = components['schemas']['InsurancePolicyReplace']
+export type PolicyVehicle = components['schemas']['PolicyVehicleResponse']
+export type PolicyVehicleCreate = components['schemas']['PolicyVehicleCreate']
+export type PolicyVehicleUpsert = components['schemas']['PolicyVehicleUpsert']
+export type PolicyHistoryEntry = components['schemas']['PolicyHistoryEntry']
+export type NamedField = components['schemas']['NamedField']
+export type Coverage = components['schemas']['CoverageEntry-Output']
+/** The standard coverage catalogue's keys, straight from the backend's
+ *  `Literal`. `constants/insuranceCoverages.ts` is typed against this, so a
+ *  coverage added there and not here (or the reverse) fails the build. */
+export type CoverageKey = Coverage['coverage_key']
+export type PolicyStatusFilter = 'current' | 'active' | 'upcoming' | 'expired' | 'all'
 
 // ============================================================================
 // Section B: Hand-maintained frontend-only types
-// Backend returns custom dict from insurance route, no schema.
+// Backend returns a plain dict from the parse route, no schema.
 // ============================================================================
+
+export interface ParsedPolicyVehicle {
+  vin: string
+  /** A vehicle in this garage the caller can put on a policy. */
+  matched: boolean
+  vehicle_name: string | null
+  premium_share: string | null
+  deductible: string | null
+  /** The standard coverages read off this vehicle's section, or off the
+   *  document as a whole when it has no section of its own. */
+  coverages: Coverage[]
+}
 
 export interface InsurancePDFParseResponse {
   success: boolean
@@ -26,12 +51,14 @@ export interface InsurancePDFParseResponse {
     premium_amount: string | null
     premium_frequency: string | null
     deductible: string | null
-    coverage_limits: string | null
     notes: string | null
   }
+  /** Every VIN on the document, with its own figures where the parser finds them. */
+  vehicles: ParsedPolicyVehicle[]
   confidence: {
     [key: string]: 'high' | 'medium' | 'low'
   }
-  vehicles_found: string[]
+  confidence_score: number
+  parser_used: string | null
   warnings: string[]
 }

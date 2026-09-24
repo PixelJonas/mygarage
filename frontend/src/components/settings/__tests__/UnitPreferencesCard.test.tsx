@@ -33,6 +33,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
   IMPERIAL_UNITS,
   METRIC_UNITS,
@@ -53,6 +54,8 @@ const h = vi.hoisted(() => ({
   isAuthenticated: true,
   defaultUnitPrefs: null as UnitSet | null,
   refreshUser: vi.fn(),
+    refreshPublicSettings: vi.fn(),
+    householdTimeZone: null,
 }))
 
 vi.mock('@/services/api', () => ({
@@ -114,24 +117,34 @@ function reloadBrowserPrefs(): void {
   window.dispatchEvent(new Event('storage'))
 }
 
-/** Mount the card for the currently arranged auth state. */
-function renderCard(): void {
-  render(<UnitPreferencesCard />)
+/**
+ * Mount the card for the currently arranged auth state, inside a real
+ * `QueryClient`. The tire-invalidation cases need a real client to spy on;
+ * every other case ignores the return value.
+ */
+function renderCard(): QueryClient {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={queryClient}>
+      <UnitPreferencesCard />
+    </QueryClientProvider>,
+  )
+  return queryClient
 }
 
 /** Mount as an authenticated account. */
-function renderAs(user: User): void {
+function renderAs(user: User): QueryClient {
   h.isAuthenticated = true
   h.user = user
-  renderCard()
+  return renderCard()
 }
 
 /** Mount as a client with no account, on an instance publishing `defaults`. */
-function renderAnonymous(defaults: UnitSet): void {
+function renderAnonymous(defaults: UnitSet): QueryClient {
   h.isAuthenticated = false
   h.user = null
   h.defaultUnitPrefs = defaults
-  renderCard()
+  return renderCard()
 }
 
 /** The tri-state button for one choice. */
@@ -327,6 +340,33 @@ describe('UnitPreferencesCard: the account writer', () => {
     await waitFor(() => expect(h.refreshUser).toHaveBeenCalled())
   })
 
+  it('invalidates the tire queries after an authenticated preset save', async () => {
+    // `history_faults[].message` is worded by the server in the caller's
+    // distance unit, and the tire list is cached for the app's 30-second
+    // staleTime. Without this the drawer would keep the previous unit's
+    // sentences next to figures the client already renders in the new one.
+    const queryClient = renderAs(makeUser({ unit_preference: 'custom', resolved_units: METRIC_UNITS }))
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    await choosePreset('units.metric')
+
+    await waitFor(() => expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['tires'] }))
+  })
+
+  it('invalidates the tire queries after an authenticated show-both save', async () => {
+    // The show-both path writes `/auth/me/units` too (it can move the account
+    // off a stale preset tag, see the toggling test below), so it must
+    // invalidate exactly like the preset path.
+    const queryClient = renderAs(
+      makeUser({ unit_preference: 'metric', resolved_units: METRIC_UNITS, show_both_units: false }),
+    )
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    await userEvent.click(screen.getByRole('checkbox', { name: label('units.showBoth') }))
+
+    await waitFor(() => expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['tires'] }))
+  })
+
   it('★ sends show-both in the SAME request as the preference', async () => {
     // R2. Today's tab writes show-both to `/auth/me` on its own; without this
     // an implementer can keep that second call and nothing notices.
@@ -385,6 +425,32 @@ describe('UnitPreferencesCard: the account writer', () => {
 
     const routes = mockedApi.put.mock.calls.map(([url]) => url)
     expect(routes).toStrictEqual(['/auth/me/units'])
+  })
+})
+
+describe('UnitPreferencesCard, in Quick Settings', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+    reloadBrowserPrefs()
+    h.refreshUser = vi.fn()
+    mockedApi.put.mockResolvedValue({ data: {} })
+  })
+
+  it('uses the drawer layout: Custom behind an accordion', () => {
+    h.isAuthenticated = true
+    h.user = makeUser({ unit_preference: 'custom', resolved_units: METRIC_UNITS })
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <UnitPreferencesCard />
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getByRole('button', { name: label('units.customToggle') })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
   })
 })
 
