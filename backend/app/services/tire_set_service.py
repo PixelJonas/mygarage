@@ -216,7 +216,7 @@ class TireSetService:
         vin = vin.upper().strip()
         await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
         await lock_vehicle_for_write(self.db, vin)
-        format_distance = await TireService(self.db).request_distance_formatter(current_user)
+        format_distance = await TireService(self.db).request_distance_formatter(current_user, vin)
         tire_set = await self._get_set(vin, set_id)
 
         members = [tire for tire in (tire_set.tires or []) if tire.retired_on is None]

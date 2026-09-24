@@ -28,6 +28,7 @@ from app.models import (
     WarrantyRecord,
 )
 from app.models.user import User
+from app.models.vehicle import Vehicle
 from app.services.auth import get_vehicle_or_403, require_auth
 from app.services.fuel_service import resolve_station_names
 from app.services.service_visit_service import service_visit_cost_load_options
@@ -96,7 +97,7 @@ _UNITS_QUERY_DESCRIPTION = (
 
 
 async def resolve_export_units(
-    requested: str | None, current_user: User | None, db: AsyncSession
+    requested: str | None, current_user: User | None, db: AsyncSession, *, vehicle: Vehicle
 ) -> UnitSet:
     """The unit set one CSV export is written in.
 
@@ -124,7 +125,10 @@ async def resolve_export_units(
         return METRIC_PRESET
     if requested == "imperial":
         return IMPERIAL_PRESET
-    return (await render_context_for_request(current_user, db)).units
+    # An explicit preset above is a clean preset and ignores the vehicle. The
+    # default applies the vehicle's own odometer unit (#172); `vehicle` is
+    # required so no export can forget it.
+    return (await render_context_for_request(current_user, db, vehicle=vehicle)).units
 
 
 def generate_csv_stream(
@@ -236,7 +240,9 @@ async def export_service_records_csv(
                 ]
             )
 
-    output = build_csv(headers, rows, await resolve_export_units(units, current_user, db))
+    output = build_csv(
+        headers, rows, await resolve_export_units(units, current_user, db, vehicle=vehicle)
+    )
 
     # Generate filename
     filename = f"{vehicle.year}_{vehicle.make}_{vehicle.model}_service_records_{datetime.now().strftime('%Y%m%d')}.csv"
@@ -364,7 +370,9 @@ async def export_fuel_records_csv(
             ]
         )
 
-    output = build_csv(headers, rows, await resolve_export_units(units, current_user, db))
+    output = build_csv(
+        headers, rows, await resolve_export_units(units, current_user, db, vehicle=vehicle)
+    )
 
     # Generate filename
     filename = f"{vehicle.year}_{vehicle.make}_{vehicle.model}_fuel_records_{datetime.now().strftime('%Y%m%d')}.csv"
@@ -425,7 +433,9 @@ async def export_def_records_csv(
             ]
         )
 
-    output = build_csv(headers, rows, await resolve_export_units(units, current_user, db))
+    output = build_csv(
+        headers, rows, await resolve_export_units(units, current_user, db, vehicle=vehicle)
+    )
 
     filename = f"{vehicle.year}_{vehicle.make}_{vehicle.model}_def_records_{datetime.now().strftime('%Y%m%d')}.csv"
 
@@ -474,7 +484,9 @@ async def export_odometer_records_csv(
             ]
         )
 
-    output = build_csv(headers, rows, await resolve_export_units(units, current_user, db))
+    output = build_csv(
+        headers, rows, await resolve_export_units(units, current_user, db, vehicle=vehicle)
+    )
 
     # Generate filename
     filename = f"{vehicle.year}_{vehicle.make}_{vehicle.model}_odometer_records_{datetime.now().strftime('%Y%m%d')}.csv"
@@ -600,7 +612,9 @@ async def export_warranties_csv(
             ]
         )
 
-    output = build_csv(headers, rows, await resolve_export_units(units, current_user, db))
+    output = build_csv(
+        headers, rows, await resolve_export_units(units, current_user, db, vehicle=vehicle)
+    )
 
     # Generate filename
     filename = f"{vehicle.year}_{vehicle.make}_{vehicle.model}_warranties_{datetime.now().strftime('%Y%m%d')}.csv"

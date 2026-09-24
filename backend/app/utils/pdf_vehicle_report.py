@@ -350,6 +350,7 @@ def generate_vehicle_analytics_pdf(
     reminders_data: list[dict[str, Any]] | None = None,
     *,
     render_context: RenderContext,
+    rate_context: RenderContext | None = None,
 ) -> BytesIO:
     """Generate a branded vehicle analytics PDF report.
 
@@ -376,6 +377,10 @@ def generate_vehicle_analytics_pdf(
             fuel-rate figure below depends on it, and a defaulted context
             would let a new call site silently render one instance-wide unit
             for every reader. Hours are exempt (R6, ``format_hours``).
+        rate_context: Whose units the distance-DENOMINATED rates render in
+            (cost per distance). They stay with the account while distances
+            follow the vehicle's own odometer unit (#172 D3). Defaults to
+            ``render_context``, which is right whenever the two agree.
 
     Returns:
         BytesIO containing the PDF document.
@@ -423,6 +428,10 @@ def generate_vehicle_analytics_pdf(
     cost = analytics_data.get("cost_analysis", {})
     projection = analytics_data.get("cost_projection", {})
 
+    # The one distance-DENOMINATED rate in this report (cost per distance)
+    # keeps the account's units; see `rate_context` above.
+    rate_ctx = rate_context or render_context
+
     # Build the story (list of flowables)
     story: list[Any] = []
 
@@ -461,7 +470,7 @@ def generate_vehicle_analytics_pdf(
             # the number underneath it for every imperial reader.
             "label": "Cost Per Distance",
             "value": (
-                format_cost_per_distance(cost_per_km, render_context, currency_code, locale)
+                format_cost_per_distance(cost_per_km, rate_ctx, currency_code, locale)
                 if cost_per_km
                 else "N/A"
             ),
