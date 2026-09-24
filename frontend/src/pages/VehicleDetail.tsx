@@ -82,6 +82,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { fillUpKind, vehicleLogKinds } from '../utils/vehicleLogKinds'
 import { VehicleUnitScope } from '../contexts/VehicleUnitScope'
 import { forgetCachedVehicle, readCachedVehicle, rememberVehicle } from '../utils/vehicleCache'
+import { useSyncQuickEntryVehicle } from '../hooks/queries/useQuickEntryVehicles'
 
 /** Per-record-type tallies returned by the JSON import endpoint. */
 type ImportSectionResult = {
@@ -173,6 +174,21 @@ export default function VehicleDetail() {
   useEffect(() => {
     loadVehicle()
   }, [loadVehicle])
+
+  const syncQuickEntryVehicle = useSyncQuickEntryVehicle()
+  /**
+   * Every sidecar save lands here, not in `setVehicle` (#172). Each one gets
+   * the server's fresh row, which can carry an odometer unit changed on
+   * another device, so the offline copy and the Quick Entry list follow it.
+   */
+  const handleVehicleUpdated = useCallback(
+    (updated: Vehicle) => {
+      setVehicle(updated)
+      if (vin) rememberVehicle(vin, updated)
+      syncQuickEntryVehicle(updated)
+    },
+    [vin, syncQuickEntryVehicle]
+  )
 
   // What this vehicle's LiveLink sources can actually do. Gates both the
   // primary tab and its sub-tabs: a propane gateway declares telemetry alone,
@@ -710,7 +726,7 @@ export default function VehicleDetail() {
             lastLocation={lastLocation}
             onEditPricing={() => setPricingDrawerOpen(true)}
             onEditCard={openFieldsCard}
-            onVehicleUpdated={setVehicle}
+            onVehicleUpdated={handleVehicleUpdated}
           />
         )}
 
@@ -792,7 +808,7 @@ export default function VehicleDetail() {
           vehicle={vehicle}
           vin={vin}
           onClose={() => setEquipmentDrawer(null)}
-          onUpdated={setVehicle}
+          onUpdated={handleVehicleUpdated}
         />
       )}
 
@@ -803,7 +819,7 @@ export default function VehicleDetail() {
           vehicle={vehicle}
           vin={vin}
           onClose={() => setPricingDrawerOpen(false)}
-          onUpdated={setVehicle}
+          onUpdated={handleVehicleUpdated}
         />
       )}
 
@@ -817,7 +833,7 @@ export default function VehicleDetail() {
           vehicle={vehicle}
           vin={vin}
           onClose={() => setFieldsOpen(false)}
-          onUpdated={setVehicle}
+          onUpdated={handleVehicleUpdated}
         />
       )}
 
@@ -829,7 +845,7 @@ export default function VehicleDetail() {
           vin={vin}
           vehicle={vehicle}
           onClose={() => setEditDrawerOpen(false)}
-          onUpdated={setVehicle}
+          onUpdated={handleVehicleUpdated}
           onDownloadWindowSticker={handleDownloadWindowSticker}
           onUploadWindowSticker={() => setOpenModal('windowSticker')}
           onManageTorqueSources={() => setOpenModal('torqueSource')}
