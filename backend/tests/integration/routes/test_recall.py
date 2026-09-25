@@ -4,6 +4,10 @@ Integration tests for recall routes.
 Tests recall CRUD operations and NHTSA integration endpoints.
 """
 
+import datetime as dt
+import os
+import time
+
 import pytest
 from httpx import AsyncClient
 
@@ -451,3 +455,44 @@ class TestRecallRoutes:
             data = response.json()
             assert "recalls" in data
             assert "total" in data
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+class TestRecallResolvedTimestamp:
+    """resolved_at is written in UTC like every other timestamp."""
+
+    async def test_resolved_at_is_utc_regardless_of_process_timezone(
+        self, client: AsyncClient, auth_headers, test_vehicle
+    ):
+        """A container with TZ set must not stamp resolved_at in local time.
+
+        The frontend treats naive timestamps as UTC, so a local-time stamp
+        shifts the displayed day by the container's offset. A POSIX TZ string
+        needs no tzdata, so this fails on a bare image too.
+        """
+        previous = os.environ.get("TZ")
+        os.environ["TZ"] = "TEST-10"  # POSIX sign: ten hours EAST of UTC
+        time.tzset()
+        try:
+            response = await client.post(
+                f"/api/vehicles/{test_vehicle['vin']}/recalls",
+                json={
+                    "vin": test_vehicle["vin"],
+                    "component": "Fuel Pump",
+                    "summary": "Pump may fail",
+                    "is_resolved": True,
+                },
+                headers=auth_headers,
+            )
+            assert response.status_code == 201
+            resolved_at = dt.datetime.fromisoformat(response.json()["resolved_at"])
+            now_utc = dt.datetime.now(dt.UTC).replace(tzinfo=None)
+        finally:
+            if previous is None:
+                del os.environ["TZ"]
+            else:
+                os.environ["TZ"] = previous
+            time.tzset()
+
+        assert abs((now_utc - resolved_at).total_seconds()) < 60

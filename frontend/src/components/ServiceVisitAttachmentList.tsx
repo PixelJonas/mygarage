@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Download, Trash2, FileText, Image, AlertCircle } from 'lucide-react'
-import { formatDateForDisplay } from '../utils/dateUtils'
+import { formatAPITimestamp } from '../utils/parseAPITimestamp'
+import { useDateLocale } from '../hooks/useDateLocale'
 import { toast } from 'sonner'
 import api from '../services/api'
 import { getActionErrorMessage } from '../utils/httpErrorHandler'
@@ -19,6 +20,7 @@ export default function ServiceVisitAttachmentList({
   refreshTrigger,
 }: ServiceVisitAttachmentListProps) {
   const { t } = useTranslation('vehicles')
+  const dateLocale = useDateLocale()
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -114,7 +116,7 @@ export default function ServiceVisitAttachmentList({
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-text truncate">{attachment.file_name}</p>
                 <Mono as="p" size="xs" tone="muted">
-                  {formatFileSize(attachment.file_size)} • {formatDateForDisplay(attachment.uploaded_at.split('T')[0])}
+                  {formatFileSize(attachment.file_size)} • {formatAPITimestamp(attachment.uploaded_at, (d) => d.toLocaleDateString(dateLocale, { year: 'numeric', month: 'short', day: 'numeric' }))}
                 </Mono>
               </div>
             </div>

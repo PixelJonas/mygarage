@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { formatDateForDisplay } from '../utils/dateUtils'
+import { formatAPITimestamp } from '../utils/parseAPITimestamp'
+import { useDateLocale } from '../hooks/useDateLocale'
 import { FileText, Plus, Trash2, Download, Edit3, Save, X } from 'lucide-react'
 import { Button, IconButton, Card, Chip, Mono, EmptyState, Field, Input, Select, Textarea } from './ui'
 import { toast } from 'sonner'
@@ -17,6 +18,7 @@ interface DocumentListProps {
 
 export default function DocumentList({ vin, onAddClick }: DocumentListProps) {
   const { t } = useTranslation('vehicles')
+  const dateLocale = useDateLocale()
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editData, setEditData] = useState<{
     title: string
@@ -94,9 +96,9 @@ export default function DocumentList({ vin, onAddClick }: DocumentListProps) {
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
   }
 
-  const formatDate = (dateString: string): string => {
-    return formatDateForDisplay(dateString)
-  }
+  // uploaded_at is a datetime, not a calendar day: it takes the timestamp path.
+  const formatDate = (value: string): string =>
+    formatAPITimestamp(value, (d) => d.toLocaleDateString(dateLocale, { year: 'numeric', month: 'short', day: 'numeric' }))
 
   const getFileIcon = (mimeType: string) => {
     if (mimeType.startsWith('image/')) {

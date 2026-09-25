@@ -16,7 +16,7 @@ vi.mock('../../hooks/queries/useRecallRecords', () => ({
 }))
 vi.mock('@tanstack/react-query', () => ({ useQueryClient: () => ({ invalidateQueries }) }))
 vi.mock('../../services/api', () => ({ default: { get: vi.fn().mockResolvedValue({ data: { settings: [] } }) } }))
-vi.mock('../../hooks/useDateLocale', () => ({ useDateLocale: () => undefined }))
+vi.mock('../../hooks/useDateLocale', () => ({ useDateLocale: () => 'en-US' }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 import RecallList from '../RecallList'
@@ -92,5 +92,15 @@ describe('RecallList — status filter + empty state + refresh wiring', () => {
     render(<RecallList {...PROPS} />)
     window.dispatchEvent(new Event('recalls-refresh'))
     await waitFor(() => expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['recalls', 'V1'] }))
+  })
+})
+
+describe('RecallList — resolved timestamp', () => {
+  it('renders the resolved date from the wire-shaped datetime (fails with "Invalid Date" if it is fed to the date-only formatter)', () => {
+    // resolved_at is a backend datetime, serialised naive: no Z, no offset.
+    useRecallRecordsMock.mockReturnValue({ data: { recalls: [{ ...active, is_resolved: true, resolved_at: '2026-03-01T12:00:00' }], total: 1, active_count: 0, resolved_count: 1 }, isLoading: false, error: null })
+    render(<RecallList {...PROPS} />)
+    expect(screen.getByText('Mar 1, 2026')).toBeInTheDocument()
+    expect(screen.queryByText(/Invalid Date/)).toBeNull()
   })
 })
