@@ -16,7 +16,13 @@ from app.models.user import User
 from app.services.auth import accessible_vehicles, get_current_admin_user, require_auth
 from app.services.hours_service import latest_engine_hours_and_date
 from app.services.odometer_service import latest_odometer_km_and_date
-from app.services.reminder_service import is_reminder_overdue, is_reminder_snoozed
+from app.services.reminder_service import (
+    calculate_driving_rate,
+    calculate_hours_driving_rate,
+    expected_due_date,
+    is_reminder_overdue,
+    is_reminder_snoozed,
+)
 from app.services.settings_service import SettingsService
 from app.services.telegram_poller import PollerErrorCode, PollerState, telegram_poller
 from app.utils.household_time import household_today
@@ -492,6 +498,17 @@ async def notification_inbox(
         current_hours = (
             (await latest_engine_hours_and_date(db, vehicle.vin))[0] if needs_hours else None
         )
+        # Usage rates, so a mileage or hours reminder warns before it is
+        # overdue, on the same expected date the card badge and the reminders
+        # list show; only when there is a reading to project from.
+        km_per_day = (
+            await calculate_driving_rate(vehicle.vin, db) if current_km is not None else None
+        )
+        hours_per_day = (
+            await calculate_hours_driving_rate(vehicle.vin, db)
+            if current_hours is not None
+            else None
+        )
 
         for reminder in pending:
             if is_reminder_snoozed(reminder, today):
@@ -500,8 +517,11 @@ async def notification_inbox(
                 continue
             overdue = is_reminder_overdue(reminder, current_km, current_hours, today)
             upcoming = False
-            if not overdue and reminder.due_date is not None:
-                upcoming = today <= reminder.due_date <= soon
+            if not overdue:
+                expected = expected_due_date(
+                    reminder, current_km, current_hours, km_per_day, hours_per_day, today
+                )
+                upcoming = expected is not None and expected <= soon
 
             if not overdue and not upcoming:
                 continue

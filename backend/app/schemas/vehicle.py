@@ -502,6 +502,9 @@ class VehicleDetailStats(BaseModel):
 
     overdue_count: int
     upcoming_count: int
+    # The subset of upcoming expected within DUE_SOON_WINDOW: the hero badge
+    # (reminder_service.classify_pending_reminders, as on the dashboard).
+    due_soon_count: int
     usage_unit: str  # 'distance' | 'hours' — drives the odometer/hours relabel
     # Kept for API compat only — NO LONGER the display source (R2-H1). The
     # canonical reading is `latest_hours` below, via `latest_engine_hours_and_date`.

@@ -17948,6 +17948,8 @@ export interface components {
             average_l_per_hr: string | null;
             /** Current Hours */
             current_hours: string | null;
+            /** Due Soon Count */
+            due_soon_count: number;
             /** Last Fillup Date */
             last_fillup_date: string | null;
             /** Last Service Date */
@@ -18453,6 +18455,8 @@ export interface components {
             current_hours?: string | null;
             /** Distance Unit */
             distance_unit?: ("km" | "mi") | null;
+            /** Due Soon Maintenance Count */
+            due_soon_maintenance_count: number;
             /**
              * Is Shared With Me
              * @default false

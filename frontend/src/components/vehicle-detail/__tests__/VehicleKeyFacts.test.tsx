@@ -7,23 +7,17 @@ vi.mock('../../../contexts/AuthContext', () => ({
 }))
 
 import VehicleKeyFacts from '../VehicleKeyFacts'
+import { makeDetailStats } from '../../../__tests__/factories'
 
-const STATS: VehicleDetailStats = {
+const STATS: VehicleDetailStats = makeDetailStats({
   overdue_count: 3,
   upcoming_count: 2,
-  usage_unit: 'distance',
-  current_hours: null,
-  latest_hours: null,
-  average_l_per_hr: null,
-  average_cost_per_hr: null,
-  secondary_usage_enabled: false,
   latest_odometer_km: '160000.00',
   latest_odometer_date: '2026-07-01',
   last_service_date: '2026-06-15',
   last_fillup_date: '2026-07-10',
   spent_this_year: '1234.50',
-  year: 2026,
-}
+})
 
 describe('VehicleKeyFacts', () => {
   it('binds each value to its OWN labelled cell (B9 — swap-proof)', () => {

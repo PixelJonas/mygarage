@@ -195,10 +195,11 @@ function VehicleStatisticsCard({ stats, selectMode = false, selected = false, on
             </Badge>
           </div>
         )}
-        {stats.overdue_maintenance_count === 0 && stats.upcoming_maintenance_count > 0 && (
+        {/* Due-soon badge (warning); the REMINDERS tile below counts every reminder. */}
+        {stats.overdue_maintenance_count === 0 && stats.due_soon_maintenance_count > 0 && (
           <div className="pointer-events-none absolute right-3 top-3">
             <Badge tone="warning" icon={Bell}>
-              {t('vehicleStats.upcoming', { count: stats.upcoming_maintenance_count })}
+              {t('vehicleStats.dueSoon', { count: stats.due_soon_maintenance_count })}
             </Badge>
           </div>
         )}

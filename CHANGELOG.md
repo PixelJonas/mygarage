@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Vehicle cards and the vehicle hero flag reminders due within 30 days, by date or by projected mileage and hours, instead of every pending reminder; the fleet strip's count is the sum of those badges
+- The notification bell warns about mileage and hours reminders projected to come due within two weeks, not only dated ones
+
 ### Fixed
 - Theme and accent apply before first paint in production: the CSP now allows the shell's inline script by hash instead of refusing it
 - The smallest font subset was inlined as a data: URL and refused by the CSP; fonts are always emitted as files

@@ -48,8 +48,11 @@ class VehicleStatistics(BaseModel):
     latest_odometer_km: Decimal | None = None
     latest_odometer_date: date_type | None = None
 
-    # Upcoming maintenance
+    # Reminders: upcoming is pending-not-overdue; due_soon is its subset expected
+    # within DUE_SOON_WINDOW (the photo badge, the fleet strip); see
+    # reminder_service.classify_pending_reminders.
     upcoming_maintenance_count: int
+    due_soon_maintenance_count: int
     overdue_maintenance_count: int
 
     # Fuel statistics (metric-canonical: L/100km).

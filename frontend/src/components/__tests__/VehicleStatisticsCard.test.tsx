@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { render, screen, fireEvent } from '../../__tests__/test-utils'
 import type { VehicleStatistics } from '../../types/dashboard'
-import { makeUser, makeUnitSet, IMPERIAL_UNITS, type User } from '../../__tests__/factories'
+import { makeUser, makeUnitSet, IMPERIAL_UNITS, type User, makeVehicleStatistics } from '../../__tests__/factories'
 import { formatFuelRate } from '../../utils/unitFormat'
 
 const mockNavigate = vi.fn()
@@ -53,41 +53,14 @@ vi.mock('react-i18next', () => ({
 
 import VehicleStatisticsCard from '../VehicleStatisticsCard'
 
-const STATS: VehicleStatistics = {
+const STATS: VehicleStatistics = makeVehicleStatistics({
   vin: '1HGBH41JXMN109186',
   year: 2021,
   make: 'Ford',
   model: 'F-150',
   vehicle_type: 'FifthWheel',
-  main_photo_url: null,
-  usage_unit: 'distance',
-  current_hours: null,
-  latest_hours: null,
-  average_l_per_hr: null,
-  average_cost_per_hr: null,
-  secondary_usage_enabled: false,
-  total_service_records: 0,
-  total_fuel_records: 0,
-  total_odometer_records: 0,
-  total_maintenance_items: 0,
-  total_documents: 0,
-  total_notes: 0,
-  total_photos: 0,
-  latest_service_date: null,
-  latest_fuel_date: null,
-  latest_odometer_km: null,
-  latest_odometer_date: null,
-  upcoming_maintenance_count: 0,
-  overdue_maintenance_count: 0,
-  average_l_per_100km: null,
-  recent_l_per_100km: null,
-  towing_l_per_100km: null,
-  archived_at: null,
   archived_visible: false,
-  is_shared_with_me: false,
-  shared_by_username: null,
-  share_permission: null,
-}
+})
 
 describe('VehicleStatisticsCard', () => {
   beforeEach(() => {
@@ -412,5 +385,36 @@ describe('VehicleStatisticsCard', () => {
   it('never reads stats.current_hours (grep-style source check — the stale column is retired)', () => {
     const src = readFileSync(resolve(__dirname, '../VehicleStatisticsCard.tsx'), 'utf8')
     expect(src).not.toMatch(/current_hours/)
+  })
+
+  describe('the photo badge flags what needs attention', () => {
+    it('shows the due-soon count, not the pending count', () => {
+      render(
+        <VehicleStatisticsCard
+          stats={{ ...STATS, upcoming_maintenance_count: 3, due_soon_maintenance_count: 1 }}
+        />,
+      )
+      expect(screen.getByText('vehicleStats.dueSoon')).toBeInTheDocument()
+      expect(screen.queryByText('vehicleStats.upcoming')).not.toBeInTheDocument()
+    })
+
+    it('shows no badge when nothing is overdue or due soon, however many are pending', () => {
+      render(
+        <VehicleStatisticsCard
+          stats={{ ...STATS, upcoming_maintenance_count: 3, due_soon_maintenance_count: 0 }}
+        />,
+      )
+      expect(screen.queryByText('vehicleStats.dueSoon')).not.toBeInTheDocument()
+    })
+
+    it('lets overdue win over due soon', () => {
+      render(
+        <VehicleStatisticsCard
+          stats={{ ...STATS, overdue_maintenance_count: 1, due_soon_maintenance_count: 2 }}
+        />,
+      )
+      expect(screen.getByText('vehicleStats.overdue')).toBeInTheDocument()
+      expect(screen.queryByText('vehicleStats.dueSoon')).not.toBeInTheDocument()
+    })
   })
 })

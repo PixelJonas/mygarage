@@ -681,8 +681,7 @@
     "overdue": "{{count}} zaległych",
     "photoCount": "{{count}} zdjęć",
     "recentActivity": "Ostatnia aktywność",
-    "service": "Serwis",
-    "upcoming": "{{count}} nadchodzących"
+    "service": "Serwis"
   },
   "vendorSearch": {
     "noResults": "Brak wyników"

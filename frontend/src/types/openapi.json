@@ -25505,6 +25505,10 @@
             ],
             "title": "Current Hours"
           },
+          "due_soon_count": {
+            "title": "Due Soon Count",
+            "type": "integer"
+          },
           "last_fillup_date": {
             "anyOf": [
               {
@@ -25594,6 +25598,7 @@
         "required": [
           "overdue_count",
           "upcoming_count",
+          "due_soon_count",
           "usage_unit",
           "current_hours",
           "latest_hours",
@@ -26902,6 +26907,10 @@
             ],
             "title": "Distance Unit"
           },
+          "due_soon_maintenance_count": {
+            "title": "Due Soon Maintenance Count",
+            "type": "integer"
+          },
           "is_shared_with_me": {
             "default": false,
             "title": "Is Shared With Me",
@@ -27151,6 +27160,7 @@
           "total_notes",
           "total_photos",
           "upcoming_maintenance_count",
+          "due_soon_maintenance_count",
           "overdue_maintenance_count"
         ],
         "title": "VehicleStatistics",

@@ -991,7 +991,6 @@
     "photoCount": "{{count}} photo(s)",
     "recentActivity": "Activité récente",
     "service": "Entretien",
-    "upcoming": "{{count}} à venir",
     "latestHours": "Dernières heures",
     "hoursValue": "{{value}} h"
   },

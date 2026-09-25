@@ -50,11 +50,7 @@ from app.services.fuel_service import (
     economy_periods,
 )
 from app.services.hours_service import latest_engine_hours_and_date
-from app.services.reminder_service import (
-    get_current_hours,
-    is_reminder_overdue,
-    is_reminder_snoozed,
-)
+from app.services.reminder_service import classify_pending_reminders, get_current_hours
 from app.utils.household_time import household_today
 from app.utils.unit_adapters import ADAPTERS, UnitAdapter
 from app.utils.unit_counterparts import forced_mpg_adapter
@@ -511,11 +507,9 @@ class WidgetAggregationService:
     ) -> tuple[int, int]:
         """Classify pending reminders for the given VIN(s).
 
-        Delegates the per-reminder overdue determination to the shared
-        `is_reminder_overdue` helper (date, mileage, OR hours — Task 8,
-        P5-review gap) so a pure `hours` reminder counts here exactly like it
-        already does on the dashboard/detail-stats surfaces. Everything else
-        pending counts as upcoming.
+        The shared `classify_pending_reminders` split (date, mileage, OR
+        hours overdue; snoozed in no count), so a pure `hours` reminder counts
+        here exactly like it does on the dashboard/detail-stats surfaces.
         """
         if not vins:
             return 0, 0
@@ -525,17 +519,11 @@ class WidgetAggregationService:
         )
         stmt = select(Reminder).where(Reminder.vin.in_(vins), Reminder.status == "pending")
         reminders = (await self.db.execute(stmt)).scalars().all()
-        overdue = 0
-        upcoming = 0
-        for reminder in reminders:
-            if is_reminder_snoozed(reminder, today):
-                # Out of BOTH counts while snoozed (plan 2026-09-18, decision 4).
-                continue
-            if is_reminder_overdue(reminder, current_km_decimal, current_hours, today):
-                overdue += 1
-            else:
-                upcoming += 1
-        return overdue, upcoming
+        # No rates: the widget has no due-soon figure, so no projection is needed.
+        counts = classify_pending_reminders(
+            reminders, current_km_decimal, current_hours, None, None, today
+        )
+        return counts.overdue, counts.upcoming
 
     async def _consumption_l100km(self, vin: str) -> tuple[Decimal | None, Decimal | None]:
         """Return (recent, average) consumption in L/100km over the last 10 full

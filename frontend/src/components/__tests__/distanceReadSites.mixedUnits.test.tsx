@@ -126,7 +126,7 @@ vi.mock('../../hooks/queries/useDEFRecords', () => ({
 vi.mock('../livelink/VehicleLiveLinkWidget', () => ({ default: () => null }))
 vi.mock('../DEFRecordForm', () => ({ default: () => null }))
 
-import { IMPERIAL_UNITS, METRIC_UNITS } from '../../__tests__/factories'
+import { IMPERIAL_UNITS, METRIC_UNITS, makeDetailStats } from '../../__tests__/factories'
 import FleetHealthStrip from '../FleetHealthStrip'
 import VehicleHero from '../vehicle-detail/VehicleHero'
 import VehicleStatisticsCard from '../VehicleStatisticsCard'
@@ -186,15 +186,12 @@ const VEHICLE = {
   vin: 'TEST12345678901234', nickname: 'Test Car', vehicle_type: 'Car',
   year: 2024, make: 'Toyota', model: 'Camry', archived_visible: true,
 } as Vehicle
-const HERO_STATS: VehicleDetailStats = {
+const HERO_STATS: VehicleDetailStats = makeDetailStats({
   overdue_count: 3, upcoming_count: 2,
-  usage_unit: 'distance', current_hours: null,
-  latest_hours: null, average_l_per_hr: null, average_cost_per_hr: null,
-  secondary_usage_enabled: false,
   latest_odometer_km: CANONICAL_KM, latest_odometer_date: '2026-07-01',
   last_service_date: '2026-06-15', last_fillup_date: '2026-07-10',
-  spent_this_year: '1234.50', year: 2026,
-}
+  spent_this_year: '1234.50',
+})
 const CARD_STATS = {
   vin: 'V1', year: 2018, make: 'Honda', model: 'Accord',
   usage_unit: 'distance', secondary_usage_enabled: false,

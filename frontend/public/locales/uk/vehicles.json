@@ -681,8 +681,7 @@
     "overdue": "{{count}} прострочених",
     "photoCount": "{{count}} фотографій",
     "recentActivity": "Недавня активність",
-    "service": "Сервіс",
-    "upcoming": "{{count}} майбутніх"
+    "service": "Сервіс"
   },
   "vendorSearch": {
     "noResults": "Немає результатів"

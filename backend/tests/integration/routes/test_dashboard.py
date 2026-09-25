@@ -656,6 +656,14 @@ class TestDashboardRoutes:
                     due_date=today - timedelta(days=3),
                     status="pending",
                 ),  # overdue
+                Reminder(
+                    vin=vin,
+                    title="In 5 days, snoozed",
+                    reminder_type="date",
+                    due_date=today + timedelta(days=5),
+                    snoozed_until=today + timedelta(days=20),
+                    status="pending",
+                ),  # out of every count until the snooze ends
             ]
         )
         await db_session.commit()
@@ -664,13 +672,120 @@ class TestDashboardRoutes:
         assert response.status_code == 200
         data = response.json()
         fh = data["fleet_health"]
+        card = next(v for v in data["vehicles"] if v["vin"] == vin)
 
-        # 10d + 30d only — not today, not 31d, not the 90-day trap of the old test.
-        assert fh["upcoming_30d_count"] == 2
-        # due-today + overdue-3d => exactly 2 overdue; equals the per-card sum, so
-        # due-today is counted once (Overdue), never also Upcoming.
+        # The card: overdue (today, -3d), pending (10d, 30d, 31d), due soon (10d, 30d).
+        assert card["overdue_maintenance_count"] == 2
+        assert card["upcoming_maintenance_count"] == 3
+        assert card["due_soon_maintenance_count"] == 2
+        # The strip is the sum of the badges: due-today is Overdue once, never
+        # also Upcoming; 31d and the snoozed one are in neither.
         assert fh["overdue_count"] == sum(v["overdue_maintenance_count"] for v in data["vehicles"])
+        assert fh["upcoming_30d_count"] == sum(
+            v["due_soon_maintenance_count"] for v in data["vehicles"]
+        )
         assert fh["overdue_count"] == 2
+        assert fh["upcoming_30d_count"] == 2
+
+    async def test_due_soon_uses_the_usage_projection_for_mileage_reminders(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        """A mileage reminder is due soon when the odometer is projected to reach
+        it within 30 days at the last 90 days' rate, the same date the reminders
+        list shows; a calendar date and the projection both count, earliest wins."""
+        vin, headers = await _isolated_fleet(db_session)
+        today = date.today()
+        db_session.add_all(
+            [
+                # 100 km/day over the last 60 days.
+                OdometerRecord(
+                    vin=vin, date=today - timedelta(days=60), odometer_km=Decimal("50000")
+                ),
+                OdometerRecord(vin=vin, date=today, odometer_km=Decimal("56000")),
+                Reminder(
+                    vin=vin,
+                    title="Oil, 1,000 km out: 10 days",
+                    reminder_type="mileage",
+                    due_mileage_km=Decimal("57000"),
+                    status="pending",
+                ),  # due soon
+                Reminder(
+                    vin=vin,
+                    title="Timing belt, 14,000 km out: 140 days",
+                    reminder_type="mileage",
+                    due_mileage_km=Decimal("70000"),
+                    status="pending",
+                ),  # pending only
+                Reminder(
+                    vin=vin,
+                    title="Brake fluid, dated in 90 days but 2,000 km out: 20 days",
+                    reminder_type="smart",
+                    due_date=today + timedelta(days=90),
+                    due_mileage_km=Decimal("58000"),
+                    status="pending",
+                ),  # due soon: the projection comes first
+            ]
+        )
+        # A second vehicle of the same owner, with one dated reminder due soon,
+        # proves the strip SUMS the cards (2 + 1) rather than reading one of them.
+        import uuid
+
+        from sqlalchemy import select
+
+        owner_id = await db_session.scalar(select(Vehicle.user_id).where(Vehicle.vin == vin))
+        vin2 = f"FLEET{uuid.uuid4().hex[:12].upper()}"
+        db_session.add_all(
+            [
+                Vehicle(vin=vin2, user_id=owner_id, nickname="Fleet second", vehicle_type="Car"),
+                Reminder(
+                    vin=vin2,
+                    title="Dated in 10 days",
+                    reminder_type="date",
+                    due_date=today + timedelta(days=10),
+                    status="pending",
+                ),
+            ]
+        )
+        await db_session.commit()
+
+        response = await client.get("/api/dashboard", headers=headers)
+        assert response.status_code == 200
+        data = response.json()
+        card = next(v for v in data["vehicles"] if v["vin"] == vin)
+
+        assert card["overdue_maintenance_count"] == 0
+        assert card["upcoming_maintenance_count"] == 3
+        assert card["due_soon_maintenance_count"] == 2
+        assert sum(v["due_soon_maintenance_count"] for v in data["vehicles"]) == 3
+        assert data["fleet_health"]["upcoming_30d_count"] == 3
+
+    async def test_due_soon_without_a_usage_rate_needs_a_date(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        """One odometer reading gives no rate, so a mileage-only reminder has no
+        expected date and is pending, not due soon, however close it sits."""
+        vin, headers = await _isolated_fleet(db_session)
+        db_session.add_all(
+            [
+                OdometerRecord(vin=vin, date=date.today(), odometer_km=Decimal("56000")),
+                Reminder(
+                    vin=vin,
+                    title="Oil, 100 km out, rate unknown",
+                    reminder_type="mileage",
+                    due_mileage_km=Decimal("56100"),
+                    status="pending",
+                ),
+            ]
+        )
+        await db_session.commit()
+
+        response = await client.get("/api/dashboard", headers=headers)
+        assert response.status_code == 200
+        data = response.json()
+        card = next(v for v in data["vehicles"] if v["vin"] == vin)
+
+        assert card["upcoming_maintenance_count"] == 1
+        assert card["due_soon_maintenance_count"] == 0
 
     async def test_fleet_health_next_due_picks_soonest_dated(
         self, client: AsyncClient, db_session: AsyncSession

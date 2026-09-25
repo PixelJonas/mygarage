@@ -1,5 +1,4 @@
 from datetime import date as date_type
-from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -35,7 +34,7 @@ from app.services.fuel_service import (
 )
 from app.services.hours_service import latest_engine_hours_and_date
 from app.services.odometer_service import latest_odometer_km_and_date
-from app.services.reminder_service import is_reminder_overdue, is_reminder_snoozed
+from app.services.reminder_service import count_pending_reminders
 from app.services.service_visit_service import service_visit_cost_load_options
 from app.utils.household_time import household_today
 
@@ -114,33 +113,9 @@ async def calculate_vehicle_stats(
     latest_hours, _latest_hours_date = await latest_engine_hours_and_date(db, vehicle.vin)
     average_l_per_hr, average_cost_per_hr = await calculate_average_hours_economy(db, vehicle.vin)
 
-    # Count upcoming and overdue reminders
+    # Same readings the card displays, so badge and reading agree.
     today = household_today()
-    pending_reminders_result = await db.execute(
-        select(Reminder).where(Reminder.vin == vehicle.vin, Reminder.status == "pending")
-    )
-    pending_reminders = pending_reminders_result.scalars().all()
-
-    # Reuse the SAME fetched readings for the reminder evaluation so the
-    # displayed reading and the overdue eval can never disagree — and so the
-    # dashboard card and the detail hero agree on a same-date-reading vehicle.
-    # R2-B1 (mileage); Phase 6b extends this to `latest_hours`, already
-    # fetched above for the hours-economy figures — no extra query per
-    # vehicle for the hours-reminder check.
-    current_odometer_km = latest_odometer_km
-    current_engine_hours = latest_hours
-
-    upcoming_count = 0
-    overdue_count = 0
-    for reminder in pending_reminders:
-        if is_reminder_snoozed(reminder, today):
-            # Excluded, not reclassified: a snoozed reminder is out of BOTH
-            # counts until its date passes (plan 2026-09-18, decision 4).
-            continue
-        if is_reminder_overdue(reminder, current_odometer_km, current_engine_hours, today):
-            overdue_count += 1
-        else:
-            upcoming_count += 1
+    counts = await count_pending_reminders(db, vehicle.vin, latest_odometer_km, latest_hours, today)
 
     # Per-full-tank L/100km, anchored to the previous FULL tank with partial
     # fill-ups folded in (issue #113). Ordered by odometer ascending so the
@@ -199,8 +174,9 @@ async def calculate_vehicle_stats(
         latest_fuel_date=latest_fuel,
         latest_odometer_km=latest_odometer_km,
         latest_odometer_date=latest_odometer_date,
-        upcoming_maintenance_count=upcoming_count or 0,
-        overdue_maintenance_count=overdue_count or 0,
+        upcoming_maintenance_count=counts.upcoming,
+        due_soon_maintenance_count=counts.due_soon,
+        overdue_maintenance_count=counts.overdue,
         average_l_per_100km=ordinary_l_per_100km,
         recent_l_per_100km=recent_l_per_100km,
         towing_l_per_100km=towing_l_per_100km,
@@ -223,10 +199,10 @@ async def _fleet_next_due(
 
     1. **Dated reminders win.** Candidates with a ``due_date``, ordered
        ``due_date ASC, id ASC`` (the ``id`` tie-break is stable on SQLite AND
-       PG; uses ``ix_reminders_due_date``). A ``due_date`` is a
-       driver-independent absolute "when"; a mileage-to-date projection would
-       need a per-vehicle daily-distance model MyGarage does not store, so a
-       dated reminder always outranks a mileage-only one. Includes overdue
+       PG; uses ``ix_reminders_due_date``). Date-first by choice: a
+       ``due_date`` is an absolute commitment, while a usage projection (the
+       one the due-soon count beside this cell uses) moves with the driving
+       rate, so a dated reminder outranks a mileage-only one. Includes overdue
        dated reminders (a past date sorts first — the most urgent "next").
     2. **Mileage-only fallback.** Only when the fleet has no dated pending
        reminder: rank ``due_date IS NULL AND due_mileage_km IS NOT NULL``
@@ -318,11 +294,10 @@ async def calculate_fleet_health(
     """Fleet-wide health summary for the dashboard strip.
 
     Scope is the already-computed, already-authorized ``vehicle_stats`` — this
-    never re-scopes or widens the fleet. Overdue reuses the per-vehicle counts
-    verbatim (so the strip agrees with each card badge). Upcoming is the
-    strictly-future 30-day pending window (``today < due_date <= today+30``) so
-    a due-today reminder is Overdue only, never both. Spent-this-year mirrors
-    the garage-analytics monthly-trend running-cost set (service + fuel + DEF),
+    never re-scopes or widens the fleet. Overdue and Upcoming are sums of the
+    per-card counts (``overdue_maintenance_count`` / ``due_soon_maintenance_count``),
+    so the strip agrees with the badges. Spent-this-year mirrors the
+    garage-analytics monthly-trend running-cost set (service + fuel + DEF),
     for records dated ``year_start <= date <= today`` (true YTD — a
     later-this-year record is NOT counted). Next-due is delegated to
     ``_fleet_next_due`` (dated reminders first, mileage-only fallback).
@@ -334,34 +309,19 @@ async def calculate_fleet_health(
     today = household_today()
     year = today.year
     year_start = date_type(year, 1, 1)
-    upcoming_end = today + timedelta(days=30)
 
     overdue_count = sum(s.overdue_maintenance_count for s in vehicle_stats)
+    upcoming_30d = sum(s.due_soon_maintenance_count for s in vehicle_stats)
 
     vins = [s.vin for s in vehicle_stats]
     if not vins:
         return FleetHealth(
             overdue_count=overdue_count,
-            upcoming_30d_count=0,
+            upcoming_30d_count=upcoming_30d,
             year=year,
             spent_this_year=Decimal("0.00"),
             next_due=None,
         )
-
-    # Upcoming — pending reminders due strictly after today, within 30 days.
-    # `> today` (not `>=`) keeps a due-today reminder Overdue-only (finding 6).
-    upcoming_30d = await db.scalar(
-        select(func.count(Reminder.id)).where(
-            Reminder.vin.in_(vins),
-            Reminder.status == "pending",
-            # A snoozed reminder is out of every due-soon count until its
-            # date passes (plan 2026-09-18, decision 4).
-            or_(Reminder.snoozed_until.is_(None), Reminder.snoozed_until <= today),
-            Reminder.due_date.isnot(None),
-            Reminder.due_date > today,
-            Reminder.due_date <= upcoming_end,
-        )
-    )
 
     # Spent this year — service (property, so summed in Python) + fuel + DEF,
     # dated this year up to and including today (true YTD; finding 5).
@@ -405,7 +365,7 @@ async def calculate_fleet_health(
 
     return FleetHealth(
         overdue_count=overdue_count,
-        upcoming_30d_count=upcoming_30d or 0,
+        upcoming_30d_count=upcoming_30d,
         year=year,
         spent_this_year=spent_this_year,
         next_due=next_due,
