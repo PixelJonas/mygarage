@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dashboard order in Quick Settings: the dashboard opens in your chosen order on any browser; the sort menu still overrides it for the tab
 
 ### Fixed
+- Fuel economy "excluding towing" no longer includes it: a towing tank was merged into the next tank, so its fuel stayed in the average
+- Fuel economy averages are total fuel over total distance (or engine hours), not a mean of each tank's figure
+- Economy averages leave out impossible tanks (a mistyped odometer or volume), as Analytics already did
+- The Fuel tab keeps its "include towing" toggle for a vehicle whose every tank towed
 - Odometer milestones step every 10,000 of the vehicle's own unit; a vehicle shown in miles was congratulated on "62,137 mi"
 - A request with NaN or infinity in a number field gets a 422, not a 500
 - Quick Entry offers what the vehicle page does: a fifth wheel or travel trailer gets Propane instead of Fuel Up and no Mileage, a diesel gets DEF, and the Add Fuel shortcut opens the vehicle's own fill-up
@@ -33,6 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Secrets (the Telegram bot token, Discord and Slack webhook URLs, TomTom and Google Places API keys) are no longer written to the logs
 
 ### Changed
+- The vehicle card shows towing economy on its own line, the headline says "not towing" when a vehicle tows, and the recent figure reads "Last 3 tanks" (#181)
+- The homepage widget's economy leaves towing tanks out, matching the vehicle card
 - Telegram `/fuel` reads an odometer with no km/mi suffix in that vehicle's unit (it was kilometres), and its reply says how it read the numbers
 - A disabled LiveLink device no longer has its status refreshed by status or battery messages
 - **Enable LiveLink** now gates MQTT, Torque and SD-card backfill too: off, nothing is stored and no new device is discovered

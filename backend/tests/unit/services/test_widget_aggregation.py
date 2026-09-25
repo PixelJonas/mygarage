@@ -288,12 +288,12 @@ class TestMpgParity:
         assert ref_newest < ref_second
 
         assert result is not None
-        # Widget averages L/100km first then converts to MPG, so the legacy
-        # output is the MPG equivalent of the harmonic mean — not 35.0.
-        # Two pairs at 30 MPG (7.84 L/100km) and 40 MPG (5.88 L/100km)
-        # → mean L/100km ≈ 6.86 → MPG ≈ 34.3.
-        assert result.recent_mpg == pytest.approx(34.3, abs=0.1)
-        assert result.average_mpg == pytest.approx(34.3, abs=0.1)
+        # Total fuel over total distance, then converted to MPG: 620 mi on
+        # 18 gal = 34.4 MPG. Not 35.0 (a mean of the two MPG figures), nor 34.3
+        # (a mean of their L/100km, which counted the 300 mi tank as much as
+        # the 320 mi one).
+        assert result.recent_mpg == pytest.approx(34.4, abs=0.05)
+        assert result.average_mpg == pytest.approx(34.4, abs=0.05)
 
     @pytest.mark.asyncio
     async def test_mpg_flavour_follows_the_unit_set_not_the_instance_setting(
@@ -365,12 +365,15 @@ class TestMpgParity:
                 aggregation_user.id, vin, allowed_vins=None, units=METRIC_PRESET
             )
 
-            # Same reference pairs as test_numeric_parity_with_calculate_mpg.
-            ref_newest = calculate_l_per_100km(records[2], records[1])
-            ref_second = calculate_l_per_100km(records[1], records[0])
-            assert ref_newest is not None
-            assert ref_second is not None
-            mean_l100km = (ref_newest + ref_second) / 2
+            # Same tanks as test_numeric_parity_with_calculate_mpg: total fuel
+            # over total distance across both.
+            assert records[0].odometer_km is not None and records[2].odometer_km is not None
+            assert records[1].liters is not None and records[2].liters is not None
+            mean_l100km = (
+                (records[1].liters + records[2].liters)
+                / (records[2].odometer_km - records[0].odometer_km)
+                * 100
+            )
 
             expected_uk_mpg = float(UnitConverter.UK_MPG_TO_L100KM_NUMERATOR / mean_l100km)
             expected_us_mpg = float(UnitConverter.US_MPG_TO_L100KM_NUMERATOR / mean_l100km)

@@ -28,7 +28,11 @@ from app.schemas.dashboard import (
     VehicleStatistics,
 )
 from app.services.auth import require_auth
-from app.services.fuel_service import calculate_average_hours_economy, compute_full_tank_economy
+from app.services.fuel_service import (
+    average_l_per_100km,
+    calculate_average_hours_economy,
+    economy_periods,
+)
 from app.services.hours_service import latest_engine_hours_and_date
 from app.services.odometer_service import latest_odometer_km_and_date
 from app.services.reminder_service import is_reminder_overdue, is_reminder_snoozed
@@ -41,26 +45,9 @@ router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 PHOTO_DIR = Path("/data/photos")
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
 
-#: How many full-tank fill-ups the "recent" economy figure averages over.
+#: How many full tanks the "recent" economy figure covers. The card labels it
+#: "Last 3 tanks" (`RECENT_TANKS` in the frontend's VehicleStatisticsCard).
 _RECENT_WINDOW = 3
-
-
-def _economy_pair(values: list[Decimal]) -> tuple[Decimal | None, Decimal | None]:
-    """The all-time and recent means of a list of per-full-tank figures.
-
-    A helper because the towing-inclusive figures need exactly the same two
-    means as the non-towing ones, and issue #181 would have been two copies of
-    this arithmetic that could round or window differently.
-
-    Returns ``(None, None)`` for an empty list, which is a real case: a vehicle
-    with no non-towing fill-up at all has no non-towing economy.
-    """
-    if not values:
-        return None, None
-    average = round(sum(values) / Decimal(len(values)), 2)
-    window = values[-_RECENT_WINDOW:]
-    recent = round(sum(window) / Decimal(len(window)), 2)
-    return average, recent
 
 
 async def calculate_vehicle_stats(
@@ -162,24 +149,20 @@ async def calculate_vehicle_stats(
         select(FuelRecord)
         .where(FuelRecord.vin == vehicle.vin)
         .where(FuelRecord.odometer_km.isnot(None))
-        .order_by(FuelRecord.odometer_km.asc(), FuelRecord.date.asc())
+        .order_by(FuelRecord.odometer_km.asc(), FuelRecord.date.asc(), FuelRecord.id.asc())
     )
     fuel_records_list = list(fuel_records_result.scalars().all())
 
-    # ★ TWO PASSES OVER ONE QUERY, AND THE DEFAULT IS THE BUG (issue #181).
-    # `compute_full_tank_economy` defaults to `exclude_hauling=False` while
-    # `calculate_average_l_per_100km`, which the vehicle's own Fuel tab uses,
-    # defaults to True. This route passed no argument, so the home page quoted a
-    # towing-inclusive figure with nothing saying so, and a vehicle that tows
-    # read worse here than on its own page. The headline now excludes towing and
-    # the towing-inclusive figure is reported alongside it.
-    daily_values = [
-        value for _, value in compute_full_tank_economy(fuel_records_list, exclude_hauling=True)
-    ]
-    towing_values = [value for _, value in compute_full_tank_economy(fuel_records_list)]
-
-    average_l_per_100km, recent_l_per_100km = _economy_pair(daily_values)
-    average_l_per_100km_with_towing, recent_l_per_100km_with_towing = _economy_pair(towing_values)
+    # Issue #181. The headline figures leave towing tanks out, matching the
+    # vehicle's own Fuel tab, and the towing figure is towing ALONE: a blend of
+    # both depends on how often the vehicle tows and answers nothing. Every
+    # figure is total fuel over total distance, over plausible tanks only, so a
+    # mistyped odometer can neither swamp the average nor take a "Last 3" slot.
+    periods = economy_periods(fuel_records_list)
+    ordinary = [period for period in periods if not period.towing and period.plausible]
+    ordinary_l_per_100km = average_l_per_100km(ordinary)
+    recent_l_per_100km = average_l_per_100km(ordinary[-_RECENT_WINDOW:])
+    towing_l_per_100km = average_l_per_100km([period for period in periods if period.towing])
 
     # Get main photo URL from Vehicle.main_photo field
     main_photo_url: str | None = None
@@ -218,10 +201,9 @@ async def calculate_vehicle_stats(
         latest_odometer_date=latest_odometer_date,
         upcoming_maintenance_count=upcoming_count or 0,
         overdue_maintenance_count=overdue_count or 0,
-        average_l_per_100km=average_l_per_100km,
+        average_l_per_100km=ordinary_l_per_100km,
         recent_l_per_100km=recent_l_per_100km,
-        average_l_per_100km_with_towing=average_l_per_100km_with_towing,
-        recent_l_per_100km_with_towing=recent_l_per_100km_with_towing,
+        towing_l_per_100km=towing_l_per_100km,
         archived_at=vehicle.archived_at,
         archived_visible=vehicle.archived_visible,
         is_shared_with_me=is_shared_with_me,

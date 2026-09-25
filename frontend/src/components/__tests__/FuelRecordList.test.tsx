@@ -506,3 +506,32 @@ describe('FuelRecordList — one gallon per page, taken from the user', () => {
     expect(screen.getByText('fuelList.avgCostPerVolume (L)')).toBeInTheDocument()
   })
 })
+
+describe('FuelRecordList — the average card and its towing toggle (#181)', () => {
+  const toggle = () => screen.queryByRole('checkbox', { name: 'fuelList.inclTowing' })
+
+  it('keeps the toggle when every tank towed, so towing can still be switched on', async () => {
+    // No tank without towing, so the default (towing left out) has no average.
+    // The card used to vanish with it, taking the only way to switch towing on.
+    useFuelRecordsMock.mockReturnValue({
+      data: { records: [{ ...record, is_hauling: true }], total: 1, average_l_per_100km: null },
+      isLoading: false,
+      error: null,
+    })
+    render(<FuelRecordList {...DEFAULT_PROPS} />)
+    await waitFor(() => expect(apiGetMock).toHaveBeenCalled())
+    expect(toggle()).toBeInTheDocument()
+    expect(screen.getByText('—')).toBeInTheDocument()
+  })
+
+  it('shows no average card for a vehicle with neither a figure nor a towing fill-up', async () => {
+    useFuelRecordsMock.mockReturnValue({
+      data: { records: [{ ...record, is_hauling: false }], total: 1, average_l_per_100km: null },
+      isLoading: false,
+      error: null,
+    })
+    render(<FuelRecordList {...DEFAULT_PROPS} />)
+    await waitFor(() => expect(apiGetMock).toHaveBeenCalled())
+    expect(toggle()).not.toBeInTheDocument()
+  })
+})

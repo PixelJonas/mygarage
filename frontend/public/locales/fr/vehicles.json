@@ -989,7 +989,6 @@
     "noteCount": "{{count}} note(s)",
     "overdue": "{{count}} en retard",
     "photoCount": "{{count}} photo(s)",
-    "recent": "Récent",
     "recentActivity": "Activité récente",
     "service": "Entretien",
     "upcoming": "{{count}} à venir",

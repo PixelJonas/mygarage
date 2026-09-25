@@ -1097,7 +1097,6 @@
     "noteCount": "{{count}} Notiz(en)",
     "overdue": "{{count}} überfällig",
     "photoCount": "{{count}} Foto(s)",
-    "recent": "Aktuell",
     "recentActivity": "Letzte Aktivitäten",
     "service": "Service",
     "upcoming": "{{count}} anstehend"

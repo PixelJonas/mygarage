@@ -26863,18 +26863,6 @@
             ],
             "title": "Average L Per 100Km"
           },
-          "average_l_per_100km_with_towing": {
-            "anyOf": [
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Average L Per 100Km With Towing"
-          },
           "average_l_per_hr": {
             "anyOf": [
               {
@@ -27050,18 +27038,6 @@
             ],
             "title": "Recent L Per 100Km"
           },
-          "recent_l_per_100km_with_towing": {
-            "anyOf": [
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Recent L Per 100Km With Towing"
-          },
           "secondary_usage_enabled": {
             "default": false,
             "title": "Secondary Usage Enabled",
@@ -27116,6 +27092,18 @@
           "total_service_records": {
             "title": "Total Service Records",
             "type": "integer"
+          },
+          "towing_l_per_100km": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Towing L Per 100Km"
           },
           "upcoming_maintenance_count": {
             "title": "Upcoming Maintenance Count",

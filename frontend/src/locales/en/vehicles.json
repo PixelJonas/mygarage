@@ -1254,12 +1254,12 @@
     "noteCount": "{{count}} notes",
     "overdue": "{{count}} Overdue",
     "photoCount": "{{count}} photos",
-    "recent": "Recent",
+    "lastTanks": "Last {{tanks}} tanks",
     "recentActivity": "Recent Activity",
     "service": "Service",
     "upcoming": "{{count}} Upcoming",
-    "towingAll": "Every fill-up towing",
-    "includingTowing": "Including towing"
+    "towingAll": "Every tank towing",
+    "towing": "Towing"
   },
   "vehicleTypeLabels": {
     "Car": "Car",
@@ -1759,6 +1759,7 @@
     "sharedByViewOnly": "Shared by {{username}} (view only)",
     "archivedWatermark": "ARCHIVED",
     "averageFuelEconomy": "Avg {{unit}}",
+    "averageFuelEconomyNotTowing": "Avg {{unit}} (not towing)",
     "viewDetails": "View Details"
   },
   "vehicleLiveLinkWidget": {
