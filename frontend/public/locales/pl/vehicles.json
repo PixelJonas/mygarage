@@ -680,7 +680,6 @@
     "noteCount": "{{count}} notatek",
     "overdue": "{{count}} zaległych",
     "photoCount": "{{count}} zdjęć",
-    "recent": "Ostatnie",
     "recentActivity": "Ostatnia aktywność",
     "service": "Serwis",
     "upcoming": "{{count}} nadchodzących"

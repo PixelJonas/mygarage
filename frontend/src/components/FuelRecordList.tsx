@@ -374,15 +374,23 @@ export default function FuelRecordList({ vin, onAddClick, onEditClick }: FuelRec
           ? totalCost / (Math.max(...odometers) - Math.min(...odometers))
           : null
 
+        // The towing toggle lives in the average card, so the card stays while
+        // there is towing to switch on: a vehicle whose every tank towed has no
+        // average with towing left out (#181).
+        const showAverageCard =
+          averageEconomy !== null || includeHauling || records.some((r) => r.is_hauling)
+
         return (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {tracksDistance && averageEconomy !== null && (
+            {tracksDistance && showAverageCard && (
               <Card padding="sm">
                 <div className="flex items-center gap-1 text-xs text-text-mute mb-1">
                   <TrendingUp aria-hidden="true" className="w-3 h-3" />
                   <span>{t('fuelList.avgFuelEconomy')}</span>
                 </div>
-                <Mono size="2xl" weight="bold">{u.consumption.format(averageEconomy)}</Mono>
+                <Mono size="2xl" weight="bold">
+                  {averageEconomy !== null ? u.consumption.format(averageEconomy) : '—'}
+                </Mono>
                 <div className="mt-1">
                   <Checkbox
                     id="fuel-incl-towing"

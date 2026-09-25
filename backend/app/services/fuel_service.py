@@ -8,6 +8,8 @@ frontend UnitFormatter.
 # pyright: reportReturnType=false, reportOptionalOperand=false
 
 import logging
+from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import date as date_type
 from decimal import Decimal
 
@@ -133,7 +135,9 @@ def calculate_l_per_100km(
     if current_record.missed_fillup:
         return None
 
-    # Need odometer_km and liters on current record
+    # Need odometer_km and liters on current record. A zero odometer counts as
+    # missing: it is far more often a placeholder than a brand-new vehicle, and
+    # anchoring on one would make the next real tank span the whole odometer.
     if not current_record.odometer_km or not current_record.liters:
         return None
 
@@ -186,10 +190,10 @@ def calculate_hours_economy(
     present (unlike the distance calc's single ``liters`` guard): a valid
     interval always yields a ``cost_per_hr`` figure, and an ``l_per_hr``
     figure whenever ``interval_liters`` is positive — so a cost figure is
-    never dropped for want of liters. The endpoint / missed / hauling rules
-    (which is-full-tank is an endpoint, a missed fill re-anchors without a
-    figure, hauling folds when excluded) live in
-    :func:`compute_full_tank_hours_economy` and match the distance calc
+    never dropped for want of liters. The endpoint / missed / towing rules
+    (every full tank is an endpoint, a missed fill re-anchors without a
+    figure, a towing tank is tagged) live in
+    :func:`hours_economy_periods` and match the distance calc
     exactly. Returns ``None`` (no figure at all) for a partial, a missed
     fill-up, a missing endpoint, or a non-increasing meter.
     """
@@ -218,91 +222,165 @@ def calculate_hours_economy(
     return l_per_hr, cost_per_hr
 
 
-def compute_full_tank_economy(
-    records_asc: list[FuelRecord],
-    exclude_hauling: bool = False,
-) -> list[tuple[FuelRecord, Decimal]]:
-    """L/100km for each full-tank record, computed in a single O(n) pass.
+#: Realistic L/100km band (~5-100 MPG). A tank outside it is almost always a
+#: data-entry slip (a mistyped odometer or volume). Averages leave it out, since
+#: weighting by distance would let one slip swamp them; its own figure still
+#: shows in the fuel list, where the slip can be seen and fixed.
+MIN_REALISTIC_L_PER_100KM = Decimal("2.35")
+MAX_REALISTIC_L_PER_100KM = Decimal("47")
+
+
+@dataclass(frozen=True)
+class EconomyPeriod:
+    """One full tank: the fill-up that closed it, and what it burned over what.
+
+    ``towing`` is set when the closing fill-up or any partial fill-up within the
+    tank is marked towing: that fuel was burned towing, so the whole tank was.
+    """
+
+    record: FuelRecord
+    liters: Decimal
+    distance_km: Decimal
+    l_per_100km: Decimal
+    towing: bool
+
+    @property
+    def plausible(self) -> bool:
+        """Whether the figure is inside the realistic band."""
+        return MIN_REALISTIC_L_PER_100KM <= self.l_per_100km <= MAX_REALISTIC_L_PER_100KM
+
+
+def economy_periods(records_asc: list[FuelRecord]) -> list[EconomyPeriod]:
+    """Every full tank's economy, in a single O(n) pass.
 
     ``records_asc`` must be every odometer-bearing fill-up for the vehicle,
     ordered by odometer ascending. Consecutive full-tank endpoints tile the
     odometer axis, so a running accumulator collects the liters of every partial
-    fill-up since the previous endpoint and folds them — plus the endpoint's own
-    fill — into that interval's numerator (issue #113). This is the single
-    source of truth for the per-record, vehicle-average, and dashboard surfaces
-    so they can't drift apart.
+    fill-up since the previous endpoint and folds them, plus the endpoint's own
+    fill, into that tank's numerator (issue #113). This is the single source of
+    truth for the per-record, vehicle-average, dashboard, analytics and widget
+    surfaces so they can't drift apart.
 
-    Endpoint rules:
-    - A missed fill-up (amount unknown) is still an endpoint: it anchors the
-      next interval but yields no figure of its own (``calculate_l_per_100km``
-      returns None for it).
-    - When ``exclude_hauling`` is set, a hauling full tank is not an endpoint, so
-      its fuel folds into the surrounding interval instead of splitting it.
+    Every full tank is an endpoint, towing or not. A towing tank is TAGGED, never
+    merged: when it stopped being an endpoint, its fuel and distance folded into
+    the next tank and the "excluding towing" figure still carried the towing
+    fuel (issue #181 follow-up). A missed fill-up (amount unknown) is still an
+    endpoint: it anchors the next tank but yields no figure of its own.
 
-    Returns ``(record, l_per_100km)`` pairs in odometer order, only for
-    endpoints that produced a valid figure.
+    Returns one period per endpoint that produced a valid figure, in odometer
+    order.
     """
-    results: list[tuple[FuelRecord, Decimal]] = []
+    results: list[EconomyPeriod] = []
     prev_endpoint: FuelRecord | None = None
     liters_since = Decimal(0)  # fuel added strictly after prev_endpoint
+    towing_since = False  # any fill-up since prev_endpoint marked towing
 
     for record in records_asc:
         if record.odometer_km is None:
             continue
         if record.liters is not None:
             liters_since += record.liters
+        towing_since = towing_since or bool(record.is_hauling)
 
-        if not record.is_full_tank or (exclude_hauling and record.is_hauling):
+        if not record.is_full_tank:
             continue
 
         # `record` is an endpoint; its own liters are already in `liters_since`.
         value = calculate_l_per_100km(record, prev_endpoint, liters_since)
-        if value is not None:
-            results.append((record, value))
+        if (
+            value is not None
+            and prev_endpoint is not None
+            and prev_endpoint.odometer_km is not None
+        ):
+            results.append(
+                EconomyPeriod(
+                    record=record,
+                    liters=liters_since,
+                    distance_km=record.odometer_km - prev_endpoint.odometer_km,
+                    l_per_100km=value,
+                    towing=towing_since,
+                )
+            )
 
         prev_endpoint = record
         liters_since = Decimal(0)
+        towing_since = False
 
     return results
 
 
-def compute_full_tank_hours_economy(
+def compute_full_tank_economy(
     records_asc: list[FuelRecord],
     exclude_hauling: bool = False,
-) -> list[tuple[FuelRecord, Decimal | None, Decimal]]:
-    """L/hr + cost/hr for each full-tank record, in a single O(n) pass.
+) -> list[tuple[FuelRecord, Decimal]]:
+    """``(record, l_per_100km)`` for each full tank, from :func:`economy_periods`.
 
-    The engine-hours mirror of :func:`compute_full_tank_economy`. ``records_asc``
-    must be every ``engine_hours``-bearing fill-up for the vehicle, ordered by
+    With ``exclude_hauling`` the towing tanks are left out; the others keep the
+    figures they have either way.
+    """
+    return [
+        (period.record, period.l_per_100km)
+        for period in economy_periods(records_asc)
+        if not (exclude_hauling and period.towing)
+    ]
+
+
+def average_l_per_100km(periods: Sequence[EconomyPeriod]) -> Decimal | None:
+    """Total fuel over total distance across the plausible ``periods``.
+
+    Not a mean of the per-tank figures, which would count a 100 km tank as much
+    as a 400 km one. Tanks outside the realistic band are left out (see
+    ``MIN_REALISTIC_L_PER_100KM``); None when none is left.
+    """
+    periods = [period for period in periods if period.plausible]
+    if not periods:
+        return None
+    liters = sum((period.liters for period in periods), Decimal(0))
+    distance_km = sum((period.distance_km for period in periods), Decimal(0))
+    return round(liters / distance_km * Decimal(100), 2)
+
+
+@dataclass(frozen=True)
+class HoursEconomyPeriod:
+    """One full tank on the engine-hours axis: the hours mirror of
+    :class:`EconomyPeriod`. ``l_per_hr`` is None for a zero-liters tank, whose
+    ``cost_per_hr`` still counts."""
+
+    record: FuelRecord
+    liters: Decimal
+    cost: Decimal
+    hours: Decimal
+    l_per_hr: Decimal | None
+    cost_per_hr: Decimal
+    towing: bool
+
+
+def hours_economy_periods(records_asc: list[FuelRecord]) -> list[HoursEconomyPeriod]:
+    """Every full tank's L/hr + cost/hr, in a single O(n) pass.
+
+    The engine-hours mirror of :func:`economy_periods`. ``records_asc`` must be
+    every ``engine_hours``-bearing fill-up for the vehicle, ordered by
     ``engine_hours`` ascending. Consecutive full-tank endpoints tile the hours
     axis, so a running accumulator collects the liters AND the net cost of every
-    partial fill-up since the previous endpoint and folds them — plus the
-    endpoint's own fill — into that interval's two numerators (design-review
-    finding R1-H5: cost/hr must accumulate all partials, not just the endpoint
-    fill). This is the single source of truth for the per-record and
-    vehicle-average hours-economy surfaces so they can't drift apart.
+    partial fill-up since the previous endpoint and folds them, plus the
+    endpoint's own fill, into that tank's two numerators (design-review finding
+    R1-H5: cost/hr must accumulate all partials, not just the endpoint fill).
 
     Endpoint rules are IDENTICAL to the distance function:
-    - A missed fill-up is still an endpoint: it anchors the next interval but
-      yields no figure of its own.
-    - When ``exclude_hauling`` is set, a hauling full tank is not an endpoint, so
-      its fuel folds into the surrounding interval instead of splitting it.
+    - Every full tank is an endpoint; a towing tank is tagged, never merged.
+    - A missed fill-up is still an endpoint: it anchors the next tank but yields
+      no figure of its own.
     - A fill-up with no ``engine_hours`` is off the hours axis and is skipped
-      entirely (its fuel does not fold in) — the analog of skipping
+      entirely (its fuel does not fold in), the analog of skipping
       ``odometer_km is None`` in the distance pass.
-    - A zero-liters interval (P3 backlog fix) yields ``l_per_hr = None`` — no
-      fuel-economy figure — while ``cost_per_hr`` is still computed; see
-      :func:`calculate_hours_economy`.
-
-    Returns ``(record, l_per_hr, cost_per_hr)`` triples in hours order, for
-    every endpoint that produced a figure at all. ``l_per_hr`` may itself be
-    ``None`` within a returned triple (zero-liters interval); ``cost_per_hr``
-    is never ``None`` when the triple is returned.
+    - A zero-liters tank (P3 backlog fix) yields ``l_per_hr = None`` while
+      ``cost_per_hr`` is still computed; see :func:`calculate_hours_economy`.
     """
-    results: list[tuple[FuelRecord, Decimal | None, Decimal]] = []
+    results: list[HoursEconomyPeriod] = []
     prev_endpoint: FuelRecord | None = None
     liters_since = Decimal(0)  # fuel added strictly after prev_endpoint
     cost_since = Decimal(0)  # net cost added strictly after prev_endpoint
+    towing_since = False  # any fill-up since prev_endpoint marked towing
 
     for record in records_asc:
         if record.engine_hours is None:
@@ -311,20 +389,82 @@ def compute_full_tank_hours_economy(
             liters_since += record.liters
         if record.cost is not None:
             cost_since += record.cost
+        towing_since = towing_since or bool(record.is_hauling)
 
-        if not record.is_full_tank or (exclude_hauling and record.is_hauling):
+        if not record.is_full_tank:
             continue
 
         # `record` is an endpoint; its own liters/cost are already accumulated.
         figure = calculate_hours_economy(record, prev_endpoint, liters_since, cost_since)
-        if figure is not None:
-            results.append((record, figure[0], figure[1]))
+        if (
+            figure is not None
+            and prev_endpoint is not None
+            and prev_endpoint.engine_hours is not None
+        ):
+            results.append(
+                HoursEconomyPeriod(
+                    record=record,
+                    liters=liters_since,
+                    cost=cost_since,
+                    hours=record.engine_hours - prev_endpoint.engine_hours,
+                    l_per_hr=figure[0],
+                    cost_per_hr=figure[1],
+                    towing=towing_since,
+                )
+            )
 
         prev_endpoint = record
         liters_since = Decimal(0)
         cost_since = Decimal(0)
+        towing_since = False
 
     return results
+
+
+def compute_full_tank_hours_economy(
+    records_asc: list[FuelRecord],
+    exclude_hauling: bool = False,
+) -> list[tuple[FuelRecord, Decimal | None, Decimal]]:
+    """``(record, l_per_hr, cost_per_hr)`` for each full tank, from
+    :func:`hours_economy_periods`. With ``exclude_hauling`` the towing tanks are
+    left out; the others keep the figures they have either way.
+    """
+    return [
+        (period.record, period.l_per_hr, period.cost_per_hr)
+        for period in hours_economy_periods(records_asc)
+        if not (exclude_hauling and period.towing)
+    ]
+
+
+def average_hours_economy(
+    periods: Sequence[HoursEconomyPeriod],
+) -> tuple[Decimal | None, Decimal | None]:
+    """Total fuel and total cost over total hours across ``periods``.
+
+    ``l_per_hr`` counts only the tanks that have one: a zero-liters tank's hours
+    would otherwise drag it toward zero (P3 backlog fix). ``cost_per_hr`` counts
+    every tank, since cost/hr is never suppressed for want of liters.
+    """
+    fuelled = [period for period in periods if period.l_per_hr is not None]
+    average_l_per_hr = (
+        round(
+            sum((p.liters for p in fuelled), Decimal(0))
+            / sum((p.hours for p in fuelled), Decimal(0)),
+            2,
+        )
+        if fuelled
+        else None
+    )
+    average_cost_per_hr = (
+        round(
+            sum((p.cost for p in periods), Decimal(0))
+            / sum((p.hours for p in periods), Decimal(0)),
+            2,
+        )
+        if periods
+        else None
+    )
+    return average_l_per_hr, average_cost_per_hr
 
 
 async def sum_liters_since_previous_full(
@@ -336,7 +476,7 @@ async def sum_liters_since_previous_full(
     """SQL sum of liters in the odometer window (prev_full, current].
 
     Single-record equivalent of the accumulator in
-    :func:`compute_full_tank_economy`, for the create/update/get paths where
+    :func:`economy_periods`, for the create/update/get paths where
     loading the whole sequence to score one record would be wasteful. The
     current record must already be persisted so it is counted (issue #113).
     """
@@ -386,8 +526,10 @@ async def calculate_average_l_per_100km(
     Args:
         db: Database session
         vin: Vehicle VIN
-        exclude_hauling: If True (default), exclude is_hauling=True records
-            for more representative daily-driving economy
+        exclude_hauling: If True (default), leave out towing tanks for more
+            representative daily-driving economy
+
+    Total fuel over total distance, per :func:`average_l_per_100km`.
     """
     # Load ALL fill-ups with an odometer (not just full tanks) so partial
     # fill-ups between two full tanks contribute their volume to the interval
@@ -396,15 +538,14 @@ async def calculate_average_l_per_100km(
         select(FuelRecord)
         .where(FuelRecord.vin == vin)
         .where(FuelRecord.odometer_km.isnot(None))
-        .order_by(FuelRecord.odometer_km.asc(), FuelRecord.date.asc())
+        .order_by(FuelRecord.odometer_km.asc(), FuelRecord.date.asc(), FuelRecord.id.asc())
     )
     all_records = list(result.scalars().all())
 
-    values = [value for _, value in compute_full_tank_economy(all_records, exclude_hauling)]
-    if not values:
-        return None
-
-    return round(sum(values) / len(values), 2)
+    periods = economy_periods(all_records)
+    if exclude_hauling:
+        periods = [period for period in periods if not period.towing]
+    return average_l_per_100km(periods)
 
 
 @cached(ttl_seconds=300)  # Cache for 5 minutes
@@ -416,41 +557,35 @@ async def calculate_average_hours_economy(
     Mirrors :func:`calculate_average_l_per_100km` so the hours and distance
     averages stay parallel: load every ``engine_hours``-bearing fill-up ordered
     by ``engine_hours`` ascending (partials contribute their liters and cost to
-    the interval), score them once via
-    :func:`compute_full_tank_hours_economy`, then mean each figure independently.
+    the tank), score them once via :func:`hours_economy_periods`, then take each
+    figure as total over total hours (:func:`average_hours_economy`).
 
     Args:
         db: Database session
         vin: Vehicle VIN
-        exclude_hauling: If True (default), exclude ``is_hauling=True`` records
-            for more representative daily-use economy.
+        exclude_hauling: If True (default), leave out towing tanks for more
+            representative daily-use economy.
 
     Returns ``(average_l_per_hr, average_cost_per_hr)``. ``average_l_per_hr``
-    is ``None`` when no full-tank interval produced an ``l_per_hr`` figure
-    (e.g. a pure-distance vehicle, OR every interval was zero-liters — P3
-    backlog fix: a zero-liters interval's ``None`` l_per_hr is SKIPPED here
-    rather than averaged in as ``0``, so it can't drag the average toward
-    zero). ``average_cost_per_hr`` is averaged over every valid interval
-    independently (cost/hr is never suppressed for want of liters), so it can
-    be non-``None`` even when ``average_l_per_hr`` is ``None``.
+    is ``None`` when no full tank produced an ``l_per_hr`` figure (e.g. a
+    pure-distance vehicle, OR every tank was zero-liters — P3 backlog fix: a
+    zero-liters tank's hours are left out of it, so they can't drag it toward
+    zero). ``average_cost_per_hr`` counts every tank (cost/hr is never
+    suppressed for want of liters), so it can be non-``None`` even when
+    ``average_l_per_hr`` is ``None``.
     """
     result = await db.execute(
         select(FuelRecord)
         .where(FuelRecord.vin == vin)
         .where(FuelRecord.engine_hours.isnot(None))
-        .order_by(FuelRecord.engine_hours.asc(), FuelRecord.date.asc())
+        .order_by(FuelRecord.engine_hours.asc(), FuelRecord.date.asc(), FuelRecord.id.asc())
     )
     all_records = list(result.scalars().all())
 
-    figures = compute_full_tank_hours_economy(all_records, exclude_hauling)
-    if not figures:
-        return None, None
-
-    l_values = [l_per_hr for _, l_per_hr, _ in figures if l_per_hr is not None]
-    cost_values = [cost_per_hr for _, _, cost_per_hr in figures]
-    average_l_per_hr = round(sum(l_values) / len(l_values), 2) if l_values else None
-    average_cost_per_hr = round(sum(cost_values) / len(cost_values), 2) if cost_values else None
-    return average_l_per_hr, average_cost_per_hr
+    periods = hours_economy_periods(all_records)
+    if exclude_hauling:
+        periods = [period for period in periods if not period.towing]
+    return average_hours_economy(periods)
 
 
 class FuelRecordService:
@@ -492,7 +627,7 @@ class FuelRecordService:
             select(FuelRecord)
             .where(FuelRecord.vin == vin)
             .where(FuelRecord.engine_hours.isnot(None))
-            .order_by(FuelRecord.engine_hours.asc(), FuelRecord.date.asc())
+            .order_by(FuelRecord.engine_hours.asc(), FuelRecord.date.asc(), FuelRecord.id.asc())
         )
         all_asc = list(result.scalars().all())
         for scored, l_per_hr, _cost_per_hr in compute_full_tank_hours_economy(all_asc):
@@ -533,13 +668,13 @@ class FuelRecordService:
 
             # Per-record economy for every full tank, computed once over the
             # whole ordered sequence so partial fill-ups fold into the next full
-            # tank (issue #113). Hauling tanks stay as endpoints here — the
-            # per-record display shows a figure for each full fill-up.
+            # tank (issue #113). Towing tanks keep their figures here: the
+            # per-record display shows one for each full fill-up.
             all_asc_result = await self.db.execute(
                 select(FuelRecord)
                 .where(FuelRecord.vin == vin)
                 .where(FuelRecord.odometer_km.isnot(None))
-                .order_by(FuelRecord.odometer_km.asc(), FuelRecord.date.asc())
+                .order_by(FuelRecord.odometer_km.asc(), FuelRecord.date.asc(), FuelRecord.id.asc())
             )
             all_asc = list(all_asc_result.scalars().all())
             economy_by_id = {r.id: value for r, value in compute_full_tank_economy(all_asc)}
@@ -550,7 +685,7 @@ class FuelRecordService:
                 select(FuelRecord)
                 .where(FuelRecord.vin == vin)
                 .where(FuelRecord.engine_hours.isnot(None))
-                .order_by(FuelRecord.engine_hours.asc(), FuelRecord.date.asc())
+                .order_by(FuelRecord.engine_hours.asc(), FuelRecord.date.asc(), FuelRecord.id.asc())
             )
             hours_asc = list(hours_asc_result.scalars().all())
             hours_economy_by_id = {

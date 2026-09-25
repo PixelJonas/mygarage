@@ -350,6 +350,29 @@ class TestCalculateFuelEconomy:
         assert stats["average_l_per_100km"] == Decimal("9.43")
         assert stats["recent_l_per_100km"] == Decimal("9.43")
 
+    def test_the_average_is_total_fuel_over_total_distance(self):
+        """A 100 km tank at 10 L/100km and a 400 km tank at 5 L/100km burned
+        30 L over 500 km: 6.00, not the 7.50 a mean of the two figures gives.
+        Best, worst and recent stay per tank."""
+        records = [
+            _make_fuel_record(
+                date=date(2026, 1, 1), odometer_km=Decimal("10000"), liters=Decimal("40")
+            ),
+            _make_fuel_record(
+                date=date(2026, 1, 5), odometer_km=Decimal("10100"), liters=Decimal("10")
+            ),
+            _make_fuel_record(
+                date=date(2026, 1, 20), odometer_km=Decimal("10500"), liters=Decimal("20")
+            ),
+        ]
+
+        _, stats = analytics_service.calculate_fuel_economy_with_pandas(records)
+
+        assert stats["average_l_per_100km"] == Decimal("6.00")
+        assert stats["best_l_per_100km"] == Decimal("5.00")
+        assert stats["worst_l_per_100km"] == Decimal("10.00")
+        assert stats["recent_l_per_100km"] == Decimal("5.00")
+
 
 @pytest.mark.unit
 @pytest.mark.analytics

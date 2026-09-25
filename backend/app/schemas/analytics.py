@@ -58,7 +58,7 @@ class FuelEconomyTrend(BaseModel):
     average_l_per_100km: Decimal | None = None
     best_l_per_100km: Decimal | None = None
     worst_l_per_100km: Decimal | None = None
-    recent_l_per_100km: Decimal | None = None  # Last 5 fill-ups
+    recent_l_per_100km: Decimal | None = None  # The last full tank
     trend: str = "stable"  # "improving", "declining", "stable"
     data_points: list[FuelEconomyDataPoint] = []
 

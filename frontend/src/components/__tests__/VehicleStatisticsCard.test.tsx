@@ -81,8 +81,7 @@ const STATS: VehicleStatistics = {
   overdue_maintenance_count: 0,
   average_l_per_100km: null,
   recent_l_per_100km: null,
-  average_l_per_100km_with_towing: null,
-  recent_l_per_100km_with_towing: null,
+  towing_l_per_100km: null,
   archived_at: null,
   archived_visible: false,
   is_shared_with_me: false,
@@ -171,58 +170,61 @@ describe('VehicleStatisticsCard', () => {
       latest_odometer_km: '5000',
     }
 
-    it('headlines the non-towing figure and shows the towing one beneath', () => {
+    it('headlines the figure without towing, says so, and shows towing alone beneath', () => {
       render(
         <VehicleStatisticsCard
           stats={{
             ...STATS,
             ...distance,
             average_l_per_100km: '8.00',
-            average_l_per_100km_with_towing: '12.00',
+            towing_l_per_100km: '16.00',
           }}
         />
       )
-      // 235.2145833/8 = 29.4 and /12 = 19.6, at the mpg_us adapter's one
-      // decimal. 19.6 is the COMBINED figure (every cycle, towing included),
-      // which is why the label reads "including towing" and not "towing": it
-      // is not the towing-only economy and must not be read as one.
+      // 235.2145833/8 = 29.4 and /16 = 14.7, at the mpg_us adapter's one
+      // decimal. The second line is the towing tanks ALONE, so it can say
+      // "Towing"; the headline says "not towing" only because this vehicle tows.
       expect(screen.getByText('29.4 MPG')).toBeInTheDocument()
-      expect(screen.getByText(/vehicleStats\.includingTowing.*19\.6 MPG/)).toBeInTheDocument()
+      expect(screen.getByText('vehicleStatisticsCardExtra.averageFuelEconomyNotTowing (MPG)')).toBeInTheDocument()
+      expect(screen.getByText('vehicleStats.towing: 14.7 MPG')).toBeInTheDocument()
     })
 
-    it('shows no towing line for a vehicle that never tows', () => {
-      // The two passes agree, so a second line would repeat the first. This is
-      // the "not to clutter the display of vehicles that don't tow" half of the
-      // request, and it is the case almost every vehicle is in.
+    it('shows no towing line, and no qualifier, for a vehicle that never tows', () => {
+      // This is the "not to clutter the display of vehicles that don't tow"
+      // half of the request, and it is the case almost every vehicle is in.
       render(
         <VehicleStatisticsCard
           stats={{
             ...STATS,
             ...distance,
             average_l_per_100km: '8.00',
-            average_l_per_100km_with_towing: '8.00',
+            towing_l_per_100km: null,
           }}
         />
       )
       expect(screen.getByText('29.4 MPG')).toBeInTheDocument()
-      expect(screen.queryByText(/vehicleStats\.includingTowing/)).not.toBeInTheDocument()
+      expect(screen.getByText('vehicleStatisticsCardExtra.averageFuelEconomy (MPG)')).toBeInTheDocument()
+      expect(screen.queryByText(/vehicleStats\.towing:/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/NotTowing/)).not.toBeInTheDocument()
     })
 
     it('labels the figure when every fill-up was towing', () => {
       // No non-towing figure exists. Showing nothing would hide a number the
-      // vehicle really has, so the towing-inclusive one headlines AND says so.
+      // vehicle really has, so the towing one headlines AND says so, once.
       render(
         <VehicleStatisticsCard
           stats={{
             ...STATS,
             ...distance,
             average_l_per_100km: null,
-            average_l_per_100km_with_towing: '10.00',
+            towing_l_per_100km: '10.00',
           }}
         />
       )
       expect(screen.getByText('23.5 MPG')).toBeInTheDocument()
       expect(screen.getByText('vehicleStats.towingAll')).toBeInTheDocument()
+      expect(screen.queryByText(/vehicleStats\.towing:/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/NotTowing/)).not.toBeInTheDocument()
     })
   })
 
@@ -374,7 +376,7 @@ describe('VehicleStatisticsCard', () => {
     expect(screen.queryByText('1.20 gal/hr')).not.toBeInTheDocument()
   })
 
-  it('★ the "Recent:" line reads the same token as the average above it', () => {
+  it('★ the "Last 3 tanks:" line reads the same token as the average above it', () => {
     // ★ THIS LINE WAS EXECUTED BY NO TEST AT ALL until fix round 1: every
     // fixture in the repo sets `recent_l_per_100km: null`, and a fixture that
     // nulls a value cannot exercise the renderer that reads it. It is one of
@@ -401,7 +403,7 @@ describe('VehicleStatisticsCard', () => {
     )
 
     expect(screen.getByText('9.42 L/100km')).toBeInTheDocument()
-    expect(screen.getByText('vehicleStats.recent: 7.50 L/100km')).toBeInTheDocument()
+    expect(screen.getByText('vehicleStats.lastTanks: 7.50 L/100km')).toBeInTheDocument()
     // 7.5 L through the gal_us adapter, which is what the volume formatter
     // would have rendered here.
     expect(screen.queryByText(/1\.98 gal/)).not.toBeInTheDocument()
