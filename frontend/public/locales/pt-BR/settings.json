@@ -9,8 +9,7 @@
     "backupRestore": "Backup e restauração"
   },
   "systemConfig": {
-    "title": "Configuração do sistema",
-    "description": "Configure as definições básicas do sistema, como fuso horário e modo de depuração."
+    "title": "Configuração do sistema"
   },
   "timezone": {
     "label": "Fuso horário",

@@ -10,8 +10,7 @@
     "sections": "Einstellungen-Bereiche"
   },
   "systemConfig": {
-    "title": "Systemkonfiguration",
-    "description": "Konfiguriere grundlegende Systemeinstellungen wie Zeitzone und Debug-Modus."
+    "title": "Systemkonfiguration"
   },
   "timezone": {
     "label": "Zeitzone",

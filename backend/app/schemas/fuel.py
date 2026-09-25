@@ -370,8 +370,10 @@ class FuelRecordCreate(FuelRecordBase):
         (curl, mobile app, importer) could write empty records.
 
         Rule:
-          - ``odometer_km`` is required, EXCEPT on a propane tank refill
-            (see ``is_tank_refill`` below).
+          - A reading is required: ``odometer_km``, or ``engine_hours`` for
+            a vehicle tracked by hours (the fuel form hides Mileage for one,
+            so every save it made was a 422). EXCEPT on a propane tank
+            refill (see ``is_tank_refill`` below).
           - At least one of ``liters``, ``propane_liters``, ``kwh``, or
             the propane ``tank_size_kg`` + ``tank_quantity`` pair is
             required, EXCEPT when ``missed_fillup=True`` — that's the
@@ -398,10 +400,12 @@ class FuelRecordCreate(FuelRecordBase):
             and not self.missed_fillup
         )
 
-        if self.odometer_km is None and not is_tank_refill:
+        has_reading = self.odometer_km is not None or self.engine_hours is not None
+        if not has_reading and not is_tank_refill:
             raise ValueError(
-                "odometer_km is required (set missed_fillup=True only if "
-                "you also can't supply a fuel amount)"
+                "odometer_km is required, or engine_hours for a vehicle tracked "
+                "by hours (set missed_fillup=True only if you also can't supply "
+                "a fuel amount)"
             )
 
         if self.missed_fillup:

@@ -11,7 +11,7 @@
   },
   "systemConfig": {
     "title": "System Configuration",
-    "description": "Configure core system settings like timezone and debug mode."
+    "description": "Configure core system settings like the timezone and garage sections."
   },
   "timezone": {
     "label": "Timezone",

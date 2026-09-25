@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fuel economy averages are total fuel over total distance (or engine hours), not a mean of each tank's figure
 - Economy averages leave out impossible tanks (a mistyped odometer or volume), as Analytics already did
 - The Fuel tab keeps its "include towing" toggle for a vehicle whose every tank towed
+- A vehicle tracked by engine hours can log a fill-up; every save was refused for a missing odometer
 - Odometer milestones step every 10,000 of the vehicle's own unit; a vehicle shown in miles was congratulated on "62,137 mi"
 - A request with NaN or infinity in a number field gets a 422, not a 500
 - Quick Entry offers what the vehicle page does: a fifth wheel or travel trailer gets Propane instead of Fuel Up and no Mileage, a diesel gets DEF, and the Add Fuel shortcut opens the vehicle's own fill-up
