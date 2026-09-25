@@ -435,8 +435,8 @@
     {
       "path": "src/components/DocumentList.tsx",
       "disposition": "no unit behaviour",
-      "digest": "5acc42708b491c4bb8afecc0cfa159268b4b376edb06b872d24f1f364374e287",
-      "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched 1 of them; every hit was read in context and none is a unit decision or a unit-bearing quantity."
+      "digest": "1c30806a39447ea6e3cce15790bd19543ed8f32865393b7f37c0b752ee73aaa8",
+      "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched 1 of them; every hit was read in context and none is a unit decision or a unit-bearing quantity. 2026-09-25: the upload/resolved timestamp now goes through formatAPITimestamp instead of the date-only formatter; still no unit behaviour."
     },
     {
       "path": "src/components/DocumentUpload.tsx",
@@ -699,8 +699,8 @@
     {
       "path": "src/components/RecallList.tsx",
       "disposition": "no unit behaviour",
-      "digest": "9c433b6cb845ac7c6e4cacbfb001c6c0a6201ab21ef4a3f66e1a4485837a06ee",
-      "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched NONE of them."
+      "digest": "56d080c9668787fa64733de948054cf321f7ce4cd80b98dc7e46dd8805cffa0b",
+      "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched NONE of them. 2026-09-25: the upload/resolved timestamp now goes through formatAPITimestamp instead of the date-only formatter; still no unit behaviour."
     },
     {
       "path": "src/components/ReconcileDuplicatesDialog.tsx",
@@ -776,8 +776,8 @@
     {
       "path": "src/components/ServiceVisitAttachmentList.tsx",
       "disposition": "no unit behaviour",
-      "digest": "11abd57ca05f3d6c360e495245e4e87007a7f03bfbea90975f35f354dfa10259",
-      "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched NONE of them."
+      "digest": "f048269f7f8c5f134cf2a532edcd85bcc8a77cd1c282993b3d3884c934d69efe",
+      "reason": "no unit behaviour: dispositioned under the CORRECTED scan: every unit stem, token, quantity name and canonical field suffix this codebase uses, matched case-insensitively with NO word boundary. The earlier word-boundary version was a floor (it called AnalyticsHelpModal.tsx clean while it renders \"Average MPG:\" to every user) and it was superseded before any disposition in this file was written. This file matched NONE of them. 2026-09-25: the upload/resolved timestamp now goes through formatAPITimestamp instead of the date-only formatter; still no unit behaviour."
     },
     {
       "path": "src/components/ServiceVisitAttachmentUpload.tsx",
