@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.7.0] - 2026-09-24
+
 ### Added
 - LiveLink source modules: telemetry sources now declare their capabilities
 - Generic MQTT sources, mappable from Settings with no code
