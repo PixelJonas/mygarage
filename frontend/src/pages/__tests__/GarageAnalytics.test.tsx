@@ -68,6 +68,7 @@ const GARAGE = {
     total_def: '100.00',
     total_insurance: '2000.00',
     total_taxes: '400.00',
+    total_financing: '0.00',
   },
   cost_breakdown_by_category: [
     { category: 'Maintenance', amount: '3000.00' },
@@ -80,14 +81,14 @@ const GARAGE = {
     { category: 'Taxes', amount: '400.00' },
   ],
   cost_by_vehicle: [
-    { vin: 'V1', name: '2022 Ram 1500', nickname: 'Ram', purchase_price: '40000', total_maintenance: '1000', total_upgrades: '5000', total_inspection: '0', total_collision: '1000', total_detailing: '100', total_fuel: '800', total_def: '100', total_cost: '8000.00' },
-    { vin: 'V2', name: '2020 Mitsubishi Mirage', nickname: 'Mirage', purchase_price: '15000', total_maintenance: '1500', total_upgrades: '0', total_inspection: '0', total_collision: '0', total_detailing: '50', total_fuel: '500', total_def: '0', total_cost: '2050.00' },
-    { vin: 'V3', name: '2021 Polaris Sportsman', nickname: 'Sportsman', purchase_price: '8000', total_maintenance: '500', total_upgrades: '0', total_inspection: '0', total_collision: '0', total_detailing: '50', total_fuel: '200', total_def: '0', total_cost: '750.00' },
+    { vin: 'V1', name: '2022 Ram 1500', nickname: 'Ram', purchase_price: '40000', total_maintenance: '1000', total_upgrades: '5000', total_inspection: '0', total_collision: '1000', total_detailing: '100', total_fuel: '800', total_def: '100', total_financing: '0', total_cost: '8000.00' },
+    { vin: 'V2', name: '2020 Mitsubishi Mirage', nickname: 'Mirage', purchase_price: '15000', total_maintenance: '1500', total_upgrades: '0', total_inspection: '0', total_collision: '0', total_detailing: '50', total_fuel: '500', total_def: '0', total_financing: '0', total_cost: '2050.00' },
+    { vin: 'V3', name: '2021 Polaris Sportsman', nickname: 'Sportsman', purchase_price: '8000', total_maintenance: '500', total_upgrades: '0', total_inspection: '0', total_collision: '0', total_detailing: '50', total_fuel: '200', total_def: '0', total_financing: '0', total_cost: '750.00' },
   ],
   monthly_trends: [
-    { month: 'Jan 2026', service: '100', fuel: '50', def_cost: '0', total: '150' },
-    { month: 'Feb 2026', service: '200', fuel: '60', def_cost: '10', total: '270' },
-    { month: 'Mar 2026', service: '0', fuel: '40', def_cost: '0', total: '40' },
+    { month: 'Jan 2026', service: '100', fuel: '50', def_cost: '0', financing: '0', total: '150' },
+    { month: 'Feb 2026', service: '200', fuel: '60', def_cost: '10', financing: '0', total: '270' },
+    { month: 'Mar 2026', service: '0', fuel: '40', def_cost: '0', financing: '0', total: '40' },
   ],
 }
 
