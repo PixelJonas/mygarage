@@ -180,5 +180,55 @@ class TestNotificationInbox:
         response = await client.get("/api/notifications/inbox", headers=auth_headers)
 
         assert response.status_code == 200
-        titles = [item["title"] for item in response.json()["items"]]
-        assert "Tyre rotation" not in titles
+        # Not overdue: the canonical reading is 1000, not the mistyped 9999. It
+        # may still be listed as upcoming, because the same correction makes the
+        # 90-day rate enormous and the projection lands today; that is the
+        # rate's business (calculate_driving_rate), not this test's.
+        kinds = {item["title"]: item["kind"] for item in response.json()["items"]}
+        assert kinds.get("Tyre rotation") != "reminder_overdue"
+
+    async def test_a_mileage_reminder_projected_within_two_weeks_is_upcoming(
+        self, client: AsyncClient, auth_headers, test_user, db_session
+    ):
+        """The bell uses the same expected date as the card badge and the
+        reminders list: a usage projection at the vehicle's recent rate, not
+        only a calendar date, so a mileage-only reminder warns before it is
+        overdue."""
+        from decimal import Decimal
+
+        from app.models.odometer import OdometerRecord
+
+        vin = "INBOXPRJ000000001"
+        await _vehicle(db_session, test_user, vin)
+        today = date.today()
+        db_session.add_all(
+            [
+                # 100 km/day over the last 60 days.
+                OdometerRecord(
+                    vin=vin, date=today - timedelta(days=60), odometer_km=Decimal("50000")
+                ),
+                OdometerRecord(vin=vin, date=today, odometer_km=Decimal("56000")),
+                Reminder(
+                    vin=vin,
+                    title="Oil in 1,000 km",
+                    reminder_type="mileage",
+                    status="pending",
+                    due_mileage_km=Decimal("57000"),
+                ),  # ~10 days out: upcoming
+                Reminder(
+                    vin=vin,
+                    title="Belt in 14,000 km",
+                    reminder_type="mileage",
+                    status="pending",
+                    due_mileage_km=Decimal("70000"),
+                ),  # ~140 days out: not in the inbox
+            ]
+        )
+        await db_session.commit()
+
+        response = await client.get("/api/notifications/inbox", headers=auth_headers)
+
+        assert response.status_code == 200
+        items = {item["title"]: item for item in response.json()["items"]}
+        assert items["Oil in 1,000 km"]["kind"] == "reminder_upcoming"
+        assert "Belt in 14,000 km" not in items

@@ -24,6 +24,7 @@ vi.mock('../../contexts/AuthContext', () => ({
 
 import Dashboard from '../Dashboard'
 import { sortPickKey } from '../../utils/dashboardSort'
+import { makeVehicleStatistics } from '../../__tests__/factories'
 
 function vehicle(v: {
   vin: string
@@ -32,31 +33,7 @@ function vehicle(v: {
   model: string
   is_shared_with_me?: boolean
 }): Record<string, unknown> {
-  return {
-    main_photo_url: null,
-    vehicle_type: 'Car',
-    total_service_records: 0,
-    total_fuel_records: 0,
-    total_odometer_records: 0,
-    total_maintenance_items: 0,
-    total_documents: 0,
-    total_notes: 0,
-    total_photos: 0,
-    latest_service_date: null,
-    latest_fuel_date: null,
-    latest_odometer_km: null,
-    latest_odometer_date: null,
-    upcoming_maintenance_count: 0,
-    overdue_maintenance_count: 0,
-    average_l_per_100km: null,
-    recent_l_per_100km: null,
-    archived_at: null,
-    archived_visible: false,
-    is_shared_with_me: false,
-    shared_by_username: null,
-    share_permission: null,
-    ...v,
-  }
+  return makeVehicleStatistics({ archived_visible: false, ...v })
 }
 
 function dashboardPayload(vehicles: Record<string, unknown>[]): { data: Record<string, unknown> } {

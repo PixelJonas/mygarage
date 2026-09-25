@@ -35,6 +35,7 @@ vi.mock('../../contexts/AuthContext', () => ({
 
 import Dashboard from '../Dashboard'
 import { readSortPick, rememberSortPick, sortPickKey } from '../../utils/dashboardSort'
+import { makeVehicleStatistics } from '../../__tests__/factories'
 
 // Name order (year first): 2019 Aston, 2020 Chevy, 2022 BMW.
 // Maintenance order (most overdue first): Chevy, BMW, Aston.
@@ -42,19 +43,16 @@ const VEHICLES = [
   { vin: 'B', year: 2022, make: 'BMW', overdue: 1 },
   { vin: 'C', year: 2020, make: 'Chevy', overdue: 2 },
   { vin: 'A', year: 2019, make: 'Aston', overdue: 0 },
-].map((v) => ({
-  vin: v.vin,
-  year: v.year,
-  make: v.make,
-  model: 'X',
-  vehicle_type: 'Car',
-  overdue_maintenance_count: v.overdue,
-  upcoming_maintenance_count: 0,
-  archived_at: null,
-  archived_visible: false,
-  is_shared_with_me: false,
-  distance_unit: null,
-}))
+].map((v) =>
+  makeVehicleStatistics({
+    vin: v.vin,
+    year: v.year,
+    make: v.make,
+    model: 'X',
+    overdue_maintenance_count: v.overdue,
+    archived_visible: false,
+  }),
+)
 
 const NAME = ['2019 Aston', '2020 Chevy', '2022 BMW']
 const NEWEST = ['2022 BMW', '2020 Chevy', '2019 Aston']

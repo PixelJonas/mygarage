@@ -1,6 +1,8 @@
 """Reminder business logic service layer."""
 
 import logging
+from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
@@ -27,6 +29,9 @@ logger = logging.getLogger(__name__)
 
 # Notification dedup cooldown (24 hours)
 NOTIFICATION_COOLDOWN = timedelta(hours=24)
+
+# A pending reminder expected within this window is "due soon" (card/hero badge, fleet strip).
+DUE_SOON_WINDOW = timedelta(days=30)
 
 
 def validate_reminder_state(
@@ -217,6 +222,132 @@ def is_reminder_snoozed(reminder: Reminder, today: date | None = None) -> bool:
     return reminder.snoozed_until is not None and today < reminder.snoozed_until
 
 
+def projected_usage_date(
+    reminder: Reminder,
+    current_km: Decimal | None,
+    current_hours: Decimal | None,
+    km_per_day: float | None,
+    hours_per_day: float | None,
+    today: date,
+) -> date | None:
+    """When the reminder's usage target is reached at the vehicle's rate.
+
+    Mileage first, else hours (a rule never sets both; legacy ``both`` rows
+    carry only mileage). ``None`` without a target, a reading or a rate.
+    """
+    if reminder.due_mileage_km is not None:
+        if current_km is None or not km_per_day:
+            return None
+        return project_usage_date(current_km, reminder.due_mileage_km, km_per_day, today)
+    if reminder.due_hours is not None:
+        if current_hours is None or not hours_per_day:
+            return None
+        return project_usage_date(current_hours, reminder.due_hours, hours_per_day, today)
+    return None
+
+
+def expected_due_date(
+    reminder: Reminder,
+    current_km: Decimal | None,
+    current_hours: Decimal | None,
+    km_per_day: float | None,
+    hours_per_day: float | None,
+    today: date,
+) -> date | None:
+    """The date a pending reminder is expected: the earlier of its calendar
+    ``due_date`` and its usage projection, whichever exist; ``None`` with
+    neither. The reminders list shows it as ``estimated_due_date`` (once a
+    projection exists) and the due-soon count compares it to ``DUE_SOON_WINDOW``.
+    """
+    projected = projected_usage_date(
+        reminder, current_km, current_hours, km_per_day, hours_per_day, today
+    )
+    if reminder.due_date and projected:
+        return min(reminder.due_date, projected)
+    return reminder.due_date or projected
+
+
+@dataclass(frozen=True)
+class ReminderCounts:
+    """Per-vehicle counts; ``due_soon`` is the subset of ``upcoming`` expected within ``DUE_SOON_WINDOW``."""
+
+    overdue: int
+    upcoming: int
+    due_soon: int
+
+
+def classify_pending_reminders(
+    pending: Sequence[Reminder],
+    current_km: Decimal | None,
+    current_hours: Decimal | None,
+    km_per_day: float | None,
+    hours_per_day: float | None,
+    today: date,
+) -> ReminderCounts:
+    """Sort a vehicle's pending reminders into overdue, upcoming (pending, not
+    overdue) and due soon (upcoming, expected within ``DUE_SOON_WINDOW``).
+
+    A snoozed reminder is in no count until its date passes. ``None`` rates
+    skip the usage projection, so a usage-only reminder is then never due
+    soon: the widget and family dashboard count that way, needing no rates.
+    """
+    overdue = upcoming = due_soon = 0
+    for reminder in pending:
+        if is_reminder_snoozed(reminder, today):
+            continue
+        if is_reminder_overdue(reminder, current_km, current_hours, today):
+            overdue += 1
+            continue
+        upcoming += 1
+        expected = expected_due_date(
+            reminder, current_km, current_hours, km_per_day, hours_per_day, today
+        )
+        if expected is not None and expected <= today + DUE_SOON_WINDOW:
+            due_soon += 1
+    return ReminderCounts(overdue=overdue, upcoming=upcoming, due_soon=due_soon)
+
+
+async def count_pending_reminders(
+    db: AsyncSession,
+    vin: str,
+    current_km: Decimal | None,
+    current_hours: Decimal | None,
+    today: date | None = None,
+) -> ReminderCounts:
+    """``classify_pending_reminders`` over the vehicle's pending reminders.
+
+    The usage rates are fetched only when a reminder can use one (a usage
+    target and a reading to project from). The dashboard card, the fleet
+    strip and the detail hero all count through here, so their badges agree;
+    callers pass the readings they display, so a reading and the counts
+    beside it never disagree.
+    """
+    if today is None:
+        today = household_today()
+    pending = (
+        (
+            await db.execute(
+                select(Reminder).where(Reminder.vin == vin, Reminder.status == "pending")
+            )
+        )
+        .scalars()
+        .all()
+    )
+    km_per_day = (
+        await calculate_driving_rate(vin, db)
+        if current_km is not None and any(r.due_mileage_km is not None for r in pending)
+        else None
+    )
+    hours_per_day = (
+        await calculate_hours_driving_rate(vin, db)
+        if current_hours is not None and any(r.due_hours is not None for r in pending)
+        else None
+    )
+    return classify_pending_reminders(
+        pending, current_km, current_hours, km_per_day, hours_per_day, today
+    )
+
+
 def calculate_smart_estimated_date(
     current_odometer_km: Decimal,
     target_odometer_km: Decimal,
@@ -371,24 +502,25 @@ async def enrich_with_estimate(reminder: Reminder, db: AsyncSession) -> Reminder
     response = ReminderResponse.model_validate(reminder)
     if reminder.status != "pending":
         return response
-    rate: float | None = None
-    current: Decimal | None = None
-    target: Decimal | None = None
+    today = household_today()
+    km_per_day: float | None = None
+    hours_per_day: float | None = None
+    current_km: Decimal | None = None
+    current_hours: Decimal | None = None
     if reminder.due_mileage_km is not None:
-        rate = await calculate_driving_rate(reminder.vin, db)
-        current = await get_current_mileage(reminder.vin, db)
-        target = reminder.due_mileage_km
+        km_per_day = await calculate_driving_rate(reminder.vin, db)
+        current_km = await get_current_mileage(reminder.vin, db)
     elif reminder.due_hours is not None:
-        rate = await calculate_hours_driving_rate(reminder.vin, db)
-        current = await get_current_hours(reminder.vin, db)
-        target = reminder.due_hours
-    if rate and current is not None and target is not None:
-        projected = project_usage_date(current, target, rate, household_today())
+        hours_per_day = await calculate_hours_driving_rate(reminder.vin, db)
+        current_hours = await get_current_hours(reminder.vin, db)
+    projected = projected_usage_date(
+        reminder, current_km, current_hours, km_per_day, hours_per_day, today
+    )
+    if projected is not None:
         response.projected_usage_date = projected
-        if projected is not None:
-            response.estimated_due_date = (
-                min(projected, reminder.due_date) if reminder.due_date else projected
-            )
+        response.estimated_due_date = expected_due_date(
+            reminder, current_km, current_hours, km_per_day, hours_per_day, today
+        )
     return response
 
 

@@ -26,7 +26,11 @@ from app.schemas.family import (
     FamilyVehicleSummary,
 )
 from app.services.hours_service import latest_engine_hours_and_date
-from app.services.reminder_service import is_reminder_overdue, is_reminder_snoozed
+from app.services.reminder_service import (
+    classify_pending_reminders,
+    is_reminder_overdue,
+    is_reminder_snoozed,
+)
 from app.utils.household_time import household_today
 from app.utils.logging_utils import sanitize_for_log
 
@@ -195,20 +199,22 @@ class FamilyDashboardService:
         )
         reminders = list(reminder_result.scalars().all())
 
-        # Calculate overdue and upcoming counts from reminders
-        overdue_count = 0
+        # Overdue count through the shared split (no rates: this surface has
+        # no due-soon figure); the soonest dated reminder that is neither
+        # snoozed nor overdue is the next maintenance due.
+        overdue_count = classify_pending_reminders(
+            reminders, current_odometer_km, current_hours, None, None, today
+        ).overdue
         next_maintenance_description: str | None = None
         next_maintenance_due: str | None = None
         soonest_due_date: date | None = None
 
         for reminder in reminders:
             if is_reminder_snoozed(reminder, today):
-                # Out of the overdue count AND next_maintenance_due while
-                # snoozed (plan 2026-09-18, decision 4).
                 continue
             if is_reminder_overdue(reminder, current_odometer_km, current_hours, today):
-                overdue_count += 1
-            elif reminder.due_date:
+                continue
+            if reminder.due_date:
                 if soonest_due_date is None or reminder.due_date < soonest_due_date:
                     soonest_due_date = reminder.due_date
                     next_maintenance_description = reminder.title

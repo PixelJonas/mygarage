@@ -40,6 +40,7 @@ vi.mock('react-i18next', () => ({
 
 import api from '../../../services/api'
 import VehicleEditDrawer from '../VehicleEditDrawer'
+import { makeDetailStats } from '../../../__tests__/factories'
 
 const mockedApi = vi.mocked(api)
 
@@ -56,22 +57,8 @@ const baseVehicle: Vehicle = {
   distance_unit: null,
 }
 
-const stats = (usage_unit: string): VehicleDetailStats => ({
-  average_cost_per_hr: null,
-  average_l_per_hr: null,
-  current_hours: null,
-  last_fillup_date: null,
-  last_service_date: null,
-  latest_hours: null,
-  latest_odometer_date: null,
-  latest_odometer_km: null,
-  overdue_count: 0,
-  secondary_usage_enabled: false,
-  spent_this_year: '0',
-  upcoming_count: 0,
-  usage_unit,
-  year: 2024,
-})
+const stats = (usage_unit: string): VehicleDetailStats =>
+  makeDetailStats({ usage_unit, spent_this_year: '0', year: 2024 })
 
 function renderDrawer(vehicle: Vehicle): void {
   mockedApi.get.mockImplementation((url: string) =>

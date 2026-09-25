@@ -681,8 +681,7 @@
     "overdue": "{{count}} просроченных",
     "photoCount": "{{count}} фотографий",
     "recentActivity": "Недавняя активность",
-    "service": "Сервис",
-    "upcoming": "{{count}} предстоящих"
+    "service": "Сервис"
   },
   "vendorSearch": {
     "noResults": "Нет результатов"

@@ -101,7 +101,7 @@
     "familyFriendsSubtitle": "Lightweight records for people without an account",
     "fleet": {
       "overdueCaption": "Overdue · needs attention",
-      "upcomingCaption": "Upcoming · next 30 days",
+      "upcomingCaption": "Due soon · next 30 days",
       "spentLabel": "Spent",
       "nextDueLabel": "Next due",
       "nextDueNone": "Nothing scheduled"
@@ -1257,7 +1257,7 @@
     "lastTanks": "Last {{tanks}} tanks",
     "recentActivity": "Recent Activity",
     "service": "Service",
-    "upcoming": "{{count}} Upcoming",
+    "dueSoon": "{{count}} due soon",
     "towingAll": "Every tank towing",
     "towing": "Towing"
   },

@@ -140,7 +140,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import type { Vehicle, VehicleDetailStats, VehicleType } from '../../types/vehicle'
 import { makeUnitFormat } from '../../utils/unitFormat'
 import VehicleDetail from '../VehicleDetail'
-import { IMPERIAL_UNITS, makeUser } from '../../__tests__/factories'
+import { IMPERIAL_UNITS, makeUser, makeDetailStats } from '../../__tests__/factories'
 
 const mockedVehicleService = vi.mocked(vehicleService)
 const mockedLivelinkService = vi.mocked(livelinkService)
@@ -569,21 +569,18 @@ describe('VehicleDetail', () => {
 
   it('does not let a stale A response overwrite B after navigating A->B (B3)', async () => {
     // Distinguish A vs B by HERO-visible status only (both rendered in THIS task):
-    // A is overdue, B is upcoming. Under the key-returning t() mock the badge text
+    // A is overdue, B is due soon. Under the key-returning t() mock the badge text
     // is the i18n key, so A shows 'vehicleStats.overdue' and B shows
-    // 'vehicleStats.upcoming' — no key-facts strip (Task 5), no unit/currency
+    // 'vehicleStats.dueSoon' — no key-facts strip (Task 5), no unit/currency
     // formatting. A resolves LATE (deferred); B resolves immediately; B must win.
     let resolveA: (value: VehicleDetailStats) => void = () => {}
-    const A_STATS: VehicleDetailStats = {
-      overdue_count: 3, upcoming_count: 0,
-      usage_unit: 'distance', current_hours: null,
-      latest_hours: null, average_l_per_hr: null, average_cost_per_hr: null,
-      secondary_usage_enabled: false,
-      latest_odometer_km: null, latest_odometer_date: null,
-      last_service_date: null, last_fillup_date: null,
-      spent_this_year: '0.00', year: 2026,
+    const A_STATS: VehicleDetailStats = makeDetailStats({ overdue_count: 3 })
+    const B_STATS: VehicleDetailStats = {
+      ...A_STATS,
+      overdue_count: 0,
+      upcoming_count: 4,
+      due_soon_count: 4,
     }
-    const B_STATS: VehicleDetailStats = { ...A_STATS, overdue_count: 0, upcoming_count: 4 }
     mockedVehicleService.getDetailStats.mockImplementation((vin: string) =>
       vin === 'AAAAAAAAAAAAAAAAA'
         ? new Promise<VehicleDetailStats>((res) => { resolveA = res })
@@ -600,16 +597,16 @@ describe('VehicleDetail', () => {
     await waitFor(() => expect(screen.getByText('Test Car')).toBeInTheDocument())
     // Navigate A -> B (same route element, useParams changes -> [vin] effect re-runs).
     fireEvent.click(screen.getByText('go B'))
-    // B rendered: hero shows the UPCOMING badge (overdue 0), never overdue.
-    await waitFor(() => expect(screen.getByText('vehicleStats.upcoming')).toBeInTheDocument())
+    // B rendered: hero shows the DUE-SOON badge (overdue 0), never overdue.
+    await waitFor(() => expect(screen.getByText('vehicleStats.dueSoon')).toBeInTheDocument())
     expect(screen.queryByText('vehicleStats.overdue')).not.toBeInTheDocument()
     // The stale A response now arrives; the cancelled guard must swallow it.
     resolveA(A_STATS)
     // Meaningful flush: awaiting waitFor yields to the microtask queue so A's
-    // .then() runs (and no-ops under the guard). B's upcoming badge must still
+    // .then() runs (and no-ops under the guard). B's due-soon badge must still
     // stand and A's overdue badge must never appear. Without the guard, A would
-    // overwrite B here -> the upcoming badge vanishes and this waitFor throws.
-    await waitFor(() => expect(screen.getByText('vehicleStats.upcoming')).toBeInTheDocument())
+    // overwrite B here -> the due-soon badge vanishes and this waitFor throws.
+    await waitFor(() => expect(screen.getByText('vehicleStats.dueSoon')).toBeInTheDocument())
     expect(screen.queryByText('vehicleStats.overdue')).not.toBeInTheDocument()
   })
 
@@ -617,15 +614,14 @@ describe('VehicleDetail', () => {
     // Successful NONZERO page integration: fetch -> page state -> props ->
     // mounted VehicleHero AND VehicleKeyFacts. A broken page mount, an omitted
     // detailStats prop, or a missing VehicleKeyFacts mount all fail here.
-    mockedVehicleService.getDetailStats.mockResolvedValue({
-      overdue_count: 3, upcoming_count: 2,
-      usage_unit: 'distance', current_hours: null,
-      latest_hours: null, average_l_per_hr: null, average_cost_per_hr: null,
-      secondary_usage_enabled: false,
-      latest_odometer_km: '160000.00', latest_odometer_date: '2026-07-01',
-      last_service_date: '2026-06-15', last_fillup_date: '2026-07-10',
-      spent_this_year: '1234.50', year: 2026,
-    })
+    mockedVehicleService.getDetailStats.mockResolvedValue(
+      makeDetailStats({
+        overdue_count: 3, upcoming_count: 2,
+        latest_odometer_km: '160000.00', latest_odometer_date: '2026-07-01',
+        last_service_date: '2026-06-15', last_fillup_date: '2026-07-10',
+        spent_this_year: '1234.50',
+      }),
+    )
     renderVehicleDetail()
     await waitFor(() => expect(screen.getByText('Test Car')).toBeInTheDocument())
 
