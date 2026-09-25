@@ -2,19 +2,7 @@ import { test, expect } from './helpers/fixtures'
 import type { Page } from '@playwright/test'
 import { ACCENTS, DEFAULT_ACCENT } from '../src/constants/accents'
 import { familyLoads, trackWoff2Requests } from './helpers/fonts'
-
-// Block every script request by RESOURCE TYPE, not URL glob. A glob like
-// '**/assets/*.js' only matches a preview/production build's output path —
-// under the `chromium` project's dev-server webServer (`bun run dev`), the
-// bundle is served as /src/main.tsx and /node_modules/.vite/deps/*.js, so
-// that glob matches zero of the ~90 requests a real page load makes and
-// React mounts fully while the test still passes. Filtering by
-// resourceType() === 'script' works regardless of dev-vs-preview URL shapes.
-async function blockScripts(page: Page): Promise<void> {
-  await page.route('**/*', (route) =>
-    route.request().resourceType() === 'script' ? route.abort() : route.continue(),
-  )
-}
+import { blockScripts } from './helpers/page'
 
 test.describe('P0 foundation', () => {
   test('applies the stored accent before React mounts', async ({ page }) => {
