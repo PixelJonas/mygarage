@@ -15,6 +15,7 @@ from app.models import (
 )
 from app.models.service_visit import ServiceVisit
 from app.models.user import User
+from app.schemas.vehicle import NON_MOTORIZED_VEHICLE_TYPES
 from app.services.auth import get_vehicle_or_403, require_auth
 from app.services.service_visit_service import service_visit_cost_load_options
 from app.utils.csv_emission import ODOMETER_COLUMN, VOLUME_COLUMN, cell_for, token_for
@@ -198,8 +199,7 @@ async def download_cost_summary_pdf(
     """Generate and download annual cost summary PDF."""
     vehicle = await get_vehicle_or_403(vin, current_user, db)
 
-    # Check if vehicle is motorized (not a trailer or fifth wheel)
-    is_motorized = vehicle.vehicle_type not in ["Trailer", "FifthWheel"]
+    is_motorized = vehicle.vehicle_type not in NON_MOTORIZED_VEHICLE_TYPES
 
     # Prepare vehicle info
     vehicle_info = {

@@ -4,7 +4,7 @@ import { resolve } from 'node:path'
 import { render, screen, fireEvent } from '../../__tests__/test-utils'
 import type { VehicleStatistics } from '../../types/dashboard'
 import { makeUser, makeUnitSet, IMPERIAL_UNITS, type User, makeVehicleStatistics } from '../../__tests__/factories'
-import { formatFuelRate } from '../../utils/unitFormat'
+import { formatFuelRate, formatVolumeRate } from '../../utils/unitFormat'
 
 const mockNavigate = vi.fn()
 vi.mock('react-router-dom', async (importOriginal) => {
@@ -416,5 +416,49 @@ describe('VehicleStatisticsCard', () => {
       expect(screen.getByText('vehicleStats.overdue')).toBeInTheDocument()
       expect(screen.queryByText('vehicleStats.dueSoon')).not.toBeInTheDocument()
     })
+  })
+})
+
+describe('towable RV rows (fifth wheels and travel trailers only)', () => {
+  const towVehicle = { vin: '3C63R3PL1SG545506', year: 2025, make: 'RAM', model: '3500' }
+  const propane = { propane_l_per_month: '20.8', recent_propane_l_per_month: '5.7' }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    auth.user = null
+  })
+
+  it('a fifth wheel lists its tow vehicle by year make model', () => {
+    render(<VehicleStatisticsCard stats={{ ...STATS, tow_vehicle: towVehicle }} />)
+    expect(screen.getByText('vehicleStats.towedBy')).toBeInTheDocument()
+    expect(screen.getByText('2025 RAM 3500')).toBeInTheDocument()
+  })
+
+  it('a travel trailer shows average propane per month in the reader\'s volume unit, with the recent line', () => {
+    render(<VehicleStatisticsCard stats={{ ...STATS, vehicle_type: 'TravelTrailer', ...propane }} />)
+    // The anonymous client resolves to the imperial preset, so litres render as gallons.
+    const gal = formatVolumeRate(IMPERIAL_UNITS, 20.8, '/mo')
+    expect(gal).toMatch(/gal\/mo$/)
+    expect(screen.getByText('vehicleStats.averagePropane')).toBeInTheDocument()
+    expect(screen.getByText(gal)).toBeInTheDocument()
+    expect(screen.getByText(/vehicleStats\.lastRefills/)).toBeInTheDocument()
+  })
+
+  it('a rate from a single window has no recent line', () => {
+    render(
+      <VehicleStatisticsCard
+        stats={{ ...STATS, propane_l_per_month: '20.8', recent_propane_l_per_month: '20.8' }}
+      />,
+    )
+    expect(screen.getByText('vehicleStats.averagePropane')).toBeInTheDocument()
+    expect(screen.queryByText(/vehicleStats\.lastRefills/)).not.toBeInTheDocument()
+  })
+
+  it('a car with the same fields shows neither row', () => {
+    render(
+      <VehicleStatisticsCard stats={{ ...STATS, vehicle_type: 'Car', tow_vehicle: towVehicle, ...propane }} />,
+    )
+    expect(screen.queryByText('vehicleStats.towedBy')).not.toBeInTheDocument()
+    expect(screen.queryByText('vehicleStats.averagePropane')).not.toBeInTheDocument()
   })
 })

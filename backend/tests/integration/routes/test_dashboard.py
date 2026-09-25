@@ -1205,3 +1205,68 @@ class TestHomePageFuelEconomyAndTowing:
         stats = await self._stats(client, headers, vin)
         assert stats["average_l_per_100km"] is None
         assert Decimal(str(stats["towing_l_per_100km"])) == Decimal("10.00")
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+class TestTowableCards:
+    """A fifth wheel's card names its tow vehicle and carries a propane rate."""
+
+    async def _stats(self, client: AsyncClient, headers: dict[str, str]) -> dict[str, dict]:
+        response = await client.get("/api/dashboard", headers=headers)
+        assert response.status_code == 200, response.text
+        return {v["vin"]: v for v in response.json()["vehicles"]}
+
+    async def test_a_fifth_wheel_names_its_tow_vehicle_and_its_propane_rate(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        truck_vin, headers = await _isolated_fleet(db_session)
+        truck = await db_session.get(Vehicle, truck_vin)
+        assert truck is not None
+        truck.year, truck.make, truck.model = 2025, "RAM", "3500"
+        # "TOWED" + the fleet's 12 hex chars: 17 chars, unique per run.
+        rv_vin = f"TOWED{truck_vin[5:]}"
+        db_session.add(
+            Vehicle(
+                vin=rv_vin, user_id=truck.user_id, nickname="Durango", vehicle_type="FifthWheel"
+            )
+        )
+        await db_session.commit()
+
+        response = await client.post(
+            f"/api/vehicles/{rv_vin}/trailer",
+            json={"vin": rv_vin, "tow_vehicle_vin": truck_vin},
+            headers=headers,
+        )
+        assert response.status_code == 201, response.text
+
+        # Bottle refills carry no odometer. The first only starts the clock:
+        # all five = 105 L over 120 days; the last three refills, anchored on
+        # the one before them = 75 L over 90 days.
+        d0 = date(2026, 1, 1)
+        for days, liters in ((0, "30"), (30, "30"), (60, "30"), (90, "30"), (120, "15")):
+            response = await client.post(
+                f"/api/vehicles/{rv_vin}/fuel",
+                json={
+                    "vin": rv_vin,
+                    "date": (d0 + timedelta(days=days)).isoformat(),
+                    "propane_liters": liters,
+                    "cost": "30",
+                },
+                headers=headers,
+            )
+            assert response.status_code == 201, response.text
+
+        fleet = await self._stats(client, headers)
+        rv, truck_stats = fleet[rv_vin], fleet[truck_vin]
+        assert rv["tow_vehicle"] == {
+            "vin": truck_vin,
+            "year": 2025,
+            "make": "RAM",
+            "model": "3500",
+        }
+        assert Decimal(str(rv["propane_l_per_month"])) == Decimal("26.63")
+        assert Decimal(str(rv["recent_propane_l_per_month"])) == Decimal("25.36")
+        assert truck_stats["tow_vehicle"] is None
+        assert truck_stats["propane_l_per_month"] is None
+        assert truck_stats["recent_propane_l_per_month"] is None

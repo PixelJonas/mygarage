@@ -8,7 +8,7 @@ frontend UnitFormatter.
 # pyright: reportReturnType=false, reportOptionalOperand=false
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date as date_type
 from decimal import Decimal
@@ -338,6 +338,58 @@ def average_l_per_100km(periods: Sequence[EconomyPeriod]) -> Decimal | None:
     liters = sum((period.liters for period in periods), Decimal(0))
     distance_km = sum((period.distance_km for period in periods), Decimal(0))
     return round(liters / distance_km * Decimal(100), 2)
+
+
+# A trailer has no odometer, so a bottle refill's consumption is volume over
+# TIME. Months are how people quote propane use ("a bottle a month in winter"),
+# and 365.25 / 12 keeps a 30-day gap and a 31-day gap comparable.
+DAYS_PER_MONTH = Decimal("30.4375")
+
+
+def is_bottle_refill(record: FuelRecord) -> bool:
+    """Whether a fuel record is a propane bottle refill.
+
+    The schema's ``is_tank_refill`` rule: propane with no ``liters`` and no
+    ``kwh``. Propane alongside either is a propane-POWERED vehicle's fill-up
+    and belongs to the distance economy. One spelling, shared with the
+    analytics propane figures so the two surfaces cannot classify a record
+    differently.
+    """
+    return (
+        record.propane_liters is not None
+        and record.propane_liters > 0
+        and record.liters is None
+        and record.kwh is None
+    )
+
+
+def propane_fills(records: Iterable[FuelRecord]) -> list[tuple[date_type, Decimal]]:
+    """Bottle refills as ``(date, litres)``, oldest first."""
+    fills = [
+        (record.date, record.propane_liters)
+        for record in records
+        if is_bottle_refill(record) and record.propane_liters is not None
+    ]
+    fills.sort(key=lambda fill: fill[0])
+    return fills
+
+
+def propane_l_per_month(fills: Sequence[tuple[date_type, Decimal]]) -> Decimal | None:
+    """Litres of propane per average month across ``fills`` (oldest first).
+
+    The first refill only starts the clock: its litres were burned before the
+    window, exactly like the first full tank of a distance economy. Everything
+    put in afterwards is spread over the days from the first refill to the
+    last, so a partial top-up counts by its volume rather than as a bottle.
+    None with fewer than two refills, or when they all share a day.
+    """
+    if len(fills) < 2:
+        return None
+    span_days = (fills[-1][0] - fills[0][0]).days
+    if span_days <= 0:
+        return None
+    liters = sum((liters for _, liters in fills[1:]), Decimal(0))
+    return round(liters * DAYS_PER_MONTH / span_days, 2)
 
 
 @dataclass(frozen=True)

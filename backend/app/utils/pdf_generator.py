@@ -19,6 +19,7 @@ from reportlab.platypus import (
     TableStyle,
 )
 
+from app.schemas.vehicle import NON_MOTORIZED_VEHICLE_TYPES
 from app.utils.render_context import RenderContext
 from app.utils.unit_adapters import adapter_for
 from app.utils.unit_formatting import format_label
@@ -393,12 +394,7 @@ class PDFReportGenerator:
         # Summary table
         table_data = [["Category", "Count", "Total Cost", "Average"]]
 
-        # Check if vehicle is motorized (not a trailer or fifth wheel)
-        is_motorized = vehicle_info.get("vehicle_type") not in [
-            "Trailer",
-            "FifthWheel",
-            "TravelTrailer",
-        ]
+        is_motorized = vehicle_info.get("vehicle_type") not in NON_MOTORIZED_VEHICLE_TYPES
 
         # Build categories list - exclude Fuel for non-motorized vehicles
         categories = [

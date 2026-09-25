@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Fifth wheel and travel trailer cards show the tow vehicle and average propane use per month, in the slots where motorized cards show the odometer and fuel economy
+
 ### Changed
 - Vehicle cards and the vehicle hero flag reminders due within 30 days, by date or by projected mileage and hours, instead of every pending reminder; the fleet strip's count is the sum of those badges
 - The notification bell warns about mileage and hours reminders projected to come due within two weeks, not only dated ones
