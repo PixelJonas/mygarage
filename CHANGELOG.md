@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Theme and accent apply before first paint in production: the CSP now allows the shell's inline script by hash instead of refusing it
+- The smallest font subset was inlined as a data: URL and refused by the CSP; fonts are always emitted as files
+
 ## [3.7.0] - 2026-09-24
 
 ### Added
