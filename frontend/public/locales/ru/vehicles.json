@@ -62,7 +62,7 @@
     "noVehiclesYet": "Пока нет транспортных средств",
     "oldestFirst": "Сначала старые",
     "sharedWithMeSection": "Доступные мне ({{count}})",
-    "sortByName": "Сортировать по имени",
+    "sortByName": "По имени",
     "sortTrigger": "Сортировка: {{label}}",
     "sortVehicles": "Сортировать транспортные средства",
     "title": "Мой гараж",

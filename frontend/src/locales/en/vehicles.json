@@ -118,7 +118,7 @@
     "selectVehicles": "Select",
     "selectedCount": "{{count}} selected",
     "sharedWithMeSection": "Shared with me ({{count}})",
-    "sortByName": "Sort by Name",
+    "sortByName": "Name",
     "sortTrigger": "Sort: {{label}}",
     "sortVehicles": "Sort vehicles",
     "title": "My Garage"

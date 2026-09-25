@@ -101,8 +101,8 @@
     "noVehiclesYet": "Aucun véhicule pour le moment",
     "oldestFirst": "Les plus anciens d'abord",
     "sharedWithMeSection": "Partagés avec moi ({{count}})",
-    "sortByName": "Trier par nom",
-    "sortTrigger": "Sort: {{label}}",
+    "sortByName": "Nom",
+    "sortTrigger": "Tri : {{label}}",
     "sortVehicles": "Trier les véhicules",
     "title": "Mon garage"
   },

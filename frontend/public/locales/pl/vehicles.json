@@ -62,7 +62,7 @@
     "noVehiclesYet": "Brak pojazdów",
     "oldestFirst": "Najpierw najstarsze",
     "sharedWithMeSection": "Udostępnione dla mnie ({{count}})",
-    "sortByName": "Sortuj po nazwie",
+    "sortByName": "Nazwa",
     "sortTrigger": "Sortowanie: {{label}}",
     "sortVehicles": "Sortuj pojazdy",
     "title": "Mój garaż",
