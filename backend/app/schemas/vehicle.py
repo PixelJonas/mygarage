@@ -58,6 +58,9 @@ VehicleType = Literal[
     "EBike",
 ]
 
+# Trailer-like types: no engine, no odometer, towed by something else.
+NON_MOTORIZED_VEHICLE_TYPES: frozenset[str] = frozenset({"Trailer", "FifthWheel", "TravelTrailer"})
+
 
 class VehicleBase(BaseModel):
     """Base vehicle schema with common fields."""

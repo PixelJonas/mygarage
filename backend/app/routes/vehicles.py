@@ -18,6 +18,7 @@ from app.models import (
 from app.models.user import User
 from app.models.vehicle import TrailerDetails, Vehicle
 from app.schemas.vehicle import (
+    NON_MOTORIZED_VEHICLE_TYPES,
     TrailerDetailsCreate,
     TrailerDetailsResponse,
     TrailerDetailsUpdate,
@@ -47,8 +48,6 @@ from app.utils.logging_utils import sanitize_for_log
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/vehicles", tags=["Vehicles"])
 
-_NON_MOTORIZED = frozenset({"Trailer", "FifthWheel", "TravelTrailer"})
-
 
 async def _validate_tow_vehicle_vin(
     db: AsyncSession,
@@ -60,7 +59,7 @@ async def _validate_tow_vehicle_vin(
         return None
     tow_vin = tow_vin.upper().strip()
     tow_vehicle = await get_vehicle_or_403(tow_vin, current_user, db)
-    if tow_vehicle.vehicle_type in _NON_MOTORIZED:
+    if tow_vehicle.vehicle_type in NON_MOTORIZED_VEHICLE_TYPES:
         raise HTTPException(
             status_code=400,
             detail="Tow vehicle must be a motorized vehicle (not a trailer)",

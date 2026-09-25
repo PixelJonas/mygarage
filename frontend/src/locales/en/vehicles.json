@@ -1259,7 +1259,10 @@
     "service": "Service",
     "dueSoon": "{{count}} due soon",
     "towingAll": "Every tank towing",
-    "towing": "Towing"
+    "towing": "Towing",
+    "towedBy": "Towed by",
+    "averagePropane": "Avg propane",
+    "lastRefills": "Last {{count}} refills"
   },
   "vehicleTypeLabels": {
     "Car": "Car",

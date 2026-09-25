@@ -7,6 +7,17 @@ from pydantic import BaseModel
 from app.utils.unit_resolution import LenientDistanceUnit
 
 
+class TowVehicleSummary(BaseModel):
+    """The vehicle a trailer is paired with, for the card's "Towed by" row."""
+
+    model_config = {"from_attributes": True}
+
+    vin: str
+    year: int | None = None
+    make: str | None = None
+    model: str | None = None
+
+
 class VehicleStatistics(BaseModel):
     """Statistics for a single vehicle"""
 
@@ -67,6 +78,14 @@ class VehicleStatistics(BaseModel):
     recent_l_per_100km: Decimal | None = None
     # The towing tanks alone (issue #181). Null when the vehicle never tows.
     towing_l_per_100km: Decimal | None = None
+
+    # Towable cards (fifth wheels, travel trailers): the trailer-details pairing,
+    # and the trailer's economy, litres of propane per average month across its
+    # bottle refills (`propane_l_per_month` in fuel_service) plus the same over
+    # the last 3 refills. Null without a pairing / fewer than two refills.
+    tow_vehicle: TowVehicleSummary | None = None
+    propane_l_per_month: Decimal | None = None
+    recent_propane_l_per_month: Decimal | None = None
 
     # Archive status
     archived_at: datetime | None = None

@@ -14,14 +14,18 @@ import {
   AlertCircle,
   Share2,
   ChevronRight,
+  Truck,
+  Flame,
 } from 'lucide-react'
 import type { VehicleStatistics } from '../types/dashboard'
 import { formatDateForDisplay } from '../utils/dateUtils'
 import { useUnitFormat } from '../hooks/useUnitFormat'
 import { useUnitPreference } from '../hooks/useUnitPreference'
-import { formatFuelRate, fuelRateLabel } from '../utils/unitFormat'
+import { formatFuelRate, formatVolumeRate, fuelRateLabel, PER_MONTH } from '../utils/unitFormat'
 import { withBase } from '../utils/basePath'
 import { getUsageTracking } from '../utils/usageTracking'
+import { vehicleLogKinds } from '../utils/vehicleLogKinds'
+import { yearMakeModel } from '../utils/vehicleLabel'
 import VehicleLiveLinkWidget from './livelink/VehicleLiveLinkWidget'
 import { ListRow, Tile, Badge, Mono } from './ui'
 import { unlessSelectingText } from '../utils/textSelection'
@@ -79,7 +83,22 @@ function VehicleStatisticsCard({ stats, selectMode = false, selected = false, on
   const headlineRecent = headlineIsTowing ? null : stats.recent_l_per_100km
   const showTowingLine = !headlineIsTowing && towingEconomy != null
 
+  // Towable RVs (fifth wheels and travel trailers: they log propane and are
+  // not motorized) have no odometer and no MPG. Their card fills those two
+  // slots with the tow vehicle and propane use per month, so the cards line
+  // up with the motorized ones beside them.
+  const kinds = vehicleLogKinds(stats)
+  const isTowableRv = kinds.propane && !kinds.motorized
+  const towVehicleLabel = isTowableRv && stats.tow_vehicle ? yearMakeModel(stats.tow_vehicle) : null
+  const propaneRate =
+    isTowableRv && stats.propane_l_per_month != null ? parseFloat(String(stats.propane_l_per_month)) : null
+  const recentPropaneRate =
+    propaneRate != null && stats.recent_propane_l_per_month != null
+      ? parseFloat(String(stats.recent_propane_l_per_month))
+      : null
+
   const hasActivity =
+    towVehicleLabel != null ||
     stats.total_service_records > 0 ||
     stats.total_fuel_records > 0 ||
     stats.total_odometer_records > 0 ||
@@ -276,6 +295,9 @@ function VehicleStatisticsCard({ stats, selectMode = false, selected = false, on
                   })}
                 />
               )}
+              {towVehicleLabel && (
+                <ListRow icon={Truck} label={t('vehicleStats.towedBy')} value={towVehicleLabel} />
+              )}
             </div>
           </div>
         )}
@@ -287,7 +309,8 @@ function VehicleStatisticsCard({ stats, selectMode = false, selected = false, on
             the reader's own resolved set chose, so the strip cannot disagree
             with the odometer row above it. */}
         {((usage.tracksDistance && headlineEconomy) ||
-          (usage.tracksHours && stats.average_l_per_hr)) && (
+          (usage.tracksHours && stats.average_l_per_hr) ||
+          propaneRate != null) && (
           <div className="space-y-3 border-t border-border pt-3">
             {usage.tracksDistance && headlineEconomy && (
               <div>
@@ -336,6 +359,25 @@ function VehicleStatisticsCard({ stats, selectMode = false, selected = false, on
                 <Mono size="lg" weight="bold" tone="accent">
                   {formatFuelRate(units, parseFloat(String(stats.average_l_per_hr)))}
                 </Mono>
+              </div>
+            )}
+            {propaneRate != null && (
+              <div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Flame aria-hidden="true" className="h-4 w-4 text-(--accent-fg)" />
+                    <span className="text-sm text-text-mute">{t('vehicleStats.averagePropane')}</span>
+                  </div>
+                  <Mono size="lg" weight="bold" tone="accent">
+                    {formatVolumeRate(units, propaneRate, PER_MONTH)}
+                  </Mono>
+                </div>
+                {recentPropaneRate != null && recentPropaneRate !== propaneRate && (
+                  <div className="mt-1 text-xs text-text-mute">
+                    {t('vehicleStats.lastRefills', { count: RECENT_TANKS })}:{' '}
+                    {formatVolumeRate(units, recentPropaneRate, PER_MONTH)}
+                  </div>
+                )}
               </div>
             )}
           </div>

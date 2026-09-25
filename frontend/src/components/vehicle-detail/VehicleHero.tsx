@@ -6,6 +6,7 @@ import { useUnitFormat } from '../../hooks/useUnitFormat'
 import { formatDateForDisplay } from '../../utils/dateUtils'
 import { useDateLocale } from '../../hooks/useDateLocale'
 import { getUsageTracking } from '../../utils/usageTracking'
+import { yearMakeModel } from '../../utils/vehicleLabel'
 import { Chip, Badge, Mono } from '../ui'
 
 interface VehicleHeroProps {
@@ -154,7 +155,7 @@ export default function VehicleHero({ vehicle, photoUrl, fromCache, detailStats 
           {vehicle.nickname}
         </h1>
         <p className="mt-0.5 text-sm text-text-mute">
-          {[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ')}
+          {yearMakeModel(vehicle)}
         </p>
         <Mono size="sm" tone="muted" variant="vin" className="mt-1 block [overflow-wrap:anywhere]">
           {vehicle.vin}

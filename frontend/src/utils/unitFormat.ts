@@ -393,6 +393,8 @@ export function volumePerDistanceLabel(units: UnitSet): string {
  * It is a symbol rather than prose, like every other label in this module.
  */
 const PER_HOUR = '/hr'
+/** The period suffix a towable's propane rate is quoted over. */
+export const PER_MONTH = '/mo'
 
 /**
  * Render an engine-hours fuel rate in the reader's own volume unit.
@@ -429,13 +431,34 @@ export function formatFuelRate(
   lPerHr: number | null | undefined,
   showBoth = false
 ): string {
+  return formatVolumeRate(units, lPerHr, PER_HOUR, showBoth)
+}
+
+/**
+ * Render a volume rate over a fixed period in the reader's own volume unit:
+ * the mechanism behind `formatFuelRate`, with the period as a parameter so a
+ * towable's propane per MONTH renders by the same rule. The suffix goes on
+ * each representation, never on the composed string (see `formatFuelRate`).
+ *
+ * @param units The client's resolved unit set.
+ * @param litersPerPeriod The canonical rate, litres per the period.
+ * @param suffix The period suffix, e.g. `'/hr'` or `PER_MONTH`.
+ * @param showBoth Whether to append the counterpart representation.
+ * @returns e.g. `'5.49 gal/mo'`, `'20.80 L/mo (5.49 gal/mo)'`, or `'N/A'`.
+ */
+export function formatVolumeRate(
+  units: UnitSet,
+  litersPerPeriod: number | null | undefined,
+  suffix: string,
+  showBoth = false
+): string {
   const adapter = adapterFor(units, 'volume')
   // Null short-circuits BEFORE the counterpart, exactly as `format` does.
-  if (adapter.toDisplay(lPerHr) === null) return NOT_AVAILABLE
-  const primary = `${render(adapter, lPerHr)}${PER_HOUR}`
+  if (adapter.toDisplay(litersPerPeriod) === null) return NOT_AVAILABLE
+  const primary = `${render(adapter, litersPerPeriod)}${suffix}`
   const counterpart = counterpartFor(units, 'volume')
   if (!showBoth || counterpart === null) return primary
-  return `${primary} (${render(counterpart, lPerHr)}${PER_HOUR})`
+  return `${primary} (${render(counterpart, litersPerPeriod)}${suffix})`
 }
 
 /**

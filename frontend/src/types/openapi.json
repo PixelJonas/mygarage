@@ -22760,6 +22760,53 @@
         "title": "TorqueSourceResponse",
         "type": "object"
       },
+      "TowVehicleSummary": {
+        "description": "The vehicle a trailer is paired with, for the card's \"Towed by\" row.",
+        "properties": {
+          "make": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Make"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "vin": {
+            "title": "Vin",
+            "type": "string"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year"
+          }
+        },
+        "required": [
+          "vin"
+        ],
+        "title": "TowVehicleSummary",
+        "type": "object"
+      },
       "TrailerDetailsCreate": {
         "description": "Schema for creating trailer details.",
         "properties": {
@@ -27035,6 +27082,18 @@
             ],
             "title": "Owner Relationship Custom"
           },
+          "propane_l_per_month": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Propane L Per Month"
+          },
           "recent_l_per_100km": {
             "anyOf": [
               {
@@ -27046,6 +27105,18 @@
               }
             ],
             "title": "Recent L Per 100Km"
+          },
+          "recent_propane_l_per_month": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recent Propane L Per Month"
           },
           "secondary_usage_enabled": {
             "default": false,
@@ -27101,6 +27172,16 @@
           "total_service_records": {
             "title": "Total Service Records",
             "type": "integer"
+          },
+          "tow_vehicle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TowVehicleSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "towing_l_per_100km": {
             "anyOf": [

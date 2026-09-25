@@ -16785,6 +16785,20 @@ export interface components {
             last_seen?: string | null;
         };
         /**
+         * TowVehicleSummary
+         * @description The vehicle a trailer is paired with, for the card's "Towed by" row.
+         */
+        TowVehicleSummary: {
+            /** Make */
+            make?: string | null;
+            /** Model */
+            model?: string | null;
+            /** Vin */
+            vin: string;
+            /** Year */
+            year?: number | null;
+        };
+        /**
          * TrailerDetailsCreate
          * @description Schema for creating trailer details.
          */
@@ -18484,8 +18498,12 @@ export interface components {
             owner_relationship?: string | null;
             /** Owner Relationship Custom */
             owner_relationship_custom?: string | null;
+            /** Propane L Per Month */
+            propane_l_per_month?: string | null;
             /** Recent L Per 100Km */
             recent_l_per_100km?: string | null;
+            /** Recent Propane L Per Month */
+            recent_propane_l_per_month?: string | null;
             /**
              * Secondary Usage Enabled
              * @default false
@@ -18509,6 +18527,7 @@ export interface components {
             total_photos: number;
             /** Total Service Records */
             total_service_records: number;
+            tow_vehicle?: components["schemas"]["TowVehicleSummary"] | null;
             /** Towing L Per 100Km */
             towing_l_per_100km?: string | null;
             /** Upcoming Maintenance Count */

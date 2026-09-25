@@ -26,7 +26,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { formatFuelRate, fuelRateLabel, makeUnitFormat } from '../unitFormat'
+import { formatFuelRate, formatVolumeRate, fuelRateLabel, makeUnitFormat, PER_MONTH } from '../unitFormat'
 import { presetUnitsFor, type UnitSet } from '@/types/units'
 
 const IMPERIAL = presetUnitsFor('imperial', 'us')
@@ -193,5 +193,21 @@ describe('consumption, through the resolved token', () => {
     expect(makeUnitFormat(METRIC).consumption.formatPrimary(null)).toBe('N/A')
     expect(makeUnitFormat(IMPERIAL).consumption.formatPrimary(undefined)).toBe('N/A')
     expect(makeUnitFormat(METRIC).consumption.formatPrimary(Number.NaN)).toBe('N/A')
+  })
+})
+
+describe('formatVolumeRate: the same mechanism with the period as a parameter', () => {
+  // 20.8 L is 20.8 / 3.785411784 = 5.4948... US gallons.
+  it('renders a per-month rate in the reader\'s volume unit', () => {
+    expect(formatVolumeRate(IMPERIAL, 20.8, PER_MONTH)).toBe('5.49 gal/mo')
+    expect(formatVolumeRate(METRIC, 20.8, PER_MONTH)).toBe('20.80 L/mo')
+  })
+
+  it('puts the suffix on each representation when show-both is on', () => {
+    expect(formatVolumeRate(METRIC, 20.8, PER_MONTH, true)).toBe('20.80 L/mo (5.49 gal/mo)')
+  })
+
+  it('is what formatFuelRate is built on', () => {
+    expect(formatFuelRate(IMPERIAL, 3.2, true)).toBe(formatVolumeRate(IMPERIAL, 3.2, '/hr', true))
   })
 })

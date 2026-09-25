@@ -15,6 +15,7 @@ from app.models import (
     OdometerRecord,
     Reminder,
     ServiceVisit,
+    TrailerDetails,
     Vehicle,
 )
 from app.models.settings import Setting
@@ -24,6 +25,7 @@ from app.schemas.dashboard import (
     DashboardResponse,
     FleetHealth,
     FleetNextDue,
+    TowVehicleSummary,
     VehicleStatistics,
 )
 from app.services.auth import require_auth
@@ -31,6 +33,8 @@ from app.services.fuel_service import (
     average_l_per_100km,
     calculate_average_hours_economy,
     economy_periods,
+    propane_fills,
+    propane_l_per_month,
 )
 from app.services.hours_service import latest_engine_hours_and_date
 from app.services.odometer_service import latest_odometer_km_and_date
@@ -44,8 +48,9 @@ router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 PHOTO_DIR = Path("/data/photos")
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
 
-#: How many full tanks the "recent" economy figure covers. The card labels it
-#: "Last 3 tanks" (`RECENT_TANKS` in the frontend's VehicleStatisticsCard).
+#: How many full tanks (or, on a towable, propane refills) the "recent"
+#: economy figure covers. The card labels it "Last 3 tanks" / "Last 3 refills"
+#: (`RECENT_TANKS` in the frontend's VehicleStatisticsCard).
 _RECENT_WINDOW = 3
 
 
@@ -139,6 +144,26 @@ async def calculate_vehicle_stats(
     recent_l_per_100km = average_l_per_100km(ordinary[-_RECENT_WINDOW:])
     towing_l_per_100km = average_l_per_100km([period for period in periods if period.towing])
 
+    # Towable cards. The pairing is a trailer-details row, so its presence is
+    # the gate. Bottle refills carry no odometer and so are not in
+    # `fuel_records_list`; they are the trailer's economy.
+    tow_row = (
+        await db.execute(
+            select(Vehicle.vin, Vehicle.year, Vehicle.make, Vehicle.model)
+            .join(TrailerDetails, TrailerDetails.tow_vehicle_vin == Vehicle.vin)
+            .where(TrailerDetails.vin == vehicle.vin)
+        )
+    ).first()
+    tow_vehicle = TowVehicleSummary.model_validate(tow_row) if tow_row is not None else None
+    propane_result = await db.execute(
+        select(FuelRecord).where(FuelRecord.vin == vehicle.vin).where(FuelRecord.propane_liters > 0)
+    )
+    fills = propane_fills(propane_result.scalars().all())
+    propane_rate = propane_l_per_month(fills)
+    # The last `_RECENT_WINDOW` refills anchored on the one before them, the
+    # way the last 3 tanks are anchored on the fill-up before them.
+    recent_propane_rate = propane_l_per_month(fills[-(_RECENT_WINDOW + 1) :])
+
     # Get main photo URL from Vehicle.main_photo field
     main_photo_url: str | None = None
     if vehicle.main_photo:
@@ -180,6 +205,9 @@ async def calculate_vehicle_stats(
         average_l_per_100km=ordinary_l_per_100km,
         recent_l_per_100km=recent_l_per_100km,
         towing_l_per_100km=towing_l_per_100km,
+        tow_vehicle=tow_vehicle,
+        propane_l_per_month=propane_rate,
+        recent_propane_l_per_month=recent_propane_rate,
         archived_at=vehicle.archived_at,
         archived_visible=vehicle.archived_visible,
         is_shared_with_me=is_shared_with_me,

@@ -17,6 +17,7 @@ from app.services.fuel_service import (
     average_l_per_100km,
     compute_full_tank_hours_economy,
     economy_periods,
+    is_bottle_refill,
 )
 
 
@@ -217,10 +218,8 @@ def calculate_propane_costs(fuel_records: list[FuelRecord]) -> dict[str, Any]:
     Returns:
         Dictionary with propane statistics, monthly trends, and tank breakdown
     """
-    # Filter for propane records (propane_liters > 0 and liters is None)
-    propane_records = [
-        r for r in fuel_records if r.propane_liters and r.propane_liters > 0 and not r.liters
-    ]
+    # Bottle refills only: one rule, shared with the dashboard's propane rate.
+    propane_records = [r for r in fuel_records if is_bottle_refill(r)]
 
     if not propane_records:
         return {
