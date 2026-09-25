@@ -56,6 +56,21 @@ def test_no_scripts_no_hashes():
     assert inline_script_hashes("<html><head></head><body></body></html>") == ()
 
 
+def test_end_tag_with_whitespace_and_junk_still_ends_the_script():
+    # The tokenizer ends a script at "</script" followed by whitespace, "/" or ">".
+    assert inline_script_hashes("<script>x</script\t\n bar>") == (_sha256_source("x"),)
+
+
+def test_end_tag_name_must_be_exactly_script():
+    html = "<script>a</scriptx>b</script>"
+    assert inline_script_hashes(html) == (_sha256_source("a</scriptx>b"),)
+
+
+def test_start_tag_attribute_may_contain_a_closing_angle_bracket():
+    html = '<script data-x="a>b">y</script>'
+    assert inline_script_hashes(html) == (_sha256_source("y"),)
+
+
 def test_crlf_source_hashes_as_the_browser_sees_it():
     # The HTML parser normalises CR LF and CR to LF before the text is hashed.
     assert inline_script_hashes("<script>a\r\nb\rc</script>") == (_sha256_source("a\nb\nc"),)

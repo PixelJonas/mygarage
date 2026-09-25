@@ -15,8 +15,14 @@ import hashlib
 import re
 
 _HEAD_RE = re.compile(r"<head\b[^>]*>", re.IGNORECASE)
+# Follows the HTML tokenizer: a tag name ends at whitespace, "/" or ">", an
+# attribute value may hold ">" inside quotes, and anything after the end tag's
+# name up to ">" is ignored.
 _SCRIPT_RE = re.compile(
-    r"<script\b(?P<attrs>[^>]*)>(?P<body>.*?)</script\s*>", re.IGNORECASE | re.DOTALL
+    r"<script(?=[\s/>])(?P<attrs>(?:[^>\"']|\"[^\"]*\"|'[^']*')*)>"
+    r"(?P<body>.*?)"
+    r"</script(?=[\s/>])[^>]*>",
+    re.IGNORECASE | re.DOTALL,
 )
 _SRC_ATTR_RE = re.compile(r"\ssrc\s*=", re.IGNORECASE)
 
