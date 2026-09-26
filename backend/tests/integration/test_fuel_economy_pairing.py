@@ -30,9 +30,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.fuel import FuelRecord
 from app.models.vehicle import Vehicle
 from app.services.fuel_service import (
+    average_l_per_100km,
     calculate_average_l_per_100km,
     calculate_l_per_100km,
     compute_full_tank_economy,
+    economy_periods,
 )
 from app.services.widget_aggregation import WidgetAggregationService
 
@@ -187,21 +189,140 @@ def test_compute_full_tank_economy_folds_partials() -> None:
 
 
 @pytest.mark.unit
-def test_compute_full_tank_economy_hauling_folds_when_excluded() -> None:
-    """With exclude_hauling, a hauling full tank is not an endpoint, so its fuel
-    folds into the surrounding interval instead of splitting it."""
+def test_excluding_towing_drops_the_towing_tank_rather_than_merging_it() -> None:
+    """Issue #181 follow-up: a towing tank stays an endpoint and its figure is
+    left out. It used to stop being an endpoint, so its fuel and distance merged
+    into the NEXT tank's figure and the "excluding towing" average still
+    carried the towing fuel."""
     a = _fr("1000", "40.000", full=True)
-    hauling = _fr("1500", "30.000", full=True)
-    hauling.is_hauling = True
+    towing = _fr("1500", "30.000", full=True)
+    towing.is_hauling = True
     b = _fr("2000", "45.000", full=True)
 
-    # Endpoints a -> b bridge the hauling tank: (30 + 45) / 1000 km * 100 = 7.5.
-    excluded = compute_full_tank_economy([a, hauling, b], exclude_hauling=True)
-    assert [v for _, v in excluded] == [Decimal("7.50")]
+    # a -> towing is 30 L / 500 km = 6.0 (towing); towing -> b is 45 / 500 = 9.0.
+    excluded = compute_full_tank_economy([a, towing, b], exclude_hauling=True)
+    assert [(r.odometer_km, v) for r, v in excluded] == [(Decimal("2000"), Decimal("9.00"))]
 
-    # Without exclusion the hauling tank splits the interval into two figures.
-    included = compute_full_tank_economy([a, hauling, b], exclude_hauling=False)
-    assert len(included) == 2
+    included = compute_full_tank_economy([a, towing, b], exclude_hauling=False)
+    assert [v for _, v in included] == [Decimal("6.00"), Decimal("9.00")]
+
+
+@pytest.mark.unit
+def test_a_towing_partial_fill_up_makes_its_tank_a_towing_tank() -> None:
+    """Fuel bought mid-tank while towing was burned towing, so the tank it
+    belongs to is a towing tank even when the closing fill-up is not marked."""
+    a = _fr("10000", "40.000", full=True)
+    partial = _fr("10200", "20.000", full=False)
+    partial.is_hauling = True
+    b = _fr("10500", "30.000", full=True)  # (20 + 30) / 500 km = 10.0, towing
+    c = _fr("11000", "40.000", full=True)  # 40 / 500 km = 8.0
+
+    periods = economy_periods([a, partial, b, c])
+    assert [(p.l_per_100km, p.towing) for p in periods] == [
+        (Decimal("10.00"), True),
+        (Decimal("8.00"), False),
+    ]
+    excluded = compute_full_tank_economy([a, partial, b, c], exclude_hauling=True)
+    assert [v for _, v in excluded] == [Decimal("8.00")]
+
+
+@pytest.mark.unit
+def test_the_average_is_total_fuel_over_total_distance() -> None:
+    """A 100 km tank at 10 L/100km and a 400 km tank at 5 L/100km burned 30 L
+    over 500 km: 6.0, not the 7.5 a mean of the two figures gives."""
+    periods = economy_periods(
+        [
+            _fr("10000", "40.000", full=True),
+            _fr("10100", "10.000", full=True),
+            _fr("10500", "20.000", full=True),
+        ]
+    )
+    assert [p.l_per_100km for p in periods] == [Decimal("10.00"), Decimal("5.00")]
+    assert average_l_per_100km(periods) == Decimal("6.00")
+    assert average_l_per_100km([]) is None
+
+
+@pytest.mark.unit
+def test_an_odometer_of_zero_is_treated_as_missing() -> None:
+    """A 0 reading is far more often a placeholder than a brand-new vehicle.
+    Anchoring on it would make the next real tank an 85,000 km period, which
+    swamps a distance-weighted average."""
+    results = compute_full_tank_economy(
+        [
+            _fr("0", "40.000", full=True),
+            _fr("85000", "40.000", full=True),
+            _fr("85500", "40.000", full=True),
+        ]
+    )
+    assert [v for _, v in results] == [Decimal("8.00")]
+
+
+@pytest.mark.unit
+def test_an_impossible_tank_stays_out_of_the_average() -> None:
+    """Weighting by distance lets one mistyped odometer swamp the average: a
+    fill-up keyed as 900,000 instead of 90,000 is 40 L over 810,000 km. Tanks
+    outside the realistic band are left out of it (they still get their own
+    figure, so the fuel list shows the slip)."""
+    records = [_fr(str(85000 + 500 * i), "40.000", full=True) for i in range(11)]
+    records.append(_fr("900000", "40.000", full=True))
+    periods = economy_periods(records)
+    assert periods[-1].l_per_100km == Decimal("0.00")
+    assert not periods[-1].plausible
+    assert average_l_per_100km(periods) == Decimal("8.00")
+    assert average_l_per_100km(periods[-1:]) is None
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_vehicle_average_weights_by_distance_and_drops_towing(
+    db_session: AsyncSession, test_user: dict[str, object]
+) -> None:
+    """The Fuel tab's average: towing tanks out, then total fuel over total
+    distance. 10 L over 100 km and 20 L over 400 km -> 6.00; the towing tank
+    between them (48 L over 300 km) must not leak in."""
+    vin = "WEIGHTAVG00000001"
+    db_session.add(
+        Vehicle(
+            vin=vin,
+            user_id=int(test_user["id"]),  # type: ignore[arg-type]
+            nickname="Weighted",
+            vehicle_type="Car",
+            year=2024,
+            make="Test",
+            model="Weighted",
+        )
+    )
+    await db_session.flush()
+    base = date.today() - timedelta(days=30)
+    for days, odo, litres, towing in [
+        (0, "10000", "40", False),
+        (5, "10100", "10", False),
+        (10, "10400", "48", True),
+        (15, "10800", "20", False),
+    ]:
+        db_session.add(
+            FuelRecord(
+                vin=vin,
+                date=base + timedelta(days=days),
+                odometer_km=Decimal(odo),
+                liters=Decimal(litres),
+                is_full_tank=True,
+                is_hauling=towing,
+            )
+        )
+    await db_session.commit()
+
+    assert await calculate_average_l_per_100km(db_session, vin) == Decimal("6.00")
+    # With towing: 78 L over 800 km.
+    assert await calculate_average_l_per_100km(db_session, vin, exclude_hauling=False) == Decimal(
+        "9.75"
+    )
+
+    service = WidgetAggregationService(db_session)
+    recent, average = await service._consumption_l100km(vin)
+    assert recent is not None and average is not None
+    assert abs(average - Decimal("6.00")) < Decimal("0.01"), average
+    assert abs(recent - Decimal("6.00")) < Decimal("0.01"), recent
 
 
 @pytest.mark.unit
@@ -333,3 +454,91 @@ async def test_widget_consumption_includes_partial_fillups(
     assert abs(average - Decimal("9.43")) < Decimal("0.01"), (
         f"widget average consumption {average} ignored the partial fill-up (#113)"
     )
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_widget_window_follows_the_odometer_not_the_date(
+    db_session: AsyncSession, test_user: dict[str, object]
+) -> None:
+    """The widget's last-10 window is on the same axis the tanks are scored on.
+    The newest tank by odometer, dated a year early, must still be in it: its
+    recent figure covers the last three tanks by odometer, like the card's."""
+    vin = "WIDGETODOAXIS0001"
+    db_session.add(
+        Vehicle(
+            vin=vin,
+            user_id=int(test_user["id"]),  # type: ignore[arg-type]
+            nickname="Axis",
+            vehicle_type="Car",
+            year=2024,
+            make="Test",
+            model="Axis",
+        )
+    )
+    await db_session.flush()
+    base = date.today() - timedelta(days=200)
+    # Twelve full tanks 500 km apart: 40 L each (8.0), except the last three,
+    # which burn 50 L (10.0). The newest by odometer is dated first.
+    for i in range(12):
+        db_session.add(
+            FuelRecord(
+                vin=vin,
+                date=base - timedelta(days=365) if i == 11 else base + timedelta(days=i),
+                odometer_km=Decimal(10000 + 500 * i),
+                liters=Decimal("50") if i >= 9 else Decimal("40"),
+                is_full_tank=True,
+            )
+        )
+    await db_session.commit()
+
+    recent, _average = await WidgetAggregationService(db_session)._consumption_l100km(vin)
+    assert recent == Decimal("10.00")
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_widget_recent_skips_an_impossible_tank(
+    db_session: AsyncSession, test_user: dict[str, object]
+) -> None:
+    """A mistyped odometer sorts last. The widget's recent figure is the last
+    three tanks that could be real, as on the card: (20 + 10 + 20) L over
+    900 km = 5.56, and the average 60 L over 1,000 km = 6.00."""
+    vin = "WIDGETTYPO0000001"
+    db_session.add(
+        Vehicle(
+            vin=vin,
+            user_id=int(test_user["id"]),  # type: ignore[arg-type]
+            nickname="Typo",
+            vehicle_type="Car",
+            year=2024,
+            make="Test",
+            model="Typo",
+        )
+    )
+    await db_session.flush()
+    base = date.today() - timedelta(days=60)
+    for i, (odo, litres) in enumerate(
+        [
+            ("1000", "40"),
+            ("1100", "10"),
+            ("1500", "20"),
+            ("1600", "10"),
+            ("2000", "20"),
+            ("200000", "20"),
+        ]
+    ):
+        db_session.add(
+            FuelRecord(
+                vin=vin,
+                date=base + timedelta(days=10 * i),
+                odometer_km=Decimal(odo),
+                liters=Decimal(litres),
+                is_full_tank=True,
+            )
+        )
+    await db_session.commit()
+
+    recent, average = await WidgetAggregationService(db_session)._consumption_l100km(vin)
+    assert recent == Decimal("5.56")
+    assert average == Decimal("6.00")

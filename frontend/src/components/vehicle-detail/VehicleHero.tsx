@@ -6,6 +6,7 @@ import { useUnitFormat } from '../../hooks/useUnitFormat'
 import { formatDateForDisplay } from '../../utils/dateUtils'
 import { useDateLocale } from '../../hooks/useDateLocale'
 import { getUsageTracking } from '../../utils/usageTracking'
+import { yearMakeModel } from '../../utils/vehicleLabel'
 import { Chip, Badge, Mono } from '../ui'
 
 interface VehicleHeroProps {
@@ -80,7 +81,7 @@ export default function VehicleHero({ vehicle, photoUrl, fromCache, detailStats 
   const secondaryLabel = primaryIsHours ? t('detail.misc.odometer') : t('detail.misc.hours')
 
   const overdue = detailStats?.overdue_count ?? 0
-  const upcoming = detailStats?.upcoming_count ?? 0
+  const dueSoon = detailStats?.due_soon_count ?? 0
 
   return (
     <div className="relative h-[300px] overflow-hidden rounded-[18px] border border-border">
@@ -100,14 +101,15 @@ export default function VehicleHero({ vehicle, photoUrl, fromCache, detailStats 
       {/* Scrim — bg-derived, theme-aware, bottom-up */}
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-bg via-bg/55 to-transparent" />
 
-      {/* Overdue / upcoming badge (top-right, display-only) */}
+      {/* Overdue / due-soon badge (top-right, display-only); same rule as the
+          dashboard card, and the key-facts strip carries the pending total. */}
       {overdue > 0 ? (
         <div className="pointer-events-none absolute right-4 top-4">
           <Badge tone="danger" icon={AlertCircle}>{t('vehicleStats.overdue', { count: overdue })}</Badge>
         </div>
-      ) : upcoming > 0 ? (
+      ) : dueSoon > 0 ? (
         <div className="pointer-events-none absolute right-4 top-4">
-          <Badge tone="warning" icon={Bell}>{t('vehicleStats.upcoming', { count: upcoming })}</Badge>
+          <Badge tone="warning" icon={Bell}>{t('vehicleStats.dueSoon', { count: dueSoon })}</Badge>
         </div>
       ) : null}
 
@@ -153,7 +155,7 @@ export default function VehicleHero({ vehicle, photoUrl, fromCache, detailStats 
           {vehicle.nickname}
         </h1>
         <p className="mt-0.5 text-sm text-text-mute">
-          {[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ')}
+          {yearMakeModel(vehicle)}
         </p>
         <Mono size="sm" tone="muted" variant="vin" className="mt-1 block [overflow-wrap:anywhere]">
           {vehicle.vin}

@@ -11,7 +11,7 @@
   },
   "systemConfig": {
     "title": "System Configuration",
-    "description": "Configure core system settings like timezone and debug mode."
+    "description": "Configure core system settings like the timezone and garage sections."
   },
   "timezone": {
     "label": "Timezone",
@@ -124,6 +124,11 @@
     "confirmTitle": "Change Currency?",
     "confirmMessage": "This changes how all costs are displayed. It does not convert existing values between currencies.",
     "confirmAction": "Change Currency"
+  },
+  "dashboardSort": {
+    "label": "Dashboard Order",
+    "saved": "Dashboard order saved",
+    "error": "Failed to save dashboard order"
   },
   "mobile": {
     "title": "Mobile Experience",

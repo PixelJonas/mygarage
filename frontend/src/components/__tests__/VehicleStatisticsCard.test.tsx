@@ -3,8 +3,8 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { render, screen, fireEvent } from '../../__tests__/test-utils'
 import type { VehicleStatistics } from '../../types/dashboard'
-import { makeUser, makeUnitSet, IMPERIAL_UNITS, type User } from '../../__tests__/factories'
-import { formatFuelRate } from '../../utils/unitFormat'
+import { makeUser, makeUnitSet, IMPERIAL_UNITS, type User, makeVehicleStatistics } from '../../__tests__/factories'
+import { formatFuelRate, formatVolumeRate } from '../../utils/unitFormat'
 
 const mockNavigate = vi.fn()
 vi.mock('react-router-dom', async (importOriginal) => {
@@ -53,42 +53,14 @@ vi.mock('react-i18next', () => ({
 
 import VehicleStatisticsCard from '../VehicleStatisticsCard'
 
-const STATS: VehicleStatistics = {
+const STATS: VehicleStatistics = makeVehicleStatistics({
   vin: '1HGBH41JXMN109186',
   year: 2021,
   make: 'Ford',
   model: 'F-150',
   vehicle_type: 'FifthWheel',
-  main_photo_url: null,
-  usage_unit: 'distance',
-  current_hours: null,
-  latest_hours: null,
-  average_l_per_hr: null,
-  average_cost_per_hr: null,
-  secondary_usage_enabled: false,
-  total_service_records: 0,
-  total_fuel_records: 0,
-  total_odometer_records: 0,
-  total_maintenance_items: 0,
-  total_documents: 0,
-  total_notes: 0,
-  total_photos: 0,
-  latest_service_date: null,
-  latest_fuel_date: null,
-  latest_odometer_km: null,
-  latest_odometer_date: null,
-  upcoming_maintenance_count: 0,
-  overdue_maintenance_count: 0,
-  average_l_per_100km: null,
-  recent_l_per_100km: null,
-  average_l_per_100km_with_towing: null,
-  recent_l_per_100km_with_towing: null,
-  archived_at: null,
   archived_visible: false,
-  is_shared_with_me: false,
-  shared_by_username: null,
-  share_permission: null,
-}
+})
 
 describe('VehicleStatisticsCard', () => {
   beforeEach(() => {
@@ -171,58 +143,61 @@ describe('VehicleStatisticsCard', () => {
       latest_odometer_km: '5000',
     }
 
-    it('headlines the non-towing figure and shows the towing one beneath', () => {
+    it('headlines the figure without towing, says so, and shows towing alone beneath', () => {
       render(
         <VehicleStatisticsCard
           stats={{
             ...STATS,
             ...distance,
             average_l_per_100km: '8.00',
-            average_l_per_100km_with_towing: '12.00',
+            towing_l_per_100km: '16.00',
           }}
         />
       )
-      // 235.2145833/8 = 29.4 and /12 = 19.6, at the mpg_us adapter's one
-      // decimal. 19.6 is the COMBINED figure (every cycle, towing included),
-      // which is why the label reads "including towing" and not "towing": it
-      // is not the towing-only economy and must not be read as one.
+      // 235.2145833/8 = 29.4 and /16 = 14.7, at the mpg_us adapter's one
+      // decimal. The second line is the towing tanks ALONE, so it can say
+      // "Towing"; the headline says "not towing" only because this vehicle tows.
       expect(screen.getByText('29.4 MPG')).toBeInTheDocument()
-      expect(screen.getByText(/vehicleStats\.includingTowing.*19\.6 MPG/)).toBeInTheDocument()
+      expect(screen.getByText('vehicleStatisticsCardExtra.averageFuelEconomyNotTowing (MPG)')).toBeInTheDocument()
+      expect(screen.getByText('vehicleStats.towing: 14.7 MPG')).toBeInTheDocument()
     })
 
-    it('shows no towing line for a vehicle that never tows', () => {
-      // The two passes agree, so a second line would repeat the first. This is
-      // the "not to clutter the display of vehicles that don't tow" half of the
-      // request, and it is the case almost every vehicle is in.
+    it('shows no towing line, and no qualifier, for a vehicle that never tows', () => {
+      // This is the "not to clutter the display of vehicles that don't tow"
+      // half of the request, and it is the case almost every vehicle is in.
       render(
         <VehicleStatisticsCard
           stats={{
             ...STATS,
             ...distance,
             average_l_per_100km: '8.00',
-            average_l_per_100km_with_towing: '8.00',
+            towing_l_per_100km: null,
           }}
         />
       )
       expect(screen.getByText('29.4 MPG')).toBeInTheDocument()
-      expect(screen.queryByText(/vehicleStats\.includingTowing/)).not.toBeInTheDocument()
+      expect(screen.getByText('vehicleStatisticsCardExtra.averageFuelEconomy (MPG)')).toBeInTheDocument()
+      expect(screen.queryByText(/vehicleStats\.towing:/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/NotTowing/)).not.toBeInTheDocument()
     })
 
     it('labels the figure when every fill-up was towing', () => {
       // No non-towing figure exists. Showing nothing would hide a number the
-      // vehicle really has, so the towing-inclusive one headlines AND says so.
+      // vehicle really has, so the towing one headlines AND says so, once.
       render(
         <VehicleStatisticsCard
           stats={{
             ...STATS,
             ...distance,
             average_l_per_100km: null,
-            average_l_per_100km_with_towing: '10.00',
+            towing_l_per_100km: '10.00',
           }}
         />
       )
       expect(screen.getByText('23.5 MPG')).toBeInTheDocument()
       expect(screen.getByText('vehicleStats.towingAll')).toBeInTheDocument()
+      expect(screen.queryByText(/vehicleStats\.towing:/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/NotTowing/)).not.toBeInTheDocument()
     })
   })
 
@@ -374,7 +349,7 @@ describe('VehicleStatisticsCard', () => {
     expect(screen.queryByText('1.20 gal/hr')).not.toBeInTheDocument()
   })
 
-  it('★ the "Recent:" line reads the same token as the average above it', () => {
+  it('★ the "Last 3 tanks:" line reads the same token as the average above it', () => {
     // ★ THIS LINE WAS EXECUTED BY NO TEST AT ALL until fix round 1: every
     // fixture in the repo sets `recent_l_per_100km: null`, and a fixture that
     // nulls a value cannot exercise the renderer that reads it. It is one of
@@ -401,7 +376,7 @@ describe('VehicleStatisticsCard', () => {
     )
 
     expect(screen.getByText('9.42 L/100km')).toBeInTheDocument()
-    expect(screen.getByText('vehicleStats.recent: 7.50 L/100km')).toBeInTheDocument()
+    expect(screen.getByText('vehicleStats.lastTanks: 7.50 L/100km')).toBeInTheDocument()
     // 7.5 L through the gal_us adapter, which is what the volume formatter
     // would have rendered here.
     expect(screen.queryByText(/1\.98 gal/)).not.toBeInTheDocument()
@@ -410,5 +385,80 @@ describe('VehicleStatisticsCard', () => {
   it('never reads stats.current_hours (grep-style source check — the stale column is retired)', () => {
     const src = readFileSync(resolve(__dirname, '../VehicleStatisticsCard.tsx'), 'utf8')
     expect(src).not.toMatch(/current_hours/)
+  })
+
+  describe('the photo badge flags what needs attention', () => {
+    it('shows the due-soon count, not the pending count', () => {
+      render(
+        <VehicleStatisticsCard
+          stats={{ ...STATS, upcoming_maintenance_count: 3, due_soon_maintenance_count: 1 }}
+        />,
+      )
+      expect(screen.getByText('vehicleStats.dueSoon')).toBeInTheDocument()
+      expect(screen.queryByText('vehicleStats.upcoming')).not.toBeInTheDocument()
+    })
+
+    it('shows no badge when nothing is overdue or due soon, however many are pending', () => {
+      render(
+        <VehicleStatisticsCard
+          stats={{ ...STATS, upcoming_maintenance_count: 3, due_soon_maintenance_count: 0 }}
+        />,
+      )
+      expect(screen.queryByText('vehicleStats.dueSoon')).not.toBeInTheDocument()
+    })
+
+    it('lets overdue win over due soon', () => {
+      render(
+        <VehicleStatisticsCard
+          stats={{ ...STATS, overdue_maintenance_count: 1, due_soon_maintenance_count: 2 }}
+        />,
+      )
+      expect(screen.getByText('vehicleStats.overdue')).toBeInTheDocument()
+      expect(screen.queryByText('vehicleStats.dueSoon')).not.toBeInTheDocument()
+    })
+  })
+})
+
+describe('towable RV rows (fifth wheels and travel trailers only)', () => {
+  const towVehicle = { vin: '3C63R3PL1SG545506', year: 2025, make: 'RAM', model: '3500' }
+  const propane = { propane_l_per_month: '20.8', recent_propane_l_per_month: '5.7' }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    auth.user = null
+  })
+
+  it('a fifth wheel lists its tow vehicle by year make model', () => {
+    render(<VehicleStatisticsCard stats={{ ...STATS, tow_vehicle: towVehicle }} />)
+    expect(screen.getByText('vehicleStats.towedBy')).toBeInTheDocument()
+    expect(screen.getByText('2025 RAM 3500')).toBeInTheDocument()
+  })
+
+  it('a travel trailer shows average propane per month in the reader\'s volume unit, with the recent line', () => {
+    render(<VehicleStatisticsCard stats={{ ...STATS, vehicle_type: 'TravelTrailer', ...propane }} />)
+    // The anonymous client resolves to the imperial preset, so litres render as gallons.
+    const gal = formatVolumeRate(IMPERIAL_UNITS, 20.8, '/mo')
+    expect(gal).toMatch(/gal\/mo$/)
+    expect(screen.getByText('vehicleStats.averagePropane')).toBeInTheDocument()
+    expect(screen.getByText(gal)).toBeInTheDocument()
+    expect(screen.getByText(/vehicleStats\.lastRefills/)).toBeInTheDocument()
+  })
+
+  it('a rate from a single window has no recent line', () => {
+    render(
+      <VehicleStatisticsCard
+        stats={{ ...STATS, propane_l_per_month: '20.8', recent_propane_l_per_month: '20.8' }}
+      />,
+    )
+    expect(screen.getByText('vehicleStats.averagePropane')).toBeInTheDocument()
+    expect(screen.queryByText(/vehicleStats\.lastRefills/)).not.toBeInTheDocument()
+  })
+
+  it('a car with the same fields shows neither row', () => {
+    render(
+      <VehicleStatisticsCard stats={{ ...STATS, vehicle_type: 'Car', tow_vehicle: towVehicle, ...propane }} />,
+    )
+    expect(screen.queryByText('vehicleStats.towedBy')).not.toBeInTheDocument()
+    expect(screen.queryByText('vehicleStats.averagePropane')).not.toBeInTheDocument()
   })
 })

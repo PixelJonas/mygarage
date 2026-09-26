@@ -101,7 +101,7 @@
     "familyFriendsSubtitle": "Lightweight records for people without an account",
     "fleet": {
       "overdueCaption": "Overdue · needs attention",
-      "upcomingCaption": "Upcoming · next 30 days",
+      "upcomingCaption": "Due soon · next 30 days",
       "spentLabel": "Spent",
       "nextDueLabel": "Next due",
       "nextDueNone": "Nothing scheduled"
@@ -118,7 +118,7 @@
     "selectVehicles": "Select",
     "selectedCount": "{{count}} selected",
     "sharedWithMeSection": "Shared with me ({{count}})",
-    "sortByName": "Sort by Name",
+    "sortByName": "Name",
     "sortTrigger": "Sort: {{label}}",
     "sortVehicles": "Sort vehicles",
     "title": "My Garage"
@@ -502,6 +502,11 @@
     "vehicleDetails": "Vehicle Details",
     "vehicleType": "Vehicle Type",
     "usageTracking": "Usage Tracking",
+    "distanceUnit": "Odometer unit",
+    "distanceUnitHelp": "What this vehicle's odometer reads. Its distances and speeds are shown and entered in this unit. Fuel economy and cost per distance keep your account setting.",
+    "distanceUnitAccountDefault": "Account default ({{unit}})",
+    "distanceUnitKm": "Kilometres (km)",
+    "distanceUnitMi": "Miles (mi)",
     "usageDistance": "Distance (odometer)",
     "usageHours": "Hours (hour meter)",
     "currentHours": "Current Hours",
@@ -1196,13 +1201,13 @@
     "confirmDelete": "Are you sure you want to delete this financing record?",
     "date": "Date",
     "deleteAction": "delete the financing record",
+    "lender": "Lender",
     "loading": "Loading financing records...",
     "noRecords": "No financing records yet",
     "noRecordsDesc": "Track lease payments, loan payments, and upfront financing fees",
     "notes": "Notes",
     "recordCount": "{{count}} record(s)",
     "tableCaption": "Financing record history",
-    "taxAmount": "Tax Amount",
     "title": "Financing",
     "total": "Total",
     "loadAction": "load financing records"
@@ -1269,12 +1274,15 @@
     "noteCount": "{{count}} notes",
     "overdue": "{{count}} Overdue",
     "photoCount": "{{count}} photos",
-    "recent": "Recent",
+    "lastTanks": "Last {{tanks}} tanks",
     "recentActivity": "Recent Activity",
     "service": "Service",
-    "upcoming": "{{count}} Upcoming",
-    "towingAll": "Every fill-up towing",
-    "includingTowing": "Including towing"
+    "dueSoon": "{{count}} due soon",
+    "towingAll": "Every tank towing",
+    "towing": "Towing",
+    "towedBy": "Towed by",
+    "averagePropane": "Avg propane",
+    "lastRefills": "Last {{count}} refills"
   },
   "vehicleTypeLabels": {
     "Car": "Car",
@@ -1774,6 +1782,7 @@
     "sharedByViewOnly": "Shared by {{username}} (view only)",
     "archivedWatermark": "ARCHIVED",
     "averageFuelEconomy": "Avg {{unit}}",
+    "averageFuelEconomyNotTowing": "Avg {{unit}} (not towing)",
     "viewDetails": "View Details"
   },
   "vehicleLiveLinkWidget": {

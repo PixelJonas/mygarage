@@ -7,6 +7,8 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator
 
 from app.constants.fuel import FUEL_TYPE_VALUES, normalize_fuel_type
+from app.constants.units import DistanceUnit
+from app.utils.unit_resolution import LenientDistanceUnit
 
 
 def _normalize_fuel_type_input(v: Any) -> Any:
@@ -56,6 +58,9 @@ VehicleType = Literal[
     "EBike",
 ]
 
+# Trailer-like types: no engine, no odometer, towed by something else.
+NON_MOTORIZED_VEHICLE_TYPES: frozenset[str] = frozenset({"Trailer", "FifthWheel", "TravelTrailer"})
+
 
 class VehicleBase(BaseModel):
     """Base vehicle schema with common fields."""
@@ -74,6 +79,14 @@ class VehicleBase(BaseModel):
     secondary_usage_enabled: bool = Field(
         False,
         description="Also track the non-primary usage dimension (distance+hours dual tracking)",
+    )
+    distance_unit: DistanceUnit | None = Field(
+        None,
+        description=(
+            "The unit this vehicle's odometer reads (km or mi); null follows the "
+            "viewer's account. Distances and speeds for this vehicle show and are "
+            "entered in it (#172)."
+        ),
     )
     year: int | None = Field(None, description="Model year", ge=1900, le=2100)
     make: str | None = Field(None, description="Manufacturer brand", max_length=50)
@@ -264,6 +277,9 @@ class VehicleResponse(VehicleBase):
     """Schema for vehicle response."""
 
     vin: str
+    # Served, never refused: the column has no CHECK, and a strict Literal here
+    # would turn one hand-edited row into a 500 for every response carrying it.
+    distance_unit: LenientDistanceUnit = None
     main_photo: str | None = None
     created_at: datetime
     updated_at: datetime | None = None
@@ -489,6 +505,9 @@ class VehicleDetailStats(BaseModel):
 
     overdue_count: int
     upcoming_count: int
+    # The subset of upcoming expected within DUE_SOON_WINDOW: the hero badge
+    # (reminder_service.classify_pending_reminders, as on the dashboard).
+    due_soon_count: int
     usage_unit: str  # 'distance' | 'hours' — drives the odometer/hours relabel
     # Kept for API compat only — NO LONGER the display source (R2-H1). The
     # canonical reading is `latest_hours` below, via `latest_engine_hours_and_date`.

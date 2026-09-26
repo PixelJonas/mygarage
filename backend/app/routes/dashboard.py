@@ -1,5 +1,4 @@
 from datetime import date as date_type
-from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -16,6 +15,7 @@ from app.models import (
     OdometerRecord,
     Reminder,
     ServiceVisit,
+    TrailerDetails,
     Vehicle,
 )
 from app.models.settings import Setting
@@ -25,13 +25,20 @@ from app.schemas.dashboard import (
     DashboardResponse,
     FleetHealth,
     FleetNextDue,
+    TowVehicleSummary,
     VehicleStatistics,
 )
 from app.services.auth import require_auth
-from app.services.fuel_service import calculate_average_hours_economy, compute_full_tank_economy
+from app.services.fuel_service import (
+    average_l_per_100km,
+    calculate_average_hours_economy,
+    economy_periods,
+    propane_fills,
+    propane_l_per_month,
+)
 from app.services.hours_service import latest_engine_hours_and_date
 from app.services.odometer_service import latest_odometer_km_and_date
-from app.services.reminder_service import is_reminder_overdue, is_reminder_snoozed
+from app.services.reminder_service import count_pending_reminders
 from app.services.service_visit_service import service_visit_cost_load_options
 from app.utils.household_time import household_today
 
@@ -41,26 +48,10 @@ router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 PHOTO_DIR = Path("/data/photos")
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
 
-#: How many full-tank fill-ups the "recent" economy figure averages over.
+#: How many full tanks (or, on a towable, propane refills) the "recent"
+#: economy figure covers. The card labels it "Last 3 tanks" / "Last 3 refills"
+#: (`RECENT_TANKS` in the frontend's VehicleStatisticsCard).
 _RECENT_WINDOW = 3
-
-
-def _economy_pair(values: list[Decimal]) -> tuple[Decimal | None, Decimal | None]:
-    """The all-time and recent means of a list of per-full-tank figures.
-
-    A helper because the towing-inclusive figures need exactly the same two
-    means as the non-towing ones, and issue #181 would have been two copies of
-    this arithmetic that could round or window differently.
-
-    Returns ``(None, None)`` for an empty list, which is a real case: a vehicle
-    with no non-towing fill-up at all has no non-towing economy.
-    """
-    if not values:
-        return None, None
-    average = round(sum(values) / Decimal(len(values)), 2)
-    window = values[-_RECENT_WINDOW:]
-    recent = round(sum(window) / Decimal(len(window)), 2)
-    return average, recent
 
 
 async def calculate_vehicle_stats(
@@ -127,33 +118,9 @@ async def calculate_vehicle_stats(
     latest_hours, _latest_hours_date = await latest_engine_hours_and_date(db, vehicle.vin)
     average_l_per_hr, average_cost_per_hr = await calculate_average_hours_economy(db, vehicle.vin)
 
-    # Count upcoming and overdue reminders
+    # Same readings the card displays, so badge and reading agree.
     today = household_today()
-    pending_reminders_result = await db.execute(
-        select(Reminder).where(Reminder.vin == vehicle.vin, Reminder.status == "pending")
-    )
-    pending_reminders = pending_reminders_result.scalars().all()
-
-    # Reuse the SAME fetched readings for the reminder evaluation so the
-    # displayed reading and the overdue eval can never disagree — and so the
-    # dashboard card and the detail hero agree on a same-date-reading vehicle.
-    # R2-B1 (mileage); Phase 6b extends this to `latest_hours`, already
-    # fetched above for the hours-economy figures — no extra query per
-    # vehicle for the hours-reminder check.
-    current_odometer_km = latest_odometer_km
-    current_engine_hours = latest_hours
-
-    upcoming_count = 0
-    overdue_count = 0
-    for reminder in pending_reminders:
-        if is_reminder_snoozed(reminder, today):
-            # Excluded, not reclassified: a snoozed reminder is out of BOTH
-            # counts until its date passes (plan 2026-09-18, decision 4).
-            continue
-        if is_reminder_overdue(reminder, current_odometer_km, current_engine_hours, today):
-            overdue_count += 1
-        else:
-            upcoming_count += 1
+    counts = await count_pending_reminders(db, vehicle.vin, latest_odometer_km, latest_hours, today)
 
     # Per-full-tank L/100km, anchored to the previous FULL tank with partial
     # fill-ups folded in (issue #113). Ordered by odometer ascending so the
@@ -162,24 +129,40 @@ async def calculate_vehicle_stats(
         select(FuelRecord)
         .where(FuelRecord.vin == vehicle.vin)
         .where(FuelRecord.odometer_km.isnot(None))
-        .order_by(FuelRecord.odometer_km.asc(), FuelRecord.date.asc())
+        .order_by(FuelRecord.odometer_km.asc(), FuelRecord.date.asc(), FuelRecord.id.asc())
     )
     fuel_records_list = list(fuel_records_result.scalars().all())
 
-    # ★ TWO PASSES OVER ONE QUERY, AND THE DEFAULT IS THE BUG (issue #181).
-    # `compute_full_tank_economy` defaults to `exclude_hauling=False` while
-    # `calculate_average_l_per_100km`, which the vehicle's own Fuel tab uses,
-    # defaults to True. This route passed no argument, so the home page quoted a
-    # towing-inclusive figure with nothing saying so, and a vehicle that tows
-    # read worse here than on its own page. The headline now excludes towing and
-    # the towing-inclusive figure is reported alongside it.
-    daily_values = [
-        value for _, value in compute_full_tank_economy(fuel_records_list, exclude_hauling=True)
-    ]
-    towing_values = [value for _, value in compute_full_tank_economy(fuel_records_list)]
+    # Issue #181. The headline figures leave towing tanks out, matching the
+    # vehicle's own Fuel tab, and the towing figure is towing ALONE: a blend of
+    # both depends on how often the vehicle tows and answers nothing. Every
+    # figure is total fuel over total distance, over plausible tanks only, so a
+    # mistyped odometer can neither swamp the average nor take a "Last 3" slot.
+    periods = economy_periods(fuel_records_list)
+    ordinary = [period for period in periods if not period.towing and period.plausible]
+    ordinary_l_per_100km = average_l_per_100km(ordinary)
+    recent_l_per_100km = average_l_per_100km(ordinary[-_RECENT_WINDOW:])
+    towing_l_per_100km = average_l_per_100km([period for period in periods if period.towing])
 
-    average_l_per_100km, recent_l_per_100km = _economy_pair(daily_values)
-    average_l_per_100km_with_towing, recent_l_per_100km_with_towing = _economy_pair(towing_values)
+    # Towable cards. The pairing is a trailer-details row, so its presence is
+    # the gate. Bottle refills carry no odometer and so are not in
+    # `fuel_records_list`; they are the trailer's economy.
+    tow_row = (
+        await db.execute(
+            select(Vehicle.vin, Vehicle.year, Vehicle.make, Vehicle.model)
+            .join(TrailerDetails, TrailerDetails.tow_vehicle_vin == Vehicle.vin)
+            .where(TrailerDetails.vin == vehicle.vin)
+        )
+    ).first()
+    tow_vehicle = TowVehicleSummary.model_validate(tow_row) if tow_row is not None else None
+    propane_result = await db.execute(
+        select(FuelRecord).where(FuelRecord.vin == vehicle.vin).where(FuelRecord.propane_liters > 0)
+    )
+    fills = propane_fills(propane_result.scalars().all())
+    propane_rate = propane_l_per_month(fills)
+    # The last `_RECENT_WINDOW` refills anchored on the one before them, the
+    # way the last 3 tanks are anchored on the fill-up before them.
+    recent_propane_rate = propane_l_per_month(fills[-(_RECENT_WINDOW + 1) :])
 
     # Get main photo URL from Vehicle.main_photo field
     main_photo_url: str | None = None
@@ -199,6 +182,7 @@ async def calculate_vehicle_stats(
         vehicle_type=vehicle.vehicle_type,
         main_photo_url=main_photo_url,
         usage_unit=vehicle.usage_unit,
+        distance_unit=vehicle.distance_unit,
         current_hours=vehicle.current_hours,
         latest_hours=latest_hours,
         average_l_per_hr=average_l_per_hr,
@@ -215,12 +199,15 @@ async def calculate_vehicle_stats(
         latest_fuel_date=latest_fuel,
         latest_odometer_km=latest_odometer_km,
         latest_odometer_date=latest_odometer_date,
-        upcoming_maintenance_count=upcoming_count or 0,
-        overdue_maintenance_count=overdue_count or 0,
-        average_l_per_100km=average_l_per_100km,
+        upcoming_maintenance_count=counts.upcoming,
+        due_soon_maintenance_count=counts.due_soon,
+        overdue_maintenance_count=counts.overdue,
+        average_l_per_100km=ordinary_l_per_100km,
         recent_l_per_100km=recent_l_per_100km,
-        average_l_per_100km_with_towing=average_l_per_100km_with_towing,
-        recent_l_per_100km_with_towing=recent_l_per_100km_with_towing,
+        towing_l_per_100km=towing_l_per_100km,
+        tow_vehicle=tow_vehicle,
+        propane_l_per_month=propane_rate,
+        recent_propane_l_per_month=recent_propane_rate,
         archived_at=vehicle.archived_at,
         archived_visible=vehicle.archived_visible,
         is_shared_with_me=is_shared_with_me,
@@ -240,10 +227,10 @@ async def _fleet_next_due(
 
     1. **Dated reminders win.** Candidates with a ``due_date``, ordered
        ``due_date ASC, id ASC`` (the ``id`` tie-break is stable on SQLite AND
-       PG; uses ``ix_reminders_due_date``). A ``due_date`` is a
-       driver-independent absolute "when"; a mileage-to-date projection would
-       need a per-vehicle daily-distance model MyGarage does not store, so a
-       dated reminder always outranks a mileage-only one. Includes overdue
+       PG; uses ``ix_reminders_due_date``). Date-first by choice: a
+       ``due_date`` is an absolute commitment, while a usage projection (the
+       one the due-soon count beside this cell uses) moves with the driving
+       rate, so a dated reminder outranks a mileage-only one. Includes overdue
        dated reminders (a past date sorts first — the most urgent "next").
     2. **Mileage-only fallback.** Only when the fleet has no dated pending
        reminder: rank ``due_date IS NULL AND due_mileage_km IS NOT NULL``
@@ -253,6 +240,9 @@ async def _fleet_next_due(
        ``due_mileage_km ASC``); final tie-break ``id ASC``.
     """
     today = household_today()
+    # The due vehicle's own odometer unit (#172), from the stats already in
+    # hand rather than a new query, exactly as `odo_by_vin` is built below.
+    unit_by_vin = {s.vin: s.distance_unit for s in vehicle_stats}
     dated = (
         await db.execute(
             select(
@@ -279,6 +269,7 @@ async def _fleet_next_due(
             label=dated[1],
             due_date=dated[2],
             due_mileage_km=dated[3],  # passed through so the strip can show both
+            distance_unit=unit_by_vin.get(dated[0]),
         )
 
     mileage_rows = (
@@ -321,6 +312,7 @@ async def _fleet_next_due(
         label=best[2],
         due_date=None,
         due_mileage_km=best[3],
+        distance_unit=unit_by_vin.get(best[1]),
     )
 
 
@@ -330,11 +322,10 @@ async def calculate_fleet_health(
     """Fleet-wide health summary for the dashboard strip.
 
     Scope is the already-computed, already-authorized ``vehicle_stats`` — this
-    never re-scopes or widens the fleet. Overdue reuses the per-vehicle counts
-    verbatim (so the strip agrees with each card badge). Upcoming is the
-    strictly-future 30-day pending window (``today < due_date <= today+30``) so
-    a due-today reminder is Overdue only, never both. Spent-this-year mirrors
-    the garage-analytics monthly-trend running-cost set (service + fuel + DEF),
+    never re-scopes or widens the fleet. Overdue and Upcoming are sums of the
+    per-card counts (``overdue_maintenance_count`` / ``due_soon_maintenance_count``),
+    so the strip agrees with the badges. Spent-this-year mirrors the
+    garage-analytics monthly-trend running-cost set (service + fuel + DEF),
     for records dated ``year_start <= date <= today`` (true YTD — a
     later-this-year record is NOT counted). Next-due is delegated to
     ``_fleet_next_due`` (dated reminders first, mileage-only fallback).
@@ -346,34 +337,19 @@ async def calculate_fleet_health(
     today = household_today()
     year = today.year
     year_start = date_type(year, 1, 1)
-    upcoming_end = today + timedelta(days=30)
 
     overdue_count = sum(s.overdue_maintenance_count for s in vehicle_stats)
+    upcoming_30d = sum(s.due_soon_maintenance_count for s in vehicle_stats)
 
     vins = [s.vin for s in vehicle_stats]
     if not vins:
         return FleetHealth(
             overdue_count=overdue_count,
-            upcoming_30d_count=0,
+            upcoming_30d_count=upcoming_30d,
             year=year,
             spent_this_year=Decimal("0.00"),
             next_due=None,
         )
-
-    # Upcoming — pending reminders due strictly after today, within 30 days.
-    # `> today` (not `>=`) keeps a due-today reminder Overdue-only (finding 6).
-    upcoming_30d = await db.scalar(
-        select(func.count(Reminder.id)).where(
-            Reminder.vin.in_(vins),
-            Reminder.status == "pending",
-            # A snoozed reminder is out of every due-soon count until its
-            # date passes (plan 2026-09-18, decision 4).
-            or_(Reminder.snoozed_until.is_(None), Reminder.snoozed_until <= today),
-            Reminder.due_date.isnot(None),
-            Reminder.due_date > today,
-            Reminder.due_date <= upcoming_end,
-        )
-    )
 
     # Spent this year — service (property, so summed in Python) + fuel + DEF,
     # dated this year up to and including today (true YTD; finding 5).
@@ -417,7 +393,7 @@ async def calculate_fleet_health(
 
     return FleetHealth(
         overdue_count=overdue_count,
-        upcoming_30d_count=upcoming_30d or 0,
+        upcoming_30d_count=upcoming_30d,
         year=year,
         spent_this_year=spent_this_year,
         next_due=next_due,

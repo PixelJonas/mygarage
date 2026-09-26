@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-"""Financing record model for lease/loan payments and upfront fees (ADR 0001)."""
+"""Financing record model for lease/loan payments and upfront fees."""
 
 import datetime as dt
 from datetime import datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     CheckConstraint,
@@ -22,6 +23,9 @@ from sqlalchemy.sql import func
 
 from app.database import Base
 
+if TYPE_CHECKING:
+    from app.models.vendor import Vendor
+
 
 class FinancingRecord(Base):
     """A single lease payment, loan payment, or upfront financing fee."""
@@ -35,7 +39,6 @@ class FinancingRecord(Base):
     vendor_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("vendors.id"))
     date: Mapped[dt.date] = mapped_column(Date, nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
-    tax_amount: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     category: Mapped[str] = mapped_column(String(20), nullable=False)
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
@@ -43,6 +46,7 @@ class FinancingRecord(Base):
 
     # Relationships
     vehicle: Mapped[Vehicle] = relationship("Vehicle", back_populates="financing_records")
+    vendor: Mapped[Vendor | None] = relationship("Vendor", back_populates="financing_records")
 
     __table_args__ = (
         CheckConstraint(

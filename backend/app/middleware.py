@@ -15,7 +15,7 @@ import logging
 import os
 import re
 import uuid
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 
 from sqlalchemy import select
 from starlette.datastructures import MutableHeaders
@@ -33,28 +33,35 @@ def is_test_mode() -> bool:
     return os.getenv("MYGARAGE_TEST_MODE", "").lower() == "true"
 
 
+def _content_security_policy(script_hashes: Sequence[str]) -> str:
+    """The CSP, with the SPA shell's inline scripts allowed by hash.
+
+    ``script-src`` stays ``'self'`` plus the hashes of the inline scripts the
+    served index.html carries (``html_base.inline_script_hashes``): no
+    ``'unsafe-inline'``, and no nonce to thread through a cached shell.
+    """
+    script_src = " ".join(("'self'", *(f"'{h}'" for h in script_hashes)))
+    return (
+        "default-src 'self'; "
+        f"script-src {script_src}; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob: "
+        "https://tile.openstreetmap.org "
+        "https://a.tile.openstreetmap.org "
+        "https://b.tile.openstreetmap.org "
+        "https://c.tile.openstreetmap.org "
+        "https://cdnjs.cloudflare.com; "
+        "font-src 'self'; "
+        "connect-src 'self'; "
+        "frame-src 'self' blob:; "
+        "frame-ancestors 'self'; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'; "
+    )
+
+
 _SECURITY_HEADERS: tuple[tuple[str, str], ...] = (
-    (
-        "Content-Security-Policy",
-        (
-            "default-src 'self'; "
-            "script-src 'self'; "
-            "style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data: blob: "
-            "https://tile.openstreetmap.org "
-            "https://a.tile.openstreetmap.org "
-            "https://b.tile.openstreetmap.org "
-            "https://c.tile.openstreetmap.org "
-            "https://cdnjs.cloudflare.com; "
-            "font-src 'self'; "
-            "connect-src 'self'; "
-            "frame-src 'self' blob:; "
-            "frame-ancestors 'self'; "
-            "object-src 'none'; "
-            "base-uri 'self'; "
-            "form-action 'self'; "
-        ),
-    ),
     ("X-Content-Type-Options", "nosniff"),
     ("X-Frame-Options", "SAMEORIGIN"),
     ("X-XSS-Protection", "1; mode=block"),
@@ -67,10 +74,15 @@ class SecurityHeadersMiddleware:
     """Add security headers to all HTTP responses.
 
     Pure ASGI middleware so streaming responses are not buffered.
+    ``script_hashes`` are the CSP sources for the shell's inline scripts.
     """
 
-    def __init__(self, app: ASGIApp) -> None:
+    def __init__(self, app: ASGIApp, script_hashes: Sequence[str] = ()) -> None:
         self.app = app
+        self._headers = (
+            ("Content-Security-Policy", _content_security_policy(script_hashes)),
+            *_SECURITY_HEADERS,
+        )
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -80,7 +92,7 @@ class SecurityHeadersMiddleware:
         async def send_with_headers(message: Message) -> None:
             if message["type"] == "http.response.start":
                 headers = MutableHeaders(scope=message)
-                for name, value in _SECURITY_HEADERS:
+                for name, value in self._headers:
                     headers[name] = value
             await send(message)
 

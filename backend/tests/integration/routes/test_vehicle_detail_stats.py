@@ -54,6 +54,7 @@ class TestVehicleDetailStats:
         assert set(body.keys()) == {
             "overdue_count",
             "upcoming_count",
+            "due_soon_count",
             "usage_unit",
             "current_hours",
             "latest_hours",
@@ -69,12 +70,14 @@ class TestVehicleDetailStats:
         }
         assert isinstance(body["overdue_count"], int)
         assert isinstance(body["upcoming_count"], int)
+        assert isinstance(body["due_soon_count"], int)
         assert body["year"] == date.today().year
         # Decimal -> JSON string.
         assert isinstance(body["spent_this_year"], str)
         # Required-but-nullable (M2): the keys are PRESENT and null on an empty vehicle.
         assert body["overdue_count"] == 0
         assert body["upcoming_count"] == 0
+        assert body["due_soon_count"] == 0
         assert body["latest_odometer_km"] is None
         assert body["latest_odometer_date"] is None
         assert body["last_service_date"] is None
@@ -175,6 +178,7 @@ class TestVehicleDetailStats:
         ).json()
         assert body["overdue_count"] == 2
         assert body["upcoming_count"] == 2  # 10-days + the undated pending reminder
+        assert body["due_soon_count"] == 1  # only the 10-days one is expected within 30 days
 
     async def test_overdue_by_mileage_boundaries(
         self, client: AsyncClient, non_admin_headers, non_admin_user, db_session: AsyncSession

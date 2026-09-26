@@ -2303,6 +2303,22 @@
             "description": "Custom vehicle color for calendar (Phase 3)",
             "title": "Vehicle Color"
           },
+          "vehicle_distance_unit": {
+            "anyOf": [
+              {
+                "enum": [
+                  "km",
+                  "mi"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The vehicle's own odometer unit; null follows the viewer (#172)",
+            "title": "Vehicle Distance Unit"
+          },
           "vehicle_nickname": {
             "anyOf": [
               {
@@ -5681,23 +5697,6 @@
             "description": "Additional notes",
             "title": "Notes"
           },
-          "tax_amount": {
-            "anyOf": [
-              {
-                "minimum": 0.0,
-                "type": "number"
-              },
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Net/VAT tax portion, if known",
-            "title": "Tax Amount"
-          },
           "vendor_id": {
             "anyOf": [
               {
@@ -5800,6 +5799,17 @@
             "title": "Id",
             "type": "integer"
           },
+          "lender": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VendorSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lender/vendor details, if set"
+          },
           "notes": {
             "anyOf": [
               {
@@ -5811,19 +5821,6 @@
             ],
             "description": "Additional notes",
             "title": "Notes"
-          },
-          "tax_amount": {
-            "anyOf": [
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Net/VAT tax portion, if known",
-            "title": "Tax Amount"
           },
           "updated_at": {
             "anyOf": [
@@ -5926,23 +5923,6 @@
             ],
             "description": "Additional notes",
             "title": "Notes"
-          },
-          "tax_amount": {
-            "anyOf": [
-              {
-                "minimum": 0.0,
-                "type": "number"
-              },
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Net/VAT tax portion, if known",
-            "title": "Tax Amount"
           },
           "vendor_id": {
             "anyOf": [
@@ -6108,6 +6088,21 @@
       "FleetNextDue": {
         "description": "Soonest pending reminder across the visible fleet.",
         "properties": {
+          "distance_unit": {
+            "anyOf": [
+              {
+                "enum": [
+                  "km",
+                  "mi"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance Unit"
+          },
           "due_date": {
             "anyOf": [
               {
@@ -14545,6 +14540,21 @@
       "QuickEntryVehicle": {
         "description": "Lightweight vehicle summary for the Quick Entry selector.",
         "properties": {
+          "distance_unit": {
+            "anyOf": [
+              {
+                "enum": [
+                  "km",
+                  "mi"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance Unit"
+          },
           "fuel_type": {
             "anyOf": [
               {
@@ -23082,6 +23092,53 @@
         "title": "TorqueSourceResponse",
         "type": "object"
       },
+      "TowVehicleSummary": {
+        "description": "The vehicle a trailer is paired with, for the card's \"Towed by\" row.",
+        "properties": {
+          "make": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Make"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "vin": {
+            "title": "Vin",
+            "type": "string"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year"
+          }
+        },
+        "required": [
+          "vin"
+        ],
+        "title": "TowVehicleSummary",
+        "type": "object"
+      },
       "TrailerDetailsCreate": {
         "description": "Schema for creating trailer details.",
         "properties": {
@@ -23896,6 +23953,11 @@
             "title": "Currency Code",
             "type": "string"
           },
+          "dashboard_sort": {
+            "default": "name",
+            "title": "Dashboard Sort",
+            "type": "string"
+          },
           "default_payment_method": {
             "anyOf": [
               {
@@ -24260,6 +24322,18 @@
               }
             ],
             "title": "Currency Code"
+          },
+          "dashboard_sort": {
+            "anyOf": [
+              {
+                "maxLength": 16,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dashboard Sort"
           },
           "default_payment_method": {
             "anyOf": [
@@ -25112,6 +25186,22 @@
             "description": "Engine displacement in liters",
             "title": "Displacement L"
           },
+          "distance_unit": {
+            "anyOf": [
+              {
+                "enum": [
+                  "km",
+                  "mi"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The unit this vehicle's odometer reads (km or mi); null follows the viewer's account. Distances and speeds for this vehicle show and are entered in it (#172).",
+            "title": "Distance Unit"
+          },
           "doors": {
             "anyOf": [
               {
@@ -25794,6 +25884,10 @@
             ],
             "title": "Current Hours"
           },
+          "due_soon_count": {
+            "title": "Due Soon Count",
+            "type": "integer"
+          },
           "last_fillup_date": {
             "anyOf": [
               {
@@ -25883,6 +25977,7 @@
         "required": [
           "overdue_count",
           "upcoming_count",
+          "due_soon_count",
           "usage_unit",
           "current_hours",
           "latest_hours",
@@ -26303,6 +26398,21 @@
             ],
             "description": "Engine displacement in liters",
             "title": "Displacement L"
+          },
+          "distance_unit": {
+            "anyOf": [
+              {
+                "enum": [
+                  "km",
+                  "mi"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance Unit"
           },
           "doors": {
             "anyOf": [
@@ -27137,18 +27247,6 @@
             ],
             "title": "Average L Per 100Km"
           },
-          "average_l_per_100km_with_towing": {
-            "anyOf": [
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Average L Per 100Km With Towing"
-          },
           "average_l_per_hr": {
             "anyOf": [
               {
@@ -27172,6 +27270,25 @@
               }
             ],
             "title": "Current Hours"
+          },
+          "distance_unit": {
+            "anyOf": [
+              {
+                "enum": [
+                  "km",
+                  "mi"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance Unit"
+          },
+          "due_soon_maintenance_count": {
+            "title": "Due Soon Maintenance Count",
+            "type": "integer"
           },
           "is_shared_with_me": {
             "default": false,
@@ -27297,6 +27414,18 @@
             ],
             "title": "Owner Relationship Custom"
           },
+          "propane_l_per_month": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Propane L Per Month"
+          },
           "recent_l_per_100km": {
             "anyOf": [
               {
@@ -27309,7 +27438,7 @@
             ],
             "title": "Recent L Per 100Km"
           },
-          "recent_l_per_100km_with_towing": {
+          "recent_propane_l_per_month": {
             "anyOf": [
               {
                 "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
@@ -27319,7 +27448,7 @@
                 "type": "null"
               }
             ],
-            "title": "Recent L Per 100Km With Towing"
+            "title": "Recent Propane L Per Month"
           },
           "secondary_usage_enabled": {
             "default": false,
@@ -27376,6 +27505,28 @@
             "title": "Total Service Records",
             "type": "integer"
           },
+          "tow_vehicle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TowVehicleSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "towing_l_per_100km": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Towing L Per 100Km"
+          },
           "upcoming_maintenance_count": {
             "title": "Upcoming Maintenance Count",
             "type": "integer"
@@ -27422,6 +27573,7 @@
           "total_notes",
           "total_photos",
           "upcoming_maintenance_count",
+          "due_soon_maintenance_count",
           "overdue_maintenance_count"
         ],
         "title": "VehicleStatistics",
@@ -27703,6 +27855,22 @@
             ],
             "description": "Engine displacement in liters",
             "title": "Displacement L"
+          },
+          "distance_unit": {
+            "anyOf": [
+              {
+                "enum": [
+                  "km",
+                  "mi"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The unit this vehicle's odometer reads (km or mi); null follows the viewer's account. Distances and speeds for this vehicle show and are entered in it (#172).",
+            "title": "Distance Unit"
           },
           "doors": {
             "anyOf": [

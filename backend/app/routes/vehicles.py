@@ -13,12 +13,12 @@ from app.database import get_db
 from app.models import (
     DEFRecord,
     FuelRecord,
-    Reminder,
     ServiceVisit,
 )
 from app.models.user import User
 from app.models.vehicle import TrailerDetails, Vehicle
 from app.schemas.vehicle import (
+    NON_MOTORIZED_VEHICLE_TYPES,
     TrailerDetailsCreate,
     TrailerDetailsResponse,
     TrailerDetailsUpdate,
@@ -38,7 +38,7 @@ from app.services.auth import (
 from app.services.fuel_service import calculate_average_hours_economy
 from app.services.hours_service import latest_engine_hours_and_date
 from app.services.odometer_service import latest_odometer_km_and_date
-from app.services.reminder_service import is_reminder_overdue, is_reminder_snoozed
+from app.services.reminder_service import count_pending_reminders
 from app.services.service_visit_service import service_visit_cost_load_options
 from app.services.vehicle_service import VehicleService
 from app.utils.datetime_utils import utc_now
@@ -47,8 +47,6 @@ from app.utils.logging_utils import sanitize_for_log
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/vehicles", tags=["Vehicles"])
-
-_NON_MOTORIZED = frozenset({"Trailer", "FifthWheel", "TravelTrailer"})
 
 
 async def _validate_tow_vehicle_vin(
@@ -61,7 +59,7 @@ async def _validate_tow_vehicle_vin(
         return None
     tow_vin = tow_vin.upper().strip()
     tow_vehicle = await get_vehicle_or_403(tow_vin, current_user, db)
-    if tow_vehicle.vehicle_type in _NON_MOTORIZED:
+    if tow_vehicle.vehicle_type in NON_MOTORIZED_VEHICLE_TYPES:
         raise HTTPException(
             status_code=400,
             detail="Tow vehicle must be a motorized vehicle (not a trailer)",
@@ -130,8 +128,8 @@ async def get_vehicle(
 async def _vehicle_detail_stats(db: AsyncSession, vin: str) -> VehicleDetailStats:
     """Aggregate the Vehicle Detail hero/key-facts stats for one vehicle.
 
-    Reuses the per-vehicle overdue/upcoming logic (dashboard.calculate_vehicle_stats)
-    and the YTD running-cost set (dashboard.calculate_fleet_health): service +
+    Counts reminders through the shared count_pending_reminders (as the dashboard
+    card does) and reuses the YTD running-cost set (dashboard.calculate_fleet_health): service +
     fuel + DEF dated year_start..today. All filters are Date-vs-Python-date
     ranges (dialect-portable, no EXTRACT/strftime). Costs are Decimal, never
     float. latest_odometer_km stays raw canonical km (converted at the API
@@ -165,11 +163,7 @@ async def _vehicle_detail_stats(db: AsyncSession, vin: str) -> VehicleDetailStat
     # uses (R2-B1/B2), so the two routes agree on a same-date-reading vehicle. The
     # model has no VIN/date uniqueness (app/models/odometer.py:21), hence the
     # odometer and id ordering inside the helper.
-    # current_odometer_km for the mileage-reminder evaluation is derived from THIS
-    # SAME returned row (reused, not a second query) so the displayed reading and
-    # the mileage-eval reading can never disagree.
     latest_odometer_km, latest_odometer_date = await latest_odometer_km_and_date(db, vin)
-    current_odometer_km = latest_odometer_km  # one determination, reused below
 
     # Last service / last fill-up dates (id.desc() secondary sort = dialect-stable).
     last_service_date = await db.scalar(
@@ -185,31 +179,8 @@ async def _vehicle_detail_stats(db: AsyncSession, vin: str) -> VehicleDetailStat
         .limit(1)
     )
 
-    # Overdue / upcoming — shared hours-aware predicate (is_reminder_overdue,
-    # Phase 6b), identical to dashboard.calculate_vehicle_stats and
-    # family_dashboard_service (G8). current_odometer_km and latest_hours are
-    # both reused from the single fetches above (NO extra query), so a pure
-    # `hours` reminder agrees across dashboard, family dashboard, calendar,
-    # and this detail-stats endpoint.
-    pending = (
-        (
-            await db.execute(
-                select(Reminder).where(Reminder.vin == vin, Reminder.status == "pending")
-            )
-        )
-        .scalars()
-        .all()
-    )
-    overdue_count = 0
-    upcoming_count = 0
-    for reminder in pending:
-        if is_reminder_snoozed(reminder, today):
-            # Out of BOTH counts while snoozed (plan 2026-09-18, decision 4).
-            continue
-        if is_reminder_overdue(reminder, current_odometer_km, latest_hours, today):
-            overdue_count += 1
-        else:
-            upcoming_count += 1
+    # Same readings the hero displays, so badge and reading agree.
+    counts = await count_pending_reminders(db, vin, latest_odometer_km, latest_hours, today)
 
     # Spent this year — service (property) + fuel + DEF, dated year_start..today.
     service_visits = (
@@ -262,8 +233,9 @@ async def _vehicle_detail_stats(db: AsyncSession, vin: str) -> VehicleDetailStat
     def_spent = sum((c for c in def_costs if c is not None), Decimal("0.00"))
 
     return VehicleDetailStats(
-        overdue_count=overdue_count,
-        upcoming_count=upcoming_count,
+        overdue_count=counts.overdue,
+        upcoming_count=counts.upcoming,
+        due_soon_count=counts.due_soon,
         usage_unit=usage_unit,
         current_hours=current_hours,
         latest_hours=latest_hours,

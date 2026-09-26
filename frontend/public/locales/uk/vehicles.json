@@ -62,7 +62,7 @@
     "noVehiclesYet": "Поки немає транспортних засобів",
     "oldestFirst": "Спочатку старі",
     "sharedWithMeSection": "Доступні мені ({{count}})",
-    "sortByName": "Сортувати за ім'ям",
+    "sortByName": "За ім'ям",
     "sortTrigger": "Сортування: {{label}}",
     "sortVehicles": "Сортувати транспортні засоби",
     "title": "Мій гараж",
@@ -680,10 +680,8 @@
     "noteCount": "{{count}} нотаток",
     "overdue": "{{count}} прострочених",
     "photoCount": "{{count}} фотографій",
-    "recent": "Недавні",
     "recentActivity": "Недавня активність",
-    "service": "Сервіс",
-    "upcoming": "{{count}} майбутніх"
+    "service": "Сервіс"
   },
   "vendorSearch": {
     "noResults": "Немає результатів"

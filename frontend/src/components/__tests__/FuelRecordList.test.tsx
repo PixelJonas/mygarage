@@ -23,16 +23,24 @@ const unitPrefMock = vi.hoisted(() => ({
   // Set to pin an exact resolved set (a `gal_uk` user, say); left null the set
   // follows `system`, the way the real hook derives both on one rung.
   units: null as null | import('@/types/units').UnitSet,
+  // The ACCOUNT's set when it differs from the scoped one: a vehicle with its
+  // own odometer unit (#172). Left null, the account is the scoped set.
+  accountUnits: null as null | import('@/types/units').UnitSet,
 }))
 vi.mock('../../hooks/useUnitPreference', async () => {
   const { IMPERIAL_UNITS, METRIC_UNITS } = await import('@/__tests__/factories')
+  const scoped = () =>
+    unitPrefMock.units ?? (unitPrefMock.system === 'imperial' ? IMPERIAL_UNITS : METRIC_UNITS)
   return {
     useUnitPreference: () => ({
       system: unitPrefMock.system,
       showBoth: unitPrefMock.showBoth,
-      units:
-        unitPrefMock.units ??
-        (unitPrefMock.system === 'imperial' ? IMPERIAL_UNITS : METRIC_UNITS),
+      units: scoped(),
+    }),
+    useAccountUnitPreference: () => ({
+      system: unitPrefMock.system,
+      showBoth: unitPrefMock.showBoth,
+      units: unitPrefMock.accountUnits ?? scoped(),
     }),
   }
 })
@@ -99,6 +107,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   unitPrefMock.system = 'metric'
   unitPrefMock.units = null
+  unitPrefMock.accountUnits = null
   UnitConverter.setGallonStandard('us')
   vi.spyOn(window, 'confirm').mockReturnValue(true)
   useFuelRecordsMock.mockReturnValue({
@@ -388,6 +397,19 @@ describe('FuelRecordList — the cost-per-distance card, label and value togethe
     })
   })
 
+  it('★ a mi VEHICLE on a km ACCOUNT keeps the rate on the account, label and value (#172)', async () => {
+    // $20.00 over 1000 km is $0.02/km: $2.00 per 100 km on the account's
+    // units. The vehicle's miles would have said $32.19 per 1,000 mi.
+    unitPrefMock.units = { ...METRIC_UNITS, distance: 'mi', speed: 'mph' }
+    unitPrefMock.accountUnits = METRIC_UNITS
+
+    render(<FuelRecordList {...DEFAULT_PROPS} />)
+    expect(await screen.findByText('fuelList.costPerDistance (100 km)')).toBeInTheDocument()
+    expect(screen.getByText('$2.00')).toBeInTheDocument()
+    expect(screen.queryByText('fuelList.costPerDistance (1,000 mi)')).not.toBeInTheDocument()
+    expect(screen.queryByText('$32.19')).not.toBeInTheDocument()
+  })
+
   it('★ a LITRES-and-MILES account reads its cost per 1,000 MILES', async () => {
     // $20.00 over 1000 km is $0.02/km; x 1.609344 x 1000 = $32.19 per 1,000 mi.
     // The retired pair read 'metric' off the litres and answered $2.00 under
@@ -482,5 +504,34 @@ describe('FuelRecordList — one gallon per page, taken from the user', () => {
     expect(within(table()).getByText('47.32 L')).toBeInTheDocument()
     expect(screen.getByText('fuelList.volumeTotal (47.3 L)')).toBeInTheDocument()
     expect(screen.getByText('fuelList.avgCostPerVolume (L)')).toBeInTheDocument()
+  })
+})
+
+describe('FuelRecordList — the average card and its towing toggle (#181)', () => {
+  const toggle = () => screen.queryByRole('checkbox', { name: 'fuelList.inclTowing' })
+
+  it('keeps the toggle when every tank towed, so towing can still be switched on', async () => {
+    // No tank without towing, so the default (towing left out) has no average.
+    // The card used to vanish with it, taking the only way to switch towing on.
+    useFuelRecordsMock.mockReturnValue({
+      data: { records: [{ ...record, is_hauling: true }], total: 1, average_l_per_100km: null },
+      isLoading: false,
+      error: null,
+    })
+    render(<FuelRecordList {...DEFAULT_PROPS} />)
+    await waitFor(() => expect(apiGetMock).toHaveBeenCalled())
+    expect(toggle()).toBeInTheDocument()
+    expect(screen.getByText('—')).toBeInTheDocument()
+  })
+
+  it('shows no average card for a vehicle with neither a figure nor a towing fill-up', async () => {
+    useFuelRecordsMock.mockReturnValue({
+      data: { records: [{ ...record, is_hauling: false }], total: 1, average_l_per_100km: null },
+      isLoading: false,
+      error: null,
+    })
+    render(<FuelRecordList {...DEFAULT_PROPS} />)
+    await waitFor(() => expect(apiGetMock).toHaveBeenCalled())
+    expect(toggle()).not.toBeInTheDocument()
   })
 })

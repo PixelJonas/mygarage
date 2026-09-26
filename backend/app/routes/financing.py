@@ -1,4 +1,4 @@
-"""Financing record CRUD API endpoints (ADR 0001)."""
+"""Financing record CRUD API endpoints."""
 
 import logging
 

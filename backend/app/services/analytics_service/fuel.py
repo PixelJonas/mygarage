@@ -13,13 +13,12 @@ import pandas as pd
 
 from app.models import FuelRecord
 from app.services.analytics_service.trends import calculate_trend_direction
-from app.services.fuel_service import compute_full_tank_economy, compute_full_tank_hours_economy
-
-# Realistic L/100km band (~5–100 MPG). A fill-up outside it is almost always a
-# data-entry slip (mistyped odometer/volume); dropping it keeps the trend chart
-# and its tiles readable. The raw figure still appears in the fuel-history list.
-_MIN_REALISTIC_L_PER_100KM = 2.35
-_MAX_REALISTIC_L_PER_100KM = 47.0
+from app.services.fuel_service import (
+    average_l_per_100km,
+    compute_full_tank_hours_economy,
+    economy_periods,
+    is_bottle_refill,
+)
 
 
 def _lower_is_better_trend(values: pd.Series) -> str:
@@ -77,15 +76,18 @@ def calculate_fuel_economy_with_pandas(
     # requires; a partial fill-up gets no point of its own.
     records_asc = sorted(
         (r for r in fuel_records if r.odometer_km is not None),
-        key=lambda r: (r.odometer_km, r.date),
+        key=lambda r: (r.odometer_km, r.date, r.id),
     )
-    economy = compute_full_tank_economy(records_asc, exclude_hauling=False)
+    # Every tank, towing included: the chart plots each one. A tank outside the
+    # realistic band (fuel_service.MIN_REALISTIC_L_PER_100KM) is almost always a
+    # data-entry slip; it drops out of the points AND the average, and its raw
+    # figure still appears in the fuel-history list.
+    plotted = [period for period in economy_periods(records_asc) if period.plausible]
 
     data = []
-    for record, l_per_100km in economy:
-        value = float(l_per_100km)
-        if not (_MIN_REALISTIC_L_PER_100KM <= value <= _MAX_REALISTIC_L_PER_100KM):
-            continue
+    for period in plotted:
+        record = period.record
+        value = float(period.l_per_100km)
         data.append(
             {
                 "date": pd.Timestamp(record.date),
@@ -105,10 +107,11 @@ def calculate_fuel_economy_with_pandas(
 
     values = df["l_per_100km"]
 
-    # Simple mean of per-full-tank figures — matches calculate_average_l_per_100km.
-    # Best is *lowest* L/100km, worst is *highest* (semantic flip from MPG).
+    # The average is total fuel over total distance, as everywhere else; best,
+    # worst and recent are per tank. Best is *lowest* L/100km, worst is
+    # *highest* (semantic flip from MPG).
     stats = {
-        "average_l_per_100km": Decimal(str(round(values.mean(), 2))),
+        "average_l_per_100km": average_l_per_100km(plotted),
         "best_l_per_100km": Decimal(str(round(values.min(), 2))),
         "worst_l_per_100km": Decimal(str(round(values.max(), 2))),
         "recent_l_per_100km": Decimal(str(round(values.iloc[-1], 2))),
@@ -167,7 +170,7 @@ def calculate_hours_economy_with_pandas(
     # compute_full_tank_hours_economy to fold partials correctly.
     records_asc = sorted(
         (r for r in fuel_records if r.engine_hours is not None),
-        key=lambda r: (r.engine_hours, r.date),
+        key=lambda r: (r.engine_hours, r.date, r.id),
     )
     figures = compute_full_tank_hours_economy(records_asc, exclude_hauling=False)
 
@@ -215,10 +218,8 @@ def calculate_propane_costs(fuel_records: list[FuelRecord]) -> dict[str, Any]:
     Returns:
         Dictionary with propane statistics, monthly trends, and tank breakdown
     """
-    # Filter for propane records (propane_liters > 0 and liters is None)
-    propane_records = [
-        r for r in fuel_records if r.propane_liters and r.propane_liters > 0 and not r.liters
-    ]
+    # Bottle refills only: one rule, shared with the dashboard's propane rate.
+    propane_records = [r for r in fuel_records if is_bottle_refill(r)]
 
     if not propane_records:
         return {

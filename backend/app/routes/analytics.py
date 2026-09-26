@@ -77,7 +77,7 @@ from app.utils.household_time import household_today
 from app.utils.insurance_cost import accrued_cost, monthly_costs
 from app.utils.insurance_shares import effective_shares
 from app.utils.logging_utils import sanitize_for_log
-from app.utils.render_context import render_context_for_request
+from app.utils.render_context import render_context_for_request, with_vehicle
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
@@ -278,13 +278,7 @@ async def get_cost_analysis(db: AsyncSession, vin: str) -> CostAnalysis:
         (r.total for r in spot_rental_billings if r.total), Decimal("0.00")
     )
     total_financing_cost = sum((r.amount for r in financing_records if r.amount), Decimal("0.00"))
-    total_cost = (
-        total_service_cost
-        + total_fuel_cost
-        + total_def_cost
-        + total_spot_rental_cost
-        + total_financing_cost
-    )
+    total_cost = total_service_cost + total_fuel_cost + total_def_cost + total_spot_rental_cost
 
     # Use pandas for monthly aggregation (one row per visit)
     df = analytics_service.visits_to_dataframe(
@@ -1167,7 +1161,6 @@ async def get_garage_analytics(
             + vehicle_detailing
             + vehicle_fuel
             + vehicle_def
-            + vehicle_financing
         )
 
         total_maintenance += vehicle_maintenance
@@ -1729,7 +1722,10 @@ async def export_analytics_pdf(
     # Convert analytics to dict for PDF generator
     analytics_data = analytics.model_dump()
 
-    # Generate PDF
+    # Generate PDF. Distances follow the vehicle's odometer unit; the
+    # cost-per-distance cell keeps the account's units (#172 D3), so the PDF
+    # gets both.
+    account_ctx = await render_context_for_request(current_user, db)
     pdf_buffer = generate_vehicle_analytics_pdf(
         analytics_data=analytics_data,
         vendor_data=vendor_data,
@@ -1737,7 +1733,8 @@ async def export_analytics_pdf(
         currency_code=safe_code,
         locale=safe_locale,
         reminders_data=reminders_data,
-        render_context=await render_context_for_request(current_user, db),
+        render_context=with_vehicle(account_ctx, vehicle),
+        rate_context=account_ctx,
     )
 
     # Return PDF as streaming response

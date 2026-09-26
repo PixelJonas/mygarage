@@ -10,8 +10,7 @@
     "sections": "Settings sections"
   },
   "systemConfig": {
-    "title": "Configuration du système",
-    "description": "Configurez les paramètres principaux du système comme le fuseau horaire et le mode débogage."
+    "title": "Configuration du système"
   },
   "timezone": {
     "label": "Fuseau horaire",

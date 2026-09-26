@@ -60,6 +60,7 @@ import { IMPERIAL_UNITS, METRIC_UNITS } from '@/__tests__/factories'
 const unitPreferenceMock = vi.fn()
 vi.mock('../../hooks/useUnitPreference', () => ({
   useUnitPreference: () => unitPreferenceMock(),
+  useAccountUnitPreference: () => unitPreferenceMock(),
 }))
 vi.mock('../../hooks/useCurrencyPreference', () => ({
   useCurrencyPreference: () => ({ currencyCode: 'USD', locale: 'en-US' }),

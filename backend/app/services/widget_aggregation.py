@@ -13,10 +13,11 @@ Design rules:
 2. **Request-time ownership filter.** `allowed_vins` on the key is a filter
    only; every lookup re-derives the VIN set from current `vehicles.user_id`
    ownership so transfer/archive changes invalidate access immediately.
-3. **MPG parity with `calculate_mpg`.** Recent = last 3 full-tank fill-ups,
-   average bounded to last 10. Fetched via a single indexed query; pairwise
-   MPG is computed in Python for portability and to mirror the existing
-   `calculate_mpg` guards exactly.
+3. **Economy on the card's model.** Scored by `fuel_service.economy_periods`
+   over the last 10 full tanks by odometer, leaving out towing and implausible
+   tanks: recent = the last 3 of those, average = all of them, each total fuel
+   over total distance. Unlike the card's average this one is bounded, so the
+   two differ on a long history. Two indexed queries fix and load the span.
 """
 
 # pyright: reportAssignmentType=false, reportAttributeAccessIssue=false
@@ -43,13 +44,13 @@ from app.schemas.widget import (
     WidgetVehicleRef,
     WidgetVehicleV2,
 )
-from app.services.fuel_service import calculate_average_hours_economy
-from app.services.hours_service import latest_engine_hours_and_date
-from app.services.reminder_service import (
-    get_current_hours,
-    is_reminder_overdue,
-    is_reminder_snoozed,
+from app.services.fuel_service import (
+    average_l_per_100km,
+    calculate_average_hours_economy,
+    economy_periods,
 )
+from app.services.hours_service import latest_engine_hours_and_date
+from app.services.reminder_service import classify_pending_reminders, get_current_hours
 from app.utils.household_time import household_today
 from app.utils.unit_adapters import ADAPTERS, UnitAdapter
 from app.utils.unit_counterparts import forced_mpg_adapter
@@ -506,11 +507,9 @@ class WidgetAggregationService:
     ) -> tuple[int, int]:
         """Classify pending reminders for the given VIN(s).
 
-        Delegates the per-reminder overdue determination to the shared
-        `is_reminder_overdue` helper (date, mileage, OR hours — Task 8,
-        P5-review gap) so a pure `hours` reminder counts here exactly like it
-        already does on the dashboard/detail-stats surfaces. Everything else
-        pending counts as upcoming.
+        The shared `classify_pending_reminders` split (date, mileage, OR
+        hours overdue; snoozed in no count), so a pure `hours` reminder counts
+        here exactly like it does on the dashboard/detail-stats surfaces.
         """
         if not vins:
             return 0, 0
@@ -520,105 +519,71 @@ class WidgetAggregationService:
         )
         stmt = select(Reminder).where(Reminder.vin.in_(vins), Reminder.status == "pending")
         reminders = (await self.db.execute(stmt)).scalars().all()
-        overdue = 0
-        upcoming = 0
-        for reminder in reminders:
-            if is_reminder_snoozed(reminder, today):
-                # Out of BOTH counts while snoozed (plan 2026-09-18, decision 4).
-                continue
-            if is_reminder_overdue(reminder, current_km_decimal, current_hours, today):
-                overdue += 1
-            else:
-                upcoming += 1
-        return overdue, upcoming
+        # No rates: the widget has no due-soon figure, so no projection is needed.
+        counts = classify_pending_reminders(
+            reminders, current_km_decimal, current_hours, None, None, today
+        )
+        return counts.overdue, counts.upcoming
 
     async def _consumption_l100km(self, vin: str) -> tuple[Decimal | None, Decimal | None]:
-        """Return (recent, average) consumption in L/100km, bounded to the last
-        10 full-tank fill-ups.
+        """Return (recent, average) consumption in L/100km over the last 10 full
+        tanks, towing tanks left out.
 
         The single metric source for both the legacy MPG output (v1) and the
-        metric/km-per-L output (v2). Behavioral parity with
-        `fuel_service.calculate_mpg` + `get_previous_full_tank`:
-          - Only consecutive full-tank records count
-          - Needs prior odometer_km and liters > 0
-          - Skip pairs where distance <= 0
-        We fetch 11 rows (one more than AVERAGE_MPG_WINDOW) so we can form up
-        to 10 consecutive pairs. Conversion to MPG / km-per-L happens at the
-        response boundary.
-        """
-        fetch_limit = AVERAGE_MPG_WINDOW + 1
-        stmt = (
-            select(
-                FuelRecord.odometer_km,
-                FuelRecord.liters,
-                FuelRecord.date,
-                FuelRecord.missed_fillup,
-            )
-            .where(
-                FuelRecord.vin == vin,
-                FuelRecord.is_full_tank.is_(True),
-                FuelRecord.odometer_km.is_not(None),
-            )
-            .order_by(FuelRecord.date.desc(), FuelRecord.id.desc())
-            .limit(fetch_limit)
-        )
-        rows = (await self.db.execute(stmt)).all()
-        if len(rows) < 2:
-            return None, None
+        metric/km-per-L output (v2). Scored by `fuel_service.economy_periods`,
+        the model every other surface uses (partials fold in, a missed fill-up
+        re-anchors, towing tanks are tagged). Recent is the last 3 non-towing,
+        plausible tanks in the window, average all of them, each total fuel over
+        total distance. Conversion to MPG / km-per-L happens at the response
+        boundary.
 
-        # Every fill-up in the odometer span the pairs cover, so partial
-        # fill-ups between two full tanks contribute their volume to the
-        # interval instead of being ignored (issue #113). rows are newest-first,
-        # so rows[0] is the newest full tank and rows[-1] the oldest anchor.
-        newest_km = rows[0][0]
-        oldest_prev_km = rows[-1][0]
-        span_rows = (
-            await self.db.execute(
-                select(FuelRecord.odometer_km, FuelRecord.liters).where(
-                    FuelRecord.vin == vin,
-                    FuelRecord.odometer_km.is_not(None),
-                    FuelRecord.liters.is_not(None),
-                    FuelRecord.odometer_km > oldest_prev_km,
-                    FuelRecord.odometer_km <= newest_km,
+        Bounded: the 11 highest full-tank odometers (one more than
+        AVERAGE_MPG_WINDOW, to anchor the oldest) fix the span, and only the
+        fill-ups inside it are loaded. Chosen by odometer, the axis the tanks
+        are scored on, so a misdated fill-up can neither drop the newest tank
+        nor stretch the span over the whole history.
+        """
+        span_ends = (
+            (
+                await self.db.execute(
+                    select(FuelRecord.odometer_km)
+                    .where(
+                        FuelRecord.vin == vin,
+                        FuelRecord.is_full_tank.is_(True),
+                        FuelRecord.odometer_km.is_not(None),
+                    )
+                    .order_by(FuelRecord.odometer_km.desc(), FuelRecord.id.desc())
+                    .limit(AVERAGE_MPG_WINDOW + 1)
                 )
             )
-        ).all()
-
-        def interval_liters(lo: Decimal, hi: Decimal) -> Decimal:
-            """Sum liters of every fill-up in the odometer window (lo, hi]."""
-            return sum(
-                (liters for (odo, liters) in span_rows if lo < odo <= hi),
-                Decimal(0),
-            )
-
-        # rows[0] is newest. Pair i uses rows[i] (current) and rows[i+1] (prev full tank).
-        pair_l100km: list[Decimal] = []
-        for i in range(len(rows) - 1):
-            cur_km, cur_liters, _, cur_missed = rows[i]
-            prev_km, _, _, _ = rows[i + 1]
-            if cur_missed:
-                # Missed fill-up: distance since the previous record covers
-                # unrecorded fuel — the row anchors the next pair but yields
-                # no economy figure itself (parity with calculate_l_per_100km).
-                continue
-            if cur_liters is None or cur_km is None or prev_km is None:
-                continue
-            if cur_liters <= 0:
-                continue
-            distance_km = cur_km - prev_km
-            if distance_km <= 0:
-                continue
-            # Total fuel since the previous full tank (partials + this fill).
-            liters = interval_liters(prev_km, cur_km)
-            if liters <= 0:
-                liters = cur_liters
-            pair_l100km.append((liters / Decimal(str(distance_km))) * Decimal("100"))
-
-        if not pair_l100km:
+            .scalars()
+            .all()
+        )
+        if len(span_ends) < 2:
             return None, None
 
-        recent_slice = pair_l100km[:RECENT_MPG_WINDOW]
-        average_slice = pair_l100km[:AVERAGE_MPG_WINDOW]
-        recent_l100km = sum(recent_slice) / len(recent_slice)
-        average_l100km = sum(average_slice) / len(average_slice)
-        return recent_l100km, average_l100km
+        span = list(
+            (
+                await self.db.execute(
+                    select(FuelRecord)
+                    .where(
+                        FuelRecord.vin == vin,
+                        FuelRecord.odometer_km.is_not(None),
+                        FuelRecord.odometer_km >= min(span_ends),
+                        FuelRecord.odometer_km <= max(span_ends),
+                    )
+                    .order_by(
+                        FuelRecord.odometer_km.asc(), FuelRecord.date.asc(), FuelRecord.id.asc()
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        ordinary = [
+            period for period in economy_periods(span) if not period.towing and period.plausible
+        ]
+        return (
+            average_l_per_100km(ordinary[-RECENT_MPG_WINDOW:]),
+            average_l_per_100km(ordinary),
+        )

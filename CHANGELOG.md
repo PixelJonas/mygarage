@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Fifth wheel and travel trailer cards show the tow vehicle and average propane use per month, in the slots where motorized cards show the odometer and fuel economy
+
+### Changed
+- Vehicle cards and the vehicle hero flag reminders due within 30 days, by date or by projected mileage and hours, instead of every pending reminder; the fleet strip's count is the sum of those badges
+- The notification bell warns about mileage and hours reminders projected to come due within two weeks, not only dated ones
+
+### Fixed
+- Theme and accent apply before first paint in production: the CSP now allows the shell's inline script by hash instead of refusing it
+- The smallest font subset was inlined as a data: URL and refused by the CSP; fonts are always emitted as files
+- The dashboard sort trigger read "Sort: Sort by Name"; the order is now "Name" in every language, and the French trigger is translated
+- Recall "Resolved" and document "Uploaded" dates rendered as "Invalid Date"
+
+## [3.7.0] - 2026-09-24
+
+### Added
 - LiveLink source modules: telemetry sources now declare their capabilities
 - Generic MQTT sources, mappable from Settings with no code
 - MQTT topic discovery for finding what a device publishes
@@ -15,19 +30,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Mopeka propane sensors: add each tank as its own device from its level topic, with the other readings' topics suggested from the broker; deleting one deletes its readings
 - Propane tanks on the Live tab: one card per tank, drawn at its level in your accent colour, with its other readings beside it
 - Alert lines per tank in Settings (level low and critical, battery low): they colour the tank, label it Low or Critical, and notify once per crossing, re-armed by a refill
+- Each vehicle can set the unit its odometer reads (km or mi); its distances and speeds are shown and entered in it, while fuel economy and cost per distance keep your account setting. Account default keeps today's behaviour (#172)
+- Dashboard order in Quick Settings: the dashboard opens in your chosen order on any browser; the sort menu still overrides it for the tab
+- Financing tracking for lease and loan payments and upfront fees, with a Financing tab and cost analytics
 
 ### Fixed
+- Fuel economy "excluding towing" no longer includes it: a towing tank was merged into the next tank, so its fuel stayed in the average
+- Fuel economy averages are total fuel over total distance (or engine hours), not a mean of each tank's figure
+- Economy averages leave out impossible tanks (a mistyped odometer or volume), as Analytics already did
+- The Fuel tab keeps its "include towing" toggle for a vehicle whose every tank towed
+- A vehicle tracked by engine hours can log a fill-up; every save was refused for a missing odometer
+- Odometer milestones step every 10,000 of the vehicle's own unit; a vehicle shown in miles was congratulated on "62,137 mi"
 - A request with NaN or infinity in a number field gets a 422, not a 500
 - Quick Entry offers what the vehicle page does: a fifth wheel or travel trailer gets Propane instead of Fuel Up and no Mileage, a diesel gets DEF, and the Add Fuel shortcut opens the vehicle's own fill-up
 - DEF can be logged on a vehicle whose second fuel is diesel; its DEF tab was read-only
 - The propane form no longer shows "NaN" under the tank row before a tank size is chosen
+- Money fields make room for the whole currency symbol: "PLN", "CHF" or "R$" no longer covers the amount
 - The notification switches in LiveLink settings now gate their notifications; **Parameter threshold breaches** did nothing (migration 118 keeps any alert switched off the old way off)
 - Removed `TelemetryService.store_value`, which was unreachable and raised `TypeError`
 - Widened `livelink_devices.kind` so PostgreSQL accepts `generic_mqtt`
 - The Inbound Webhooks hint no longer offers `?token=`, which is refused
+- With sign-in off, a time format, language or currency saved from Quick Settings no longer vanishes in a development build
 - Secrets (the Telegram bot token, Discord and Slack webhook URLs, TomTom and Google Places API keys) are no longer written to the logs
 
 ### Changed
+- The vehicle card shows towing economy on its own line, the headline says "not towing" when a vehicle tows, and the recent figure reads "Last 3 tanks" (#181)
+- The homepage widget's economy leaves towing tanks out, matching the vehicle card
+- Telegram `/fuel` reads an odometer with no km/mi suffix in that vehicle's unit (it was kilometres), and its reply says how it read the numbers
 - A disabled LiveLink device no longer has its status refreshed by status or battery messages
 - **Enable LiveLink** now gates MQTT, Torque and SD-card backfill too: off, nothing is stored and no new device is discovered
 - Installs already receiving MQTT or Torque data have LiveLink switched on at upgrade (migration 116)

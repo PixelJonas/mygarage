@@ -265,6 +265,7 @@ async def test_user(db_session: AsyncSession) -> dict[str, object]:
         # explicit value, and null-on-PUT means "no change"), so reset to unset.
         user.accent_color = None
         user.theme = None
+        user.dashboard_sort = "name"
         await db_session.commit()
         await db_session.refresh(user)
 

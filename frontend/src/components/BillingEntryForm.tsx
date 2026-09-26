@@ -4,8 +4,8 @@ import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Save } from 'lucide-react'
 import FormModalWrapper from './FormModalWrapper'
-import { Button, Field, Input, NumberInput, Textarea, registerDecimal } from './ui'
-import CurrencyInputPrefix from './common/CurrencyInputPrefix'
+import { Button, Field, Input, Textarea, registerDecimal } from './ui'
+import CurrencyInput from './common/CurrencyInput'
 import type {
   SpotRentalBilling,
   SpotRentalBillingCreate,
@@ -139,74 +139,54 @@ export default function BillingEntryForm({
           </Field>
 
           <Field id="monthly_rate" label={t('spotRental.monthlyRate')} error={errors.monthly_rate}>
-            <div className="relative">
-              <CurrencyInputPrefix />
-              <NumberInput
-                id="monthly_rate"
-                {...registerDecimal(register, 'monthly_rate')}
-                placeholder="0.00"
-                invalid={!!errors.monthly_rate}
-                disabled={isSubmitting}
-                className="pl-7"
-              />
-            </div>
+            <CurrencyInput
+              id="monthly_rate"
+              {...registerDecimal(register, 'monthly_rate')}
+              placeholder="0.00"
+              invalid={!!errors.monthly_rate}
+              disabled={isSubmitting}
+            />
           </Field>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Field id="electric" label={t('billingEntryForm.electric')} error={errors.electric}>
-              <div className="relative">
-                <CurrencyInputPrefix />
-                <NumberInput
-                  id="electric"
-                  {...registerDecimal(register, 'electric')}
-                  placeholder="0.00"
-                  invalid={!!errors.electric}
-                  disabled={isSubmitting}
-                  className="pl-7"
-                />
-              </div>
+              <CurrencyInput
+                id="electric"
+                {...registerDecimal(register, 'electric')}
+                placeholder="0.00"
+                invalid={!!errors.electric}
+                disabled={isSubmitting}
+              />
             </Field>
 
             <Field id="water" label={t('billingEntryForm.water')} error={errors.water}>
-              <div className="relative">
-                <CurrencyInputPrefix />
-                <NumberInput
-                  id="water"
-                  {...registerDecimal(register, 'water')}
-                  placeholder="0.00"
-                  invalid={!!errors.water}
-                  disabled={isSubmitting}
-                  className="pl-7"
-                />
-              </div>
+              <CurrencyInput
+                id="water"
+                {...registerDecimal(register, 'water')}
+                placeholder="0.00"
+                invalid={!!errors.water}
+                disabled={isSubmitting}
+              />
             </Field>
 
             <Field id="waste" label={t('billingEntryForm.waste')} error={errors.waste}>
-              <div className="relative">
-                <CurrencyInputPrefix />
-                <NumberInput
-                  id="waste"
-                  {...registerDecimal(register, 'waste')}
-                  placeholder="0.00"
-                  invalid={!!errors.waste}
-                  disabled={isSubmitting}
-                  className="pl-7"
-                />
-              </div>
+              <CurrencyInput
+                id="waste"
+                {...registerDecimal(register, 'waste')}
+                placeholder="0.00"
+                invalid={!!errors.waste}
+                disabled={isSubmitting}
+              />
             </Field>
           </div>
 
           <Field id="total" label={t('common:total')} hint={t('billing.autoCalculatedHint')} error={errors.total}>
-            <div className="relative">
-              <CurrencyInputPrefix />
-              <NumberInput
-                id="total"
-                {...registerDecimal(register, 'total')}
-                placeholder={t('billingEntryForm.autoCalculatedPlaceholder')}
-                className="pl-7"
-                readOnly
-              />
-            </div>
+            <CurrencyInput
+              id="total"
+              {...registerDecimal(register, 'total')}
+              placeholder={t('billingEntryForm.autoCalculatedPlaceholder')}
+              readOnly
+            />
           </Field>
 
           <Field id="notes" label={t('common:notes')} error={errors.notes}>

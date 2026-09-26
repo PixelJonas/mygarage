@@ -1,6 +1,5 @@
 """Recall business logic service layer."""
 
-import datetime as dt
 import logging
 
 import httpx
@@ -18,6 +17,7 @@ from app.schemas.recall import (
     RecallUpdate,
 )
 from app.services.nhtsa import NHTSAService
+from app.utils.datetime_utils import utc_now
 from app.utils.logging_utils import sanitize_for_log
 
 logger = logging.getLogger(__name__)
@@ -247,7 +247,7 @@ class RecallService:
             )
 
             if data.is_resolved:
-                db_recall.resolved_at = dt.datetime.now()
+                db_recall.resolved_at = utc_now()
 
             self.db.add(db_recall)
             await self.db.commit()
@@ -365,7 +365,7 @@ class RecallService:
                 old_resolved_status = recall.is_resolved
 
                 if new_resolved_status and not old_resolved_status:
-                    recall.resolved_at = dt.datetime.now()
+                    recall.resolved_at = utc_now()
                 elif not new_resolved_status and old_resolved_status:
                     recall.resolved_at = None
 

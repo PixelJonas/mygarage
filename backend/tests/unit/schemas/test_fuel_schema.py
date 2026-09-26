@@ -99,6 +99,20 @@ def test_create_without_odometer_fails():
     assert "odometer_km is required" in str(excinfo.value)
 
 
+def test_hours_only_fill_up_without_odometer_succeeds():
+    """A vehicle tracked by engine hours (a boat, a tractor) has no odometer to
+    give: the fuel form hides Mileage for it, so its hours reading stands in."""
+    record = FuelRecordCreate(**_base_kwargs(), engine_hours=120.5, liters=40.0)
+    assert record.odometer_km is None
+    assert record.engine_hours == 120.5
+
+
+def test_hours_only_missed_fillup_succeeds():
+    """The missed-fill-up escape hatch works on the hours reading too."""
+    record = FuelRecordCreate(**_base_kwargs(), engine_hours=120.5, missed_fillup=True)
+    assert record.missed_fillup is True
+
+
 def test_create_without_any_fuel_amount_fails():
     with pytest.raises(ValidationError) as excinfo:
         FuelRecordCreate(**_base_kwargs(), odometer_km=12345.6)

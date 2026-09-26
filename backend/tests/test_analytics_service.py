@@ -350,6 +350,29 @@ class TestCalculateFuelEconomy:
         assert stats["average_l_per_100km"] == Decimal("9.43")
         assert stats["recent_l_per_100km"] == Decimal("9.43")
 
+    def test_the_average_is_total_fuel_over_total_distance(self):
+        """A 100 km tank at 10 L/100km and a 400 km tank at 5 L/100km burned
+        30 L over 500 km: 6.00, not the 7.50 a mean of the two figures gives.
+        Best, worst and recent stay per tank."""
+        records = [
+            _make_fuel_record(
+                date=date(2026, 1, 1), odometer_km=Decimal("10000"), liters=Decimal("40")
+            ),
+            _make_fuel_record(
+                date=date(2026, 1, 5), odometer_km=Decimal("10100"), liters=Decimal("10")
+            ),
+            _make_fuel_record(
+                date=date(2026, 1, 20), odometer_km=Decimal("10500"), liters=Decimal("20")
+            ),
+        ]
+
+        _, stats = analytics_service.calculate_fuel_economy_with_pandas(records)
+
+        assert stats["average_l_per_100km"] == Decimal("6.00")
+        assert stats["best_l_per_100km"] == Decimal("5.00")
+        assert stats["worst_l_per_100km"] == Decimal("10.00")
+        assert stats["recent_l_per_100km"] == Decimal("5.00")
+
 
 @pytest.mark.unit
 @pytest.mark.analytics
@@ -1140,7 +1163,7 @@ class TestVisitsToDataframe:
 @pytest.mark.unit
 @pytest.mark.analytics
 class TestFinancingInDataframeAndMonthlyAggregation:
-    """Financing records are a first-class cost row (ticket #9)."""
+    """Financing records in the cost dataframe and monthly aggregation."""
 
     def test_financing_records_produce_financing_rows(self):
         records = [
@@ -1158,18 +1181,16 @@ class TestFinancingInDataframeAndMonthlyAggregation:
         assert len(df) == 2
         assert all(df["type"] == "financing")
         assert df["cost"].sum() == 1650.0
-        # Sorted by date like every other row type
         assert list(df["service_type"]) == ["upfront_fee", "lease_payment"]
 
     def test_financing_omitted_by_default(self):
-        """Other callers (vendor/seasonal/compare) don't pass financing; unchanged."""
         visit = _make_service_visit(line_items=[_make_line_item(cost=Decimal("50.00"))])
 
         df = analytics_service.visits_to_dataframe([visit], [])
 
         assert list(df["type"]) == ["service"]
 
-    def test_monthly_aggregation_includes_financing(self):
+    def test_monthly_aggregation_excludes_financing_from_total_cost(self):
         records = [
             _make_financing_record(id=1, date=date(2024, 1, 5), amount=Decimal("450.00")),
             _make_financing_record(id=2, date=date(2024, 3, 5), amount=Decimal("450.00")),
@@ -1179,16 +1200,15 @@ class TestFinancingInDataframeAndMonthlyAggregation:
 
         monthly = analytics_service.calculate_monthly_aggregation(df)
 
-        # Financing-only March still gets its own month bucket
         assert list(monthly["month"].astype(int)) == [1, 3]
         jan = monthly[monthly["month"] == 1].iloc[0]
         mar = monthly[monthly["month"] == 3].iloc[0]
         assert jan["financing_cost"] == 450.0
         assert jan["financing_count"] == 1
         assert jan["fuel_cost"] == 50.0
-        assert jan["total_cost"] == 500.0
+        assert jan["total_cost"] == 50.0
         assert mar["financing_cost"] == 450.0
-        assert mar["total_cost"] == 450.0
+        assert mar["total_cost"] == 0.0
 
     def test_monthly_aggregation_financing_columns_when_empty(self):
         monthly = analytics_service.calculate_monthly_aggregation(
@@ -1198,7 +1218,7 @@ class TestFinancingInDataframeAndMonthlyAggregation:
         assert "financing_cost" in monthly.columns
         assert "financing_count" in monthly.columns
 
-    def test_rolling_average_and_trend_reflect_financing(self):
+    def test_rolling_average_and_trend_exclude_financing(self):
         records = [
             _make_financing_record(id=i, date=date(2024, i, 1), amount=Decimal(str(100 * i)))
             for i in range(1, 4)
@@ -1208,5 +1228,6 @@ class TestFinancingInDataframeAndMonthlyAggregation:
 
         rolling = analytics_service.calculate_rolling_averages(monthly)
 
-        assert rolling["rolling_3m"] == Decimal("200.00")
-        assert analytics_service.calculate_trend_direction(monthly["total_cost"]) == "increasing"
+        assert rolling["rolling_3m"] == Decimal("0.00")
+        assert analytics_service.calculate_trend_direction(monthly["total_cost"]) == "stable"
+        assert list(monthly["financing_cost"]) == [100.0, 200.0, 300.0]

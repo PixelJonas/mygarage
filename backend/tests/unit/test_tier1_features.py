@@ -14,7 +14,7 @@ from app.services.import_adapters.fuel_csv import (
     parse_fuelio,
     parse_tesla,
 )
-from app.services.telegram_fuel_commands import parse_fuel_command
+from app.services.telegram_fuel_commands import build_payload, parse_fuel_command
 from app.services.tire_results import WearStatus
 from app.services.tire_service import project_wear
 
@@ -540,19 +540,19 @@ def test_wear_blockers_are_not_masked_by_lifetime_blockers():
 
 
 def test_parse_fuel_command_metric():
-    vehicle_key, payload = parse_fuel_command("fuel 1HGCM82633A004352 45000 40.5 1.55 62.78")
-    assert vehicle_key == "1HGCM82633A004352"
-    assert payload.odometer_km == Decimal("45000")
-    assert payload.liters == Decimal("40.5")
-    assert payload.kwh is None
-    assert payload.price_per_unit == Decimal("1.55")
-    assert payload.cost == Decimal("62.78")
-    assert payload.price_basis == "per_volume"
+    parsed = parse_fuel_command("fuel 1HGCM82633A004352 45000 40.5 1.55 62.78")
+    assert parsed.vehicle_key == "1HGCM82633A004352"
+    assert (parsed.odometer, parsed.odometer_unit) == (Decimal("45000"), None)
+    assert (parsed.volume, parsed.volume_unit) == (Decimal("40.5"), "l")
+    assert (parsed.price, parsed.cost) == (Decimal("1.55"), Decimal("62.78"))
 
 
 def test_parse_fuel_command_imperial_and_kwh():
-    vehicle_key, payload = parse_fuel_command("fuel Model3 15000mi 42.5kWh 0.20 8.50")
-    assert vehicle_key == "Model3"
+    parsed = parse_fuel_command("fuel Model3 15000mi 42.5kWh 0.20 8.50")
+    assert parsed.vehicle_key == "Model3"
+    assert (parsed.odometer, parsed.odometer_unit) == (Decimal("15000"), "mi")
+    assert (parsed.volume, parsed.volume_unit) == (Decimal("42.5"), "kwh")
+    payload = build_payload(parsed, vin="5YJ3E1EA7KF000001", distance_unit="km")
     assert payload.odometer_km == Decimal("15000") * Decimal("1.609344")
     assert payload.kwh == Decimal("42.5")
     assert payload.liters is None
@@ -562,18 +562,40 @@ def test_parse_fuel_command_imperial_and_kwh():
 
 
 def test_parse_fuel_command_gal_converts_price_to_per_liter():
-    _key, payload = parse_fuel_command("fuel Civic 10000mi 12gal 3.50")
+    parsed = parse_fuel_command("fuel Civic 10000mi 12gal 3.50")
+    payload = build_payload(parsed, vin="1HGCM82633A004352", distance_unit="km")
     assert payload.liters == Decimal("12") * Decimal("3.785411784")
     assert payload.price_per_unit == Decimal("3.50") / Decimal("3.785411784")
     assert payload.price_basis == "per_volume"
 
 
+def test_build_payload_reads_a_bare_odometer_in_the_vehicles_unit():
+    parsed = parse_fuel_command("fuel Civic 10000 12gal 3.50")
+    payload = build_payload(parsed, vin="1HGCM82633A004352", distance_unit="mi")
+    assert payload.odometer_km == Decimal("10000") * Decimal("1.609344")
+
+
+def test_an_explicit_suffix_beats_the_vehicle():
+    parsed = parse_fuel_command("fuel Civic 10000km 40")
+    payload = build_payload(parsed, vin="1HGCM82633A004352", distance_unit="mi")
+    assert payload.odometer_km == Decimal("10000")
+
+
+def test_build_payload_checks_bounds_after_converting():
+    """Fine in km, out of range once read in miles: the payload is built ONCE,
+    after conversion, so its bounds apply to the stored value."""
+    parsed = parse_fuel_command("fuel Civic 99999999 40")
+    build_payload(parsed, vin="1HGCM82633A004352", distance_unit="km")
+    with pytest.raises(ValidationError):
+        build_payload(parsed, vin="1HGCM82633A004352", distance_unit="mi")
+
+
 @pytest.mark.parametrize("prefix", ["/fuel", "/fuel@MyGarageBot", "FUEL"])
 def test_parse_fuel_command_accepts_the_group_forms(prefix):
     """In a group with privacy mode on, a bot only receives messages starting with /."""
-    vehicle_key, payload = parse_fuel_command(f"{prefix} Civic 45000 40")
-    assert vehicle_key == "Civic"
-    assert payload.liters == Decimal("40")
+    parsed = parse_fuel_command(f"{prefix} Civic 45000 40")
+    assert parsed.vehicle_key == "Civic"
+    assert parsed.volume == Decimal("40")
 
 
 def test_parse_fuel_command_rejects_garbage():
@@ -673,9 +695,9 @@ def test_parse_fuel_command_accepts_long_nickname():
     ValidationError inside the handler, surfacing as a 500 rather than a 400,
     and Telegram then retried the same update forever.
     """
-    vehicle_key, payload = parse_fuel_command("fuel MyOtherDailyDriver 45000 40")
-    assert vehicle_key == "MyOtherDailyDriver"
-    assert payload.odometer_km == Decimal("45000")
+    parsed = parse_fuel_command("fuel MyOtherDailyDriver 45000 40")
+    assert parsed.vehicle_key == "MyOtherDailyDriver"
+    assert parsed.odometer == Decimal("45000")
 
 
 class TestParseOptions:

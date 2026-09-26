@@ -47,14 +47,13 @@ vi.mock('../../hooks/useTimeFormat', () => ({ useTimeFormat: () => ({ timeFormat
 vi.mock('../../hooks/useDateLocale', () => ({ useDateLocale: () => 'en-US' }))
 vi.mock('../../hooks/useUnitPreference', async () => {
   const { METRIC_UNITS } = await import('../../__tests__/factories')
-  return {
-    useUnitPreference: () => ({
-      system: 'metric',
-      showBoth: false,
-      gallonStandard: 'us',
-      units: METRIC_UNITS,
-    }),
-  }
+  const pref = () => ({
+    system: 'metric',
+    showBoth: false,
+    gallonStandard: 'us',
+    units: METRIC_UNITS,
+  })
+  return { useUnitPreference: pref, useAccountUnitPreference: pref }
 })
 
 const authMock = vi.hoisted(() => ({ zone: null as string | null }))

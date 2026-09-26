@@ -32,13 +32,11 @@ export default function FinancingRecordForm({ vin, record, onClose, onSuccess }:
     setError(null)
 
     try {
-      // Zod has already validated amount/tax_amount - no parseFloat/isNaN needed!
       const payload: FinancingRecordCreate | FinancingRecordUpdate = {
         vin,
         date: data.date,
         category: data.category,
         amount: data.amount,
-        tax_amount: data.tax_amount,
         vendor_id: data.vendor_id,
         notes: data.notes,
       }
@@ -52,14 +50,11 @@ export default function FinancingRecordForm({ vin, record, onClose, onSuccess }:
       onSuccess()
       onClose()
     } catch (err) {
-      // attached.length === 0 catches a non-422 failure (network drop, 500):
-      // it carries no field problems at all, so `unhandled` alone would stay
-      // empty and this banner would never show.
+      // A non-422 failure (network, 500) attaches no field errors.
       const { attached, unhandled } = applyServerErrors<FinancingRecordFormData>(setFieldError, err, [
         'date',
         'category',
         'amount',
-        'tax_amount',
         'vendor_id',
         'notes',
       ])
@@ -69,9 +64,7 @@ export default function FinancingRecordForm({ vin, record, onClose, onSuccess }:
     }
   }
 
-  // Zod bakes its messages in at construction, so the schema is rebuilt when
-  // the language changes. Only the resolver depends on it — no fetch, no
-  // reset() — so a rebuild can't discard what the user typed.
+  // Messages are baked in at construction, so rebuild the schema on language change.
   const schema = useMemo(() => makeFinancingRecordSchema(t), [t])
 
   const {
@@ -87,7 +80,6 @@ export default function FinancingRecordForm({ vin, record, onClose, onSuccess }:
       date: formatDateForInput(record?.date),
       category: record?.category ?? undefined,
       amount: record?.amount != null ? parseFloat(String(record.amount)) : undefined,
-      tax_amount: record?.tax_amount != null ? parseFloat(String(record.tax_amount)) : undefined,
       vendor_id: record?.vendor_id ?? undefined,
       notes: record?.notes || '',
     },
@@ -136,41 +128,26 @@ export default function FinancingRecordForm({ vin, record, onClose, onSuccess }:
             </Field>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <Field id="amount" label={t('common:amount')} required error={errors.amount}>
-              <div className="relative">
-                <CurrencyInputPrefix />
-                <NumberInput
-                  id="amount"
-                  {...registerDecimal(register, 'amount')}
-                  placeholder="450.00"
-                  invalid={!!errors.amount}
-                  disabled={isSubmitting}
-                  className="pl-7"
-                />
-              </div>
-            </Field>
-
-            <Field id="tax_amount" label={t('financing.taxAmount')} error={errors.tax_amount} hint={t('financing.taxAmountHint')}>
-              <div className="relative">
-                <CurrencyInputPrefix />
-                <NumberInput
-                  id="tax_amount"
-                  {...registerDecimal(register, 'tax_amount')}
-                  placeholder="0.00"
-                  invalid={!!errors.tax_amount}
-                  disabled={isSubmitting}
-                  className="pl-7"
-                />
-              </div>
-            </Field>
-          </div>
+          <Field id="amount" label={t('common:amount')} required error={errors.amount}>
+            <div className="relative">
+              <CurrencyInputPrefix />
+              <NumberInput
+                id="amount"
+                {...registerDecimal(register, 'amount')}
+                placeholder="450.00"
+                invalid={!!errors.amount}
+                disabled={isSubmitting}
+                className="pl-7"
+              />
+            </div>
+          </Field>
 
           <div>
-            <label htmlFor="vendor_id" className="mb-1 block text-sm font-medium text-text">{t('financing.vendor')}</label>
+            <label className="mb-1 block text-sm font-medium text-text">{t('financing.lender')}</label>
             <VendorSearch
               value={watch('vendor_id')}
               onSelect={(vendor) => setValue('vendor_id', vendor?.id ?? undefined)}
+              placeholder={t('financing.lenderSearchPlaceholder')}
               disabled={isSubmitting}
             />
           </div>

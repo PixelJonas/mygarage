@@ -18,6 +18,7 @@ from app.models.odometer import OdometerRecord
 from app.models.reminder import Reminder
 from app.models.tire import Tire, TireMountPeriod, TireReading, TireSet
 from app.models.user import User
+from app.models.vehicle import Vehicle
 from app.schemas.tire import (
     HistoryFaultResponse,
     MountPeriodCreate,
@@ -727,18 +728,23 @@ class TireService:
         """
         await publish_tire_odometer(self.db, vin, when, odometer_km, source_type, source_id)
 
-    async def request_distance_formatter(self, current_user: User | None) -> DistanceFormatter:
+    async def request_distance_formatter(
+        self, current_user: User | None, vin: str
+    ) -> DistanceFormatter:
         """The distance formatter for this request's messages.
 
         The caller's units, or the instance default when there is no caller
         (auth mode none), through the one policy every request-driven surface
-        uses. Resolved once per request and passed down, never per tire.
+        uses, with the vehicle's own odometer unit on top (#172). Resolved
+        once per request and passed down, never per tire. `vin` is required so
+        no caller can forget the vehicle; an unknown VIN simply adds nothing.
 
         Public because the set fit in `tire_set_service` resolves the same
         formatter, the same reason `refuse_contradictions` and
         `open_period_ids` are public.
         """
-        context = await render_context_for_request(current_user, self.db)
+        vehicle = await self.db.get(Vehicle, vin.upper().strip())
+        context = await render_context_for_request(current_user, self.db, vehicle=vehicle)
         return distance_formatter(adapter_for(context.units, "distance"))
 
     @staticmethod
@@ -830,7 +836,7 @@ class TireService:
         vin = vin.upper().strip()
         try:
             await get_vehicle_or_403(vin, current_user, self.db)
-            format_distance = await self.request_distance_formatter(current_user)
+            format_distance = await self.request_distance_formatter(current_user, vin)
             query = select(Tire).where(Tire.vin == vin)
             if not include_retired:
                 # A retired tire is history, not inventory. It still appears in
@@ -886,7 +892,7 @@ class TireService:
         vin = vin.upper().strip()
         try:
             await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
-            format_distance = await self.request_distance_formatter(current_user)
+            format_distance = await self.request_distance_formatter(current_user, vin)
             fields = data.model_dump(exclude={"vin"})
             fields["storage_location"] = normalise_storage_location(fields.get("storage_location"))
             tire = Tire(vin=vin, **fields)
@@ -938,7 +944,7 @@ class TireService:
         vin = vin.upper().strip()
         await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
         await lock_vehicle_for_write(self.db, vin)
-        format_distance = await self.request_distance_formatter(current_user)
+        format_distance = await self.request_distance_formatter(current_user, vin)
         tire = await self._get_tire_for_update(vin, tire_id)
 
         if tire.retired_on is not None:
@@ -1005,7 +1011,7 @@ class TireService:
         vin = vin.upper().strip()
         await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
         await lock_vehicle_for_write(self.db, vin)
-        format_distance = await self.request_distance_formatter(current_user)
+        format_distance = await self.request_distance_formatter(current_user, vin)
         tire = await self._get_tire_for_update(vin, tire_id)
         before = fault_map(tire.mount_periods or [], tire.readings or [])
 
@@ -1072,7 +1078,7 @@ class TireService:
         vin = vin.upper().strip()
         await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
         await lock_vehicle_for_write(self.db, vin)
-        format_distance = await self.request_distance_formatter(current_user)
+        format_distance = await self.request_distance_formatter(current_user, vin)
 
         occupant = (
             await self.db.execute(
@@ -1147,7 +1153,7 @@ class TireService:
         vin = vin.upper().strip()
         await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
         await lock_vehicle_for_write(self.db, vin)
-        format_distance = await self.request_distance_formatter(current_user)
+        format_distance = await self.request_distance_formatter(current_user, vin)
 
         moving_ids = [move.tire_id for move in data.moves]
         tires = {
@@ -1332,7 +1338,7 @@ class TireService:
         vin = vin.upper().strip()
         try:
             await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
-            format_distance = await self.request_distance_formatter(current_user)
+            format_distance = await self.request_distance_formatter(current_user, vin)
             result = await self.db.execute(
                 select(Tire)
                 .where(Tire.id == tire_id, Tire.vin == vin)
@@ -1403,7 +1409,7 @@ class TireService:
         vin = vin.upper().strip()
         await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
         await lock_vehicle_for_write(self.db, vin)
-        format_distance = await self.request_distance_formatter(current_user)
+        format_distance = await self.request_distance_formatter(current_user, vin)
         tire = await self._get_tire_for_update(vin, tire_id)
         before = fault_map(tire.mount_periods or [], tire.readings or [])
 
@@ -1477,7 +1483,7 @@ class TireService:
         vin = vin.upper().strip()
         await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
         await lock_vehicle_for_write(self.db, vin)
-        format_distance = await self.request_distance_formatter(current_user)
+        format_distance = await self.request_distance_formatter(current_user, vin)
         tire = await self._get_tire_for_update(vin, tire_id)
 
         before = fault_map(tire.mount_periods or [], tire.readings or [])
@@ -1543,7 +1549,7 @@ class TireService:
         vin = vin.upper().strip()
         await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
         await lock_vehicle_for_write(self.db, vin)
-        format_distance = await self.request_distance_formatter(current_user)
+        format_distance = await self.request_distance_formatter(current_user, vin)
         tire = await self._get_tire_for_update(vin, tire_id)
         period = next((p for p in tire.mount_periods or [] if p.id == period_id), None)
         if period is None:
@@ -1697,7 +1703,7 @@ class TireService:
         vin = vin.upper().strip()
         await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
         await lock_vehicle_for_write(self.db, vin)
-        format_distance = await self.request_distance_formatter(current_user)
+        format_distance = await self.request_distance_formatter(current_user, vin)
         tire = await self._get_tire_for_update(vin, tire_id)
         if tire.retired_on is None:
             raise HTTPException(status_code=409, detail="This tire is not retired.")
@@ -1774,7 +1780,7 @@ class TireService:
         vin = vin.upper().strip()
         try:
             await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
-            format_distance = await self.request_distance_formatter(current_user)
+            format_distance = await self.request_distance_formatter(current_user, vin)
             result = await self.db.execute(
                 select(Tire)
                 .where(Tire.id == tire_id, Tire.vin == vin)
@@ -1873,7 +1879,7 @@ class TireService:
         vin = vin.upper().strip()
         try:
             await get_vehicle_or_403(vin, current_user, self.db, require_write=True)
-            format_distance = await self.request_distance_formatter(current_user)
+            format_distance = await self.request_distance_formatter(current_user, vin)
             tire = (
                 await self.db.execute(
                     select(Tire)

@@ -275,6 +275,13 @@ export const makeVehicleEditSchema = (t: TFunction) =>
     // it (older forms / tests) is treated as distance/hours-only — mirrors the
     // usage_unit default above.
     secondary_usage_enabled: z.boolean().default(false),
+    // The unit the vehicle's odometer reads (#172). '' is the "Account
+    // default" option and is sent as null, which clears the setting; a bare
+    // '' would be a 422 against the API's km|mi.
+    distance_unit: z
+      .union([z.enum(['km', 'mi']), z.literal(''), z.null()])
+      .transform(nullOnBlank)
+      .optional(),
     color: optionalStringSchema,
 
     // Vehicle Details

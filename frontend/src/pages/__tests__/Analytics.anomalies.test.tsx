@@ -47,16 +47,17 @@ vi.mock('../../services/api', () => ({
   },
 }))
 
-vi.mock('../../hooks/useUnitPreference', () => ({
-  useUnitPreference: () => ({
+vi.mock('../../hooks/useUnitPreference', () => {
+  const pref = () => ({
     system: 'metric',
     showBoth: false,
     gallonStandard: 'us',
     // The RESOLVED set, not just the collapsed system: this component reads
     // its distance through `useUnitFormat()`, which closes over `units`.
     units: METRIC_UNITS,
-  }),
-}))
+  })
+  return { useUnitPreference: pref, useAccountUnitPreference: pref }
+})
 // The reporter's configuration: Polish złoty.
 vi.mock('../../hooks/useCurrencyPreference', () => ({
   useCurrencyPreference: () => ({ currencyCode: 'PLN', locale: 'pl-PL' }),

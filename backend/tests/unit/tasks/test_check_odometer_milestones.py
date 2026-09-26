@@ -18,8 +18,10 @@ agreeing, and an ownerless vehicle that somehow resolved a user fails too.
 Derivations, computed from `UnitConverter.MILES_TO_KM = 1.609344` rather
 than transcribed:
 
-    100,000 canonical km / 1.609344 = 62,137.1192... -> "62,137 mi"
-    100,000 canonical km rendered as km               -> "100,000 km"
+    Milestones step every 10,000 of the unit the vehicle RENDERS in (#172):
+
+    100,000 km in miles = 62,137.12 mi -> milestone 60,000 mi = 96,560.64 km -> "60,000 mi"
+    100,000 km in km                    -> milestone 100,000 km               -> "100,000 km"
 
 Tests share one database with no per-test rollback, so every row created
 here is torn down in `finally`, and every VIN/username is scoped to this
@@ -59,7 +61,8 @@ _OWNERLESS_NICKNAME = "Milestone Units Ownerless"
 _ODOMETER_KM = Decimal("100000")
 _READING_DATE = date(2026, 6, 15)
 
-_EXPECTED_OWNER_MESSAGE = f"Congratulations! {_OWNED_NICKNAME} has reached 62,137 mi!"
+_EXPECTED_OWNER_MESSAGE = f"Congratulations! {_OWNED_NICKNAME} has reached 60,000 mi!"
+_EXPECTED_OWNER_STAMP = Decimal("96560.64")
 _EXPECTED_DEFAULT_MESSAGE = f"Congratulations! {_OWNERLESS_NICKNAME} has reached 100,000 km!"
 
 
@@ -319,4 +322,100 @@ class TestCheckOdometerMilestonesUnits:
                 select(Vehicle.last_milestone_notified_km).where(Vehicle.vin == _OWNED_VIN)
             )
         ).scalar_one()
-        assert stamped == _ODOMETER_KM
+        assert stamped == _EXPECTED_OWNER_STAMP
+
+    async def test_a_vehicle_set_to_km_steps_in_km_for_an_imperial_owner(
+        self,
+        patch_session,
+        enable_milestones,
+        metric_instance_default,
+        seeded_vehicles,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        vehicle = await patch_session.get(Vehicle, _OWNED_VIN)
+        vehicle.distance_unit = "km"
+        await patch_session.commit()
+        mock = AsyncMock(return_value={"ntfy": True})
+        monkeypatch.setattr(
+            "app.services.notifications.dispatcher.NotificationDispatcher.dispatch", mock
+        )
+
+        await check_odometer_milestones()
+
+        assert _messages_for(mock, _OWNED_NICKNAME) == [
+            f"Congratulations! {_OWNED_NICKNAME} has reached 100,000 km!"
+        ]
+
+    async def test_a_decimal_mark_does_not_fire_again(
+        self,
+        patch_session,
+        enable_milestones,
+        metric_instance_default,
+        seeded_vehicles,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """96,560.64 km must compare as a Decimal: `int()` would truncate it to
+        96,560 and announce 60,000 mi every day."""
+        mock = AsyncMock(return_value={"ntfy": True})
+        monkeypatch.setattr(
+            "app.services.notifications.dispatcher.NotificationDispatcher.dispatch", mock
+        )
+
+        await check_odometer_milestones()
+        await check_odometer_milestones()
+
+        assert _messages_for(mock, _OWNED_NICKNAME) == [_EXPECTED_OWNER_MESSAGE]
+
+    async def test_the_upgrade_catch_up_fires_once(
+        self,
+        patch_session,
+        enable_milestones,
+        metric_instance_default,
+        seeded_vehicles,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Latest 69,000 km, last announced 60,000 km under the old km steps,
+        now rendered in miles: 40,000 mi (64,373.76 km) is announced once, late."""
+        vehicle = await patch_session.get(Vehicle, _OWNED_VIN)
+        vehicle.last_milestone_notified_km = Decimal("60000")
+        record = (
+            await patch_session.execute(
+                select(OdometerRecord).where(OdometerRecord.vin == _OWNED_VIN)
+            )
+        ).scalar_one()
+        record.odometer_km = Decimal("69000")
+        await patch_session.commit()
+        mock = AsyncMock(return_value={"ntfy": True})
+        monkeypatch.setattr(
+            "app.services.notifications.dispatcher.NotificationDispatcher.dispatch", mock
+        )
+
+        await check_odometer_milestones()
+        await check_odometer_milestones()
+
+        assert _messages_for(mock, _OWNED_NICKNAME) == [
+            f"Congratulations! {_OWNED_NICKNAME} has reached 40,000 mi!"
+        ]
+
+    async def test_flipping_to_mi_never_goes_backwards(
+        self,
+        patch_session,
+        enable_milestones,
+        metric_instance_default,
+        seeded_vehicles,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Mark 100,000 km announced; flip the ownerless km-steps vehicle to mi:
+        62,137 mi floors to 60,000 mi = 96,560.64 km, below the mark: silence."""
+        vehicle = await patch_session.get(Vehicle, _OWNERLESS_VIN)
+        vehicle.last_milestone_notified_km = Decimal("100000")
+        vehicle.distance_unit = "mi"
+        await patch_session.commit()
+        mock = AsyncMock(return_value={"ntfy": True})
+        monkeypatch.setattr(
+            "app.services.notifications.dispatcher.NotificationDispatcher.dispatch", mock
+        )
+
+        await check_odometer_milestones()
+
+        assert _messages_for(mock, _OWNERLESS_NICKNAME) == []

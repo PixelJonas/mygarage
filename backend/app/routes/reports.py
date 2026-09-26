@@ -15,6 +15,7 @@ from app.models import (
 )
 from app.models.service_visit import ServiceVisit
 from app.models.user import User
+from app.schemas.vehicle import NON_MOTORIZED_VEHICLE_TYPES
 from app.services.auth import get_vehicle_or_403, require_auth
 from app.services.service_visit_service import service_visit_cost_load_options
 from app.utils.csv_emission import ODOMETER_COLUMN, VOLUME_COLUMN, cell_for, token_for
@@ -116,7 +117,7 @@ async def download_service_history_pdf(
 
     safe_code, safe_locale = normalize_pdf_currency_params(currency_code, locale)
     pdf_gen = PDFReportGenerator(
-        render_context=await render_context_for_request(current_user, db),
+        render_context=await render_context_for_request(current_user, db, vehicle=vehicle),
         currency_code=safe_code,
         locale=safe_locale,
     )
@@ -175,7 +176,7 @@ async def download_sale_history_pdf(
             )
 
     pdf_gen = PDFReportGenerator(
-        render_context=await render_context_for_request(current_user, db),
+        render_context=await render_context_for_request(current_user, db, vehicle=vehicle),
     )
     pdf_buffer = pdf_gen.generate_sale_history_pdf(vehicle_info, records_data)
     filename = f"sale_history_{vin[-6:]}_{datetime.now().strftime('%Y%m%d')}.pdf"
@@ -198,8 +199,7 @@ async def download_cost_summary_pdf(
     """Generate and download annual cost summary PDF."""
     vehicle = await get_vehicle_or_403(vin, current_user, db)
 
-    # Check if vehicle is motorized (not a trailer or fifth wheel)
-    is_motorized = vehicle.vehicle_type not in ["Trailer", "FifthWheel"]
+    is_motorized = vehicle.vehicle_type not in NON_MOTORIZED_VEHICLE_TYPES
 
     # Prepare vehicle info
     vehicle_info = {
@@ -276,7 +276,7 @@ async def download_cost_summary_pdf(
 
     safe_code, safe_locale = normalize_pdf_currency_params(currency_code, locale)
     pdf_gen = PDFReportGenerator(
-        render_context=await render_context_for_request(current_user, db),
+        render_context=await render_context_for_request(current_user, db, vehicle=vehicle),
         currency_code=safe_code,
         locale=safe_locale,
     )
@@ -338,7 +338,7 @@ async def download_tax_deduction_pdf(
 
     safe_code, safe_locale = normalize_pdf_currency_params(currency_code, locale)
     pdf_gen = PDFReportGenerator(
-        render_context=await render_context_for_request(current_user, db),
+        render_context=await render_context_for_request(current_user, db, vehicle=vehicle),
         currency_code=safe_code,
         locale=safe_locale,
     )
@@ -375,8 +375,13 @@ async def download_service_history_csv(
     # `show_both` is ignored: a CSV cell is numeric, so it carries one number
     # in one unit, named by its header token. Rendering a counterpart into the
     # cell would make the column text a spreadsheet cannot sum.
-    await get_vehicle_or_403(vin, current_user, db)
-    context = await render_context_for_request(current_user, db)
+    #
+    # A vehicle set to its own odometer unit (#172) overrides distance for
+    # every caller alike: it describes the vehicle's dash, not the owner's
+    # taste, so it is not the owner's-units exception the paragraph above rules
+    # out.
+    vehicle = await get_vehicle_or_403(vin, current_user, db)
+    context = await render_context_for_request(current_user, db, vehicle=vehicle)
     distance_token = token_for(ODOMETER_COLUMN, context.units)
 
     # Parse dates
@@ -468,8 +473,9 @@ async def download_all_records_csv(
     #
     # Distance and volume resolve independently, so a metric account that
     # prefers US gallons gets `Odometer (km)` alongside `Volume (gal_us)`.
-    await get_vehicle_or_403(vin, current_user, db)
-    context = await render_context_for_request(current_user, db)
+    # The vehicle's own odometer unit applies as in the service-history CSV.
+    vehicle = await get_vehicle_or_403(vin, current_user, db)
+    context = await render_context_for_request(current_user, db, vehicle=vehicle)
     distance_token = token_for(ODOMETER_COLUMN, context.units)
     volume_token = token_for(VOLUME_COLUMN, context.units)
 

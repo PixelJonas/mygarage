@@ -1,12 +1,4 @@
-/**
- * Financing on the per-vehicle analytics page (ticket #9).
- *
- * The backend now buckets every financing record (lease/loan payment and
- * upfront fee alike) into `monthly_breakdown[].total_financing_cost`, so the
- * page has to show it as its own category: a stacked bar series, a suffix on
- * the monthly list rows, and a CSV column. Without these the per-month totals
- * shown next to the bars would not add up to the bars themselves.
- */
+// Financing on the per-vehicle analytics page: bar series, monthly list suffix, CSV column.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
@@ -27,7 +19,6 @@ vi.mock('recharts', () => {
     PieChart: Pass,
     RadarChart: Pass,
     Line: () => null,
-    // Expose each bar's legend name so the series can be asserted on the DOM.
     Bar: ({ name }: { name?: string }) => <span data-testid="bar-series">{name}</span>,
     Pie: () => null,
     Cell: () => null,
@@ -52,7 +43,6 @@ vi.mock('../../services/api', () => ({
   },
 }))
 
-// Retains interpolated values so a suffix can be asserted with its amount.
 vi.mock('react-i18next', () => {
   const t = (key: string, options?: Record<string, unknown>): string => {
     if (options?.defaultValue !== undefined) return String(options.defaultValue)
@@ -71,6 +61,7 @@ import { METRIC_UNITS } from '@/__tests__/factories'
 
 vi.mock('../../hooks/useUnitPreference', () => ({
   useUnitPreference: () => ({ system: 'metric', showBoth: false, units: METRIC_UNITS }),
+  useAccountUnitPreference: () => ({ system: 'metric', showBoth: false, units: METRIC_UNITS }),
 }))
 vi.mock('../../hooks/useCurrencyPreference', () => ({
   useCurrencyPreference: () => ({ currencyCode: 'USD', locale: 'en-US' }),
@@ -248,7 +239,6 @@ describe('Analytics — financing in the monthly cost trend', () => {
     respondWith(WITH_FINANCING)
     renderAnalytics()
 
-    // The month total ($510.00) and its financing part ($450.00) both show.
     expect(await screen.findByText('$510.00')).toBeInTheDocument()
     expect(screen.getByText(/vehicle\.monthFinancingSuffix \(\$450\.00\)/)).toBeInTheDocument()
   })
@@ -291,7 +281,6 @@ describe('Analytics — financing in the CSV export', () => {
     const csv = await exportedCsv()
     expect(csv).toContain('"Financing Cost"')
     expect(csv).toContain('"Financing Count"')
-    // February row: ...,DEF Cost 0.00, Financing Cost 450.00, Total 510.00
     expect(csv).toMatch(/"February","2026","0\.00","60\.00","0\.00","450\.00","510\.00"/)
     expect(csv).toContain('"Total Financing","$450.00"')
   })

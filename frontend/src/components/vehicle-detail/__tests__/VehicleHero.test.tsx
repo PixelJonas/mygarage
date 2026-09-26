@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { render, screen } from '../../../__tests__/test-utils'
 import type { Vehicle, VehicleDetailStats } from '../../../types/vehicle'
-import { IMPERIAL_UNITS } from '../../../__tests__/factories'
+import { IMPERIAL_UNITS, makeDetailStats } from '../../../__tests__/factories'
 import { makeUnitFormat } from '../../../utils/unitFormat'
 
 vi.mock('../../../hooks/useUnitPreference', () => ({
@@ -41,15 +41,12 @@ const VEHICLE = {
   year: 2024, make: 'Toyota', model: 'Camry', archived_visible: true,
 } as Vehicle
 
-const STATS: VehicleDetailStats = {
-  overdue_count: 3, upcoming_count: 2,
-  usage_unit: 'distance', current_hours: null,
-  latest_hours: null, average_l_per_hr: null, average_cost_per_hr: null,
-  secondary_usage_enabled: false,
+const STATS: VehicleDetailStats = makeDetailStats({
+  overdue_count: 3, upcoming_count: 2, due_soon_count: 1,
   latest_odometer_km: '160000.00', latest_odometer_date: '2026-07-01',
   last_service_date: '2026-06-15', last_fillup_date: '2026-07-10',
-  spent_this_year: '1234.50', year: 2026,
-}
+  spent_this_year: '1234.50',
+})
 
 describe('VehicleHero', () => {
   it('leaves the VIN, name and model selectable (#179)', () => {
@@ -80,13 +77,13 @@ describe('VehicleHero', () => {
     expect(screen.getByText('TEST12345678901234')).toBeInTheDocument()
     expect(screen.queryByText('detail.misc.odometer')).not.toBeInTheDocument()
     expect(screen.queryByText('vehicleStats.overdue')).not.toBeInTheDocument()
-    expect(screen.queryByText('vehicleStats.upcoming')).not.toBeInTheDocument()
+    expect(screen.queryByText('vehicleStats.dueSoon')).not.toBeInTheDocument()
   })
 
   it('renders the overdue badge + boundary-converted odometer + reading date from nonzero stats', () => {
     render(<VehicleHero vehicle={VEHICLE} photoUrl={null} fromCache={false} detailStats={STATS} />)
     expect(screen.getByText('vehicleStats.overdue')).toBeInTheDocument()   // overdue wins (3 > 0)
-    expect(screen.queryByText('vehicleStats.upcoming')).not.toBeInTheDocument()
+    expect(screen.queryByText('vehicleStats.dueSoon')).not.toBeInTheDocument()
     expect(screen.getByText('detail.misc.odometer')).toBeInTheDocument()
     // The km is converted at the boundary (would fail if the hero printed raw km).
     const expected = makeUnitFormat(IMPERIAL_UNITS).distance.formatPrimary(
@@ -97,10 +94,17 @@ describe('VehicleHero', () => {
     expect(screen.getByText(/2026/)).toBeInTheDocument()
   })
 
-  it('shows the upcoming badge when nothing is overdue', () => {
+  it('shows the due-soon badge when nothing is overdue', () => {
     render(<VehicleHero vehicle={VEHICLE} photoUrl={null} fromCache={false}
-      detailStats={{ ...STATS, overdue_count: 0, upcoming_count: 2 }} />)
-    expect(screen.getByText('vehicleStats.upcoming')).toBeInTheDocument()
+      detailStats={{ ...STATS, overdue_count: 0, upcoming_count: 2, due_soon_count: 1 }} />)
+    expect(screen.getByText('vehicleStats.dueSoon')).toBeInTheDocument()
+    expect(screen.queryByText('vehicleStats.overdue')).not.toBeInTheDocument()
+  })
+
+  it('shows no badge for pending reminders that are not due soon', () => {
+    render(<VehicleHero vehicle={VEHICLE} photoUrl={null} fromCache={false}
+      detailStats={{ ...STATS, overdue_count: 0, upcoming_count: 2, due_soon_count: 0 }} />)
+    expect(screen.queryByText('vehicleStats.dueSoon')).not.toBeInTheDocument()
     expect(screen.queryByText('vehicleStats.overdue')).not.toBeInTheDocument()
   })
 

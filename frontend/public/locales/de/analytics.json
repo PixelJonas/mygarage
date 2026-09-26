@@ -398,11 +398,8 @@
       "title": "Kraftstoffverbrauch",
       "note": "Ein verschlechterter Kraftstoffverbrauch kann auf Wartungsbedarf hindeuten (Luftfilter, Zündkerzen, Reifendruck) oder auf Änderungen der Fahrgewohnheiten. Deutliche Einbrüche sollten untersucht werden.",
       "economyCalcLabel": "Verbrauchsberechnung ({{unit}}):",
-      "economyCalcDesc": "Wird automatisch anhand aufeinanderfolgender Vollbetankungen berechnet. Teilbetankungen werden bei der Verbrauchsberechnung nicht berücksichtigt.",
       "averageEconomyLabel": "Durchschnittlicher Verbrauch ({{unit}}):",
-      "averageEconomyDesc": "Mittelwert des Kraftstoffverbrauchs über alle Vollbetankungen hinweg.",
-      "recentEconomyLabel": "Aktueller Verbrauch ({{unit}}):",
-      "recentEconomyDesc": "Durchschnitt der letzten 5 Vollbetankungen."
+      "recentEconomyLabel": "Aktueller Verbrauch ({{unit}}):"
     },
     "vendorSpending": {
       "title": "Ausgaben nach Dienstleister",

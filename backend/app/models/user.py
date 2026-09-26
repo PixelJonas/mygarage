@@ -103,6 +103,12 @@ class User(Base):
         String(10), nullable=True
     )  # 'light' or 'dark' (see frontend src/contexts/ThemeContext.tsx)
 
+    # The order this person's dashboard opens in (migration 120). The sort menu
+    # overrides it for the rest of a browser tab's session.
+    dashboard_sort: Mapped[str] = mapped_column(
+        String(16), default="name", server_default="name", nullable=False
+    )  # one of SUPPORTED_DASHBOARD_SORTS in app/constants/dashboard.py
+
     # Mobile experience
     mobile_quick_entry_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 

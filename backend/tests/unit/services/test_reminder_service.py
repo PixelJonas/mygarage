@@ -29,8 +29,10 @@ from app.services.reminder_service import (
     _build_reminder_message,
     calculate_hours_driving_rate,
     check_due_reminders,
+    classify_pending_reminders,
     create_reminder,
     enrich_with_estimate,
+    expected_due_date,
     get_current_hours,
     validate_reminder_state,
 )
@@ -324,6 +326,111 @@ class TestIsReminderOverdue:
 
         reminder = self._reminder(due_date=date.today() - timedelta(days=1))
         assert is_reminder_overdue(reminder, None, None) is True
+
+
+# ---------------------------------------------------------------------------
+# expected_due_date / classify_pending_reminders — the due-soon rule
+# ---------------------------------------------------------------------------
+
+
+def _pending(**kwargs) -> Reminder:
+    base = {
+        "vin": "1HGBH41JXMN109186",
+        "title": "Test reminder",
+        "reminder_type": "date",
+        "status": "pending",
+    }
+    base.update(kwargs)
+    return Reminder(**base)
+
+
+TODAY = date(2026, 9, 25)
+
+
+@pytest.mark.unit
+class TestExpectedDueDate:
+    """The one expected date the reminders list, the badges and the inbox share:
+    the earlier of the calendar date and the usage projection."""
+
+    def test_date_only_is_the_date_whatever_the_rates(self):
+        reminder = _pending(due_date=TODAY + timedelta(days=40))
+        assert expected_due_date(reminder, Decimal("1"), Decimal("1"), 100.0, 2.0, TODAY) == (
+            TODAY + timedelta(days=40)
+        )
+
+    def test_mileage_projects_at_the_km_rate(self):
+        reminder = _pending(reminder_type="mileage", due_mileage_km=Decimal("57000"))
+        assert expected_due_date(reminder, Decimal("56000"), None, 100.0, None, TODAY) == (
+            TODAY + timedelta(days=10)
+        )
+
+    def test_hours_projects_at_the_hours_rate(self):
+        reminder = _pending(reminder_type="hours", due_hours=Decimal("500"))
+        assert expected_due_date(reminder, None, Decimal("480"), None, 2.0, TODAY) == (
+            TODAY + timedelta(days=10)
+        )
+
+    def test_mileage_wins_when_both_targets_are_set(self):
+        # 10 days by mileage, 40 by hours: the mileage projection is the one taken.
+        reminder = _pending(
+            reminder_type="smart",
+            due_mileage_km=Decimal("57000"),
+            due_hours=Decimal("500"),
+            due_date=TODAY + timedelta(days=90),
+        )
+        assert expected_due_date(reminder, Decimal("56000"), Decimal("420"), 100.0, 2.0, TODAY) == (
+            TODAY + timedelta(days=10)
+        )
+
+    def test_the_earlier_of_date_and_projection(self):
+        reminder = _pending(
+            reminder_type="smart",
+            due_mileage_km=Decimal("58000"),
+            due_date=TODAY + timedelta(days=5),
+        )
+        # Projection is 20 days; the date comes first.
+        assert expected_due_date(reminder, Decimal("56000"), None, 100.0, None, TODAY) == (
+            TODAY + timedelta(days=5)
+        )
+        reminder.due_date = TODAY + timedelta(days=90)
+        assert expected_due_date(reminder, Decimal("56000"), None, 100.0, None, TODAY) == (
+            TODAY + timedelta(days=20)
+        )
+
+    def test_no_rate_or_no_reading_leaves_a_usage_reminder_undated(self):
+        reminder = _pending(reminder_type="mileage", due_mileage_km=Decimal("57000"))
+        assert expected_due_date(reminder, Decimal("56000"), None, None, None, TODAY) is None
+        assert expected_due_date(reminder, None, None, 100.0, None, TODAY) is None
+
+    def test_nothing_to_go_on_is_none(self):
+        assert expected_due_date(_pending(), None, None, None, None, TODAY) is None
+
+
+@pytest.mark.unit
+class TestClassifyPendingReminders:
+    def test_partition(self):
+        pending = [
+            _pending(title="today", due_date=TODAY),  # overdue
+            _pending(title="30d", due_date=TODAY + timedelta(days=30)),  # due soon (boundary)
+            _pending(title="31d", due_date=TODAY + timedelta(days=31)),  # upcoming only
+            _pending(
+                title="snoozed",
+                due_date=TODAY + timedelta(days=5),
+                snoozed_until=TODAY + timedelta(days=20),
+            ),  # in no count
+        ]
+        counts = classify_pending_reminders(pending, None, None, None, None, TODAY)
+        assert (counts.overdue, counts.upcoming, counts.due_soon) == (1, 2, 1)
+
+    def test_a_projected_mileage_reminder_is_due_soon(self):
+        pending = [_pending(reminder_type="mileage", due_mileage_km=Decimal("57000"))]
+        counts = classify_pending_reminders(pending, Decimal("56000"), None, 100.0, None, TODAY)
+        assert (counts.overdue, counts.upcoming, counts.due_soon) == (0, 1, 1)
+
+    def test_without_rates_a_usage_reminder_is_never_due_soon(self):
+        pending = [_pending(reminder_type="mileage", due_mileage_km=Decimal("57000"))]
+        counts = classify_pending_reminders(pending, Decimal("56000"), None, None, None, TODAY)
+        assert (counts.overdue, counts.upcoming, counts.due_soon) == (0, 1, 0)
 
 
 # ---------------------------------------------------------------------------

@@ -1,6 +1,8 @@
 <div align="center">
-  
-Self-hosted vehicle maintenance tracking with VIN decoding, service records, fuel logging, and document management.
+
+# MyGarage
+
+Self-hosted vehicle maintenance tracking for the whole household: service history, reminders, fuel, tires, insurance, documents and live OBD2 telemetry.
 
 [![CI](https://github.com/homelabforge/mygarage/actions/workflows/ci.yml/badge.svg)](https://github.com/homelabforge/mygarage/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/homelabforge/mygarage/actions/workflows/codeql.yml/badge.svg)](https://github.com/homelabforge/mygarage/actions/workflows/codeql.yml)
@@ -15,61 +17,52 @@ Self-hosted vehicle maintenance tracking with VIN decoding, service records, fue
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Discord](https://img.shields.io/badge/Discord-Community-5865F2?logo=discord&logoColor=white)](https://discord.gg/6XttnVgG)
 
-![MyGarage Dashboard](docs/screenshots/dashboard.png)
-
 </div>
 
 ---
 
-## Key Features
+## Features
 
-- **VIN Decoding** - Automatic vehicle details via NHTSA API
-- **Service Visits** - Track maintenance with line items, tax/fees, and attachments
-- **Maintenance Specs** - Oil viscosity, capacity and filter, fuel filter, lug-nut torque, and coolant/brake/transmission fluid per vehicle
-- **Reminders** - Recurring maintenance rules anchored on your service history, with date, mileage, or engine-hours thresholds and due alerts
-- **Tire Tracking** - Tread, DOT and pressure readings per position, with mount periods, rotation, seasonal sets, storage, and wear projection
-- **LiveLink Telemetry** - Real-time OBD2 data, movement-detected drive sessions, GPS trips, and DTCs via a WiCAN device (HTTPS POST or MQTT) or the Torque Pro app. See [LiveLink (WiCAN) Setup](docs/LIVELINK_SETUP.md).
-- **POI Finder** - Discover nearby auto shops, EV charging, and fuel stations with interactive map
-- **Fuel & DEF Tracking** - Log fill-ups (and DEF for diesels) and analyze fuel economy trends
-- **EV & PHEV Charging** - Charge sessions with start/end SOC, charge level, location, and battery health
-- **Engine Hours Tracking** - Hour meters for ATVs, equipment, and generators, with hours-based reminders
-- **Parts & Supplies** - Track fluids, filters and parts on hand; their cost folds into service visits
-- **Fifth Wheel & Trailer Support** - Propane tracking, spot rental billing, and RV park management
-- **Unit Conversion** - Imperial, metric, or a mix: units are chosen per quantity, so litres with miles is a real setting
-- **Document Management** - Store registration, insurance, manuals with OCR
-- **Imports & Webhooks** - Fuelio, Drivvo and Tesla/ABRP CSV imports, inbound webhooks, and Telegram fuel commands
-- **Family Multi-User System** - Separate accounts with vehicle sharing, ownership transfers, and family dashboard
-- **Languages & Currencies** - English, German, French, Polish, Brazilian Portuguese, Russian, Ukrainian; 16 currencies
-- **Authentication Options** - No auth, local JWT, or OIDC (Authentik, Keycloak, Google, Azure AD)
-- **Ask My Garage** - Opt-in assistant answering questions from your own specs, service history and DTCs. See [Tier 2 Features](docs/tier2-features.md).
-- **Self-Hosted** - Your data stays on your infrastructure
+- **Vehicles** - Cars, motorcycles, boats, RVs and equipment. VIN decoding via NHTSA, maintenance specs, photos, window stickers, recalls and warranties.
+- **Service history** - Visits with line items and attachments, with parts drawn from your own supplies inventory.
+- **Reminders** - Recurring rules by distance, months or engine hours, anchored on real service history. Reminder packs, snooze, and notifications to Discord, Telegram, ntfy, Pushover, Gotify, Slack, Matrix or email.
+- **Fuel and charging** - Fill-ups, DEF and propane, EV/PHEV charge sessions, economy trends, and imports from Fuelio, Drivvo and Tesla/ABRP.
+- **Tires** - Tread and pressure per position, mount history, rotations, seasonal sets, storage and wear projection.
+- **LiveLink** - Live OBD2 data, drive sessions, GPS trips and DTCs from a WiCAN device (HTTPS or MQTT), Torque Pro, any MQTT source, or Mopeka propane sensors. See the [LiveLink setup guide](docs/LIVELINK_SETUP.md).
+- **Insurance** - Household policies spanning vehicles, standard coverages, renewals, and import from a declarations page.
+- **Documents and places** - Registration, insurance and manuals with OCR, plus a map of nearby shops, fuel and charging.
+- **Household** - Separate accounts, vehicle sharing and transfers, and a family dashboard. Run with no auth, local accounts, or any OIDC provider.
+- **Units and languages** - Imperial, metric or any mix per quantity, a per-vehicle odometer unit, seven languages and 16 currencies.
+- **Also** - Analytics and PDF reports, calendar, global search, a [gethomepage](https://gethomepage.dev) widget API, inbound webhooks and Telegram fuel commands, JSON and CSV backup and export, an installable PWA, and an opt-in [Ask My Garage](docs/tier2-features.md) assistant.
 
 ---
 
-**Default Mode**: Runs with no authentication for easy setup. Configure authentication in Settings before exposing to the internet.
+## Get started
 
-📖 **[Complete Installation Guide](https://github.com/homelabforge/mygarage/wiki/Installation)**
+One container with a `/data` volume. Follow the [Quick Start](https://github.com/homelabforge/mygarage/wiki/Quick-Start), or the [Installation guide](https://github.com/homelabforge/mygarage/wiki/Installation) for reverse proxies, subpath hosting, PostgreSQL and authentication.
+
+MyGarage starts without authentication so you can look around. Turn on local accounts or OIDC in Settings before exposing it.
 
 ---
 
 ## Support
 
-- **📚 Documentation**: [GitHub Wiki](https://github.com/homelabforge/mygarage/wiki)
-- **🌐 Website**: [homelabforge.io/builds/mygarage](https://homelabforge.io/builds/mygarage/)
-- **🐛 Bug Reports**: [GitHub Issues](https://github.com/homelabforge/mygarage/issues)
-- **💬 Discussions**: [GitHub Discussions](https://github.com/homelabforge/mygarage/discussions)
+- **Documentation**: [GitHub Wiki](https://github.com/homelabforge/mygarage/wiki)
+- **Website**: [homelabforge.io/builds/mygarage](https://homelabforge.io/builds/mygarage/)
+- **Bug reports**: [GitHub Issues](https://github.com/homelabforge/mygarage/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/homelabforge/mygarage/discussions) or [Discord](https://discord.gg/6XttnVgG)
 
 ---
 
 ## Translations
 
-See [Translation Status](TRANSLATIONS.md) for language support and how to contribute.
+See [Translation Status](TRANSLATIONS.md) for language coverage and how to contribute.
 
 ---
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+MIT License. See [LICENSE](LICENSE).
 
 ---
 

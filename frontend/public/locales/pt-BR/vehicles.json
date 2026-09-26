@@ -62,7 +62,7 @@
     "noVehiclesYet": "Nenhum veículo",
     "oldestFirst": "Mais antigos primeiro",
     "sharedWithMeSection": "Compartilhados comigo ({{count}})",
-    "sortByName": "Ordenar por nome",
+    "sortByName": "Nome",
     "sortTrigger": "Ordenação: {{label}}",
     "sortVehicles": "Ordenar veículos",
     "title": "Minha Garagem",
@@ -680,10 +680,8 @@
     "noteCount": "{{count}} notas",
     "overdue": "{{count}} atrasado(s)",
     "photoCount": "{{count}} foto(s)",
-    "recent": "Recente",
     "recentActivity": "Atividade recente",
-    "service": "Serviço",
-    "upcoming": "{{count}} próximo(s)"
+    "service": "Serviço"
   },
   "vendorSearch": {
     "noResults": "Nenhum resultado"

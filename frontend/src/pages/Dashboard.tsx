@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Plus, Car as CarIcon, RefreshCw, ChevronDown, AlertCircle, Users, Archive, CheckSquare } from 'lucide-react'
 import VehicleStatisticsCard from '../components/VehicleStatisticsCard'
+import { VehicleUnitScope } from '../contexts/VehicleUnitScope'
 import ExternalVehicleCard from '../components/ExternalVehicleCard'
 import ExternalVehicleModal from '../components/modals/ExternalVehicleModal'
 import BulkArchiveModal from '../components/modals/BulkArchiveModal'
@@ -14,48 +15,10 @@ import type { DashboardResponse, VehicleStatistics } from '../types/dashboard'
 import type { ExternalVehicle } from '../types/externalVehicle'
 import { listExternalVehicles } from '../services/externalVehicleService'
 import api from '../services/api'
+import { useDashboardSortOrder } from '../hooks/useDashboardSort'
+import { DASHBOARD_SORT_OPTIONS, type DashboardSort } from '../constants/dashboardSort'
 
-const SORT_OPTIONS = ['name', 'year-new', 'year-old', 'maintenance'] as const
-type SortOption = (typeof SORT_OPTIONS)[number]
-
-/** Where the chosen sort order is remembered. */
-const SORT_STORAGE_KEY = 'mygarage:dashboard:sortBy'
-
-/**
- * The remembered sort order, or the default.
- *
- * `sessionStorage`, not `localStorage`: issue #180 asks for the choice to
- * survive a refresh "in the current login session", and this browser may be
- * shared with another member of the household whose own default should not be
- * decided by whoever sorted last.
- *
- * The stored string is validated against SORT_OPTIONS rather than trusted. It
- * outlives deploys, so a renamed option would otherwise leave the list sorted by
- * a value no menu item matches, which reads as "sorting is broken" with no way
- * back except clearing site data. Reads and writes are both guarded because
- * storage access itself throws in a private window or with site data blocked.
- */
-function storedSortOption(): SortOption {
-  try {
-    const raw = sessionStorage.getItem(SORT_STORAGE_KEY)
-    if (raw !== null && (SORT_OPTIONS as readonly string[]).includes(raw)) {
-      return raw as SortOption
-    }
-  } catch {
-    // Storage unavailable; the default is a perfectly good answer.
-  }
-  return 'name'
-}
-
-function rememberSortOption(value: SortOption): void {
-  try {
-    sessionStorage.setItem(SORT_STORAGE_KEY, value)
-  } catch {
-    // Not remembering it is a smaller failure than breaking the sort.
-  }
-}
-
-function sortVehicles(vehicles: VehicleStatistics[], sortBy: SortOption): VehicleStatistics[] {
+function sortVehicles(vehicles: VehicleStatistics[], sortBy: DashboardSort): VehicleStatistics[] {
   return [...vehicles].sort((a, b) => {
     switch (sortBy) {
       case 'name':
@@ -92,7 +55,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showWizard, setShowWizard] = useState(false)
-  const [sortBy, setSortBy] = useState<SortOption>(storedSortOption)
+  const { sortBy, choose: chooseSort } = useDashboardSortOrder()
   const [showExternalModal, setShowExternalModal] = useState(false)
   const [editingExternal, setEditingExternal] = useState<ExternalVehicle | null>(null)
   const [selectMode, setSelectMode] = useState(false)
@@ -174,17 +137,12 @@ export default function Dashboard() {
   const hasAnyContent =
     ownedCount > 0 || sharedVehicles.length > 0 || referenceVehicles.length > 0
 
-  // One writer, so a new sort option cannot be added and silently not remembered.
-  const chooseSort = (value: SortOption) => {
-    setSortBy(value)
-    rememberSortOption(value)
-  }
-  const sortItems: DropdownItem[] = [
-    { id: 'name', label: t('dashboard.sortByName'), checked: sortBy === 'name', onSelect: () => chooseSort('name') },
-    { id: 'year-new', label: t('dashboard.newestFirst'), checked: sortBy === 'year-new', onSelect: () => chooseSort('year-new') },
-    { id: 'year-old', label: t('dashboard.oldestFirst'), checked: sortBy === 'year-old', onSelect: () => chooseSort('year-old') },
-    { id: 'maintenance', label: t('dashboard.byMaintenance'), checked: sortBy === 'maintenance', onSelect: () => chooseSort('maintenance') },
-  ]
+  const sortItems: DropdownItem[] = DASHBOARD_SORT_OPTIONS.map((option) => ({
+    id: option.value,
+    label: t(option.labelKey),
+    checked: sortBy === option.value,
+    onSelect: () => chooseSort(option.value),
+  }))
   const sortLabel = sortItems.find((i) => i.checked)?.label ?? ''
 
   const openExternalModal = (vehicle?: ExternalVehicle) => {
@@ -287,13 +245,15 @@ export default function Dashboard() {
               {ownedVehicles.length > 0 ? (
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-[22px]">
                   {ownedVehicles.map((vehicleStats) => (
-                    <VehicleStatisticsCard
-                      key={vehicleStats.vin}
-                      stats={vehicleStats}
-                      selectMode={selectMode}
-                      selected={selectedVins.has(vehicleStats.vin)}
-                      onToggleSelect={toggleVin}
-                    />
+                    // Each card reads its own vehicle's odometer unit (#172).
+                    <VehicleUnitScope key={vehicleStats.vin} distanceUnit={vehicleStats.distance_unit}>
+                      <VehicleStatisticsCard
+                        stats={vehicleStats}
+                        selectMode={selectMode}
+                        selected={selectedVins.has(vehicleStats.vin)}
+                        onToggleSelect={toggleVin}
+                      />
+                    </VehicleUnitScope>
                   ))}
                 </div>
               ) : (
@@ -319,7 +279,9 @@ export default function Dashboard() {
                 </h2>
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-[22px]">
                   {sharedVehicles.map((vehicleStats) => (
-                    <VehicleStatisticsCard key={vehicleStats.vin} stats={vehicleStats} />
+                    <VehicleUnitScope key={vehicleStats.vin} distanceUnit={vehicleStats.distance_unit}>
+                      <VehicleStatisticsCard stats={vehicleStats} />
+                    </VehicleUnitScope>
                   ))}
                 </div>
               </section>

@@ -104,7 +104,7 @@
       "categoryColumnsLabel": "Category columns:",
       "categoryColumnsDesc": "Each vehicle's spend broken out by Maintenance, Upgrades, Inspection, Collision, Detailing, Fuel, DEF, and Financing.",
       "totalCostLabel": "Total:",
-      "totalCostDesc": "Combined running costs — service, fuel, DEF, and financing. This does not include the vehicle's purchase price.",
+      "totalCostDesc": "Combined running costs — service, fuel, and DEF. This does not include the vehicle's purchase price. Financing and insurance are shown separately, since they aren't running costs of driving the vehicle.",
       "sortIntro": "The table is ordered by total running cost, highest first. Use it to spot:",
       "item1": "Most/least expensive vehicles to operate",
       "item2": "Vehicles with disproportionate maintenance costs",
@@ -406,11 +406,11 @@
     "fuelEconomy": {
       "title": "Fuel Economy",
       "economyCalcLabel": "{{unit}} Calculation:",
-      "economyCalcDesc": "Automatically calculated from consecutive full-tank fill-ups. Partial fills are not used.",
+      "economyCalcDesc": "Calculated for each full tank. Partial fill-ups count toward the next full tank.",
       "averageEconomyLabel": "Average {{unit}}:",
-      "averageEconomyDesc": "Mean fuel economy across all full-tank fill-ups.",
+      "averageEconomyDesc": "Total fuel over total distance across every tank. Tanks outside a realistic range are left out.",
       "recentEconomyLabel": "Recent {{unit}}:",
-      "recentEconomyDesc": "Average of the last 5 full-tank fill-ups.",
+      "recentEconomyDesc": "The most recent full tank.",
       "note": "Declining fuel economy may indicate maintenance needs (air filter, spark plugs, tire pressure) or driving habit changes. Significant drops warrant investigation."
     },
     "gotIt": "Got it",

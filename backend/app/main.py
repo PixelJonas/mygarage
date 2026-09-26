@@ -16,6 +16,7 @@ from slowapi.util import get_remote_address
 from app.config import settings
 from app.database import init_db
 from app.utils.household_time import household_zone_dependency
+from app.utils.html_base import inject_base_href, inline_script_hashes
 
 
 def _configure_logging() -> None:
@@ -246,6 +247,16 @@ from app.middleware import (
     SecurityHeadersMiddleware,
 )
 
+# The SPA shell (frontend build) is read here, ahead of the middleware, so the
+# CSP can allow-list its inline pre-paint script by hash; the static routes
+# further down serve this same string. Empty when there is no build to serve.
+static_dir = Path(settings.static_dir)
+_index_shell = ""
+if static_dir.exists():
+    _index_shell = inject_base_href(
+        (static_dir / "index.html").read_text(encoding="utf-8"), settings.root_path
+    )
+
 # Innermost: the ingest body-size guard runs closest to the app, so its 413
 # still flows out through RequestID + SecurityHeaders and is fully decorated.
 app.add_middleware(IngestBodySizeLimitMiddleware)
@@ -254,7 +265,7 @@ app.add_middleware(IngestBodySizeLimitMiddleware)
 app.add_middleware(MaintenanceModeMiddleware)
 app.add_middleware(CSRFProtectionMiddleware)
 app.add_middleware(RequestIDMiddleware)
-app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(SecurityHeadersMiddleware, script_hashes=inline_script_hashes(_index_shell))
 
 # Add error handlers
 from fastapi.exceptions import RequestValidationError
@@ -448,16 +459,9 @@ app.include_router(search_router)
 
 
 # Serve static files (frontend build) in production
-static_dir = Path(settings.static_dir)
 if static_dir.exists():
     from fastapi.exception_handlers import http_exception_handler
     from fastapi.responses import FileResponse, HTMLResponse
-
-    from app.utils.html_base import inject_base_href
-
-    _index_shell = inject_base_href(
-        (static_dir / "index.html").read_text(encoding="utf-8"), settings.root_path
-    )
 
     # Mutable shell files (sw.js, manifest, index.html) must carry an explicit
     # no-cache: with no Cache-Control, Cloudflare edge-caches .js for 4h

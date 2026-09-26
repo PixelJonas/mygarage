@@ -8,7 +8,7 @@ import { formatDateForDisplay } from '../utils/dateUtils'
 import { formatCurrency } from '../utils/formatUtils'
 import { useCurrencyPreference } from '../hooks/useCurrencyPreference'
 import api from '../services/api'
-import { useUnitPreference } from '../hooks/useUnitPreference'
+import { useAccountUnitPreference, useUnitPreference } from '../hooks/useUnitPreference'
 import { useUnitFormat } from '../hooks/useUnitFormat'
 import { UnitFormatter } from '../utils/units'
 import {
@@ -51,6 +51,10 @@ export default function FuelRecordList({ vin, onAddClick, onEditClick }: FuelRec
   // decided a DISTANCE on a binary collapsed from VOLUME; both now read
   // `units.distance` through `utils/unitFormat.ts`.
   const { showBoth, units } = useUnitPreference()
+  // Rates with a distance underneath stay in the ACCOUNT's units (#172 D3),
+  // like fuel economy: the vehicle's odometer unit covers its distances and
+  // speeds, not its cost or DEF per distance. Label and number share this set.
+  const { units: accountUnits } = useAccountUnitPreference()
   const u = useUnitFormat()
   const { currencyCode, locale } = useCurrencyPreference()
 
@@ -370,15 +374,23 @@ export default function FuelRecordList({ vin, onAddClick, onEditClick }: FuelRec
           ? totalCost / (Math.max(...odometers) - Math.min(...odometers))
           : null
 
+        // The towing toggle lives in the average card, so the card stays while
+        // there is towing to switch on: a vehicle whose every tank towed has no
+        // average with towing left out (#181).
+        const showAverageCard =
+          averageEconomy !== null || includeHauling || records.some((r) => r.is_hauling)
+
         return (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {tracksDistance && averageEconomy !== null && (
+            {tracksDistance && showAverageCard && (
               <Card padding="sm">
                 <div className="flex items-center gap-1 text-xs text-text-mute mb-1">
                   <TrendingUp aria-hidden="true" className="w-3 h-3" />
                   <span>{t('fuelList.avgFuelEconomy')}</span>
                 </div>
-                <Mono size="2xl" weight="bold">{u.consumption.format(averageEconomy)}</Mono>
+                <Mono size="2xl" weight="bold">
+                  {averageEconomy !== null ? u.consumption.format(averageEconomy) : '—'}
+                </Mono>
                 <div className="mt-1">
                   <Checkbox
                     id="fuel-incl-towing"
@@ -411,9 +423,9 @@ export default function FuelRecordList({ vin, onAddClick, onEditClick }: FuelRec
               <Card padding="sm">
                 <div className="flex items-center gap-1 text-xs text-text-mute mb-1">
                   <Truck aria-hidden="true" className="w-3 h-3" />
-                  <span>{t('fuelList.costPerDistance', { unit: costPerDistanceUnitLabel(units) })}</span>
+                  <span>{t('fuelList.costPerDistance', { unit: costPerDistanceUnitLabel(accountUnits) })}</span>
                 </div>
-                <Mono size="2xl" weight="bold">{formatCostPerDistance(units, costPerKm, currencyCode, locale)}</Mono>
+                <Mono size="2xl" weight="bold">{formatCostPerDistance(accountUnits, costPerKm, currencyCode, locale)}</Mono>
               </Card>
             )}
             {/* Task 13 — engine-hours economy stats. */}

@@ -8,6 +8,7 @@ import api from '../services/api'
 import { getActionErrorMessage } from '../utils/httpErrorHandler'
 import { formatDateForDisplay } from '../utils/dateUtils'
 import { useDateLocale } from '../hooks/useDateLocale'
+import { formatAPITimestamp } from '../utils/parseAPITimestamp'
 import { useRecallRecords, useDeleteRecallRecord, useCheckNHTSA, useToggleRecallResolved } from '../hooks/queries/useRecallRecords'
 import { useQueryClient } from '@tanstack/react-query'
 import { Button, IconButton, EmptyState, Mono, Chip, Select } from './ui'
@@ -112,6 +113,14 @@ export default function RecallList({ vin, onAddClick, onEditClick, onRefresh }: 
       day: 'numeric',
     }, dateLocale)
   }
+
+  // resolved_at is a datetime, not a calendar day: it takes the timestamp path.
+  const formatTimestamp = (value?: string | null): string =>
+    formatAPITimestamp(
+      value,
+      (d) => d.toLocaleDateString(dateLocale, { year: 'numeric', month: 'short', day: 'numeric' }),
+      t('recallList.notAvailable'),
+    )
 
   if (isLoading) {
     return (
@@ -236,7 +245,7 @@ export default function RecallList({ vin, onAddClick, onEditClick, onRefresh }: 
                 {recall.is_resolved && recall.resolved_at && (
                   <div>
                     <p className="text-xs text-text-mute mb-1">{t('recallList.resolved')}</p>
-                    <Mono as="p" size="sm" tone="success">{formatDate(recall.resolved_at)}</Mono>
+                    <Mono as="p" size="sm" tone="success">{formatTimestamp(recall.resolved_at)}</Mono>
                   </div>
                 )}
               </div>

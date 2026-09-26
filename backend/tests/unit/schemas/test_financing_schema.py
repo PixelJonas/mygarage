@@ -21,7 +21,6 @@ def test_financing_record_create_accepts_valid_category():
         category="lease_payment",
     )
     assert record.category == "lease_payment"
-    assert record.tax_amount is None
 
 
 def test_financing_record_create_rejects_invalid_category():
@@ -56,7 +55,6 @@ def test_financing_record_response_from_attributes():
         vin = "1HGBH41JXMN109186"
         date = dt.date(2026, 1, 1)
         amount = Decimal("450.00")
-        tax_amount = None
         category = "lease_payment"
         vendor_id = None
         notes = None
@@ -66,3 +64,29 @@ def test_financing_record_response_from_attributes():
     response = FinancingRecordResponse.model_validate(_FakeORMRecord())
     assert response.id == 1
     assert response.category == "lease_payment"
+    assert response.lender is None
+
+
+def test_financing_record_response_lender_from_vendor_relationship():
+    class _FakeVendor:
+        id = 7
+        name = "Acme Auto Finance"
+        city = "Austin"
+        state = "TX"
+
+    class _FakeORMRecord:
+        id = 2
+        vin = "1HGBH41JXMN109186"
+        date = dt.date(2026, 1, 1)
+        amount = Decimal("450.00")
+        category = "lease_payment"
+        vendor_id = 7
+        vendor = _FakeVendor()
+        notes = None
+        created_at = dt.datetime(2026, 1, 1, 10, 0, 0)
+        updated_at = None
+
+    response = FinancingRecordResponse.model_validate(_FakeORMRecord())
+    assert response.lender is not None
+    assert response.lender.name == "Acme Auto Finance"
+    assert response.lender.city == "Austin"

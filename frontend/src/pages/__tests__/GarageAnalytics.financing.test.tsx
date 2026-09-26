@@ -1,10 +1,4 @@
-/**
- * Financing on the garage analytics page (ticket #9).
- *
- * Financing is part of every cost total, so the page has to show it wherever
- * the total is broken down: a summary card, a per-vehicle table column (so the
- * row adds up to its Total), a monthly-trend bar, and the CSV export.
- */
+// Financing on the garage analytics page: summary card, table column, trend bar, CSV export.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
@@ -22,7 +16,6 @@ vi.mock('recharts', () => {
       captured.charts.push(data)
       return <>{children}</>
     },
-    // `series:` prefix keeps this from colliding with any getByText on a label.
     Bar: ({ name }: { name?: string }) => <span data-testid="trend-bar">{`series:${name}`}</span>,
     Line: () => null,
     XAxis: () => null,
@@ -80,7 +73,6 @@ function vehicle(
   }
 }
 
-// Fuel 400 + financing 1,450 = 1,850 running cost for the leased van.
 const GARAGE: GarageAnalyticsData = {
   vehicle_count: 2,
   total_costs: {
@@ -148,7 +140,6 @@ describe('GarageAnalytics — financing in the per-vehicle table', () => {
 
     const vanRow = screen.getAllByText('Van').map((el) => el.closest('tr')).find(Boolean)!
     const cells = within(vanRow).getAllByRole('cell').map((c) => c.textContent)
-    // …Fuel, DEF, Financing, Total
     expect(cells.slice(-4)).toEqual(['$400.00', '$0.00', '$1,450.00', '$1,850.00'])
   })
 })
@@ -171,7 +162,6 @@ describe('GarageAnalytics — financing in the monthly trend', () => {
     expect(trend).toBeDefined()
     expect(trend![0].Financing).toBe(450)
     expect(trend![1].Financing).toBe(1000)
-    // Jan total = 50 fuel + 450 financing = 500; Feb 1,050 → trailing avg (500+1050)/2.
     expect(trend![0].avg3).toBe(500)
     expect(trend![1].avg3).toBe(775)
   })
@@ -197,15 +187,13 @@ describe('GarageAnalytics — financing in the category legend', () => {
       return swatch.style.backgroundColor
     }
     const colors = CATEGORIES.map(swatchColor)
-    // A palette shorter than the category count wraps and repeats a colour,
-    // making two slices indistinguishable.
+    // Each category needs its own colour.
     expect(new Set(colors).size).toBe(CATEGORIES.length)
   })
 })
 
 describe('GarageAnalytics — financing in the CSV export', () => {
   it('exports the financing total, the per-vehicle column and the monthly column', async () => {
-    // ExportMenu is real here; read the blob out of the object-URL call.
     const blobs: Blob[] = []
     const createObjectURL = vi
       .spyOn(URL, 'createObjectURL')
@@ -224,7 +212,6 @@ describe('GarageAnalytics — financing in the CSV export', () => {
 
       expect(csv).toContain('Financing,1450.00')
       expect(csv).toContain('Fuel,DEF,Financing,Running Costs')
-      // purchase, maint, upgrades, inspection, collision, detailing, fuel, DEF, financing, total
       expect(csv).toContain('"2024 Van",0.00,0.00,0.00,0.00,0.00,0.00,400.00,0.00,1450.00,1850.00')
       expect(csv).toContain('Month,Service,Fuel,DEF,Financing,Total')
       expect(csv).toContain('Feb 2026,0.00,50.00,0.00,1000.00,1050.00')

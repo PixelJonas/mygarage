@@ -219,7 +219,7 @@ class TestTheOldMileAtABoundary:
         assert [(f.period_id, f.code, f.counterpart_id) for f in faults] == [
             (2, OVERLAPPING_ODOMETER, 1)
         ]
-        assert "claims kilometres" in faults[0].message
+        assert "claims distance" in faults[0].message
 
     def test_a_reversed_odometer_inside_the_band_is_not_a_fault(self):
         within = _period(
@@ -656,7 +656,7 @@ class TestFaultMessages:
         p = _period(1, start=None, end=None, start_odo="1000", end_odo="3000")
         q = _period(2, start=None, end=None, start_odo="2000", end_odo="4000", position="FR")
         assert self._message([p, q]) == (
-            "The FR period with an unknown mount date claims kilometres the FL period with an "
+            "The FR period with an unknown mount date claims distance the FL period with an "
             "unknown mount date already covers: it starts at 2,000 km, before that period ended "
             "at 3,000 km."
         )
@@ -758,7 +758,7 @@ class TestDistanceFormatter:
         assert " mi" in mi[0].message and " km" not in mi[0].message
 
     def test_covering_span_message_uses_the_formatter(self) -> None:
-        """4b: the "claims kilometres already covered" message."""
+        """4b: the "claims distance already covered" message."""
         p = _period(1, start=None, end=None, start_odo="1000", end_odo="3000")
         q = _period(2, start=None, end=None, start_odo="2000", end_odo="4000", position="FR")
         km = validate_period_history([p, q], [])

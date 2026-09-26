@@ -99,7 +99,6 @@ def calculate_monthly_aggregation(df: pd.DataFrame) -> pd.DataFrame:
         + monthly["fuel_cost"]
         + monthly["def_cost"]
         + monthly["spot_rental_cost"]
-        + monthly["financing_cost"]
     )
     monthly["month_name"] = monthly["month"].apply(lambda x: calendar.month_name[int(x)])
 

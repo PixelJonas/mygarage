@@ -1108,3 +1108,38 @@ class TestFuelRecordStationName:
         record = response.json()
         assert record["station_address_book_id"] == station_id
         assert record["station_name"] == "Sticky Station"
+
+
+@pytest.mark.integration
+@pytest.mark.fuel
+@pytest.mark.asyncio
+async def test_a_vehicle_tracked_by_hours_can_log_a_fill_up(client: AsyncClient, auth_headers):
+    """The fuel form hides Mileage for an hours-only vehicle, so it posts no
+    odometer. That used to be a 422 on every save; the hours reading counts."""
+    vin = "HRSBTF1234567890X"
+    created = await client.post(
+        "/api/vehicles",
+        json={"vin": vin, "nickname": "Boat", "vehicle_type": "Boat", "usage_unit": "hours"},
+        headers=auth_headers,
+    )
+    assert created.status_code == 201, created.text
+
+    for day, hours, litres in [("2026-09-01", "100.0", "40"), ("2026-09-08", "120.0", "30")]:
+        response = await client.post(
+            f"/api/vehicles/{vin}/fuel",
+            json={
+                "vin": vin,
+                "date": day,
+                "engine_hours": hours,
+                "liters": litres,
+                "is_full_tank": True,
+            },
+            headers=auth_headers,
+        )
+        assert response.status_code == 201, response.text
+
+    listed = await client.get(f"/api/vehicles/{vin}/fuel", headers=auth_headers)
+    assert listed.status_code == 200
+    assert listed.json()["total"] == 2
+    # 30 L over 20 h.
+    assert listed.json()["average_l_per_hr"] == "1.50"

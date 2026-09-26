@@ -385,9 +385,7 @@
     },
     "fuelEconomy": {
       "title": "Consommation de carburant",
-      "note": "Une baisse de la consommation peut indiquer des besoins d’entretien (filtre à air, bougies, pression des pneus) ou des changements d’habitudes de conduite. Des baisses importantes méritent une vérification.",
-      "averageEconomyDesc": "Consommation moyenne sur tous les pleins complets.",
-      "recentEconomyDesc": "Moyenne des 5 derniers pleins complets."
+      "note": "Une baisse de la consommation peut indiquer des besoins d’entretien (filtre à air, bougies, pression des pneus) ou des changements d’habitudes de conduite. Des baisses importantes méritent une vérification."
     },
     "vendorSpending": {
       "title": "Dépenses par fournisseur",

@@ -1,8 +1,7 @@
-"""Create financing_records table for lease/loan/upfront-fee costs (ADR 0001).
+"""Create financing_records table for lease, loan, and upfront-fee costs.
 
-New table: created by Base.metadata.create_all before the runner in prod, so
-this migration's has_table guard skips there. It exists for PG-CI index parity,
-test coverage, and documentation. Non-FATAL by design.
+Normally created earlier by Base.metadata.create_all, so the has_table guard skips it.
+Non-FATAL by design.
 """
 
 import os
@@ -45,7 +44,6 @@ def upgrade(engine=None):
                 vendor_id INTEGER REFERENCES vendors(id),
                 date DATE NOT NULL,
                 amount NUMERIC(10,2) NOT NULL,
-                tax_amount NUMERIC(10,2),
                 category VARCHAR(20) NOT NULL CHECK (category IN ({category_list})),
                 notes TEXT,
                 created_at {ts_type} DEFAULT CURRENT_TIMESTAMP,
@@ -61,7 +59,7 @@ def upgrade(engine=None):
 
 
 def downgrade():  # pragma: no cover
-    raise NotImplementedError("Migration 9999 is forward-only.")
+    raise NotImplementedError("Migration 121 is forward-only.")
 
 
 if __name__ == "__main__":

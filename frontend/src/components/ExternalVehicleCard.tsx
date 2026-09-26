@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import type { ExternalVehicle } from '../types/externalVehicle'
 import { Badge } from './ui'
 import { unlessSelectingText } from '../utils/textSelection'
+import { yearMakeModel } from '../utils/vehicleLabel'
 
 interface ExternalVehicleCardProps {
   vehicle: ExternalVehicle
@@ -11,7 +12,7 @@ interface ExternalVehicleCardProps {
 
 export default function ExternalVehicleCard({ vehicle, onClick }: ExternalVehicleCardProps) {
   const { t } = useTranslation('vehicles')
-  const subtitle = [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ')
+  const subtitle = yearMakeModel(vehicle)
 
   return (
     <article

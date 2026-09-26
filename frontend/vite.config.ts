@@ -5,6 +5,7 @@ import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 import pkg from './package.json' with { type: 'json' }
 import { injectSwFontAssets } from './scripts/inject-sw-font-assets.ts'
+import { neverInlineFonts } from './scripts/asset-inline-limit.ts'
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -75,6 +76,8 @@ export default defineConfig({
     },
   },
   build: {
+    // Fonts are never base64-inlined (the CSP is `font-src 'self'`); see the helper.
+    assetsInlineLimit: neverInlineFonts,
     rolldownOptions: {
       input: {
         main: path.resolve(import.meta.dirname, 'index.html'),

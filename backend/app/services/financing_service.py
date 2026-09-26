@@ -1,4 +1,4 @@
-"""Financing record business logic service layer (ADR 0001)."""
+"""Financing record business logic service layer."""
 
 import logging
 
@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.financing import FinancingRecord
 from app.models.user import User
@@ -43,6 +44,7 @@ class FinancingService:
             result = await self.db.execute(
                 select(FinancingRecord)
                 .where(FinancingRecord.vin == vin)
+                .options(selectinload(FinancingRecord.vendor))
                 .order_by(FinancingRecord.date.desc())
             )
             records = result.scalars().all()
@@ -77,9 +79,9 @@ class FinancingService:
             await get_vehicle_or_403(vin, current_user, self.db)
 
             result = await self.db.execute(
-                select(FinancingRecord).where(
-                    FinancingRecord.id == record_id, FinancingRecord.vin == vin
-                )
+                select(FinancingRecord)
+                .where(FinancingRecord.id == record_id, FinancingRecord.vin == vin)
+                .options(selectinload(FinancingRecord.vendor))
             )
             record = result.scalar_one_or_none()
             if not record:
@@ -117,13 +119,13 @@ class FinancingService:
                 vendor_id=data.vendor_id,
                 date=data.date,
                 amount=data.amount,
-                tax_amount=data.tax_amount,
                 category=data.category,
                 notes=data.notes,
             )
             self.db.add(db_record)
             await self.db.commit()
             await self.db.refresh(db_record)
+            await self.db.refresh(db_record, attribute_names=["vendor"])
 
             logger.info(
                 "Created financing record %s for %s",
@@ -184,6 +186,7 @@ class FinancingService:
 
             await self.db.commit()
             await self.db.refresh(record)
+            await self.db.refresh(record, attribute_names=["vendor"])
 
             logger.info(
                 "Updated financing record %s for %s",

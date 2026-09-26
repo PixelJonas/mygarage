@@ -12,6 +12,7 @@ from sqlalchemy.sql import func
 from app.database import Base
 
 if TYPE_CHECKING:
+    from app.models.financing import FinancingRecord
     from app.models.service_visit import ServiceVisit
 
 
@@ -33,6 +34,9 @@ class Vendor(Base):
     # Relationships
     service_visits: Mapped[list[ServiceVisit]] = relationship(
         "ServiceVisit", back_populates="vendor"
+    )
+    financing_records: Mapped[list[FinancingRecord]] = relationship(
+        "FinancingRecord", back_populates="vendor"
     )
 
     __table_args__ = (Index("idx_vendors_name", "name"),)

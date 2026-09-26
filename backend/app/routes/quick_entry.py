@@ -13,6 +13,7 @@ from app.models.user import User
 from app.models.vehicle import Vehicle
 from app.models.vehicle_share import VehicleShare
 from app.services.auth import require_auth
+from app.utils.unit_resolution import LenientDistanceUnit
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,8 @@ class QuickEntryVehicle(BaseModel):
     fuel_type_secondary: str | None = None
     usage_unit: str = "distance"
     secondary_usage_enabled: bool = False
+    # The vehicle's own odometer unit, so a Quick Entry form opens in it (#172).
+    distance_unit: LenientDistanceUnit = None
     thumbnail_url: str | None
 
     class Config:
@@ -116,6 +119,7 @@ async def list_quick_entry_vehicles(
                 fuel_type_secondary=vehicle.fuel_type_secondary,
                 usage_unit=vehicle.usage_unit or "distance",
                 secondary_usage_enabled=bool(vehicle.secondary_usage_enabled),
+                distance_unit=vehicle.distance_unit,
                 thumbnail_url=thumbnail_url,
             )
         )

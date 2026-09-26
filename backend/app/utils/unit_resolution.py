@@ -13,19 +13,22 @@ database, that computed field has to change with it.
 from __future__ import annotations
 
 import logging
-from typing import Protocol
+from typing import Annotated, Final, Protocol, cast
 
-from pydantic import ValidationError
+from pydantic import BeforeValidator, ValidationError, ValidationInfo
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants.units import (
     IMPERIAL_PRESET,
     METRIC_PRESET,
     UNIT_FIELD_NAMES,
+    DistanceUnit,
+    SpeedUnit,
     UnitSet,
     field_to_column,
 )
 from app.utils.default_unit_prefs import load_default_unit_prefs
+from app.utils.logging_utils import sanitize_for_log
 
 logger = logging.getLogger(__name__)
 
@@ -148,3 +151,70 @@ async def new_user_unit_kwargs(db: AsyncSession) -> dict[str, str | None]:
     assigning afterwards, so no path can half-apply it.
     """
     return initial_unit_columns(await load_default_unit_prefs(db))
+
+
+SPEED_FOR_DISTANCE: Final[dict[str, SpeedUnit]] = {"km": "kmh", "mi": "mph"}
+"""The speed that goes with an odometer unit: one cluster, one unit (#172 D3)."""
+
+# (vin, value) pairs already warned about, so a bad row logs once per process
+# rather than once per serialisation (every dashboard load would repeat it),
+# and a second vehicle with the same bad value still gets its own line.
+_warned_distance_units: set[tuple[str | None, str]] = set()
+
+
+def normalise_distance_unit(value: object, *, vin: str | None = None) -> DistanceUnit | None:
+    """A vehicle's stored odometer unit, or None for unset or unusable.
+
+    `vehicles.distance_unit` has no CHECK, like the eleven user unit columns,
+    so a hand-edited row can hold anything. Anything outside the vocabulary is
+    treated as unset ("Account default") rather than failing a response.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str) and value in SPEED_FOR_DISTANCE:
+        return cast(DistanceUnit, value)
+    key = (vin, repr(value))
+    if key not in _warned_distance_units:
+        _warned_distance_units.add(key)
+        logger.warning(
+            "Ignoring out-of-vocabulary vehicles.distance_unit %s (vin=%s)",
+            sanitize_for_log(key[1]),
+            sanitize_for_log(vin),
+        )
+    return None
+
+
+def apply_vehicle_units(
+    units: UnitSet, distance_unit: object, *, vin: str | None = None
+) -> UnitSet:
+    """The units one vehicle's numbers render in (#172).
+
+    The viewer's set with the vehicle's odometer unit, and the speed that goes
+    with it, laid on top. Every other quantity, rates with a distance in the
+    denominator included, stays the viewer's. Returns `units` itself when the
+    vehicle has no usable unit, so an Account-default vehicle is untouched.
+    """
+    unit = normalise_distance_unit(distance_unit, vin=vin)
+    if unit is None:
+        return units
+    return UnitSet.model_validate(
+        units.model_dump() | {"distance": unit, "speed": SPEED_FOR_DISTANCE[unit]}
+    )
+
+
+def _lenient_distance_unit(value: object, info: ValidationInfo) -> DistanceUnit | None:
+    """Field validator for a response's `distance_unit`, naming the vehicle.
+
+    A FIELD validator, not a model validator: a model validator handed an ORM
+    row (`from_attributes`) could only normalise by writing to the row, which
+    the session would then persist. `info.data` holds the fields validated so
+    far, so the payloads that declare `vin` / `vehicle_vin` first get it;
+    `VehicleResponse` declares `vin` after `VehicleBase`'s fields and logs
+    `vin=<none>` once, while its render-context and payload paths name it.
+    """
+    vin = info.data.get("vin") or info.data.get("vehicle_vin")
+    return normalise_distance_unit(value, vin=vin if isinstance(vin, str) else None)
+
+
+LenientDistanceUnit = Annotated[DistanceUnit | None, BeforeValidator(_lenient_distance_unit)]
+"""A response field carrying a vehicle's `distance_unit`: bad stored values serve as null."""

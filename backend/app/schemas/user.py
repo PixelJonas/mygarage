@@ -24,6 +24,7 @@ from pydantic import (
 )
 
 from app.constants.accents import SUPPORTED_ACCENTS
+from app.constants.dashboard import DEFAULT_DASHBOARD_SORT, SUPPORTED_DASHBOARD_SORTS
 from app.constants.fuel import PAYMENT_METHOD_VALUES, TRIP_TYPE_VALUES
 from app.constants.i18n import SUPPORTED_CURRENCIES, SUPPORTED_LANGUAGES
 from app.constants.theme import SUPPORTED_THEMES
@@ -153,6 +154,8 @@ class UserSelfUpdate(BaseModel):
     accent_color: str | None = Field(None, max_length=20)
     # UI light/dark theme
     theme: str | None = Field(None, max_length=10)
+    # The order the dashboard opens in
+    dashboard_sort: str | None = Field(None, max_length=16)
     # Fuel-tracking form defaults (issue #69)
     default_payment_method: str | None = Field(None, max_length=20)
     default_trip_type: str | None = Field(None, max_length=20)
@@ -189,6 +192,16 @@ class UserSelfUpdate(BaseModel):
         """Validate theme against the light/dark allowlist."""
         if v is not None and v not in SUPPORTED_THEMES:
             raise ValueError(f"Unsupported theme: {v}. Supported: {sorted(SUPPORTED_THEMES)}")
+        return v
+
+    @field_validator("dashboard_sort")
+    @classmethod
+    def validate_dashboard_sort(cls, v: Any) -> Any:
+        """Validate against the orders the dashboard's sort menu offers."""
+        if v is not None and v not in SUPPORTED_DASHBOARD_SORTS:
+            raise ValueError(
+                f"Unsupported dashboard sort: {v}. Supported: {list(SUPPORTED_DASHBOARD_SORTS)}"
+            )
         return v
 
     @field_validator("default_payment_method")
@@ -425,6 +438,9 @@ class UserResponse(UserBase):
     accent_color: str | None = None
     # UI light/dark theme — None when the user has never explicitly picked one.
     theme: str | None = None
+    # The order the dashboard opens in. A plain string, not narrowed: the client
+    # validates it against its own menu and falls back to 'name'.
+    dashboard_sort: str = DEFAULT_DASHBOARD_SORT
     # Fuel-tracking form defaults (issue #69)
     default_payment_method: str | None = None
     default_trip_type: str | None = None

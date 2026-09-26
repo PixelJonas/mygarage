@@ -60,7 +60,7 @@ class FuelEconomyTrend(BaseModel):
     average_l_per_100km: Decimal | None = None
     best_l_per_100km: Decimal | None = None
     worst_l_per_100km: Decimal | None = None
-    recent_l_per_100km: Decimal | None = None  # Last 5 fill-ups
+    recent_l_per_100km: Decimal | None = None  # The last full tank
     trend: str = "stable"  # "improving", "declining", "stable"
     data_points: list[FuelEconomyDataPoint] = []
 
@@ -337,8 +337,10 @@ class GarageVehicleCost(BaseModel):
     # This vehicle's share of the household's insurance, accrued to date. Shown
     # beside the running costs, not folded into them.
     total_insurance: Decimal = Field(default=Decimal("0.00"))
+    # This vehicle's financing payments and fees. Shown beside the running
+    # costs, not folded into them.
     total_financing: Decimal = Field(default=Decimal("0.00"))
-    # Running costs = all service categories + fuel + DEF + financing (excludes purchase price)
+    # Running costs = all service categories + fuel + DEF (excludes purchase price)
     total_cost: Decimal = Field(default=Decimal("0.00"))
 
     model_config = {"from_attributes": True}

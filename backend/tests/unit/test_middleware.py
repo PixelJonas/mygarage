@@ -122,8 +122,18 @@ class TestSecurityHeadersMiddleware:
 
         csp = result["headers"].get("content-security-policy", "")
         assert "default-src 'self'" in csp
-        assert "script-src 'self'" in csp
+        assert "script-src 'self'; " in csp
         assert "object-src 'none'" in csp
+
+    @pytest.mark.asyncio
+    async def test_csp_allows_the_shell_inline_scripts_by_hash(self):
+        middleware = SecurityHeadersMiddleware(
+            _ok_downstream, script_hashes=("sha256-AAA=", "sha256-BBB=")
+        )
+        result = await call_asgi(middleware, method="GET", path="/")
+
+        csp = result["headers"]["content-security-policy"]
+        assert "script-src 'self' 'sha256-AAA=' 'sha256-BBB='; " in csp
 
     @pytest.mark.asyncio
     async def test_adds_security_headers(self, middleware):

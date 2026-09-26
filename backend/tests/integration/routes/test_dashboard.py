@@ -656,6 +656,14 @@ class TestDashboardRoutes:
                     due_date=today - timedelta(days=3),
                     status="pending",
                 ),  # overdue
+                Reminder(
+                    vin=vin,
+                    title="In 5 days, snoozed",
+                    reminder_type="date",
+                    due_date=today + timedelta(days=5),
+                    snoozed_until=today + timedelta(days=20),
+                    status="pending",
+                ),  # out of every count until the snooze ends
             ]
         )
         await db_session.commit()
@@ -664,13 +672,120 @@ class TestDashboardRoutes:
         assert response.status_code == 200
         data = response.json()
         fh = data["fleet_health"]
+        card = next(v for v in data["vehicles"] if v["vin"] == vin)
 
-        # 10d + 30d only — not today, not 31d, not the 90-day trap of the old test.
-        assert fh["upcoming_30d_count"] == 2
-        # due-today + overdue-3d => exactly 2 overdue; equals the per-card sum, so
-        # due-today is counted once (Overdue), never also Upcoming.
+        # The card: overdue (today, -3d), pending (10d, 30d, 31d), due soon (10d, 30d).
+        assert card["overdue_maintenance_count"] == 2
+        assert card["upcoming_maintenance_count"] == 3
+        assert card["due_soon_maintenance_count"] == 2
+        # The strip is the sum of the badges: due-today is Overdue once, never
+        # also Upcoming; 31d and the snoozed one are in neither.
         assert fh["overdue_count"] == sum(v["overdue_maintenance_count"] for v in data["vehicles"])
+        assert fh["upcoming_30d_count"] == sum(
+            v["due_soon_maintenance_count"] for v in data["vehicles"]
+        )
         assert fh["overdue_count"] == 2
+        assert fh["upcoming_30d_count"] == 2
+
+    async def test_due_soon_uses_the_usage_projection_for_mileage_reminders(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        """A mileage reminder is due soon when the odometer is projected to reach
+        it within 30 days at the last 90 days' rate, the same date the reminders
+        list shows; a calendar date and the projection both count, earliest wins."""
+        vin, headers = await _isolated_fleet(db_session)
+        today = date.today()
+        db_session.add_all(
+            [
+                # 100 km/day over the last 60 days.
+                OdometerRecord(
+                    vin=vin, date=today - timedelta(days=60), odometer_km=Decimal("50000")
+                ),
+                OdometerRecord(vin=vin, date=today, odometer_km=Decimal("56000")),
+                Reminder(
+                    vin=vin,
+                    title="Oil, 1,000 km out: 10 days",
+                    reminder_type="mileage",
+                    due_mileage_km=Decimal("57000"),
+                    status="pending",
+                ),  # due soon
+                Reminder(
+                    vin=vin,
+                    title="Timing belt, 14,000 km out: 140 days",
+                    reminder_type="mileage",
+                    due_mileage_km=Decimal("70000"),
+                    status="pending",
+                ),  # pending only
+                Reminder(
+                    vin=vin,
+                    title="Brake fluid, dated in 90 days but 2,000 km out: 20 days",
+                    reminder_type="smart",
+                    due_date=today + timedelta(days=90),
+                    due_mileage_km=Decimal("58000"),
+                    status="pending",
+                ),  # due soon: the projection comes first
+            ]
+        )
+        # A second vehicle of the same owner, with one dated reminder due soon,
+        # proves the strip SUMS the cards (2 + 1) rather than reading one of them.
+        import uuid
+
+        from sqlalchemy import select
+
+        owner_id = await db_session.scalar(select(Vehicle.user_id).where(Vehicle.vin == vin))
+        vin2 = f"FLEET{uuid.uuid4().hex[:12].upper()}"
+        db_session.add_all(
+            [
+                Vehicle(vin=vin2, user_id=owner_id, nickname="Fleet second", vehicle_type="Car"),
+                Reminder(
+                    vin=vin2,
+                    title="Dated in 10 days",
+                    reminder_type="date",
+                    due_date=today + timedelta(days=10),
+                    status="pending",
+                ),
+            ]
+        )
+        await db_session.commit()
+
+        response = await client.get("/api/dashboard", headers=headers)
+        assert response.status_code == 200
+        data = response.json()
+        card = next(v for v in data["vehicles"] if v["vin"] == vin)
+
+        assert card["overdue_maintenance_count"] == 0
+        assert card["upcoming_maintenance_count"] == 3
+        assert card["due_soon_maintenance_count"] == 2
+        assert sum(v["due_soon_maintenance_count"] for v in data["vehicles"]) == 3
+        assert data["fleet_health"]["upcoming_30d_count"] == 3
+
+    async def test_due_soon_without_a_usage_rate_needs_a_date(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        """One odometer reading gives no rate, so a mileage-only reminder has no
+        expected date and is pending, not due soon, however close it sits."""
+        vin, headers = await _isolated_fleet(db_session)
+        db_session.add_all(
+            [
+                OdometerRecord(vin=vin, date=date.today(), odometer_km=Decimal("56000")),
+                Reminder(
+                    vin=vin,
+                    title="Oil, 100 km out, rate unknown",
+                    reminder_type="mileage",
+                    due_mileage_km=Decimal("56100"),
+                    status="pending",
+                ),
+            ]
+        )
+        await db_session.commit()
+
+        response = await client.get("/api/dashboard", headers=headers)
+        assert response.status_code == 200
+        data = response.json()
+        card = next(v for v in data["vehicles"] if v["vin"] == vin)
+
+        assert card["upcoming_maintenance_count"] == 1
+        assert card["due_soon_maintenance_count"] == 0
 
     async def test_fleet_health_next_due_picks_soonest_dated(
         self, client: AsyncClient, db_session: AsyncSession
@@ -863,7 +978,9 @@ class TestHomePageFuelEconomyAndTowing:
     worse on the home page than on its own page, with nothing saying why.
 
     The reporter asked for the non-towing figure as the headline and a smaller
-    towing-inclusive one beside it, shown only when the vehicle actually tows.
+    towing one beside it, shown only when the vehicle actually tows. The second
+    figure is towing ALONE (a blend of both says nothing), and every average is
+    total fuel over total distance.
     """
 
     async def _tow_fleet(self, db_session: AsyncSession) -> tuple[str, dict[str, str]]:
@@ -873,8 +990,8 @@ class TestHomePageFuelEconomyAndTowing:
         # before it); the second is a clean 500 km on 40 L; the third is a
         # hauling tank, 500 km on 80 L.
         #
-        #   excluding towing -> [8.00]         -> average 8.00
-        #   including towing -> [8.00, 16.00]  -> average 12.00
+        #   not towing -> [8.00]   -> average 8.00
+        #   towing     -> [16.00]  -> average 16.00
         #
         # Two figures that cannot be confused for each other, which is the point:
         # an assertion that happens to hold under both settings proves nothing.
@@ -923,18 +1040,110 @@ class TestHomePageFuelEconomyAndTowing:
         stats = await self._stats(client, headers, vin)
         assert Decimal(str(stats["average_l_per_100km"])) == Decimal("8.00")
 
-    async def test_the_towing_inclusive_figure_is_reported_separately(
+    async def test_the_towing_figure_is_towing_alone(
         self, client: AsyncClient, db_session: AsyncSession
     ):
         vin, headers = await self._tow_fleet(db_session)
         stats = await self._stats(client, headers, vin)
-        assert Decimal(str(stats["average_l_per_100km_with_towing"])) == Decimal("12.00")
+        assert Decimal(str(stats["towing_l_per_100km"])) == Decimal("16.00")
+        assert "average_l_per_100km_with_towing" not in stats
 
-    async def test_a_vehicle_that_never_tows_reports_one_figure_twice_over(
+    async def test_a_towing_tank_between_two_ordinary_ones_stays_out_of_the_headline(
         self, client: AsyncClient, db_session: AsyncSession
     ):
-        """With no hauling fill-up the two passes agree, and the frontend uses
-        that equality to decide there is nothing extra to show."""
+        """The towing tank used to merge into the tank after it: 88 L over
+        800 km = 11.0 joined the 8.0 in the "excluding towing" figure (9.50)."""
+        vin, headers = await _isolated_fleet(db_session)
+        today = date.today()
+        for days, odo, litres, towing in [
+            (30, "1000", "40", False),
+            (20, "1500", "40", False),  # 8.0
+            (10, "1800", "48", True),  # 16.0, towing
+            (0, "2300", "40", False),  # 8.0
+        ]:
+            db_session.add(
+                FuelRecord(
+                    vin=vin,
+                    date=today - timedelta(days=days),
+                    odometer_km=Decimal(odo),
+                    liters=Decimal(litres),
+                    is_full_tank=True,
+                    is_hauling=towing,
+                )
+            )
+        await db_session.commit()
+
+        stats = await self._stats(client, headers, vin)
+        assert Decimal(str(stats["average_l_per_100km"])) == Decimal("8.00")
+        assert Decimal(str(stats["towing_l_per_100km"])) == Decimal("16.00")
+
+    async def test_averages_are_total_fuel_over_total_distance(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        """Tanks of 100 km at 10.0 and 400 km at 5.0, twice over. All four:
+        60 L / 1000 km = 6.00 (a mean of figures says 7.50). The last three:
+        50 L / 900 km = 5.56 (a mean says 6.67)."""
+        vin, headers = await _isolated_fleet(db_session)
+        today = date.today()
+        for days, odo, litres in [
+            (40, "1000", "40"),
+            (30, "1100", "10"),
+            (20, "1500", "20"),
+            (10, "1600", "10"),
+            (0, "2000", "20"),
+        ]:
+            db_session.add(
+                FuelRecord(
+                    vin=vin,
+                    date=today - timedelta(days=days),
+                    odometer_km=Decimal(odo),
+                    liters=Decimal(litres),
+                    is_full_tank=True,
+                    is_hauling=False,
+                )
+            )
+        await db_session.commit()
+
+        stats = await self._stats(client, headers, vin)
+        assert Decimal(str(stats["average_l_per_100km"])) == Decimal("6.00")
+        assert Decimal(str(stats["recent_l_per_100km"])) == Decimal("5.56")
+        assert stats["towing_l_per_100km"] is None
+
+    async def test_the_last_three_tanks_skip_an_impossible_one(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        """A mistyped odometer sorts last. "Last 3 tanks" is the last three
+        tanks that could be real: (20 + 10 + 20) L over 900 km = 5.56."""
+        vin, headers = await _isolated_fleet(db_session)
+        today = date.today()
+        for days, odo, litres in [
+            (50, "1000", "40"),
+            (40, "1100", "10"),
+            (30, "1500", "20"),
+            (20, "1600", "10"),
+            (10, "2000", "20"),
+            (0, "200000", "20"),  # meant 2,500
+        ]:
+            db_session.add(
+                FuelRecord(
+                    vin=vin,
+                    date=today - timedelta(days=days),
+                    odometer_km=Decimal(odo),
+                    liters=Decimal(litres),
+                    is_full_tank=True,
+                    is_hauling=False,
+                )
+            )
+        await db_session.commit()
+
+        stats = await self._stats(client, headers, vin)
+        assert Decimal(str(stats["average_l_per_100km"])) == Decimal("6.00")
+        assert Decimal(str(stats["recent_l_per_100km"])) == Decimal("5.56")
+
+    async def test_a_vehicle_that_never_tows_has_no_towing_figure(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        """No towing tank, no towing figure, so the card shows nothing extra."""
         vin, headers = await _isolated_fleet(db_session)
         today = date.today()
         db_session.add_all(
@@ -961,14 +1170,14 @@ class TestHomePageFuelEconomyAndTowing:
 
         stats = await self._stats(client, headers, vin)
         assert Decimal(str(stats["average_l_per_100km"])) == Decimal("8.00")
-        assert stats["average_l_per_100km_with_towing"] == stats["average_l_per_100km"]
+        assert stats["towing_l_per_100km"] is None
 
     async def test_a_vehicle_that_only_ever_tows_still_reports_a_figure(
         self, client: AsyncClient, db_session: AsyncSession
     ):
         """Every fill-up hauling means there is no non-towing figure to headline.
         Reporting nothing would hide a number the vehicle genuinely has, so the
-        towing-inclusive figure stands alone and the frontend labels it."""
+        towing figure stands alone and the frontend labels it."""
         vin, headers = await _isolated_fleet(db_session)
         today = date.today()
         db_session.add_all(
@@ -995,4 +1204,69 @@ class TestHomePageFuelEconomyAndTowing:
 
         stats = await self._stats(client, headers, vin)
         assert stats["average_l_per_100km"] is None
-        assert Decimal(str(stats["average_l_per_100km_with_towing"])) == Decimal("10.00")
+        assert Decimal(str(stats["towing_l_per_100km"])) == Decimal("10.00")
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+class TestTowableCards:
+    """A fifth wheel's card names its tow vehicle and carries a propane rate."""
+
+    async def _stats(self, client: AsyncClient, headers: dict[str, str]) -> dict[str, dict]:
+        response = await client.get("/api/dashboard", headers=headers)
+        assert response.status_code == 200, response.text
+        return {v["vin"]: v for v in response.json()["vehicles"]}
+
+    async def test_a_fifth_wheel_names_its_tow_vehicle_and_its_propane_rate(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        truck_vin, headers = await _isolated_fleet(db_session)
+        truck = await db_session.get(Vehicle, truck_vin)
+        assert truck is not None
+        truck.year, truck.make, truck.model = 2025, "RAM", "3500"
+        # "TOWED" + the fleet's 12 hex chars: 17 chars, unique per run.
+        rv_vin = f"TOWED{truck_vin[5:]}"
+        db_session.add(
+            Vehicle(
+                vin=rv_vin, user_id=truck.user_id, nickname="Durango", vehicle_type="FifthWheel"
+            )
+        )
+        await db_session.commit()
+
+        response = await client.post(
+            f"/api/vehicles/{rv_vin}/trailer",
+            json={"vin": rv_vin, "tow_vehicle_vin": truck_vin},
+            headers=headers,
+        )
+        assert response.status_code == 201, response.text
+
+        # Bottle refills carry no odometer. The first only starts the clock:
+        # all five = 105 L over 120 days; the last three refills, anchored on
+        # the one before them = 75 L over 90 days.
+        d0 = date(2026, 1, 1)
+        for days, liters in ((0, "30"), (30, "30"), (60, "30"), (90, "30"), (120, "15")):
+            response = await client.post(
+                f"/api/vehicles/{rv_vin}/fuel",
+                json={
+                    "vin": rv_vin,
+                    "date": (d0 + timedelta(days=days)).isoformat(),
+                    "propane_liters": liters,
+                    "cost": "30",
+                },
+                headers=headers,
+            )
+            assert response.status_code == 201, response.text
+
+        fleet = await self._stats(client, headers)
+        rv, truck_stats = fleet[rv_vin], fleet[truck_vin]
+        assert rv["tow_vehicle"] == {
+            "vin": truck_vin,
+            "year": 2025,
+            "make": "RAM",
+            "model": "3500",
+        }
+        assert Decimal(str(rv["propane_l_per_month"])) == Decimal("26.63")
+        assert Decimal(str(rv["recent_propane_l_per_month"])) == Decimal("25.36")
+        assert truck_stats["tow_vehicle"] is None
+        assert truck_stats["propane_l_per_month"] is None
+        assert truck_stats["recent_propane_l_per_month"] is None

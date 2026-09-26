@@ -10,10 +10,8 @@ vi.mock('../../hooks/queries/useFinancingRecords', () => ({
   useCreateFinancingRecord: () => ({ mutateAsync: createMutateAsync }),
   useUpdateFinancingRecord: () => ({ mutateAsync: updateMutateAsync }),
 }))
-// Same chain as TaxRecordForm: CurrencyInputPrefix -> useCurrencySymbol -> useCurrencyPreference -> useAuth.
 vi.mock('../../hooks/useCurrencyPreference', () => ({ useCurrencyPreference: () => ({ currencyCode: 'USD', locale: 'en-US', formatCurrency: vi.fn() }) }))
-// VendorSearch makes its own API calls (GET /vendors) — mocked to a plain div, same convention
-// ServiceVisitForm's test suite uses, so this suite never depends on vendor lookup behavior.
+// VendorSearch fetches vendors; stub it.
 vi.mock('../VendorSearch', () => ({ default: () => <div data-testid="vendor-search" /> }))
 
 import FinancingRecordForm from '../FinancingRecordForm'
@@ -29,7 +27,6 @@ describe('FinancingRecordForm — routing + exact payload (SDQ-C)', () => {
     await user.selectOptions(screen.getByLabelText('financing.category *'), 'lease_payment')
     await user.clear(screen.getByLabelText('common:amount *'))
     await user.type(screen.getByLabelText('common:amount *'), '450.00')
-    await user.type(screen.getByLabelText('financing.taxAmount'), '25.00')
     await user.clear(screen.getByLabelText('common:notes'))
     await user.type(screen.getByLabelText('common:notes'), 'note')
     await user.click(screen.getByRole('button', { name: 'common:create' }))
@@ -40,7 +37,6 @@ describe('FinancingRecordForm — routing + exact payload (SDQ-C)', () => {
       date: '2026-03-01',
       category: 'lease_payment',
       amount: 450,
-      tax_amount: 25,
       vendor_id: undefined,
       notes: 'note',
     })
@@ -50,7 +46,7 @@ describe('FinancingRecordForm — routing + exact payload (SDQ-C)', () => {
 
   it('edit submits the UPDATE payload — routing id + vin + edited amount — and NEVER calls create (fails if it misroutes or drops the id/vin)', async () => {
     const record = {
-      id: 6, date: '2026-01-10', category: 'loan_payment', amount: 300, tax_amount: null, vendor_id: 9, notes: 'y',
+      id: 6, date: '2026-01-10', category: 'loan_payment', amount: 300, vendor_id: 9, notes: 'y',
     } as unknown as FinancingRecord
     const user = userEvent.setup()
     render(<FinancingRecordForm vin="V1" record={record} onClose={vi.fn()} onSuccess={vi.fn()} />)
@@ -65,7 +61,6 @@ describe('FinancingRecordForm — routing + exact payload (SDQ-C)', () => {
       date: '2026-01-10',
       category: 'loan_payment',
       amount: 325.5,
-      tax_amount: undefined,
       vendor_id: 9,
       notes: 'y',
     })
@@ -78,6 +73,11 @@ describe('FinancingRecordForm — routing + exact payload (SDQ-C)', () => {
     expect(screen.getByLabelText('common:amount *')).toHaveAttribute('id', 'amount')
     expect(screen.getByLabelText('financing.date *')).toHaveAttribute('id', 'date')
     expect(screen.getByLabelText('financing.category *')).toHaveAttribute('id', 'category')
+  })
+
+  it('labels the vendor picker "Lender", not "Vendor" (fails if the relabel regresses)', () => {
+    render(<FinancingRecordForm vin="V1" onClose={vi.fn()} onSuccess={vi.fn()} />)
+    expect(screen.getByText('financing.lender')).toBeInTheDocument()
   })
 })
 

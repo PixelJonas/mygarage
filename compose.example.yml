@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   mygarage:
     image: ghcr.io/homelabforge/mygarage:latest

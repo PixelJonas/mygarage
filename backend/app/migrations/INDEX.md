@@ -128,3 +128,6 @@ migrations must swallow their own operational errors.
 | `116_livelink_enable_for_active_installs` | **FATAL** — Switch LiveLink on for installs already receiving MQTT or Torque data. |
 | `117_livelink_alert_lines` | **FATAL** — Add a critical alert line and a notify-once state to ``livelink_parameters``. |
 | `118_livelink_notify_switch_keys` | Carry LiveLink notification switches over to the keys Settings writes. |
+| `119_add_vehicle_distance_unit` | **FATAL** — Add vehicles.distance_unit: the unit the vehicle's odometer reads (#172). |
+| `120_add_dashboard_sort` | **FATAL** — Add users.dashboard_sort: the order this person's dashboard opens in. |
+| `121_add_financing_records` | Create financing_records table for lease, loan, and upfront-fee costs. |

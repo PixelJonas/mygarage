@@ -423,7 +423,10 @@ async def test_a_command_logs_a_fill_up_and_replies(db_session, switches, sessio
     await _round(poller, fake)
 
     assert await _fill_ups(db_session, vin) == 1
-    assert fake.replies[0].startswith(f"Logged fill-up for {vin}")
+    # The reply echoes what it logged (#172); the bare reading's unit is the
+    # owner's, which this module does not pin, so only the shape is asserted.
+    assert fake.replies[0].startswith("Logged 10,000 ")
+    assert f"for {test_vehicle['nickname']} on " in fake.replies[0]
     assert await _stored(db_session) == f"{BOT}:{update + 1}"
 
 
@@ -554,7 +557,8 @@ async def test_an_outage_never_skips_a_message(
     await _round(poller, fake)  # the database is back
 
     assert await _fill_ups(db_session, vin) == 1
-    assert fake.replies[-1].startswith(f"Logged fill-up for {vin}")
+    assert fake.replies[-1].startswith("Logged 10,000 ")
+    assert f"for {test_vehicle['nickname']} on " in fake.replies[-1]
 
 
 @pytest.mark.asyncio

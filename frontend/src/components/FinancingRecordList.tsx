@@ -73,11 +73,9 @@ export default function FinancingRecordList({ vin }: FinancingRecordListProps) {
     },
     { id: 'amount', header: t('financingList.amount'), mono: true, align: 'right', render: (r) => formatCurrency(r.amount, { currencyCode, locale }) },
     {
-      id: 'taxAmount',
-      header: t('financingList.taxAmount'),
-      mono: true,
-      align: 'right',
-      render: (r) => (r.tax_amount ? formatCurrency(r.tax_amount, { currencyCode, locale }) : '-'),
+      id: 'lender',
+      header: t('financingList.lender'),
+      render: (r) => (r.lender ? r.lender.name : <span className="text-text-mute">-</span>),
     },
     {
       id: 'notes',

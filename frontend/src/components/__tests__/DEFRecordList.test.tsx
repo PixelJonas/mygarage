@@ -29,16 +29,24 @@ const unitPrefMock = vi.hoisted(() => ({
   // Set to pin an exact resolved set (a `gal_uk` user, say); left null the set
   // follows `system`, the way the real hook derives both on one rung.
   units: null as null | import('@/types/units').UnitSet,
+  // The ACCOUNT's set when it differs from the scoped one: a vehicle with its
+  // own odometer unit (#172). Left null, the account is the scoped set.
+  accountUnits: null as null | import('@/types/units').UnitSet,
 }))
 vi.mock('../../hooks/useUnitPreference', async () => {
   const { IMPERIAL_UNITS, METRIC_UNITS } = await import('@/__tests__/factories')
+  const scoped = () =>
+    unitPrefMock.units ?? (unitPrefMock.system === 'imperial' ? IMPERIAL_UNITS : METRIC_UNITS)
   return {
     useUnitPreference: () => ({
       system: unitPrefMock.system,
       showBoth: unitPrefMock.showBoth,
-      units:
-        unitPrefMock.units ??
-        (unitPrefMock.system === 'imperial' ? IMPERIAL_UNITS : METRIC_UNITS),
+      units: scoped(),
+    }),
+    useAccountUnitPreference: () => ({
+      system: unitPrefMock.system,
+      showBoth: unitPrefMock.showBoth,
+      units: unitPrefMock.accountUnits ?? scoped(),
     }),
   }
 })
@@ -72,7 +80,7 @@ vi.mock('../../hooks/useCurrencyPreference', () => ({
   }),
 }))
 
-import { UK_IMPERIAL_UNITS } from '../../__tests__/factories'
+import { METRIC_UNITS, UK_IMPERIAL_UNITS } from '../../__tests__/factories'
 import { UnitConverter } from '../../utils/units'
 import DEFRecordList from '../DEFRecordList'
 
@@ -204,6 +212,33 @@ describe('DEFRecordList — one gallon per page, taken from the user', () => {
   afterEach(() => {
     unitPrefMock.system = 'metric'
     unitPrefMock.units = null
+    unitPrefMock.accountUnits = null
+  })
+
+  it('★ a mi VEHICLE on a km ACCOUNT: distance left in mi, DEF per 1,000 km (#172)', () => {
+    unitPrefMock.units = { ...METRIC_UNITS, distance: 'mi', speed: 'mph' }
+    unitPrefMock.accountUnits = METRIC_UNITS
+    useDEFAnalyticsMock.mockReturnValue({
+      data: {
+        record_count: 1,
+        estimated_km_remaining: 1609.344,
+        estimated_days_remaining: 30,
+        liters_per_1000_km: '4.700',
+        avg_cost_per_liter: '1.189',
+        total_cost: '24.75',
+        total_liters: '20.820',
+        data_confidence: 'high',
+      },
+    })
+
+    render(<DEFRecordList vin="TEST12345678901234" />)
+
+    // A distance: the vehicle's miles.
+    expect(screen.getByText('Est. mi Left')).toBeInTheDocument()
+    // A rate with distance underneath: the account's, number and label.
+    expect(screen.getByText('4.7')).toBeInTheDocument()
+    expect(screen.getByText('L/1,000 km')).toBeInTheDocument()
+    expect(screen.queryByText('L/1,000 mi')).not.toBeInTheDocument()
   })
 
   it('puts the consumption card, the cost card and the volume total on the imperial gallon', () => {

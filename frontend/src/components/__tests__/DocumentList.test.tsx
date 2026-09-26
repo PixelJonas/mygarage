@@ -21,7 +21,7 @@ import DocumentList from '../DocumentList'
 
 const doc = {
   id: 5, title: 'Insurance Policy', document_type: 'Insurance', description: 'Full coverage',
-  file_name: 'policy.pdf', file_size: 1536, mime_type: 'application/pdf', uploaded_at: '2026-01-01T00:00:00Z',
+  file_name: 'policy.pdf', file_size: 1536, mime_type: 'application/pdf', uploaded_at: '2026-01-01T12:00:00',
 } as unknown as Document
 
 const onAddClick = vi.fn()
@@ -104,5 +104,13 @@ describe('DocumentList — empty state', () => {
     expect(screen.getByText('documentList.noRecords')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'documentList.uploadFirstDocument' }))
     expect(onAddClick).toHaveBeenCalled()
+  })
+})
+
+describe('DocumentList — uploaded timestamp', () => {
+  it('renders the upload date from the wire-shaped datetime (fails with "Invalid Date" if it is fed to the date-only formatter)', () => {
+    render(<DocumentList {...PROPS} />)
+    expect(screen.getByText('Jan 1, 2026')).toBeInTheDocument()
+    expect(screen.queryByText(/Invalid Date/)).toBeNull()
   })
 })

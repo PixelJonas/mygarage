@@ -221,6 +221,27 @@ export function withUnitField(units: UnitSet, field: keyof UnitSet, token: strin
   return { ...units, [field]: token } as UnitSet
 }
 
+/** The speed that goes with an odometer unit: one cluster, one unit (#172). */
+const SPEED_FOR_DISTANCE: Readonly<Record<string, string>> = { km: 'kmh', mi: 'mph' }
+
+/**
+ * A vehicle's numbers' unit set: the viewer's, with the vehicle's odometer
+ * unit and its speed on top (#172). Returns `units` itself when the vehicle
+ * follows the account or carries a token outside the vocabulary, so the
+ * account's set keeps its identity and memoised formatters keep theirs.
+ *
+ * @param units The viewer's resolved set.
+ * @param distanceUnit The vehicle's odometer unit; null or undefined follows the account.
+ * @returns The set that vehicle's distances and speeds render in.
+ */
+export function unitsForVehicle(units: UnitSet, distanceUnit: string | null | undefined): UnitSet {
+  if (distanceUnit == null) return units
+  const speed = SPEED_FOR_DISTANCE[distanceUnit]
+  if (speed === undefined) return units
+  const withDistance = withUnitField(units, 'distance', distanceUnit)
+  return (withDistance && withUnitField(withDistance, 'speed', speed)) ?? units
+}
+
 /**
  * Read an untrusted value as a complete, in-vocabulary `UnitSet`.
  *

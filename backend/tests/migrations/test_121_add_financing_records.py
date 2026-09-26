@@ -1,8 +1,4 @@
-"""Tests for migration 9999 — financing_records table (lease/loan/upfront-fee costs).
-
-Parameterized over SQLite *and* PostgreSQL via the ``engine_for_migration``
-fixture (PG runs skip when ``TEST_DATABASE_URL`` is unset).
-"""
+"""Tests for migration 121 (financing_records)."""
 
 import importlib.util
 from pathlib import Path
@@ -23,7 +19,6 @@ def _load(name):
 
 
 def _make_deps(engine):
-    """Create minimal vehicles + vendors tables for the FK targets."""
     is_pg = engine.dialect.name == "postgresql"
     pk = "SERIAL PRIMARY KEY" if is_pg else "INTEGER PRIMARY KEY AUTOINCREMENT"
     with engine.begin() as conn:
@@ -33,10 +28,10 @@ def _make_deps(engine):
         conn.execute(text("INSERT INTO vendors (name) VALUES ('Test Bank')"))
 
 
-def test_9999_creates_table(engine_for_migration):
+def test_121_creates_table(engine_for_migration):
     _dialect, engine, _url = engine_for_migration
     _make_deps(engine)
-    _load("9999_add_financing_records").upgrade(engine)
+    _load("121_add_financing_records").upgrade(engine)
 
     insp = inspect(engine)
     assert insp.has_table("financing_records")
@@ -47,7 +42,6 @@ def test_9999_creates_table(engine_for_migration):
         "vendor_id",
         "date",
         "amount",
-        "tax_amount",
         "category",
         "notes",
         "created_at",
@@ -63,10 +57,10 @@ def test_9999_creates_table(engine_for_migration):
     assert {"vehicles", "vendors"} <= fk_targets
 
 
-def test_9999_category_check_accepts_valid_values(engine_for_migration):
+def test_121_category_check_accepts_valid_values(engine_for_migration):
     _dialect, engine, _url = engine_for_migration
     _make_deps(engine)
-    _load("9999_add_financing_records").upgrade(engine)
+    _load("121_add_financing_records").upgrade(engine)
 
     with engine.begin() as conn:
         for category in ("lease_payment", "loan_payment", "upfront_fee"):
@@ -83,10 +77,10 @@ def test_9999_category_check_accepts_valid_values(engine_for_migration):
     assert count == 3
 
 
-def test_9999_category_check_rejects_invalid_value(engine_for_migration):
+def test_121_category_check_rejects_invalid_value(engine_for_migration):
     _dialect, engine, _url = engine_for_migration
     _make_deps(engine)
-    _load("9999_add_financing_records").upgrade(engine)
+    _load("121_add_financing_records").upgrade(engine)
 
     with pytest.raises(IntegrityError):
         with engine.begin() as conn:
@@ -99,46 +93,24 @@ def test_9999_category_check_rejects_invalid_value(engine_for_migration):
             )
 
 
-def test_9999_tax_amount_is_nullable(engine_for_migration):
+def test_121_idempotent(engine_for_migration):
     _dialect, engine, _url = engine_for_migration
     _make_deps(engine)
-    _load("9999_add_financing_records").upgrade(engine)
-
-    with engine.begin() as conn:
-        conn.execute(
-            text(
-                "INSERT INTO financing_records (vin, date, amount, category) "
-                "VALUES (:vin, '2026-01-01', 250.00, 'lease_payment')"
-            ),
-            {"vin": "1FT0000000000000X"},
-        )
-
-    with engine.connect() as conn:
-        tax_amount = conn.execute(text("SELECT tax_amount FROM financing_records")).scalar()
-    assert tax_amount is None
-
-
-def test_9999_idempotent(engine_for_migration):
-    _dialect, engine, _url = engine_for_migration
-    _make_deps(engine)
-    mod = _load("9999_add_financing_records")
+    mod = _load("121_add_financing_records")
     mod.upgrade(engine)
-    mod.upgrade(engine)  # second run must not raise
+    mod.upgrade(engine)
     assert inspect(engine).has_table("financing_records")
 
 
-def test_9999_missing_vehicles_table_skips(engine_for_migration):
-    """A bare DB without the ``vehicles`` table must skip, not raise."""
+def test_121_missing_vehicles_table_skips(engine_for_migration):
+    """Skips, without raising, when the vehicles table is absent."""
     _dialect, engine, _url = engine_for_migration
-    _load("9999_add_financing_records").upgrade(engine)
+    _load("121_add_financing_records").upgrade(engine)
     assert not inspect(engine).has_table("financing_records")
 
 
-def test_9999_model_create_all_matches_migration_shape(engine_for_migration):
-    """``FinancingRecord``'s ORM-declared table must carry the same columns,
-    FKs, and category CHECK as the hand-written migration DDL — the two are
-    meant to converge (see test_schema_parity's create_all vs. migration
-    parity guard)."""
+def test_121_model_create_all_matches_migration_shape(engine_for_migration):
+    """The ORM-declared table matches the migration DDL: columns, FKs, category CHECK."""
     from app.models.financing import FinancingRecord
 
     _dialect, engine, _url = engine_for_migration
@@ -155,7 +127,6 @@ def test_9999_model_create_all_matches_migration_shape(engine_for_migration):
         "vendor_id",
         "date",
         "amount",
-        "tax_amount",
         "category",
         "notes",
         "created_at",
@@ -165,7 +136,6 @@ def test_9999_model_create_all_matches_migration_shape(engine_for_migration):
     fk_targets = {fk["referred_table"] for fk in insp.get_foreign_keys("financing_records")}
     assert {"vehicles", "vendors"} <= fk_targets
 
-    # The CHECK constraint declared on the model must actually be enforced.
     with pytest.raises(IntegrityError):
         with engine.begin() as conn:
             conn.execute(

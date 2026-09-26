@@ -4,6 +4,19 @@ from decimal import Decimal
 
 from pydantic import BaseModel
 
+from app.utils.unit_resolution import LenientDistanceUnit
+
+
+class TowVehicleSummary(BaseModel):
+    """The vehicle a trailer is paired with, for the card's "Towed by" row."""
+
+    model_config = {"from_attributes": True}
+
+    vin: str
+    year: int | None = None
+    make: str | None = None
+    model: str | None = None
+
 
 class VehicleStatistics(BaseModel):
     """Statistics for a single vehicle"""
@@ -17,6 +30,8 @@ class VehicleStatistics(BaseModel):
 
     # Usage tracking dimension — drives the odometer/hours relabel on the card
     usage_unit: str = "distance"
+    # The vehicle's own odometer unit; null follows the viewer (#172).
+    distance_unit: LenientDistanceUnit = None
     # Kept for API compat only — NO LONGER the display source (R2-H1). The
     # canonical current-hours reading is `latest_hours` below, derived via
     # `latest_engine_hours_and_date` from `hours_records`, never this column.
@@ -44,24 +59,33 @@ class VehicleStatistics(BaseModel):
     latest_odometer_km: Decimal | None = None
     latest_odometer_date: date_type | None = None
 
-    # Upcoming maintenance
+    # Reminders: upcoming is pending-not-overdue; due_soon is its subset expected
+    # within DUE_SOON_WINDOW (the photo badge, the fleet strip); see
+    # reminder_service.classify_pending_reminders.
     upcoming_maintenance_count: int
+    due_soon_maintenance_count: int
     overdue_maintenance_count: int
 
     # Fuel statistics (metric-canonical: L/100km).
     #
-    # These two EXCLUDE towing fill-ups, matching
-    # `calculate_average_l_per_100km`'s default and the vehicle's own Fuel tab.
-    # Null when the vehicle has no non-towing figure at all, which is reachable:
-    # a dedicated tow rig may have hauled on every fill-up.
+    # These two leave towing tanks out, matching
+    # `calculate_average_l_per_100km`'s default and the vehicle's own Fuel tab;
+    # `recent_l_per_100km` covers the last 3 of those tanks. Null when the
+    # vehicle has no non-towing figure at all, which is reachable: a dedicated
+    # tow rig may have hauled on every fill-up. All are total fuel over total
+    # distance.
     average_l_per_100km: Decimal | None = None
     recent_l_per_100km: Decimal | None = None
-    # The same two over EVERY fill-up, towing included (issue #181). Sent
-    # unconditionally rather than only when it differs, so the comparison lives
-    # where `recent_l_per_100km` is already compared against the average: in the
-    # card that decides whether a second line is worth the space.
-    average_l_per_100km_with_towing: Decimal | None = None
-    recent_l_per_100km_with_towing: Decimal | None = None
+    # The towing tanks alone (issue #181). Null when the vehicle never tows.
+    towing_l_per_100km: Decimal | None = None
+
+    # Towable cards (fifth wheels, travel trailers): the trailer-details pairing,
+    # and the trailer's economy, litres of propane per average month across its
+    # bottle refills (`propane_l_per_month` in fuel_service) plus the same over
+    # the last 3 refills. Null without a pairing / fewer than two refills.
+    tow_vehicle: TowVehicleSummary | None = None
+    propane_l_per_month: Decimal | None = None
+    recent_propane_l_per_month: Decimal | None = None
 
     # Archive status
     archived_at: datetime | None = None
@@ -85,6 +109,8 @@ class FleetNextDue(BaseModel):
     label: str
     due_date: date_type | None = None
     due_mileage_km: Decimal | None = None
+    # The due vehicle's own odometer unit; null follows the viewer (#172).
+    distance_unit: LenientDistanceUnit = None
 
     class Config:
         from_attributes = True

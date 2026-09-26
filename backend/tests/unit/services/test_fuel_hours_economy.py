@@ -114,23 +114,37 @@ class TestComputeFullTankHoursEconomy:
         assert l_per_hr == Decimal("0.75")
         assert cost_per_hr == Decimal("1.25")
 
-    def test_hauling_folds_into_interval_when_excluded(self) -> None:
-        """exclude_hauling: a hauling full tank is not an endpoint; its fuel
-        folds into the surrounding interval instead of splitting it."""
+    def test_excluding_towing_drops_the_towing_tank_rather_than_merging_it(self) -> None:
+        """exclude_hauling: a towing tank stays an endpoint and its figures are
+        left out, never merged into the next tank's (issue #181 follow-up)."""
         a = _fr("100.0", "40.000", "60.00")
-        hauling = _fr("150.0", "30.000", "45.00", hauling=True)
+        towing = _fr("150.0", "30.000", "45.00", hauling=True)
         b = _fr("200.0", "45.000", "70.00")
 
-        excluded = compute_full_tank_hours_economy([a, hauling, b], exclude_hauling=True)
-        # a -> b bridge: Δ = 100h; liters = 30+45 = 75; cost = 45+70 = 115.
+        excluded = compute_full_tank_hours_economy([a, towing, b], exclude_hauling=True)
+        # towing -> b only: Δ = 50h; 45 L; 70 in cost.
         assert len(excluded) == 1
-        _, l_per_hr, cost_per_hr = excluded[0]
-        assert l_per_hr == Decimal("0.75")  # 75 / 100
-        assert cost_per_hr == Decimal("1.15")  # 115 / 100
+        scored, l_per_hr, cost_per_hr = excluded[0]
+        assert scored is b
+        assert l_per_hr == Decimal("0.90")  # 45 / 50
+        assert cost_per_hr == Decimal("1.40")  # 70 / 50
 
-        # Without exclusion the hauling tank splits the interval into two.
-        included = compute_full_tank_hours_economy([a, hauling, b], exclude_hauling=False)
-        assert len(included) == 2
+        included = compute_full_tank_hours_economy([a, towing, b], exclude_hauling=False)
+        assert [(per_hr, cost) for _, per_hr, cost in included] == [
+            (Decimal("0.60"), Decimal("0.90")),
+            (Decimal("0.90"), Decimal("1.40")),
+        ]
+
+    def test_a_towing_partial_fill_up_makes_its_tank_a_towing_tank(self) -> None:
+        """Mirrors the distance rule: fuel bought mid-tank while towing was
+        burned towing, even when the closing fill-up is not marked."""
+        a = _fr("100.0", "40.000", "60.00")
+        partial = _fr("120.0", "20.000", "30.00", full=False, hauling=True)
+        b = _fr("150.0", "30.000", "45.00")
+        c = _fr("200.0", "45.000", "70.00")
+
+        excluded = compute_full_tank_hours_economy([a, partial, b, c], exclude_hauling=True)
+        assert [(scored, l_per_hr) for scored, l_per_hr, _ in excluded] == [(c, Decimal("0.90"))]
 
     def test_non_increasing_hours_yields_no_figure(self) -> None:
         """Δhours <= 0 (meter did not advance) -> no figure."""
@@ -333,3 +347,43 @@ class TestCalculateAverageHoursEconomySkipsZeroLiters:
 
         assert avg_l_per_hr is None
         assert avg_cost_per_hr == Decimal("1.00")
+
+
+@pytest.mark.unit
+@pytest.mark.fuel
+@pytest.mark.asyncio
+class TestCalculateAverageHoursEconomyWeighting:
+    """The vehicle-level hours averages are total over total, like distance."""
+
+    async def test_averages_are_total_fuel_and_cost_over_total_hours(
+        self, db_session: AsyncSession
+    ) -> None:
+        """A 10 h tank at 2.0 L/hr (cost 3.0/hr) and a 40 h tank at 1.0 L/hr
+        (cost 1.5/hr): 60 L and 90 over 50 h -> 1.20 L/hr and 1.80/hr. A mean of
+        the figures says 1.50 and 2.25. A towing tank between them stays out."""
+        vin = "HOURSWEIGHT000001"
+        db_session.add(Vehicle(vin=vin, nickname="Hours Weighted", vehicle_type="Car"))
+        await db_session.flush()
+        for day, hours, litres, cost, towing in [
+            (1, "100.0", "20.000", "30.00", False),
+            (2, "110.0", "20.000", "30.00", False),
+            (3, "120.0", "50.000", "80.00", True),
+            (4, "160.0", "40.000", "60.00", False),
+        ]:
+            db_session.add(
+                FuelRecord(
+                    vin=vin,
+                    date=date(2026, 1, day),
+                    engine_hours=Decimal(hours),
+                    liters=Decimal(litres),
+                    cost=Decimal(cost),
+                    is_full_tank=True,
+                    is_hauling=towing,
+                )
+            )
+        await db_session.commit()
+
+        avg_l_per_hr, avg_cost_per_hr = await calculate_average_hours_economy(db_session, vin)
+
+        assert avg_l_per_hr == Decimal("1.20")
+        assert avg_cost_per_hr == Decimal("1.80")

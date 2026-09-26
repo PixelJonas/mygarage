@@ -9,16 +9,19 @@ import { METRIC_UNITS } from '../../__tests__/factories'
 vi.mock('../../contexts/AuthContext', () => ({
   useAuth: () => ({ user: null, isAuthenticated: false }),
 }))
-vi.mock('../../hooks/useUnitPreference', () => ({
-  useUnitPreference: () => ({
+vi.mock('../../hooks/useUnitPreference', () => {
+  const pref = () => ({
     system: 'metric',
     showBoth: false,
     gallonStandard: 'us',
     // The RESOLVED set, not just the collapsed system: the strip reads its
-    // mileage through `useUnitFormat()`, which closes over `units`.
+    // mileage through a unit formatter, which closes over `units`.
     units: METRIC_UNITS,
-  }),
-}))
+  })
+  // The strip formats its one row through `useUnitFormatFor`, which reads the
+  // ACCOUNT hook (#172).
+  return { useUnitPreference: pref, useAccountUnitPreference: pref }
+})
 
 import FleetHealthStrip from '../FleetHealthStrip'
 
@@ -75,6 +78,26 @@ describe('FleetHealthStrip', () => {
     expect(mileage.textContent).toMatch(/km/)
     // No date row for a mileage-only reminder.
     expect(screen.queryByText(/Aug 1, 2026/)).not.toBeInTheDocument()
+  })
+
+  it("renders the next-due mileage in the due vehicle's own unit, not the account's (#172)", () => {
+    render(
+      <FleetHealthStrip
+        fleet={{
+          ...FLEET,
+          next_due: {
+            vin: 'TEST0000000000001',
+            label: 'Rotate at 10k',
+            due_date: null,
+            // 16093.44 km / 1.609344 = 10,000 mi exactly.
+            due_mileage_km: '16093.44',
+            distance_unit: 'mi',
+          },
+        }}
+      />,
+    )
+    expect(screen.getByText(/10,000 mi/)).toBeInTheDocument()
+    expect(screen.queryByText(/16,093 km/)).not.toBeInTheDocument()
   })
 
   it('shows the nothing-scheduled label when next_due is null', () => {

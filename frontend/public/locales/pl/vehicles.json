@@ -62,7 +62,7 @@
     "noVehiclesYet": "Brak pojazdów",
     "oldestFirst": "Najpierw najstarsze",
     "sharedWithMeSection": "Udostępnione dla mnie ({{count}})",
-    "sortByName": "Sortuj po nazwie",
+    "sortByName": "Nazwa",
     "sortTrigger": "Sortowanie: {{label}}",
     "sortVehicles": "Sortuj pojazdy",
     "title": "Mój garaż",
@@ -680,10 +680,8 @@
     "noteCount": "{{count}} notatek",
     "overdue": "{{count}} zaległych",
     "photoCount": "{{count}} zdjęć",
-    "recent": "Ostatnie",
     "recentActivity": "Ostatnia aktywność",
-    "service": "Serwis",
-    "upcoming": "{{count}} nadchodzących"
+    "service": "Serwis"
   },
   "vendorSearch": {
     "noResults": "Brak wyników"

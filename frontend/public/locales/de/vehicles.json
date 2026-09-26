@@ -99,7 +99,7 @@
     "noVehiclesYet": "Noch keine Fahrzeuge",
     "oldestFirst": "Älteste zuerst",
     "sharedWithMeSection": "Mit mir geteilt ({{count}})",
-    "sortByName": "Nach Name sortieren",
+    "sortByName": "Name",
     "sortTrigger": "Sortierung: {{label}}",
     "sortVehicles": "Fahrzeuge sortieren",
     "title": "Meine Garage",
@@ -1097,10 +1097,8 @@
     "noteCount": "{{count}} Notiz(en)",
     "overdue": "{{count}} überfällig",
     "photoCount": "{{count}} Foto(s)",
-    "recent": "Aktuell",
     "recentActivity": "Letzte Aktivitäten",
-    "service": "Service",
-    "upcoming": "{{count}} anstehend"
+    "service": "Service"
   },
   "vendorSearch": {
     "noResults": "Keine Dienstleister gefunden",

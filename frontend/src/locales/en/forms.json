@@ -811,9 +811,8 @@
     "date": "Date",
     "category": "Category",
     "selectCategory": "Select category",
-    "vendor": "Vendor / Lender",
-    "taxAmount": "Tax",
-    "taxAmountHint": "Net/VAT portion of the amount, if known",
+    "lender": "Lender",
+    "lenderSearchPlaceholder": "Search lenders...",
     "saveAction": "save the financing record"
   },
   "toll": {

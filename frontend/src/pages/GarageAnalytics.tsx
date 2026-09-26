@@ -29,8 +29,7 @@ import { formatDateTime } from '../utils/parseAPITimestamp'
 // Colors for pie chart categories (10 categories: Maintenance, Upgrades, Inspection, Collision, Detailing, Fuel, DEF, Insurance, Taxes, Financing)
 const COLORS = ['#3B82F6', '#8B5CF6', '#F59E0B', '#EF4444', '#10B981', '#06B6D4', '#14B8A6', '#EC4899', '#6B7280', '#84CC16']
 
-// Every cost series in a month, financing included, so bars, averages and the
-// exported Total all agree with the backend's per-month total.
+// Sum of the service, fuel, DEF and financing series for one month.
 const monthlyTrendTotal = (trend: GarageAnalytics['monthly_trends'][number]) =>
   parseFloat(trend.service) + parseFloat(trend.fuel) + parseFloat(trend.def_cost) + parseFloat(trend.financing)
 

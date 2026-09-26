@@ -1,10 +1,12 @@
-"""Pydantic schemas for financing record operations (ADR 0001)."""
+"""Pydantic schemas for financing record operations."""
 
 import datetime as dt
 from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, Field
+
+from app.schemas.service_visit import VendorSummary
 
 FinancingCategory = Literal["lease_payment", "loan_payment", "upfront_fee"]
 
@@ -16,7 +18,6 @@ class FinancingRecordBase(BaseModel):
     amount: Decimal = Field(..., description="Payment or fee amount", ge=0)
     category: FinancingCategory = Field(..., description="Type of financing cost")
     vendor_id: int | None = Field(None, description="Associated vendor/lender ID")
-    tax_amount: Decimal | None = Field(None, description="Net/VAT tax portion, if known", ge=0)
     notes: str | None = Field(None, description="Additional notes")
 
 
@@ -34,7 +35,6 @@ class FinancingRecordCreate(FinancingRecordBase):
                     "amount": 450.00,
                     "category": "lease_payment",
                     "vendor_id": None,
-                    "tax_amount": None,
                     "notes": "Monthly lease payment",
                 }
             ]
@@ -49,7 +49,6 @@ class FinancingRecordUpdate(BaseModel):
     amount: Decimal | None = Field(None, description="Payment or fee amount", ge=0)
     category: FinancingCategory | None = Field(None, description="Type of financing cost")
     vendor_id: int | None = Field(None, description="Associated vendor/lender ID")
-    tax_amount: Decimal | None = Field(None, description="Net/VAT tax portion, if known", ge=0)
     notes: str | None = Field(None, description="Additional notes")
 
 
@@ -60,6 +59,9 @@ class FinancingRecordResponse(FinancingRecordBase):
     vin: str
     created_at: dt.datetime
     updated_at: dt.datetime | None = None
+    lender: VendorSummary | None = Field(
+        None, validation_alias="vendor", description="Lender/vendor details, if set"
+    )
 
     model_config = {
         "from_attributes": True,
@@ -72,10 +74,10 @@ class FinancingRecordResponse(FinancingRecordBase):
                     "amount": 450.00,
                     "category": "lease_payment",
                     "vendor_id": None,
-                    "tax_amount": None,
                     "notes": "Monthly lease payment",
                     "created_at": "2026-01-01T10:00:00",
                     "updated_at": None,
+                    "lender": None,
                 }
             ]
         },

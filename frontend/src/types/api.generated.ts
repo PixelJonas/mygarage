@@ -8592,6 +8592,11 @@ export interface components {
              */
             vehicle_color?: string | null;
             /**
+             * Vehicle Distance Unit
+             * @description The vehicle's own odometer unit; null follows the viewer (#172)
+             */
+            vehicle_distance_unit?: ("km" | "mi") | null;
+            /**
              * Vehicle Nickname
              * @description Vehicle nickname
              */
@@ -10001,11 +10006,6 @@ export interface components {
              */
             notes?: string | null;
             /**
-             * Tax Amount
-             * @description Net/VAT tax portion, if known
-             */
-            tax_amount?: number | string | null;
-            /**
              * Vendor Id
              * @description Associated vendor/lender ID
              */
@@ -10068,16 +10068,13 @@ export interface components {
             date: string;
             /** Id */
             id: number;
+            /** @description Lender/vendor details, if set */
+            lender?: components["schemas"]["VendorSummary"] | null;
             /**
              * Notes
              * @description Additional notes
              */
             notes?: string | null;
-            /**
-             * Tax Amount
-             * @description Net/VAT tax portion, if known
-             */
-            tax_amount?: string | null;
             /** Updated At */
             updated_at?: string | null;
             /**
@@ -10113,11 +10110,6 @@ export interface components {
              * @description Additional notes
              */
             notes?: string | null;
-            /**
-             * Tax Amount
-             * @description Net/VAT tax portion, if known
-             */
-            tax_amount?: number | string | null;
             /**
              * Vendor Id
              * @description Associated vendor/lender ID
@@ -10197,6 +10189,8 @@ export interface components {
          * @description Soonest pending reminder across the visible fleet.
          */
         FleetNextDue: {
+            /** Distance Unit */
+            distance_unit?: ("km" | "mi") | null;
             /** Due Date */
             due_date?: string | null;
             /** Due Mileage Km */
@@ -13739,6 +13733,8 @@ export interface components {
          * @description Lightweight vehicle summary for the Quick Entry selector.
          */
         QuickEntryVehicle: {
+            /** Distance Unit */
+            distance_unit?: ("km" | "mi") | null;
             /** Fuel Type */
             fuel_type?: string | null;
             /** Fuel Type Secondary */
@@ -17016,6 +17012,20 @@ export interface components {
             last_seen?: string | null;
         };
         /**
+         * TowVehicleSummary
+         * @description The vehicle a trailer is paired with, for the card's "Towed by" row.
+         */
+        TowVehicleSummary: {
+            /** Make */
+            make?: string | null;
+            /** Model */
+            model?: string | null;
+            /** Vin */
+            vin: string;
+            /** Year */
+            year?: number | null;
+        };
+        /**
          * TrailerDetailsCreate
          * @description Schema for creating trailer details.
          */
@@ -17409,6 +17419,11 @@ export interface components {
              * @default USD
              */
             currency_code: string;
+            /**
+             * Dashboard Sort
+             * @default name
+             */
+            dashboard_sort: string;
             /** Default Payment Method */
             default_payment_method?: string | null;
             /** Default Trip Type */
@@ -17531,6 +17546,8 @@ export interface components {
             accent_color?: string | null;
             /** Currency Code */
             currency_code?: string | null;
+            /** Dashboard Sort */
+            dashboard_sort?: string | null;
             /** Default Payment Method */
             default_payment_method?: string | null;
             /** Default Trip Type */
@@ -17870,6 +17887,11 @@ export interface components {
              */
             displacement_l?: string | null;
             /**
+             * Distance Unit
+             * @description The unit this vehicle's odometer reads (km or mi); null follows the viewer's account. Distances and speeds for this vehicle show and are entered in it (#172).
+             */
+            distance_unit?: ("km" | "mi") | null;
+            /**
              * Doors
              * @description Number of doors
              */
@@ -18167,6 +18189,8 @@ export interface components {
             average_l_per_hr: string | null;
             /** Current Hours */
             current_hours: string | null;
+            /** Due Soon Count */
+            due_soon_count: number;
             /** Last Fillup Date */
             last_fillup_date: string | null;
             /** Last Service Date */
@@ -18378,6 +18402,8 @@ export interface components {
              * @description Engine displacement in liters
              */
             displacement_l?: string | null;
+            /** Distance Unit */
+            distance_unit?: ("km" | "mi") | null;
             /**
              * Doors
              * @description Number of doors
@@ -18664,12 +18690,14 @@ export interface components {
             average_cost_per_hr?: string | null;
             /** Average L Per 100Km */
             average_l_per_100km?: string | null;
-            /** Average L Per 100Km With Towing */
-            average_l_per_100km_with_towing?: string | null;
             /** Average L Per Hr */
             average_l_per_hr?: string | null;
             /** Current Hours */
             current_hours?: string | null;
+            /** Distance Unit */
+            distance_unit?: ("km" | "mi") | null;
+            /** Due Soon Maintenance Count */
+            due_soon_maintenance_count: number;
             /**
              * Is Shared With Me
              * @default false
@@ -18697,10 +18725,12 @@ export interface components {
             owner_relationship?: string | null;
             /** Owner Relationship Custom */
             owner_relationship_custom?: string | null;
+            /** Propane L Per Month */
+            propane_l_per_month?: string | null;
             /** Recent L Per 100Km */
             recent_l_per_100km?: string | null;
-            /** Recent L Per 100Km With Towing */
-            recent_l_per_100km_with_towing?: string | null;
+            /** Recent Propane L Per Month */
+            recent_propane_l_per_month?: string | null;
             /**
              * Secondary Usage Enabled
              * @default false
@@ -18724,6 +18754,9 @@ export interface components {
             total_photos: number;
             /** Total Service Records */
             total_service_records: number;
+            tow_vehicle?: components["schemas"]["TowVehicleSummary"] | null;
+            /** Towing L Per 100Km */
+            towing_l_per_100km?: string | null;
             /** Upcoming Maintenance Count */
             upcoming_maintenance_count: number;
             /**
@@ -18852,6 +18885,11 @@ export interface components {
              * @description Engine displacement in liters
              */
             displacement_l?: string | null;
+            /**
+             * Distance Unit
+             * @description The unit this vehicle's odometer reads (km or mi); null follows the viewer's account. Distances and speeds for this vehicle show and are entered in it (#172).
+             */
+            distance_unit?: ("km" | "mi") | null;
             /**
              * Doors
              * @description Number of doors

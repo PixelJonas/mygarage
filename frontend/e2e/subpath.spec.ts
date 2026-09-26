@@ -2,6 +2,7 @@ import { test, expect } from './helpers/fixtures'
 import { nav } from './helpers/selectors'
 import { TEST_VEHICLE } from './helpers/seed'
 import { familyLoads, trackWoff2Requests } from './helpers/fonts'
+import { blockScripts } from './helpers/page'
 
 /**
  * Prefixed (subpath) E2E — issue #107.
@@ -229,5 +230,33 @@ test.describe('Subpath hosting (/mygarage)', () => {
         await context.setOffline(false)
       }
     })
+  })
+})
+
+/**
+ * Only this project serves the production shell through the backend, and so
+ * with its Content-Security-Policy header; the root project's Vite dev server
+ * sends none, so foundation.spec.ts cannot see a CSP refusal.
+ */
+test.describe('Production CSP', () => {
+  test('applies the stored theme before React mounts', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('theme', 'light'))
+    await blockScripts(page)
+    await page.goto('.')
+
+    expect(await page.locator('#root').evaluate((el) => el.childElementCount)).toBe(0)
+    await expect(page.locator('html')).toHaveClass(/light/)
+  })
+
+  test('a full page load reports no CSP violations', async ({ page }) => {
+    const violations: string[] = []
+    page.on('console', (msg) => {
+      if (msg.text().includes('Content Security Policy')) violations.push(msg.text())
+    })
+    await page.goto('.')
+    await expect(nav.dashboard(page)).toBeVisible({ timeout: 15000 })
+    await page.waitForLoadState('networkidle')
+
+    expect(violations).toEqual([])
   })
 })
